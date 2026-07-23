@@ -12,6 +12,7 @@ run "Subscription repair startup composition" node tests/subscriptionRepairCompo
 run "Subscription planning transient transaction retry" node tests/subscriptionPlanningTransientRetry.test.js
 run "Catalog and validator consistency" npm run test:catalog-validator-consistency
 run "Dashboard and mobile menu parity" npm run test:menu-dashboard-mobile-parity
+run "Flutter premium meal image contract" node tests/builderPremiumMealsImageContract.test.js
 run "Meal Builder dashboard/mobile parity" npm run test:meal-builder-dashboard-mobile-parity
 run "Premium salad eligibility" npm run test:premium-salad-eligibility
 run "Flutter planner payload compatibility" node tests/flutterMealPlannerPayloadCompatibility.test.js
