@@ -1,0 +1,47 @@
+name: Workbook production import
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/workbook-production-import.yml"
+      - "scripts/bootstrap/workbook-production-import.js"
+      - "scripts/bootstrap/fixtures/**"
+      - "tests/workbookProductionImport.integration.test.js"
+      - "package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  workbook-production-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --silent
+      - name: Run workbook production import test
+        id: workbook_test
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:workbook-production-import 2>&1 | tee workbook-production-import.log
+      - name: Upload workbook import log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbook-production-import-log
+          path: workbook-production-import.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce workbook import test
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.workbook_test.outcome }}" = "success"
