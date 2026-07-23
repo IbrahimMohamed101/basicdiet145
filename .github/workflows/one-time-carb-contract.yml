@@ -54,5 +54,25 @@ jobs:
       - name: Verify current mobile API contracts
         run: node tests/mobileApiContracts.test.js
 
-      - name: Run backend validation suite
-        run: npm run validate:backend
+      - id: backend_validation
+        name: Capture backend validation suite
+        shell: bash
+        run: |
+          set +e
+          npm run validate:backend > backend-validation.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload backend validation diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-validation-log
+          path: backend-validation.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Enforce backend validation suite
+        run: |
+          tail -n 200 backend-validation.log
+          test "${{ steps.backend_validation.outputs.exit_code }}" = "0"
