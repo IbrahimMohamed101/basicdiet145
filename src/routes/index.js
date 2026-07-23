@@ -15,6 +15,9 @@ require("../services/installDashboardMealPlannerFlutterCardPolicy");
 require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealPlannerTwoTypePolicy");
 require("../services/installDashboardMealBuilderDraftGuard");
+// Keep the historical bootstrap compatible when its source data exists, but do
+// not require old fixed products/groups for a fresh dashboard-owned catalog.
+require("../services/installIndependentMealBuilderAuthoring");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
