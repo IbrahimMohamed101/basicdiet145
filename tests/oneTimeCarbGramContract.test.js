@@ -42,14 +42,14 @@ async function seedBuilder() {
         isAvailable: true,
       },
       {
-        key: "one_time_white_rice",
+        key: "white_rice",
         nameI18n: { ar: "رز أبيض", en: "White Rice" },
         itemKind: "carb",
         isActive: true,
         isAvailable: true,
       },
       {
-        key: "one_time_red_pasta",
+        key: "red_sauce_pasta",
         nameI18n: { ar: "مكرونة حمراء", en: "Red Pasta" },
         itemKind: "carb",
         isActive: true,
@@ -101,7 +101,7 @@ async function seedBuilder() {
     {
       groupId: group._id,
       catalogItemId: includedCarbCatalogItem._id,
-      key: "one_time_white_rice",
+      key: "white_rice",
       name: { ar: "رز أبيض", en: "White Rice" },
       extraPriceHalala: 0,
       extraWeightUnitGrams: 0,
@@ -117,7 +117,7 @@ async function seedBuilder() {
     {
       groupId: group._id,
       catalogItemId: paidCarbCatalogItem._id,
-      key: "one_time_red_pasta",
+      key: "red_sauce_pasta",
       name: { ar: "مكرونة حمراء", en: "Red Pasta" },
       extraPriceHalala: 0,
       extraWeightUnitGrams: 50,
