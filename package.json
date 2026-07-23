@@ -32,7 +32,7 @@
     "test:subscription-bilingual": "NODE_ENV=test node tests/subscriptionBilingualResponse.test.js && NODE_ENV=test node tests/pickupProductNameResponse.test.js && NODE_ENV=test node tests/pickupCanonicalQueryGuard.test.js",
     "test:pickup-backend-closure": "NODE_ENV=test node tests/pickupEntitlementLinkPolicy.test.js && NODE_ENV=test node tests/pickupAvailabilityEntitlementParity.test.js && NODE_ENV=test node tests/pickupEntitlementLifecycle.integration.test.js && NODE_ENV=test node tests/pickupCanonicalObjectId.test.js && npm run test:subscription-bilingual",
     "test:current-subscription": "NODE_ENV=test node tests/subscriptionCurrentResolver.test.js",
-    "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
+    "test:checkout": "NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/checkoutIntegrationExplicitPickupOverride.js node tests/checkout.integration.test.js",
     "test:checkout-concurrency": "NODE_ENV=test node tests/subscriptionCheckoutInvoiceConcurrency.test.js",
     "test:kitchen-preparation-contract": "NODE_ENV=test node tests/dashboardKitchenPreparationContract.test.js",
     "test:one-time-full-flow": "NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/oneTimeOrderFullFlowClock.js node tests/oneTimeOrderFullFlow.test.js",
