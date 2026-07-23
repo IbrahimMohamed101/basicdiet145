@@ -18,7 +18,7 @@ permissions:
 jobs:
   contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       NODE_ENV: test
       MONGOMS_VERSION: 7.0.14
@@ -45,3 +45,33 @@ jobs:
 
       - name: Verify complete one-time carb response and pricing
         run: node tests/oneTimeCarbGramContract.test.js
+
+      - name: Core unit smoke
+        run: npm test
+
+      - name: One-time menu catalog
+        run: npm run test:one-time-menu
+
+      - name: Mobile API contracts
+        run: npm run test:mobile-contracts
+
+      - name: Weekly menu dashboard
+        run: npm run test:weekly-menu-dashboard
+
+      - name: Payment init safety
+        run: npm run test:payment-init-logging
+
+      - name: Menu identity mapping
+        run: npm run test:menu-identity
+
+      - name: Dashboard menu identity
+        run: npm run test:dashboard-menu-identity
+
+      - name: Menu identity suggestions
+        run: npm run test:menu-identity-suggestions
+
+      - name: Menu identity approval
+        run: npm run test:menu-identity-suggestions-approval
+
+      - name: Moyasar retry safety
+        run: node tests/moyasar_retry.test.js
