@@ -8,6 +8,10 @@ require("../services/installSubscriptionBackendRepairComposition");
 // replacement for its base meal credit. Install this invariant before payment,
 // subscription controller, and webhook modules capture settlement functions.
 require("../services/installPaidPremiumBaseMealEntitlement");
+// Reservation writes update the Subscription atomically outside the original
+// planning document instance. Re-read it after confirmation so mobile responses
+// never show the balance from immediately before the latest reservation.
+require("../services/installFreshPlanningSubscriptionBalance");
 // Install transaction retry only after the add-on/entitlement repair composition
 // has finalized service references. This prevents early subscription service
 // loading from capturing legacy carryover pricing functions.
