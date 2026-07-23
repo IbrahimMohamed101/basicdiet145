@@ -35,7 +35,8 @@
     "test:checkout": "NODE_ENV=test node tests/checkout.integration.test.js",
     "test:checkout-concurrency": "NODE_ENV=test node tests/subscriptionCheckoutInvoiceConcurrency.test.js",
     "test:kitchen-preparation-contract": "NODE_ENV=test node tests/dashboardKitchenPreparationContract.test.js",
-    "test:orders": "NODE_ENV=test node tests/oneTimeOrderOps.test.js && NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/oneTimeOrderFullFlowClock.js node tests/oneTimeOrderFullFlow.test.js",
+    "test:one-time-full-flow": "NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/oneTimeOrderFullFlowClock.js node tests/oneTimeOrderFullFlow.test.js",
+    "test:orders": "NODE_ENV=test node tests/oneTimeOrderOps.test.js && npm run test:one-time-full-flow",
     "test:subscriptions": "NODE_ENV=test node tests/subscriptionCancellationBalancePolicy.test.js && NODE_ENV=test node tests/subscriptionBalancePolicy.test.js && NODE_ENV=test node tests/subscriptionDayModificationPolicy.test.js && NODE_ENV=test node tests/subscriptionFulfillmentConcurrency.test.js",
     "test:security": "NODE_ENV=test node tests/corsPreflight.test.js && NODE_ENV=test node tests/publicApiSurface.test.js && NODE_ENV=test node tests/subscriptionCheckoutHardening.test.js && NODE_ENV=test node tests/securityHardening.test.js && NODE_ENV=test node tests/webhookSecurity.test.js",
     "test:release-gates": "npm test && npm run validate:backend && npm run test:restaurant-role && npm run test:catalog-lifecycle && npm run test:meal-planner-primary-repair && npm run test:database-reset-safety && npm run test:dashboard-staff-users && npm run test:bootstrap-initial-data && npm run test:menu-presentation-authority && npm run test:new-menu-bootstrap && npm run test:subscription-bilingual && npm run test:pickup-backend-closure && npm run test:security && npm run test:checkout-concurrency && npm run test:checkout && npm run test:orders && npm run test:kitchen-preparation-contract && npm run test:subscriptions && npm run test:current-subscription && npm run test:addon-credit-allocation && npm run test:addon-entitlement-authority && npm run test:owned-meal-entitlement && npm run test:addon-credit-lifecycle && npm run test:addon-dashboard-mobile-parity && npm run test:mobile-contracts && npm run test:payment-init-logging && npm run test:builder-catalog-v2-contract && npm run test:dashboard-users-search && npm run test:kitchen-permissions && npm run test:dashboard-manual-deduction && npm run test:one-time-menu && npm run test:weight-pricing && npm run test:premium-lifecycle && npm run test:meal-builder-backend-closure",
@@ -122,7 +123,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",
-    "cors": "^2.8.5",
+    "cors": "^2.8.2",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.1.3",
     "dotenv": "^16.6.1",
