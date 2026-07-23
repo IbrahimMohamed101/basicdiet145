@@ -22,7 +22,7 @@ let mongoServer;
 
 async function run() {
   mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri(`full_bootstrap_force_${Date.now()}`);
+  const uri = mongoServer.getUri(`full_bootstrap_force_test_${Date.now()}`);
   process.env.MONGO_URI_TEST = uri;
   process.env.MONGO_URI = uri;
   process.env.MONGODB_URI = uri;
