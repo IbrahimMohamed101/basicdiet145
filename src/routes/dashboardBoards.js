@@ -13,10 +13,17 @@ router.get(
   asyncHandler(controller.deliverySchedule)
 );
 
+const boardRoles = Object.freeze({
+  kitchen: ["admin", "restaurant", "kitchen", "cashier"],
+  pickup: ["admin", "restaurant", "kitchen", "cashier"],
+  courier: ["admin", "kitchen", "cashier"],
+});
+
 for (const screen of ["kitchen", "courier", "pickup"]) {
+  const allowedRoles = boardRoles[screen];
   router.get(
     `/${screen}/queue`,
-    dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier"]),
+    dashboardRoleMiddleware(allowedRoles),
     (req, _res, next) => {
       req.params.screen = screen;
       next();
@@ -25,7 +32,7 @@ for (const screen of ["kitchen", "courier", "pickup"]) {
   );
   router.get(
     `/${screen}/queue/:dayId`,
-    dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier"]),
+    dashboardRoleMiddleware(allowedRoles),
     (req, _res, next) => {
       req.params.screen = screen;
       next();
@@ -34,7 +41,7 @@ for (const screen of ["kitchen", "courier", "pickup"]) {
   );
   router.post(
     `/${screen}/actions/:action`,
-    dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier"]),
+    dashboardRoleMiddleware(allowedRoles),
     (req, _res, next) => {
       req.params.screen = screen;
       next();
