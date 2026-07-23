@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { applyArchivableLifecycle } = require("./plugins/archivableLifecycle");
 
 const LocalizedStringSchema = new mongoose.Schema(
   {
@@ -49,6 +50,10 @@ const MenuCategorySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+applyArchivableLifecycle(MenuCategorySchema, {
+  deactivatePaths: ["isActive", "isVisible", "isAvailable"],
+});
 
 MenuCategorySchema.index({ key: 1 }, { unique: true });
 MenuCategorySchema.index({ isActive: 1, isVisible: 1, isAvailable: 1, publishedAt: 1, sortOrder: 1, createdAt: -1 });
