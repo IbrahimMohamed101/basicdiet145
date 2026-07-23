@@ -6,7 +6,10 @@ const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middlew
 
 const router = Router();
 
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "kitchen", "cashier", "courier"]));
+router.use(
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier", "courier"])
+);
 
 router.get("/", asyncHandler(controller.listOrders));
 router.get("/:orderId/timeline", asyncHandler(controller.getOrderTimeline));
