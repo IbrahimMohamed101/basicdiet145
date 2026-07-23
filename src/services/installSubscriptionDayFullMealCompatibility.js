@@ -54,6 +54,11 @@ function installSubscriptionDayFullMealCompatibility() {
 }
 
 installSubscriptionDayFullMealCompatibility();
+// Flutter currently serializes Premium Large Salad through the legacy
+// salad.groups envelope while the database-driven catalog exposes MenuOption
+// identities. Install the bridge before routes/services capture the planner
+// function so both payload generations are validated by the canonical v3 path.
+require("./installFlutterMealPlannerPayloadCompatibility");
 // Install pooled day capacity before route modules capture planner and response
 // service exports. The mobile client can then spend any remaining subscription
 // meal/add-on credits on one valid day without treating mealsPerDay as a hard cap.
