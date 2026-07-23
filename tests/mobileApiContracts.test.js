@@ -105,7 +105,7 @@ function assertMenuProductContract(product, label) {
   assertHalalaInteger(product.priceHalala, `${label}.priceHalala`);
   assert(product.ui && ["large", "medium", "small"].includes(product.ui.cardSize), `${label}.ui.cardSize is public card size`);
   assert.deepStrictEqual(Object.keys(product.ui), ["cardSize"], `${label}.ui only exposes cardSize`);
-  if (product.requiresBuilder || product.key === "basic_salad") {
+  if (product.requiresBuilder) {
     assert(Array.isArray(product.optionGroups), `${label}.optionGroups array exists for custom product`);
     assert(product.optionGroups.length > 0, `${label}.optionGroups has groups`);
     assert(product.optionGroups.every((group) => group.ui && typeof group.ui.displayStyle === "string"), `${label}.optionGroups keep builder ui`);
@@ -255,12 +255,19 @@ async function cleanupCatalog() {
       const category = res.body.data.categories[0];
       assert(Array.isArray(category.products), "category.products is array");
       assert(!category.ui || Object.keys(category.ui).length === 0, "category visual ui is omitted from mobile contract");
-      const water = findProduct(res.body.data, "water");
-      const basicSalad = findProduct(res.body.data, "basic_salad");
-      assert(water, "water product exists");
-      assert(basicSalad, "basic_salad product exists");
-      assertMenuProductContract(water, "water");
-      assertMenuProductContract(basicSalad, "basic_salad");
+
+      const primaryProduct = findProduct(
+        res.body.data,
+        "salads_chicken_leafy_greens_salad_large"
+      );
+      const secondaryProduct = findProduct(
+        res.body.data,
+        "salads_chicken_leafy_greens_salad_small"
+      );
+      assert(primaryProduct, "current workbook primary product exists");
+      assert(secondaryProduct, "current workbook secondary product exists");
+      assertMenuProductContract(primaryProduct, "primaryProduct");
+      assertMenuProductContract(secondaryProduct, "secondaryProduct");
 
       orderBody = {
         fulfillmentMethod: "pickup",
@@ -271,15 +278,14 @@ async function cleanupCatalog() {
         },
         items: [
           {
-            productId: water.id || water._id,
+            productId: primaryProduct.id || primaryProduct._id,
             qty: 2,
-            selectedOptions: [],
+            selectedOptions: selectedRequiredOptions(primaryProduct),
           },
           {
-            productId: basicSalad.id || basicSalad._id,
+            productId: secondaryProduct.id || secondaryProduct._id,
             qty: 1,
-            weightGrams: 150,
-            selectedOptions: selectedRequiredOptions(basicSalad),
+            selectedOptions: selectedRequiredOptions(secondaryProduct),
           },
         ],
         successUrl: "basicdiet://orders/payment-success",
@@ -293,7 +299,7 @@ async function cleanupCatalog() {
       assert.strictEqual(res.body.status, true);
       assert.strictEqual(res.body.data.currency, "SAR");
       assert(Array.isArray(res.body.data.items), "data.items is array");
-      assert(res.body.data.items.length >= 2, "quote includes fixed and per_100g items");
+      assert(res.body.data.items.length >= 2, "quote includes current workbook products");
       res.body.data.items.forEach((item, index) => assertQuoteItemContract(item, `data.items[${index}]`));
       assertHalalaInteger(res.body.data.pricing.subtotalHalala, "data.pricing.subtotalHalala");
       assertHalalaInteger(res.body.data.pricing.totalHalala, "data.pricing.totalHalala");
