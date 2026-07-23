@@ -1,5 +1,6 @@
 name: Final backend release gates
 
+# This workflow is intentionally identical on main and delivery branches.
 on:
   push:
     branches:
