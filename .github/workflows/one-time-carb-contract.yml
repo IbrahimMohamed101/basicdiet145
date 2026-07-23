@@ -52,8 +52,28 @@ jobs:
       - name: One-time menu catalog
         run: npm run test:one-time-menu
 
-      - name: Mobile response contracts
-        run: node tests/mobileApiContracts.test.js
+      - id: mobile_response
+        name: Capture mobile response contracts
+        shell: bash
+        run: |
+          set +e
+          node tests/mobileApiContracts.test.js > mobile-response-contract.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload mobile response diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-response-contract-log
+          path: mobile-response-contract.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Enforce mobile response contracts
+        run: |
+          cat mobile-response-contract.log
+          test "${{ steps.mobile_response.outputs.exit_code }}" = "0"
 
       - name: Mobile auth password refresh
         run: node tests/mobileAuthPasswordRefresh.test.js
