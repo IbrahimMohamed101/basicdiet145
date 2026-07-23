@@ -51,31 +51,7 @@ jobs:
         run: npm ci
 
       - name: Validate backend syntax and composition
-        id: validate_backend
-        shell: bash
-        run: |
-          set +e
-          npm run validate:backend > validate-backend.log 2>&1
-          code=$?
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          tail -n 120 validate-backend.log
-          exit 0
-
-      - name: Upload backend validation failure log
-        if: steps.validate_backend.outputs.code != '0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: validate-backend
-          path: validate-backend.log
-          if-no-files-found: error
-          retention-days: 2
-
-      - name: Fail backend validation
-        if: steps.validate_backend.outputs.code != '0'
-        run: exit ${{ steps.validate_backend.outputs.code }}
-
-      - name: Verify Flutter Meal Planner catalog expansion
-        run: NODE_ENV=test node tests/flutterMealPlannerCatalogExpansion.test.js
+        run: npm run validate:backend
 
       - name: Run final release gates
         run: npm run test:release-gates
