@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const {
   normalizeSubscriptionAddonCategory,
 } = require("../services/subscription/subscriptionAddonPolicyService");
+const { applyArchivableLifecycle } = require("./plugins/archivableLifecycle");
 
 const AddonSchema = new mongoose.Schema(
   {
@@ -77,11 +78,11 @@ const AddonSchema = new mongoose.Schema(
       lowercase: true,
     },
 
-    menuProductId: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "MenuProduct", 
+    menuProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MenuProduct",
       default: null,
-      index: true 
+      index: true,
     },
 
     menuProductIds: {
@@ -164,6 +165,10 @@ AddonSchema.pre("validate", function syncBillingModeAndKind(next) {
   }
 
   next();
+});
+
+applyArchivableLifecycle(AddonSchema, {
+  deactivatePaths: ["isActive"],
 });
 
 AddonSchema.index(

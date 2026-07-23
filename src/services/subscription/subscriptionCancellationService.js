@@ -128,7 +128,7 @@ async function cancelSubscriptionDomain({
       transactionOpen = true;
     }
 
-    const subscription = await resolvedRuntime.findSubscriptionById({ subscriptionId, session });
+    let subscription = await resolvedRuntime.findSubscriptionById({ subscriptionId, session });
     if (!subscription) {
       if (transactionOpen) await session.abortTransaction();
       transactionOpen = false;
@@ -240,6 +240,26 @@ async function cancelSubscriptionDomain({
         session,
       });
       removedFutureDays = Number((deleteResult && deleteResult.deletedCount) || 0);
+
+      // Re-read inside the same transaction. Releasing a legacy day's entitlement
+      // can upgrade the subscription ledger to entitlementVersion=2 and can also
+      // change remaining/reserved balances. Building the cancellation CAS from the
+      // pre-release snapshot would then reject the service's own successful upgrade.
+      const refreshedSubscription = await resolvedRuntime.findSubscriptionById({
+        subscriptionId: subscription._id,
+        session,
+      });
+      if (!refreshedSubscription) {
+        const err = new Error("Subscription disappeared during cancellation");
+        err.code = "SUBSCRIPTION_NOT_FOUND";
+        err.status = 404;
+        throw err;
+      }
+      subscription = refreshedSubscription;
+      preservedCredits = Math.min(
+        Number(subscription.remainingMeals || 0),
+        Number(undeductedCommittedDays || 0) * mealsPerDay
+      );
     } else {
       preservedCredits = 0;
     }

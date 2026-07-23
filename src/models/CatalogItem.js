@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { generateUniqueKey } = require("../services/catalog/catalogKeyUiHelpers");
+const { applyArchivableLifecycle } = require("./plugins/archivableLifecycle");
 
 const LocalizedStringSchema = new mongoose.Schema(
   {
@@ -54,6 +55,10 @@ const CatalogItemSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+applyArchivableLifecycle(CatalogItemSchema, {
+  deactivatePaths: ["isActive", "isAvailable"],
+});
 
 CatalogItemSchema.index({ itemKind: 1, isActive: 1, isAvailable: 1 });
 

@@ -10,8 +10,10 @@ const {
 
 const router = Router();
 
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
-
+router.use(
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "superadmin", "restaurant", "kitchen"])
+);
 router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
 
 router.get("/", asyncHandler(controller.listCatalogItems));

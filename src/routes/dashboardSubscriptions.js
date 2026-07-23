@@ -13,10 +13,13 @@ const router = Router();
 router.get(
   "/search",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(controller.searchByPhone)
 );
 
+// Subscription creation remains admin/cashier only. The restaurant role can
+// inspect balances and deduct fulfilled branch consumption, but cannot sell or
+// create a new subscription through a hidden/direct API call.
 router.post(
   "/quote",
   dashboardAuthMiddleware,
@@ -48,28 +51,28 @@ router.get(
 router.get(
   "/:id/addon-entitlements",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(adminController.getSubscriptionAddonEntitlementsAdmin)
 );
 
 router.get(
   "/:id/balances",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(adminController.getSubscriptionBalancesAdmin)
 );
 
 router.post(
   "/:subscriptionId/manual-deduction",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(controller.manualDeduction)
 );
 
 router.get(
   "/:subscriptionId/manual-deductions",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(controller.listManualDeductions)
 );
 

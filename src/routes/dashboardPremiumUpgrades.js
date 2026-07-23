@@ -10,18 +10,19 @@ const {
 
 const router = Router();
 
-// Protect all routes with dashboard authentication. Read routes are available
-// to dashboard read roles; mutation routes stay admin/superadmin only.
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
+// Read routes are available to branch fulfillment roles; mutation routes stay
+// admin/superadmin only.
+router.use(
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "superadmin", "restaurant", "kitchen"])
+);
 
-// Phase 1/2: Expose read, candidates, and readiness
 router.get("/", asyncHandler(controller.getConfigs));
 router.get("/sources", asyncHandler(controller.getSources));
 router.get("/candidates", asyncHandler(controller.getCandidates));
 router.get("/readiness", asyncHandler(controller.getReadiness));
 router.get("/:id", asyncHandler(controller.getConfigDetail));
 
-// Phase 2: Mutation endpoints
 router.post("/", dashboardMutationRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.createConfig));
 router.patch("/:id", dashboardMutationRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.updateConfig));
 router.patch("/:id/state", dashboardMutationRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.updateConfigState));

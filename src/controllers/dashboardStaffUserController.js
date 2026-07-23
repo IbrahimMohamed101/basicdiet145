@@ -10,21 +10,34 @@ const {
   sanitizeDashboardUser,
 } = require("../services/dashboardPasswordService");
 
-const ASSIGNABLE_ROLES = Object.freeze(["admin", "kitchen", "courier", "cashier"]);
+// New operational accounts use the unified restaurant role. Legacy kitchen and
+// cashier accounts stay valid for login and migration, but cannot be assigned to
+// new accounts from the dashboard.
+const ASSIGNABLE_ROLES = Object.freeze(["admin", "restaurant", "courier"]);
+const LEGACY_STAFF_ROLES = Object.freeze(["kitchen", "cashier"]);
+const STAFF_FILTER_ROLES = Object.freeze([...ASSIGNABLE_ROLES, ...LEGACY_STAFF_ROLES]);
 
 function normalizeRole(role) {
   return String(role || "").trim().toLowerCase();
 }
 
-function assertAssignableRole(role) {
+function assertRoleFromList(role, allowedRoles) {
   const normalized = normalizeRole(role);
-  if (!ASSIGNABLE_ROLES.includes(normalized)) {
-    const err = new Error(`role must be one of: ${ASSIGNABLE_ROLES.join(", ")}`);
+  if (!allowedRoles.includes(normalized)) {
+    const err = new Error(`role must be one of: ${allowedRoles.join(", ")}`);
     err.status = 400;
     err.code = "INVALID_DASHBOARD_ROLE";
     throw err;
   }
   return normalized;
+}
+
+function assertAssignableRole(role) {
+  return assertRoleFromList(role, ASSIGNABLE_ROLES);
+}
+
+function assertStaffFilterRole(role) {
+  return assertRoleFromList(role, STAFF_FILTER_ROLES);
 }
 
 function parsePagination(query = {}) {
@@ -41,7 +54,7 @@ async function listStaffUsers(req, res) {
 
   const filter = { role: { $ne: "superadmin" } };
   if (q) filter.email = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
-  if (role) filter.role = assertAssignableRole(role);
+  if (role) filter.role = assertStaffFilterRole(role);
   if (status === "active") filter.isActive = true;
   if (status === "inactive") filter.isActive = false;
 
@@ -152,6 +165,8 @@ async function resetStaffPassword(req, res) {
 
 module.exports = {
   ASSIGNABLE_ROLES,
+  LEGACY_STAFF_ROLES,
+  STAFF_FILTER_ROLES,
   listStaffUsers,
   createStaffUser,
   updateStaffUser,

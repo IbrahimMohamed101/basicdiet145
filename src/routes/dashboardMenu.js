@@ -14,15 +14,12 @@ const {
 
 const router = Router();
 
-router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
+router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "restaurant", "kitchen"]));
 
-// Kitchen staff need the catalog for fulfillment, but catalog configuration is
-// an administrative concern. Keep all reads available while denying every
-// mutation unless the current Dashboard user is an admin/superadmin.
+// Kitchen and restaurant staff need the catalog for fulfillment, but catalog
+// configuration is an administrative concern. Keep reads available while
+// denying every mutation unless the Dashboard user is admin/superadmin.
 router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
-// Older Dashboard forms serialize omitted UI metadata as null. Treat that exact
-// value as an omitted field so existing/default metadata is preserved. Invalid
-// UI objects still pass through to the service validators and remain rejected.
 router.use(dashboardMenuUiNullCompatibility);
 
 router.get("/preview", asyncHandler(controller.getPreview));
@@ -42,7 +39,7 @@ router.post("/products", asyncHandler(controller.createProduct));
 router.patch("/products/bulk", asyncHandler(controller.bulkUpdateProducts));
 router.patch("/products/reorder", asyncHandler(controller.reorderProducts));
 router.post("/products/:id/duplicate", asyncHandler(controller.duplicateProduct));
-router.patch("/products/:id/category", asyncHandler(controller.updateProduct)); // Already handles categoryId in normalizeProductPayload
+router.patch("/products/:id/category", asyncHandler(controller.updateProduct));
 router.patch("/products/:id/weight-pricing", asyncHandler(weightPricingController.updateProductWeightPricing));
 router.get("/products/:productId/composer", asyncHandler(controller.getProductComposer));
 router.patch("/products/:productId/customization", asyncHandler(controller.updateProductCustomization));
