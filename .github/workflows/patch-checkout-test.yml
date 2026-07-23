@@ -54,3 +54,5 @@ jobs:
           git add tests/checkout.integration.test.js
           git commit -m "test(checkout): require explicit same-day pickup override"
           git push origin HEAD:agent/final-delivery-readiness
+
+# One-time workflow; remove after the patch commit lands.
