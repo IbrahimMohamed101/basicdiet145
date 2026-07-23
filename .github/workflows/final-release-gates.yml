@@ -74,5 +74,8 @@ jobs:
         if: steps.validate_backend.outputs.code != '0'
         run: exit ${{ steps.validate_backend.outputs.code }}
 
+      - name: Verify Flutter Meal Planner catalog expansion
+        run: NODE_ENV=test node tests/flutterMealPlannerCatalogExpansion.test.js
+
       - name: Run final release gates
         run: npm run test:release-gates
