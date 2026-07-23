@@ -18,6 +18,9 @@ require("../services/installDashboardMealBuilderDraftGuard");
 // Keep the historical bootstrap compatible when its source data exists, but do
 // not require old fixed products/groups for a fresh dashboard-owned catalog.
 require("../services/installIndependentMealBuilderAuthoring");
+// Dashboard premium authoring reads the current menu dynamically instead of a
+// fixed list of historical product keys.
+require("../services/installIndependentPremiumAuthoring");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
