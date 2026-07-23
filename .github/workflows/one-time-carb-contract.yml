@@ -52,8 +52,17 @@ jobs:
       - name: One-time menu catalog
         run: npm run test:one-time-menu
 
-      - name: Mobile API contracts
-        run: npm run test:mobile-contracts
+      - name: Mobile response contracts
+        run: node tests/mobileApiContracts.test.js
+
+      - name: Mobile auth password refresh
+        run: node tests/mobileAuthPasswordRefresh.test.js
+
+      - name: Fulfillment status endpoint
+        run: node tests/fulfillmentStatusEndpoint.test.js
+
+      - name: Fulfillment contract
+        run: node tests/fulfillmentContract.test.js
 
       - name: Weekly menu dashboard
         run: npm run test:weekly-menu-dashboard
