@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./services/installOneTimeOrderItemTypeCompatibility");
 
 const { createServer } = require("http");
 const { createApp } = require("./app");
