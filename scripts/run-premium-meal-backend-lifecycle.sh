@@ -16,6 +16,7 @@ run "Meal Builder dashboard/mobile parity" npm run test:meal-builder-dashboard-m
 run "Premium salad eligibility" npm run test:premium-salad-eligibility
 run "Flutter planner payload compatibility" node tests/flutterMealPlannerPayloadCompatibility.test.js
 run "Flutter premium salad legacy payload integration" node tests/flutterPremiumLargeSaladLegacyPayload.integration.test.js
+run "Premium upgrade base meal credit lifecycle" node tests/premiumBaseMealCreditLifecycle.integration.test.js
 run "Premium salad kitchen snapshot projection" node tests/kitchenPremiumSaladProjectionFallback.test.js
 run "Subscription quote and checkout lifecycle" npm run test:checkout
 run "Subscription lifecycle and wallet policies" npm run test:subscriptions
