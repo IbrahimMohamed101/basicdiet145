@@ -5,9 +5,9 @@ on:
     paths:
       - ".github/workflows/workbook-production-import.yml"
       - "scripts/bootstrap/workbook-production-import.js"
+      - "scripts/bootstrap/workbook-production-readiness-policy.js"
       - "scripts/bootstrap/fixtures/**"
       - "tests/workbookProductionImport.integration.test.js"
-      - "package.json"
 
 permissions:
   contents: read
@@ -31,7 +31,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run test:workbook-production-import 2>&1 | tee workbook-production-import.log
+          NODE_OPTIONS=--require=./scripts/bootstrap/workbook-production-readiness-policy.js \
+            node tests/workbookProductionImport.integration.test.js 2>&1 | tee workbook-production-import.log
       - name: Upload workbook import log
         if: always()
         uses: actions/upload-artifact@v4
