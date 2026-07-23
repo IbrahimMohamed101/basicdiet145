@@ -126,10 +126,18 @@ function serializePublicOption(relation, option, lang) {
     key: option.key,
     name: localizeName(option.name, lang),
     nameI18n: localizedPair(option.name),
+    description: localizeName(option.description, lang),
+    descriptionI18n: localizedPair(option.description),
     imageUrl: option.imageUrl || "",
     extraPriceHalala,
+    extraFeeHalala: extraPriceHalala,
     extraWeightUnitGrams,
     extraWeightPriceHalala,
+    calories: Number(option.nutrition?.calories || 0),
+    displayCategoryKey: option.displayCategoryKey || "",
+    premiumKey: option.premiumKey || "",
+    selectionType: option.selectionType || "",
+    isPremium: Boolean(option.premiumKey),
     sortOrder: Number(relation.sortOrder || option.sortOrder || 0),
   };
   const proteinFamilyKey = resolveProteinVisualFamilyKey(option);
