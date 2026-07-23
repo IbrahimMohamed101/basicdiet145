@@ -222,7 +222,7 @@ async function repairBasicSaladPublication() {
         defaultWeightGrams: 100,
         minWeightGrams: 100,
         maxWeightGrams: 100,
-        weightStepGrams: 0,
+        weightStepGrams: 1,
         weightStepPriceHalala: 0,
         currency: "SAR",
         availableFor: ["one_time", "subscription"],
