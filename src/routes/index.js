@@ -9,6 +9,9 @@ require("../services/installSubscriptionAddonPaymentBoundaryGuard");
 require("../services/dashboard/installKitchenPreparationContract");
 require("../services/orders/installWeightPricingAuthority");
 require("../services/installDashboardCatalogCompatibility");
+// Add-on administration must see the complete catalog even when an older
+// dashboard build sends customer-visibility filters with picker requests.
+require("../services/installDashboardAddonCatalogAuthoring");
 require("../services/installDashboardMealBuilderFinalization");
 require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
