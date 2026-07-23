@@ -19,7 +19,9 @@ const {
   PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA,
   SALAD_SELECTION_GROUPS,
 } = require("../../src/config/mealPlannerContract");
-const { buildSubscriptionBuilderCatalogBundle } = require("../../src/services/catalog/CatalogService");
+const {
+  getSubscriptionBuilderCatalogWithV2,
+} = require("../../src/services/catalog/CatalogService");
 const {
   computeRevisionHash,
   validateConfigObject,
@@ -96,7 +98,7 @@ function buildSection({ categoryId, product }) {
     sectionType: "product_list",
     sourceKind: "product_list",
     titleOverride: clone(PREMIUM_LARGE_SALAD_NAME),
-    productContextId: product._id,
+    productContextId: null,
     sourceGroupId: null,
     sourceCategoryId: categoryId,
     selectedOptionIds: [],
@@ -304,7 +306,6 @@ async function installCanonicalBuilderRelations({ product, now }) {
       optionCount += 1;
     }
 
-    activeGroupRelationIds.push(groupRelation._id);
     summary.push({
       key: rule.key,
       minSelections: Number(rule.minSelect || 0),
@@ -405,13 +406,13 @@ async function installMealBuilderSection({ category, product }) {
 }
 
 async function verifyMobileContract() {
-  const bundle = await buildSubscriptionBuilderCatalogBundle({
+  const bundle = await getSubscriptionBuilderCatalogWithV2({
     lang: "ar",
     includeV2: true,
     includeV3: true,
     ignorePublishedMealBuilder: true,
   });
-  const catalogs = [bundle?.v3, bundle?.v2, bundle?.catalogV3, bundle?.catalogV2].filter(Boolean);
+  const catalogs = [bundle?.plannerCatalog, bundle?.builderCatalogV2].filter(Boolean);
   const sections = catalogs.flatMap((catalog) => catalog.sections || []);
   const section = sections.find((row) => row.key === PREMIUM_LARGE_SALAD_KEY);
   const product = (section?.products || []).find((row) => row.key === PREMIUM_LARGE_SALAD_KEY);
