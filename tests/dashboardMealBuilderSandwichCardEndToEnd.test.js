@@ -122,8 +122,12 @@ async function run() {
     assert(candidateKeys.has("manual_normal_product"));
     assert.strictEqual(
       response.body.data.rules.selectionTypeRequired,
-      true,
-      "picker tells Dashboard that card behavior must be chosen explicitly"
+      false,
+      "the only direct selection type is applied automatically"
+    );
+    assert.strictEqual(
+      response.body.data.rules.canonicalSelectionType,
+      "full_meal_product"
     );
 
     response = await request(app)
@@ -136,11 +140,16 @@ async function run() {
         sortOrder: 5,
         visible: true,
       });
-    expectStatus(response, 422, "reject card without explicit selectionType");
+    expectStatus(response, 201, "default card to canonical direct selection type");
     assert.strictEqual(
-      response.body.error.code,
-      "MEAL_BUILDER_CARD_SELECTION_TYPE_REQUIRED"
+      response.body.data.section.selectionType,
+      "full_meal_product"
     );
+
+    response = await request(app)
+      .delete("/api/dashboard/meal-builder/sections/missing_type")
+      .set(auth.headers);
+    expectStatus(response, 200, "remove canonical-default test card");
 
     response = await request(app)
       .post("/api/dashboard/meal-builder/sections")
