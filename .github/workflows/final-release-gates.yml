@@ -1,6 +1,5 @@
 name: Final backend release gates
 
-# This workflow is intentionally identical on main and delivery branches.
 on:
   push:
     branches:
@@ -21,9 +20,23 @@ jobs:
   release-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       NODE_ENV: test
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_test
       MONGOMS_VERSION: 7.0.14
+      DASHBOARD_JWT_SECRET: release-gate-dashboard-secret
+      JWT_SECRET: release-gate-app-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v4
