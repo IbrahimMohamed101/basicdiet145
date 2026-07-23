@@ -9,8 +9,12 @@ const request = require("supertest");
 
 const { createApp } = require("../src/app");
 const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
+const MealBuilderConfig = require("../src/models/MealBuilderConfig");
 const MenuCategory = require("../src/models/MenuCategory");
 const MenuProduct = require("../src/models/MenuProduct");
+const { MEAL_SELECTION_TYPES } = require("../src/config/mealPlannerContract");
+const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
+const canonicalPlannerService = require("../src/services/subscription/canonicalMealSlotPlannerService");
 
 let mongoServer;
 
@@ -55,7 +59,30 @@ async function seedCatalog() {
     // NOTE: NO ProductOptionGroup entries — zero option groups intentionally to test standard_meal behavior
   });
 
-  return { pastaCategory, pastaProduct, breakfastCategory, breakfastProduct };
+  const sandwichCategory = await MenuCategory.create({
+    key: "sandwiches",
+    name: { en: "Sandwiches", ar: "ساندوتشات" },
+    publishedAt: now,
+  });
+  const sandwichProduct = await MenuProduct.create({
+    categoryId: sandwichCategory._id,
+    key: "turkey_sandwich_contract_test",
+    itemType: "cold_sandwich",
+    name: { en: "Turkey Sandwich", ar: "ساندوتش تركي" },
+    pricingModel: "fixed",
+    priceHalala: 1900,
+    availableFor: ["subscription"],
+    publishedAt: now,
+  });
+
+  return {
+    pastaCategory,
+    pastaProduct,
+    breakfastCategory,
+    breakfastProduct,
+    sandwichCategory,
+    sandwichProduct,
+  };
 }
 
 async function main() {
@@ -172,6 +199,105 @@ async function main() {
       // Whether the endpoint returns the section or not (it may filter empty sections),
       // the critical assertion is that it does NOT silently return treatAsFullMeal=true.
       console.log("✓ Test 2 PASSED: standard_meal section + zero option groups → NOT treated as full meal");
+    }
+
+    // ── Test 3: legacy sandwich membership + canonical mobile payload ──────────
+    // Older published versions stored direct cards as `sandwich`. The public
+    // catalog now canonicalizes them to `full_meal_product`, so validation must
+    // accept the exact product that the API exposed without opening membership to
+    // unrelated products or option groups.
+    {
+      const now = new Date();
+      await MealBuilderConfig.updateMany(
+        { status: "published", isCurrent: true },
+        { $set: { status: "archived", isCurrent: false } }
+      );
+      await MealBuilderConfig.create({
+        status: "published",
+        isCurrent: true,
+        contractVersion: "subscription_meal_builder.v1",
+        versionNumber: 999,
+        source: "dashboard",
+        createdBySystem: false,
+        publishedAt: now,
+        sections: [
+          {
+            key: "legacy_sandwiches",
+            sectionType: "product_list",
+            sourceKind: "product_list",
+            includeMode: "selected",
+            selectedProductIds: [String(fixture.sandwichProduct._id)],
+            selectionType: MEAL_SELECTION_TYPES.SANDWICH,
+            titleOverride: { en: "Sandwiches", ar: "ساندوتشات" },
+            required: false,
+            minSelections: 0,
+            maxSelections: 1,
+            multiSelect: false,
+            visible: true,
+            availableFor: ["subscription"],
+            metadata: {
+              cardType: "direct_product",
+              requiresBuilder: false,
+              treatAsFullMeal: true,
+            },
+          },
+        ],
+      });
+
+      const publishedMembership = await mealBuilderConfigService.buildPublishedMembership();
+      assert.strictEqual(publishedMembership.hasPublishedConfig, true);
+      assert.strictEqual(
+        mealBuilderConfigService.isProductIncluded(
+          publishedMembership.membership,
+          MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
+          fixture.sandwichProduct._id
+        ),
+        true,
+        "canonical full_meal_product must resolve a product stored in legacy sandwich membership"
+      );
+      assert.strictEqual(
+        mealBuilderConfigService.isProductIncluded(
+          publishedMembership.membership,
+          MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
+          fixture.pastaProduct._id
+        ),
+        false,
+        "compatibility must not allow a product that is absent from both direct-product membership scopes"
+      );
+
+      const validation = await canonicalPlannerService.validateCanonicalMealSlots({
+        mealSlots: [
+          {
+            slotIndex: 1,
+            slotKey: "slot_1",
+            selectionType: MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
+            productId: String(fixture.sandwichProduct._id),
+            selectedOptions: [],
+          },
+        ],
+        mealsPerDayLimit: 2,
+        maxSlotCount: 2,
+        subscription: null,
+      });
+      assert.strictEqual(
+        validation.valid,
+        true,
+        `canonical direct product validation failed: ${JSON.stringify(validation)}`
+      );
+
+      const res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
+      assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+      const directSection = res.body.data.builderCatalog.sections.find(
+        (section) => section.key === "legacy_sandwiches"
+      );
+      assert(directSection, "legacy direct section must remain visible in the public planner");
+      assert.strictEqual(
+        directSection.products[0].selectionType,
+        MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
+        "public planner must expose the canonical direct-product selection type"
+      );
+
+      console.log("✓ Test 3 PASSED: legacy sandwich membership validates canonical full_meal_product payloads");
     }
 
     console.log("\nAll Full Meal Product Contract tests passed!");
