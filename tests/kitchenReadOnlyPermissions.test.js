@@ -82,6 +82,36 @@ function expectStatus(res, status, label) {
   assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
 }
 
+async function assertCatalogReadSurface(api, headers, rows, roleLabel) {
+  let res = await api.get("/api/dashboard/plans?view=picker").set(headers);
+  expectStatus(res, 200, `${roleLabel} plan picker`);
+  assert(res.body.data.some((plan) => plan.id === String(rows.plan._id)), `${roleLabel} picker includes seeded plan`);
+
+  res = await api.get(`/api/dashboard/plans/${rows.plan._id}`).set(headers);
+  expectStatus(res, 200, `${roleLabel} plan detail`);
+
+  res = await api.get("/api/dashboard/addons").set(headers);
+  expectStatus(res, 200, `${roleLabel} dashboard add-on plans`);
+
+  res = await api.get("/api/dashboard/addon-plans").set(headers);
+  expectStatus(res, 200, `${roleLabel} add-on plan list`);
+
+  res = await api.get(`/api/dashboard/addon-plans/${rows.addonPlan._id}`).set(headers);
+  expectStatus(res, 200, `${roleLabel} add-on plan detail`);
+
+  res = await api.get("/api/dashboard/addon-items").set(headers);
+  expectStatus(res, 200, `${roleLabel} add-on item list`);
+
+  res = await api.get(`/api/dashboard/addon-items/${rows.addonItem._id}`).set(headers);
+  expectStatus(res, 200, `${roleLabel} add-on item detail`);
+
+  res = await api.get("/api/dashboard/addon-prices").set(headers);
+  expectStatus(res, 200, `${roleLabel} add-on price list`);
+
+  res = await api.get(`/api/dashboard/addon-prices/${rows.addonPrice._id}`).set(headers);
+  expectStatus(res, 200, `${roleLabel} add-on price detail`);
+}
+
 async function run() {
   await connect();
   await cleanup();
@@ -90,36 +120,15 @@ async function run() {
   const { headers: adminHeaders } = await dashboardAuth("admin", TEST_TAG);
   const { headers: kitchenHeaders } = await dashboardAuth("kitchen", TEST_TAG);
   const { headers: cashierHeaders } = await dashboardAuth("cashier", TEST_TAG);
+  const { headers: restaurantHeaders } = await dashboardAuth("restaurant", TEST_TAG);
   const rows = await seedCatalogRows();
 
   try {
-    let res = await api.get("/api/dashboard/plans?view=picker").set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen plan picker");
-    assert(res.body.data.some((plan) => plan.id === String(rows.plan._id)), "kitchen picker includes seeded plan");
+    await assertCatalogReadSurface(api, kitchenHeaders, rows, "kitchen");
+    await assertCatalogReadSurface(api, restaurantHeaders, rows, "restaurant");
 
-    res = await api.get(`/api/dashboard/plans/${rows.plan._id}`).set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen plan detail");
-
-    res = await api.get("/api/dashboard/addons").set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen dashboard add-on plans");
-
-    res = await api.get("/api/dashboard/addon-plans").set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen add-on plan list");
-
-    res = await api.get(`/api/dashboard/addon-plans/${rows.addonPlan._id}`).set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen add-on plan detail");
-
-    res = await api.get("/api/dashboard/addon-items").set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen add-on item list");
-
-    res = await api.get(`/api/dashboard/addon-items/${rows.addonItem._id}`).set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen add-on item detail");
-
-    res = await api.get("/api/dashboard/addon-prices").set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen add-on price list");
-
-    res = await api.get(`/api/dashboard/addon-prices/${rows.addonPrice._id}`).set(kitchenHeaders);
-    expectStatus(res, 200, "kitchen add-on price detail");
+    let res = await api.get("/api/dashboard/users").set(restaurantHeaders);
+    expectStatus(res, 200, "restaurant can read app users");
 
     res = await api.post("/api/dashboard/addons").set(kitchenHeaders).send({
       name: { en: `${TEST_TAG} Kitchen Mutate` },
@@ -128,6 +137,20 @@ async function run() {
       priceHalala: 100,
     });
     expectStatus(res, 403, "kitchen cannot create add-on plan");
+
+    res = await api.post("/api/dashboard/addons").set(restaurantHeaders).send({
+      name: { en: `${TEST_TAG} Restaurant Mutate` },
+      category: "juice",
+      kind: "plan",
+      priceHalala: 100,
+    });
+    expectStatus(res, 403, "restaurant cannot create add-on plan");
+
+    res = await api.post("/api/dashboard/subscriptions/quote").set(restaurantHeaders).send({});
+    expectStatus(res, 403, "restaurant cannot quote a subscription");
+
+    res = await api.post("/api/dashboard/subscriptions").set(restaurantHeaders).send({});
+    expectStatus(res, 403, "restaurant cannot create a subscription");
 
     res = await api.patch(`/api/dashboard/addon-plans/${rows.addonPlan._id}/toggle`).set(kitchenHeaders).send({});
     expectStatus(res, 403, "kitchen cannot toggle add-on plan");
@@ -150,7 +173,7 @@ async function run() {
     res = await api.patch(`/api/dashboard/addon-plans/${rows.addonPlan._id}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "admin can still mutate add-on plan");
 
-    console.log("kitchen read-only permission tests passed");
+    console.log("kitchen and restaurant read-only permission tests passed");
   } finally {
     await cleanup();
     await mongoose.disconnect();
@@ -158,6 +181,6 @@ async function run() {
 }
 
 run().catch((err) => {
-  console.error(`kitchen read-only permission tests failed: ${err.stack || err.message}`);
+  console.error(`kitchen/restaurant read-only permission tests failed: ${err.stack || err.message}`);
   process.exit(1);
 });
