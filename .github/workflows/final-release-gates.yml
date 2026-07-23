@@ -35,6 +35,7 @@ jobs:
       MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test
       MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_test
       MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_test
+      VALIDATE_BACKEND_WITH_LOCAL_DB: "true"
       MONGOMS_VERSION: 7.0.14
       DASHBOARD_JWT_SECRET: release-gate-dashboard-secret
       JWT_SECRET: release-gate-app-secret
