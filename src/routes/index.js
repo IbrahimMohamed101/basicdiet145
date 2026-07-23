@@ -3,6 +3,10 @@ const { Router } = require("express");
 // Premium upgrades are authored directly from the current menu catalog. Install
 // this authority before subscription and route modules capture service methods.
 require("../services/installIndependentPremiumAuthority");
+// Flutter reads premium card media from imageUrl. Hydrate config-backed Premium
+// sources from their CatalogItem or original workbook MenuProduct before the
+// builder controller captures the premium service export.
+require("../services/installPremiumUpgradeImageHydration");
 require("../services/installSubscriptionBackendRepairComposition");
 // A paid Premium selection is an upgrade of one subscription meal, never a
 // replacement for its base meal credit. Install this invariant before payment,
