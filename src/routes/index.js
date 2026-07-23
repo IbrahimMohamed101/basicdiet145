@@ -35,6 +35,9 @@ require("../services/installDashboardCatalogCompatibility");
 require("../services/installDashboardAddonCatalogAuthoring");
 require("../services/installDashboardMealBuilderFinalization");
 require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
+// The explicit picker must never turn builder products or add-ons into direct
+// meal cards, even if a caller bypasses the Dashboard UI.
+require("../services/installDirectMealProductEligibility");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
 require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealPlannerTwoTypePolicy");
