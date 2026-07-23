@@ -7,6 +7,7 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/orders/orderMenuService.js"
+      - "src/services/installOneTimeBasicMealCarbCatalog.js"
       - "src/services/installOneTimeCarbGramContract.js"
       - "tests/oneTimeCarbGramContract.test.js"
       - "tests/mobileApiContracts.test.js"
@@ -41,6 +42,7 @@ jobs:
       - name: Validate syntax
         run: |
           node -c src/services/orders/orderMenuService.js
+          node -c src/services/installOneTimeBasicMealCarbCatalog.js
           node -c src/services/installOneTimeCarbGramContract.js
           node -c src/routes/index.js
           node -c tests/oneTimeCarbGramContract.test.js
@@ -51,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          node tests/oneTimeCarbGramContract.test.js > basic-meal-carb-contract.log 2>&1
+          node -r ./src/services/installOneTimeBasicMealCarbCatalog tests/oneTimeCarbGramContract.test.js > basic-meal-carb-contract.log 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
