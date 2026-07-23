@@ -3,6 +3,7 @@
 const mealBuilderService = require("./subscription/dashboardMealPlannerDashboardService");
 
 const CLASSIFICATION_AUTHORITY = "meal_product_classification.v1";
+const CANONICAL_DIRECT_SELECTION_TYPE = "full_meal_product";
 let installed = false;
 
 function installMealPlannerClassificationAuthority() {
@@ -20,6 +21,8 @@ function installMealPlannerClassificationAuthority() {
       rules: {
         ...(response.rules || {}),
         classificationAuthority: CLASSIFICATION_AUTHORITY,
+        selectionTypeRequired: false,
+        canonicalSelectionType: CANONICAL_DIRECT_SELECTION_TYPE,
       },
     };
   };
@@ -28,6 +31,7 @@ function installMealPlannerClassificationAuthority() {
 installMealPlannerClassificationAuthority();
 
 module.exports = {
+  CANONICAL_DIRECT_SELECTION_TYPE,
   CLASSIFICATION_AUTHORITY,
   installMealPlannerClassificationAuthority,
 };
