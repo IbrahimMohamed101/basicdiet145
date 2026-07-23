@@ -3,6 +3,10 @@ const { Router } = require("express");
 // Premium upgrades are authored directly from the current menu catalog. Install
 // this authority before subscription and route modules capture service methods.
 require("../services/installIndependentPremiumAuthority");
+// A Premium meal upgrades one configurable base meal. Keep all base groups
+// authored for standard_meal (carbs and any future side groups) available while
+// the Premium section remains authoritative for the upgraded source option.
+require("../services/installPremiumMealBaseBuilderInheritance");
 require("../services/installSubscriptionBackendRepairComposition");
 // A paid Premium selection is an upgrade of one subscription meal, never a
 // replacement for its base meal credit. Install this invariant before payment,
