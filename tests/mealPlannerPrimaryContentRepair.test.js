@@ -201,26 +201,47 @@ async function seedWrongPrimaryProduct() {
     maxSelections: 1,
     isRequired: true,
   });
-  await ProductGroupOption.create({ productId: product._id, groupId: group._id, optionId: option._id });
+  await ProductGroupOption.create({
+    productId: product._id,
+    groupId: group._id,
+    optionId: option._id,
+  });
+  return product;
 }
 
-async function testMobileContractRepair() {
+async function assertMobilePrimaryContent(api, language) {
+  const response = await api.get(`/api/subscriptions/meal-planner-menu?lang=${language}`);
+  assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+  assert(hasFlutterPrimaryMealPickerContent(response.body.data.builderCatalog));
+  assert(
+    summarizeFlutterPrimaryMealPickerContent(response.body.data.builderCatalog)
+      .standardProteinOptionCount > 0
+  );
+  return response;
+}
+
+async function testMobileContractCompatibilityAndRepair() {
   const mongoServer = await connectTestDatabase();
   try {
-    await seedWrongPrimaryProduct();
+    const seededProduct = await seedWrongPrimaryProduct();
     const api = request(createApp());
-    const beforeRepair = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
-    assert.strictEqual(beforeRepair.status, 503, JSON.stringify(beforeRepair.body));
+
+    // Runtime compatibility deliberately keeps the mobile picker available while
+    // the production repair canonicalizes the persisted itemType. The repair is
+    // still required so dashboard/data contracts no longer depend on the fallback.
+    await assertMobilePrimaryContent(api, "en");
+    const beforeRepair = await MenuProduct.findById(seededProduct._id).lean();
+    assert.strictEqual(beforeRepair.itemType, "product");
 
     const applied = await repairMealPlannerPrimaryContent({ apply: true });
     assert.strictEqual(applied.status, "updated");
     assert(applied.primaryContent.standardProteinOptionCount > 0);
 
+    const afterRepair = await MenuProduct.findById(seededProduct._id).lean();
+    assert.strictEqual(afterRepair.itemType, "basic_meal");
+
     for (const language of ["en", "ar"]) {
-      const response = await api.get(`/api/subscriptions/meal-planner-menu?lang=${language}`);
-      assert.strictEqual(response.status, 200, JSON.stringify(response.body));
-      assert(hasFlutterPrimaryMealPickerContent(response.body.data.builderCatalog));
-      assert(summarizeFlutterPrimaryMealPickerContent(response.body.data.builderCatalog).standardProteinOptionCount > 0);
+      await assertMobilePrimaryContent(api, language);
     }
   } finally {
     if (mongoose.connection.readyState === 1) await mongoose.connection.dropDatabase();
@@ -233,7 +254,7 @@ async function run() {
   await testArgumentsAndSafety();
   await testDryRunAndApply();
   await testIdempotencyAndFailures();
-  await testMobileContractRepair();
+  await testMobileContractCompatibilityAndRepair();
   console.log("mealPlannerPrimaryContentRepair.test.js passed");
 }
 
