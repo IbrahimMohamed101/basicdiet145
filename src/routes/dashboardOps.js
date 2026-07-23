@@ -11,14 +11,14 @@ const router = Router();
 router.get(
   "/list",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "cashier", "courier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier", "courier"]),
   asyncHandler(controller.listOperations)
 );
 
 router.get(
   "/search",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "cashier", "courier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier", "courier"]),
   asyncHandler(controller.searchOperations)
 );
 
@@ -26,29 +26,30 @@ router.get(
 router.post(
   "/actions/:action",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "cashier", "courier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier", "courier"]),
   asyncHandler(actionController.handleAction)
 );
 
 router.put(
   "/subscription-days/:id/ready-for-delivery",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "cashier", "courier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "kitchen", "cashier", "courier"]),
   asyncHandler(actionController.readyForDelivery)
 );
 
-// Phase 5: Cashier Flow
+// Phase 5: Cashier Flow. Restaurant is the unified branch role and may use
+// lookup/consumption, while subscription creation stays restricted elsewhere.
 router.get(
   "/cashier/customer-lookup",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(cashierController.customerLookup)
 );
 
 router.post(
   "/cashier/customer-consumption",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "restaurant", "cashier"]),
   asyncHandler(cashierController.customerConsumption)
 );
 
