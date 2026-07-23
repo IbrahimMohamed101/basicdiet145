@@ -5,6 +5,9 @@ require("./installOneTimeOrderItemTypeCompatibility");
 // Install the database-driven Premium authority before pooled planning and
 // subscription services capture premium pricing/eligibility functions.
 require("./installIndependentPremiumAuthority");
+// Retry only MongoDB transient transaction failures before controllers capture
+// subscription selection service exports. Business validation errors are never retried.
+require("./installSubscriptionPlanningTransientRetry");
 
 const mongoose = require("mongoose");
 const SubscriptionDay = require("../models/SubscriptionDay");
