@@ -34,6 +34,7 @@ jobs:
       NODE_ENV: test
       MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test
       MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_test
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_test
       MONGOMS_VERSION: 7.0.14
       DASHBOARD_JWT_SECRET: release-gate-dashboard-secret
       JWT_SECRET: release-gate-app-secret
@@ -53,5 +54,25 @@ jobs:
       - name: Validate backend syntax and composition
         run: npm run validate:backend
 
-      - name: Run final release gates
-        run: npm run test:release-gates
+      - id: final_gates
+        name: Capture final release gates
+        shell: bash
+        run: |
+          set +e
+          npm run test:release-gates > final-release-gates.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload final release gate diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-release-gates-log
+          path: final-release-gates.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Enforce final release gates
+        run: |
+          tail -n 250 final-release-gates.log
+          test "${{ steps.final_gates.outputs.exit_code }}" = "0"

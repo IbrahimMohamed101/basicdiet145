@@ -55,208 +55,6 @@ function normalizeWindows(value) {
     .filter(Boolean);
 }
 
-function identityToken(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function canonicalCarbOptionKey(value) {
-  return identityToken(value).replace(/^(?:standard_)?carbs?_+/, "");
-}
-
-function uniqueAliases(values) {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function localizedNameValues(row = {}) {
-  return [
-    row.name,
-    row.nameI18n && row.nameI18n.ar,
-    row.nameI18n && row.nameI18n.en,
-  ];
-}
-
-function isCarbGroup(group = {}) {
-  const directValues = [
-    group.key,
-    group.sourceKey,
-    group.name,
-    group.nameI18n && group.nameI18n.ar,
-    group.nameI18n && group.nameI18n.en,
-  ];
-  const hasDirectHint = directValues.some((value) => {
-    const normalized = identityToken(value);
-    return normalized.includes("carb")
-      || normalized.includes("نشويات")
-      || normalized.includes("نشوية");
-  });
-  if (hasDirectHint) return true;
-
-  return (Array.isArray(group.options) ? group.options : []).some((option) => {
-    const categoryKey = identityToken(option && option.displayCategoryKey);
-    return categoryKey.includes("carb")
-      || categoryKey.includes("نشويات")
-      || categoryKey.includes("نشوية");
-  });
-}
-
-function optionAliases(option = {}) {
-  const aliases = [];
-  const key = canonicalCarbOptionKey(option.key);
-  if (key) aliases.push(`key:${key}`);
-
-  const id = identityToken(option.optionId || option.id);
-  if (id) aliases.push(`id:${id}`);
-
-  for (const value of localizedNameValues(option)) {
-    const name = identityToken(value);
-    if (name) aliases.push(`name:${name}`);
-  }
-  return uniqueAliases(aliases);
-}
-
-function groupAliases(group = {}) {
-  const aliases = [];
-  if (isCarbGroup(group)) aliases.push("semantic:carbs");
-
-  const sourceKey = identityToken(group.sourceKey);
-  if (sourceKey) aliases.push(`source:${sourceKey}`);
-
-  const key = identityToken(group.key);
-  if (key) aliases.push(`key:${key}`);
-
-  const id = identityToken(group.groupId || group.id);
-  if (id) aliases.push(`id:${id}`);
-
-  for (const value of localizedNameValues(group)) {
-    const name = identityToken(value);
-    if (name) aliases.push(`name:${name}`);
-  }
-  return uniqueAliases(aliases);
-}
-
-function dedupeRowsByAliases(rows, aliasesForRow) {
-  const result = [];
-  const aliasToIndex = new Map();
-
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (!row || typeof row !== "object") continue;
-    const aliases = aliasesForRow(row);
-    const existingIndex = aliases
-      .map((alias) => aliasToIndex.get(alias))
-      .find((index) => index !== undefined);
-
-    if (existingIndex !== undefined) {
-      for (const alias of aliases) aliasToIndex.set(alias, existingIndex);
-      continue;
-    }
-
-    const nextIndex = result.length;
-    result.push(row);
-    for (const alias of aliases) aliasToIndex.set(alias, nextIndex);
-  }
-
-  return result;
-}
-
-function dedupeOneTimeOptions(options = []) {
-  return dedupeRowsByAliases(options, optionAliases);
-}
-
-function dedupeOptionSections(sections = []) {
-  const normalized = dedupeRowsByAliases(sections, (section = {}) => uniqueAliases([
-    identityToken(section.key) ? `key:${identityToken(section.key)}` : "",
-    identityToken(section.name) ? `name:${identityToken(section.name)}` : "",
-  ]));
-
-  return normalized.map((section) => ({
-    ...section,
-    optionIds: [...new Set((Array.isArray(section.optionIds) ? section.optionIds : []).map(String))],
-  }));
-}
-
-function dedupeOneTimeOptionGroups(groups = []) {
-  const result = [];
-  const aliasToIndex = new Map();
-
-  for (const sourceGroup of Array.isArray(groups) ? groups : []) {
-    if (!sourceGroup || typeof sourceGroup !== "object") continue;
-    const group = {
-      ...sourceGroup,
-      options: dedupeOneTimeOptions(sourceGroup.options),
-      optionSections: dedupeOptionSections(sourceGroup.optionSections),
-    };
-    const aliases = groupAliases(group);
-    const existingIndex = aliases
-      .map((alias) => aliasToIndex.get(alias))
-      .find((index) => index !== undefined);
-
-    if (existingIndex !== undefined) {
-      const existing = result[existingIndex];
-      result[existingIndex] = {
-        ...existing,
-        options: dedupeOneTimeOptions([
-          ...(Array.isArray(existing.options) ? existing.options : []),
-          ...(Array.isArray(group.options) ? group.options : []),
-        ]),
-        optionSections: dedupeOptionSections([
-          ...(Array.isArray(existing.optionSections) ? existing.optionSections : []),
-          ...(Array.isArray(group.optionSections) ? group.optionSections : []),
-        ]),
-      };
-      for (const alias of aliases) aliasToIndex.set(alias, existingIndex);
-      continue;
-    }
-
-    const nextIndex = result.length;
-    result.push(group);
-    for (const alias of aliases) aliasToIndex.set(alias, nextIndex);
-  }
-
-  return result;
-}
-
-function normalizeOneTimeProduct(product = {}) {
-  return {
-    ...product,
-    optionGroups: dedupeOneTimeOptionGroups(product.optionGroups),
-  };
-}
-
-function normalizeOneTimeMenuPayload(menu = {}) {
-  const categories = (Array.isArray(menu.categories) ? menu.categories : []).map((category) => ({
-    ...category,
-    products: (Array.isArray(category.products) ? category.products : []).map(normalizeOneTimeProduct),
-  }));
-
-  const standardMeals = menu.standardMeals && typeof menu.standardMeals === "object"
-    ? {
-      ...menu.standardMeals,
-      carbs: dedupeOneTimeOptions(menu.standardMeals.carbs),
-    }
-    : menu.standardMeals;
-
-  const publicMenuV2 = menu.publicMenuV2 && typeof menu.publicMenuV2 === "object"
-    ? {
-      ...menu.publicMenuV2,
-      sections: (Array.isArray(menu.publicMenuV2.sections) ? menu.publicMenuV2.sections : []).map((section) => ({
-        ...section,
-        products: (Array.isArray(section.products) ? section.products : []).map(normalizeOneTimeProduct),
-      })),
-    }
-    : menu.publicMenuV2;
-
-  return {
-    ...menu,
-    categories,
-    ...(standardMeals ? { standardMeals } : {}),
-    ...(publicMenuV2 ? { publicMenuV2 } : {}),
-  };
-}
-
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key }).lean();
   return setting ? setting.value : fallback;
@@ -361,13 +159,13 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod, includePubl
       getPublishedMenu({ lang, branchId: "" }),
       getRestaurantHours().catch(() => ({})),
     ]);
-    const payload = normalizeOneTimeMenuPayload({
+    const payload = {
       ...menu,
       restaurantHours: {
         ...restaurantHours,
         fulfillmentMethod: "pickup",
       },
-    });
+    };
     if (includePublicV2) {
       payload.publicMenuV2 = buildPublicMenuV2(payload);
     }
@@ -403,7 +201,7 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod, includePubl
     return item;
   });
 
-  const payload = normalizeOneTimeMenuPayload({
+  const payload = {
     currency: SYSTEM_CURRENCY,
     source: "one_time_order",
     fulfillmentMethod: "pickup",
@@ -454,7 +252,7 @@ async function getOneTimeOrderMenu({ lang = "en", fulfillmentMethod, includePubl
       ...restaurantHours,
       fulfillmentMethod: "pickup",
     },
-  });
+  };
   if (includePublicV2) {
     payload.publicMenuV2 = buildPublicMenuV2(payload);
   }
@@ -465,8 +263,4 @@ module.exports = {
   getOneTimeOrderMenu,
   buildPublicMenuV2,
   normalizeWindows,
-  normalizeOneTimeMenuPayload,
-  dedupeOneTimeOptionGroups,
-  dedupeOneTimeOptions,
-  isCarbGroup,
 };

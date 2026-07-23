@@ -1,0 +1,69 @@
+name: One-time carb contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/index.js"
+      - "src/services/orders/orderMenuService.js"
+      - "src/services/installOneTimeBasicMealCarbCatalog.js"
+      - "src/services/installOneTimeCarbGramContract.js"
+      - "tests/oneTimeCarbGramContract.test.js"
+      - "tests/mobileApiContracts.test.js"
+      - ".github/workflows/one-time-carb-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      MONGOMS_VERSION: 7.0.14
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_one_time_carb_ci
+      DASHBOARD_JWT_SECRET: one-time-carb-dashboard-secret
+      JWT_SECRET: one-time-carb-app-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/services/orders/orderMenuService.js
+          node -c src/services/installOneTimeBasicMealCarbCatalog.js
+          node -c src/services/installOneTimeCarbGramContract.js
+          node -c src/routes/index.js
+          node -c tests/oneTimeCarbGramContract.test.js
+          node -c tests/mobileApiContracts.test.js
+
+      - name: Verify Basic Meal carb response and pricing
+        run: node -r ./src/services/installOneTimeBasicMealCarbCatalog tests/oneTimeCarbGramContract.test.js
+
+      - name: Verify current mobile API contracts
+        run: node tests/mobileApiContracts.test.js
+
+      - name: Run backend validation suite
+        run: npm run validate:backend

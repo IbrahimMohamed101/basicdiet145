@@ -26,7 +26,15 @@ require("../services/installSubscriptionAddonPaymentBoundaryGuard");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
+// The legacy public menu filter intentionally keeps a narrow subscription carb
+// allowlist. Install the one-time Basic Meal catalog adapter before the weight
+// authority captures orderMenuService so only this product can expose every
+// active authored carb relation.
+require("../services/installOneTimeBasicMealCarbCatalog");
 require("../services/orders/installWeightPricingAuthority");
+// The one-time Basic Meal must expose every published customer carb and preserve
+// Flutter's selected grams without charging included carb weight.
+require("../services/installOneTimeCarbGramContract");
 require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
 // dashboard build sends customer-visibility filters with picker requests.
