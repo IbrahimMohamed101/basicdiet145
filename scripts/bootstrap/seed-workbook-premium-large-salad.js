@@ -17,6 +17,14 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function toPlainSection(section) {
+  if (!section) return null;
+  if (typeof section.toObject === "function") {
+    return section.toObject({ depopulate: true, getters: false, virtuals: false });
+  }
+  return clone(section);
+}
+
 function largeSaladSourceRows() {
   return source.products.filter((row) => (
     row.categoryKey === "salads"
@@ -109,10 +117,12 @@ async function installMealBuilderSection({ category, products }) {
 
   const section = buildSection({ categoryId: category._id, products });
   for (const config of configs) {
-    const sections = [
-      ...(config.sections || []).filter((row) => row.key !== PREMIUM_LARGE_SALAD_KEY),
-      section,
-    ].sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
+    const existingSections = (config.sections || [])
+      .map(toPlainSection)
+      .filter(Boolean)
+      .filter((row) => row.key !== PREMIUM_LARGE_SALAD_KEY);
+    const sections = [...existingSections, clone(section)]
+      .sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
 
     const validation = await validateConfigObject({ sections });
     if (Number(validation?.summary?.errors || 0) > 0) {
@@ -123,7 +133,7 @@ async function installMealBuilderSection({ category, products }) {
     }
 
     const revisionHash = computeRevisionHash({
-      ...config.toObject(),
+      ...config.toObject({ depopulate: true, getters: false, virtuals: false }),
       sections,
     });
     await MealBuilderConfig.updateOne(
