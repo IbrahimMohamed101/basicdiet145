@@ -4,6 +4,10 @@ const { Router } = require("express");
 // this authority before subscription and route modules capture service methods.
 require("../services/installIndependentPremiumAuthority");
 require("../services/installSubscriptionBackendRepairComposition");
+// A paid Premium selection is an upgrade of one subscription meal, never a
+// replacement for its base meal credit. Install this invariant before payment,
+// subscription controller, and webhook modules capture settlement functions.
+require("../services/installPaidPremiumBaseMealEntitlement");
 // Install transaction retry only after the add-on/entitlement repair composition
 // has finalized service references. This prevents early subscription service
 // loading from capturing legacy carryover pricing functions.
