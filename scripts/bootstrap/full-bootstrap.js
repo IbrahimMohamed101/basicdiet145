@@ -11,6 +11,7 @@ const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 const { bootstrapDefaultAccounts } = require("./seed-default-accounts");
 const { seedSettings } = require("./seed-catalog");
 const { seedWorkbookPremiumLargeSalad } = require("./seed-workbook-premium-large-salad");
+const { seedBasicSaladBuilder } = require("./seed-basic-salad-builder");
 const { verifyBootstrapReadiness } = require("./verify-bootstrap-readiness");
 const {
   IMPORT_KEY: WORKBOOK_PRODUCTION_IMPORT_KEY,
@@ -43,7 +44,7 @@ async function disconnectIfNeeded() {
 
 function printFullDryRun({ includeAccounts }, log = console) {
   log.log("[bootstrap:full:dry-run] No database writes will be attempted.");
-  log.log("[bootstrap:full:dry-run] Workbook menu, Meal Builder, premium upgrades, subscription plans, add-ons, settings, pickup locations, and delivery zones will be synchronized.");
+  log.log("[bootstrap:full:dry-run] Workbook menu, Meal Builder, custom-order meal and salad builders, premium upgrades, subscription plans, add-ons, settings, pickup locations, and delivery zones will be synchronized.");
   log.log("[bootstrap:full:dry-run] Existing subscriptions, balances, reservations, orders, and account passwords will be preserved.");
   log.log(`[bootstrap:full:dry-run] Missing default accounts will be created: ${includeAccounts ? "yes" : "no"}`);
   log.log("[bootstrap:full:dry-run] Final workbook verification and bootstrap readiness checks must pass.");
@@ -74,6 +75,7 @@ async function runFullBootstrap({
   const uri = resolveMongoUri();
   let dataResult = null;
   let premiumLargeSalad = null;
+  let basicSaladBuilder = null;
   let accountSummary = null;
 
   try {
@@ -89,6 +91,7 @@ async function runFullBootstrap({
     dataResult = await runWorkbookProductionImport({ log, connect: false });
     await seedSettings({ sync: true });
     premiumLargeSalad = await seedWorkbookPremiumLargeSalad({ sync: true, log });
+    basicSaladBuilder = await seedBasicSaladBuilder();
   } catch (error) {
     await markFailure({ uri, error, phase: "data" });
     throw error;
@@ -119,6 +122,7 @@ async function runFullBootstrap({
       phase: "completed",
       workbookProductionImport: dataResult?.verification || null,
       premiumLargeSalad,
+      basicSaladBuilder,
       readiness: readiness.map((row) => ({ check: row.check, status: row.status })),
       accounts: accountSummary
         ? {
@@ -134,6 +138,7 @@ async function runFullBootstrap({
       state,
       dataResult,
       premiumLargeSalad,
+      basicSaladBuilder,
       accountSummary,
       verification: { workbook: workbookVerification, readiness },
     };
