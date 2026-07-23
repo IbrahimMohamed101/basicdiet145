@@ -4,9 +4,12 @@ on:
   pull_request:
     paths:
       - ".github/workflows/workbook-production-import.yml"
+      - "scripts/bootstrap/full-bootstrap.js"
+      - "scripts/bootstrap/seed-workbook-premium-large-salad.js"
       - "scripts/bootstrap/workbook-production-import.js"
       - "scripts/bootstrap/workbook-production-readiness-policy.js"
       - "scripts/bootstrap/fixtures/**"
+      - "tests/fullBootstrapForce.integration.test.js"
       - "tests/workbookProductionImport.integration.test.js"
 
 permissions:
@@ -15,7 +18,7 @@ permissions:
 jobs:
   workbook-production-import:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       NODE_ENV: test
     steps:
@@ -25,7 +28,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --silent
-      - name: Run workbook production import test
+      - name: Run workbook production import tests
         id: workbook_test
         continue-on-error: true
         shell: bash
@@ -33,6 +36,7 @@ jobs:
           set -o pipefail
           NODE_OPTIONS=--require=./scripts/bootstrap/workbook-production-readiness-policy.js \
             node tests/workbookProductionImport.integration.test.js 2>&1 | tee workbook-production-import.log
+          node tests/fullBootstrapForce.integration.test.js 2>&1 | tee -a workbook-production-import.log
       - name: Upload workbook import log
         if: always()
         uses: actions/upload-artifact@v4
@@ -41,7 +45,7 @@ jobs:
           path: workbook-production-import.log
           if-no-files-found: error
           retention-days: 7
-      - name: Enforce workbook import test
+      - name: Enforce workbook import tests
         if: always()
         shell: bash
         run: |
