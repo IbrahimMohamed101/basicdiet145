@@ -84,7 +84,7 @@ function productUi(product, customizable) {
 }
 
 function shouldPublish(product, publishIncomplete) {
-  if (product.key === "sandwiches_build_your_own_sandwich") return true;
+  if (product.key === "sandwiches_build_your_own_sandwich") return publishIncomplete;
   if (product.status === "Needs Builder Setup") return false;
   if (product.status === "Needs Clarification") return false;
   return product.status === "Ready" || publishIncomplete;
