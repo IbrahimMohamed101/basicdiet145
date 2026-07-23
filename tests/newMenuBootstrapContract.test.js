@@ -2,62 +2,70 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-const source = require("../scripts/bootstrap/fixtures/new-menu-source");
+const source = require("../scripts/bootstrap/fixtures/menu-workbook-source");
 const {
-  buildSaladGroup,
-  buildSharedGroups,
-  productGroupKeys,
+  allBuilderOptions,
+  normalizeChannels,
+  rowStatus,
+  validateSource,
 } = require("../scripts/bootstrap/seed-new-menu");
 
-assert.strictEqual(source.categories.length, 4, "expected four workbook menu categories");
-assert.strictEqual(source.products.length, 49, "expected all 49 workbook products");
+const counts = validateSource();
 
-const categoryKeys = new Set(source.categories.map((row) => row[0]));
-assert.strictEqual(categoryKeys.size, source.categories.length, "category keys must be unique");
+assert.strictEqual(source.metadata.sha256, "947615dae2bd66dd137210cd1a2d17e51a1f2b19a6f1e518b79e7e8f9015d342");
+assert.deepStrictEqual(counts, {
+  categoryCount: 10,
+  productCount: 106,
+  builderOptionCount: 33,
+  productCandidateCount: 10,
+  readyProductCount: 55,
+  draftProductCount: 51,
+});
 
-const productKeys = new Set(source.products.map((row) => row[0]));
-assert.strictEqual(productKeys.size, source.products.length, "product keys must be unique");
+const categoryKeys = new Set(source.categories.map((row) => row.key));
+const productKeys = new Set(source.products.map((row) => row.key));
+const groupKeys = new Set(source.builderGroups.map((row) => row.key));
+const optionKeys = new Set(allBuilderOptions().map(({ option }) => option.key));
 
-for (const product of source.products) {
-  const [key, categoryKey, nameAr, ingredients, priceHalala, weightGrams, calories, protein, carbs, fat, customizationKind] = product;
-  assert.ok(key.startsWith("new_menu_"));
-  assert.ok(categoryKeys.has(categoryKey), `unknown category ${categoryKey}`);
-  assert.ok(nameAr.trim(), `${key} missing Arabic name`);
-  assert.ok(ingredients.trim(), `${key} missing ingredients`);
-  assert.ok(Number.isInteger(priceHalala) && priceHalala >= 0, `${key} invalid price`);
-  assert.ok(Number.isInteger(weightGrams) && weightGrams >= 0, `${key} invalid weight`);
-  for (const value of [calories, protein, carbs, fat]) {
-    assert.ok(Number.isFinite(value) && value >= 0, `${key} invalid nutrition`);
+assert.strictEqual(categoryKeys.size, 10);
+assert.strictEqual(productKeys.size, 106);
+assert.strictEqual(groupKeys.size, 4);
+assert.strictEqual(optionKeys.size, 33);
+
+assert.deepStrictEqual(
+  Object.fromEntries([...categoryKeys].map((key) => [
+    key,
+    source.products.filter((row) => row.categoryKey === key).length,
+  ])),
+  {
+    breakfast: 16,
+    meals: 35,
+    sandwiches: 9,
+    salads: 17,
+    carbs: 7,
+    greek_yogurt: 1,
+    desserts: 8,
+    ice_cream: 3,
+    juices: 6,
+    drinks: 4,
   }
-  assert.ok(["", "bread", "fruit", "custom_sandwich", "salad_size"].includes(customizationKind));
+);
+
+for (const row of source.products) {
+  assert(categoryKeys.has(row.categoryKey), `${row.key} references unknown category`);
+  assert(row.key.startsWith(`${row.categoryKey}_`), `${row.key} should retain workbook category prefix`);
+  assert(row.name.ar && row.name.en, `${row.key} must be bilingual`);
+  assert(Number.isInteger(Number(row.priceHalala)) && Number(row.priceHalala) >= 0, `${row.key} invalid priceHalala`);
+  assert.deepStrictEqual(normalizeChannels(row.availableFor), ["one_time", "subscription"]);
+  const state = rowStatus(row.status);
+  assert.strictEqual(state.isReady, row.status === "Ready");
 }
 
-assert.strictEqual(source.products.filter((row) => row[1] === "new_menu_main_courses").length, 16);
-assert.strictEqual(source.products.filter((row) => row[1] === "new_menu_breakfast").length, 16);
-assert.strictEqual(source.products.filter((row) => row[1] === "new_menu_sandwiches").length, 9);
-assert.strictEqual(source.products.filter((row) => row[1] === "new_menu_salads").length, 8);
+assert(source.builderGroups.every((group) => group.options.every((row) => row.status === "Draft")));
+assert(source.productCandidates.every((row) => !productKeys.has(row.key)), "candidate keys must not be seeded products");
 
-assert.deepStrictEqual(productGroupKeys("x", "bread"), ["new_menu_bread_choice"]);
-assert.deepStrictEqual(productGroupKeys("x", "fruit"), ["new_menu_fruit_choice"]);
-assert.deepStrictEqual(productGroupKeys("x", "custom_sandwich"), ["new_menu_bread_choice", "new_menu_sandwich_filling"]);
-assert.deepStrictEqual(productGroupKeys("new_menu_salads_01", "salad_size"), ["new_menu_salads_01_size"]);
-
-const sharedGroups = buildSharedGroups();
-assert.strictEqual(sharedGroups.length, 3);
-assert.strictEqual(sharedGroups.find((group) => group.key === "new_menu_fruit_choice").minSelections, 2);
-assert.strictEqual(sharedGroups.find((group) => group.key === "new_menu_fruit_choice").maxSelections, 2);
-assert.strictEqual(sharedGroups.find((group) => group.key === "new_menu_sandwich_filling").options.length, 8);
-
-const saladProducts = source.products.filter((row) => row[10] === "salad_size");
-assert.strictEqual(saladProducts.length, 7);
-for (const product of saladProducts) {
-  const group = buildSaladGroup(product);
-  assert.strictEqual(group.options.length, 2);
-  assert.strictEqual(group.minSelections, 1);
-  assert.strictEqual(group.maxSelections, 1);
-  assert.strictEqual(group.options[0].extraPriceHalala, 0);
-  assert.strictEqual(group.options[1].extraPriceHalala, 1000);
-}
+const sourceWrapper = require("../scripts/bootstrap/fixtures/new-menu-source");
+assert.strictEqual(sourceWrapper, source, "legacy source import must resolve to the workbook snapshot");
 
 const dashboardRoutes = fs.readFileSync(path.join(__dirname, "../src/routes/dashboardMenu.js"), "utf8");
 for (const requiredRoute of [
@@ -77,4 +85,5 @@ for (const requiredRoute of [
   assert.ok(dashboardRoutes.includes(requiredRoute), `dashboard route missing: ${requiredRoute}`);
 }
 
-console.log("newMenuBootstrapContract.test.js passed");
+console.log("newMenuBootstrapContract.test.js static checks passed");
+require("./workbookMenuSource.integration.test");
