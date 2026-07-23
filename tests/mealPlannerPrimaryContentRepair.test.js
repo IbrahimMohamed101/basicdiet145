@@ -209,12 +209,25 @@ async function testMobileContractRepair() {
   try {
     await seedWrongPrimaryProduct();
     const api = request(createApp());
+
+    // Compatibility keeps the customer-facing contract available while the
+    // underlying record is still in its historical itemType. The repair then
+    // canonicalizes the database without causing an outage or contract change.
     const beforeRepair = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
-    assert.strictEqual(beforeRepair.status, 503, JSON.stringify(beforeRepair.body));
+    assert.strictEqual(beforeRepair.status, 200, JSON.stringify(beforeRepair.body));
+    assert(hasFlutterPrimaryMealPickerContent(beforeRepair.body.data.builderCatalog));
+    assert.strictEqual(
+      (await MenuProduct.findOne({ key: "basic_meal" }).lean()).itemType,
+      "product"
+    );
 
     const applied = await repairMealPlannerPrimaryContent({ apply: true });
     assert.strictEqual(applied.status, "updated");
     assert(applied.primaryContent.standardProteinOptionCount > 0);
+    assert.strictEqual(
+      (await MenuProduct.findOne({ key: "basic_meal" }).lean()).itemType,
+      "basic_meal"
+    );
 
     for (const language of ["en", "ar"]) {
       const response = await api.get(`/api/subscriptions/meal-planner-menu?lang=${language}`);
