@@ -1,5 +1,9 @@
 "use strict";
 
+// Install the database-driven Premium authority before pooled planning and
+// subscription services capture premium pricing/eligibility functions.
+require("./installIndependentPremiumAuthority");
+
 const mongoose = require("mongoose");
 const SubscriptionDay = require("../models/SubscriptionDay");
 
