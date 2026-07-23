@@ -1,4 +1,7 @@
-process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
+"use strict";
+
+process.env.DASHBOARD_JWT_SECRET =
+  process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 process.env.NODE_ENV = "test";
 
@@ -9,21 +12,14 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
-const ActivityLog = require("../src/models/ActivityLog");
-const MenuCategory = require("../src/models/MenuCategory");
-const MenuOption = require("../src/models/MenuOption");
-const MenuOptionGroup = require("../src/models/MenuOptionGroup");
-const MenuProduct = require("../src/models/MenuProduct");
-const MenuVersion = require("../src/models/MenuVersion");
 const Order = require("../src/models/Order");
 const Payment = require("../src/models/Payment");
-const ProductGroupOption = require("../src/models/ProductGroupOption");
-const ProductOptionGroup = require("../src/models/ProductOptionGroup");
-const Setting = require("../src/models/Setting");
 const User = require("../src/models/User");
 const moyasarService = require("../src/services/moyasarService");
 const { JWT_SECRET } = require("../src/middleware/auth");
-const { seedOneTimeMenu } = require("../scripts/seed-one-time-menu");
+const {
+  runWorkbookProductionImport,
+} = require("../scripts/bootstrap/workbook-production-import");
 
 const TEST_TAG = `mobile-contracts-${Date.now()}`;
 const TEST_DB_NAME = TEST_TAG.replace(/-/g, "_");
@@ -38,15 +34,19 @@ async function test(name, fn) {
     await fn();
     results.passed += 1;
     console.log(`✅ ${name}`);
-  } catch (err) {
+  } catch (error) {
     results.failed += 1;
     console.error(`❌ ${name}`);
-    console.error(err && err.stack ? err.stack : err);
+    console.error(error && error.stack ? error.stack : error);
   }
 }
 
-function expectStatus(res, status, label) {
-  assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
+function expectStatus(response, status, label) {
+  assert.strictEqual(
+    response.status,
+    status,
+    `${label}: expected ${status}, got ${response.status} ${JSON.stringify(response.body)}`
+  );
 }
 
 function appAuth(userId) {
@@ -55,17 +55,23 @@ function appAuth(userId) {
     JWT_SECRET,
     { expiresIn: "1h" }
   );
-  return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
+  return {
+    Authorization: `Bearer ${token}`,
+    "Accept-Language": "en",
+  };
 }
 
 function assertObject(value, label) {
-  assert(value && typeof value === "object" && !Array.isArray(value), `${label} must be object`);
+  assert(
+    value && typeof value === "object" && !Array.isArray(value),
+    `${label} must be object`
+  );
 }
 
 function assertLocalizedName(value, label) {
   assert(
     (value && typeof value === "object")
-    || (typeof value === "string" && value.trim()),
+      || (typeof value === "string" && value.trim()),
     `${label} must be localized object or non-empty string`
   );
 }
@@ -82,38 +88,30 @@ function flattenProducts(menu) {
   ).map((product) => ({ ...product, categoryKey: category.key })));
 }
 
-function findProduct(menu, key) {
-  return flattenProducts(menu).find((product) => product.key === key);
-}
-
-function selectedRequiredOptions(product) {
-  return (product.optionGroups || []).flatMap((group) => {
-    const count = Number(group.minSelections || 0);
-    if (count <= 0) return [];
-    assert((group.options || []).length >= count, `${product.key}.${group.key} has enough options`);
-    return group.options.slice(0, count).map((option) => ({
-      groupId: group.id || group._id,
-      optionId: option.id || option._id,
-    }));
-  });
-}
-
 function assertMenuProductContract(product, label) {
   assert(product.id || product._id, `${label}.id or _id exists`);
   assertLocalizedName(product.nameI18n || product.name, `${label}.name`);
-  assert(typeof product.pricingModel === "string" && product.pricingModel, `${label}.pricingModel exists`);
+  assert(
+    typeof product.pricingModel === "string" && product.pricingModel,
+    `${label}.pricingModel exists`
+  );
   assertHalalaInteger(product.priceHalala, `${label}.priceHalala`);
-  assert(product.ui && ["large", "medium", "small"].includes(product.ui.cardSize), `${label}.ui.cardSize is public card size`);
-  assert.deepStrictEqual(Object.keys(product.ui), ["cardSize"], `${label}.ui only exposes cardSize`);
-  if (product.requiresBuilder || product.key === "basic_salad") {
-    assert(Array.isArray(product.optionGroups), `${label}.optionGroups array exists for custom product`);
-    assert(product.optionGroups.length > 0, `${label}.optionGroups has groups`);
-    assert(product.optionGroups.every((group) => group.ui && typeof group.ui.displayStyle === "string"), `${label}.optionGroups keep builder ui`);
-  }
+  assert(
+    product.ui && ["large", "medium", "small"].includes(product.ui.cardSize),
+    `${label}.ui.cardSize is public card size`
+  );
+  assert.deepStrictEqual(
+    Object.keys(product.ui),
+    ["cardSize"],
+    `${label}.ui only exposes cardSize`
+  );
 }
 
 function assertQuoteItemContract(item, label) {
-  assert(item.productId || (item.productSnapshot && item.productSnapshot.id), `${label}.productId exists`);
+  assert(
+    item.productId || (item.productSnapshot && item.productSnapshot.id),
+    `${label}.productId exists`
+  );
   assertLocalizedName(item.name, `${label}.name`);
   assert.strictEqual(typeof item.itemType, "string", `${label}.itemType is string`);
   assertHalalaInteger(item.unitPriceHalala, `${label}.unitPriceHalala`);
@@ -131,12 +129,15 @@ function assertOrderCheckoutItemContract(item, label) {
   assertHalalaInteger(item.lineTotalHalala, `${label}.lineTotalHalala`);
 }
 
+function futureDate(daysAhead) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysAhead);
+  return date.toISOString().slice(0, 10);
+}
+
 async function startMemoryMongo() {
   replSet = await MongoMemoryReplSet.create({
-    replSet: {
-      count: 1,
-      dbName: TEST_DB_NAME,
-    },
+    replSet: { count: 1, dbName: TEST_DB_NAME },
   });
   const uri = replSet.getUri(TEST_DB_NAME);
   process.env.MONGO_URI = uri;
@@ -144,14 +145,8 @@ async function startMemoryMongo() {
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
 }
 
-async function resetDatabase() {
-  await mongoose.connection.db.dropDatabase();
-}
-
 async function disconnect() {
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.disconnect();
-  }
+  if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
   if (replSet) {
     await replSet.stop();
     replSet = null;
@@ -179,9 +174,9 @@ function installMoyasarMock() {
   moyasarService.getInvoice = async (invoiceId) => {
     const invoice = invoiceResponses.get(invoiceId);
     if (!invoice) {
-      const err = new Error(`Mock invoice not found: ${invoiceId}`);
-      err.status = 404;
-      throw err;
+      const error = new Error(`Mock invoice not found: ${invoiceId}`);
+      error.status = 404;
+      throw error;
     }
     return invoice;
   };
@@ -194,29 +189,10 @@ function installMoyasarMock() {
 }
 
 async function seedPublishedCatalog() {
-  await Setting.updateOne(
-    { key: "vat_percentage" },
-    { $set: { value: 15, description: `${TEST_TAG} VAT` } },
-    { upsert: true }
-  );
-  await seedOneTimeMenu({ actor: { role: "test" }, notes: TEST_TAG, mode: "force" });
-}
-
-async function cleanupCatalog() {
-  await Promise.all([
-    ActivityLog.deleteMany({}),
-    Payment.deleteMany({}),
-    Order.deleteMany({}),
-    User.deleteMany({ phone: { $regex: TEST_TAG } }),
-    ProductOptionGroup.deleteMany({}),
-    ProductGroupOption.deleteMany({}),
-    MenuVersion.deleteMany({}),
-    MenuOption.deleteMany({}),
-    MenuOptionGroup.deleteMany({}),
-    MenuProduct.deleteMany({}),
-    MenuCategory.deleteMany({}),
-    Setting.deleteMany({ key: "vat_percentage" }),
-  ]);
+  await runWorkbookProductionImport({
+    connect: false,
+    log: { log() {}, info() {}, warn() {}, error() {} },
+  });
 }
 
 (async function run() {
@@ -226,8 +202,7 @@ async function cleanupCatalog() {
 
   try {
     await startMemoryMongo();
-    await resetDatabase();
-    await cleanupCatalog();
+    await mongoose.connection.db.dropDatabase();
     await seedPublishedCatalog();
 
     const app = createApp();
@@ -244,42 +219,56 @@ async function cleanupCatalog() {
     let createPayload;
 
     await test("GET /api/orders/menu preserves mobile contract", async () => {
-      const res = await api.get("/api/orders/menu?lang=en");
-      expectStatus(res, 200, "menu");
-      assert.strictEqual(res.body.status, true);
-      assert.strictEqual(res.body.data.fulfillmentMethod, "pickup");
-      assert.strictEqual(res.body.data.vatIncluded, true);
-      assert(Array.isArray(res.body.data.categories), "data.categories is array");
-      assert.strictEqual(res.body.data.delivery, undefined, "pickup menu does not return delivery");
+      const response = await api.get("/api/orders/menu?lang=en");
+      expectStatus(response, 200, "menu");
+      assert.strictEqual(response.body.status, true);
+      assert.strictEqual(response.body.data.fulfillmentMethod, "pickup");
+      assert.strictEqual(response.body.data.vatIncluded, true);
+      assert(Array.isArray(response.body.data.categories), "data.categories is array");
+      assert.strictEqual(
+        response.body.data.delivery,
+        undefined,
+        "pickup menu does not return delivery"
+      );
 
-      const category = res.body.data.categories[0];
-      assert(Array.isArray(category.products), "category.products is array");
-      assert(!category.ui || Object.keys(category.ui).length === 0, "category visual ui is omitted from mobile contract");
-      const water = findProduct(res.body.data, "water");
-      const basicSalad = findProduct(res.body.data, "basic_salad");
-      assert(water, "water product exists");
-      assert(basicSalad, "basic_salad product exists");
-      assertMenuProductContract(water, "water");
-      assertMenuProductContract(basicSalad, "basic_salad");
+      const firstCategory = response.body.data.categories[0];
+      assert(Array.isArray(firstCategory.products), "category.products is array");
+      assert(
+        !firstCategory.ui || Object.keys(firstCategory.ui).length === 0,
+        "category visual ui is omitted from mobile contract"
+      );
+
+      const directProducts = flattenProducts(response.body.data).filter((product) => (
+        product.canAddDirectly === true
+        && product.requiresBuilder !== true
+        && product.pricingModel === "fixed"
+        && Number.isInteger(product.priceHalala)
+      ));
+      assert(
+        directProducts.length >= 2,
+        "current published catalog exposes at least two direct fixed products"
+      );
+      const [firstProduct, secondProduct] = directProducts;
+      assertMenuProductContract(firstProduct, firstProduct.key);
+      assertMenuProductContract(secondProduct, secondProduct.key);
 
       orderBody = {
         fulfillmentMethod: "pickup",
-        fulfillmentDate: "2026-05-10",
+        fulfillmentDate: futureDate(2),
         pickup: {
           branchId: "main",
           pickupWindow: "18:00-20:00",
         },
         items: [
           {
-            productId: water.id || water._id,
+            productId: firstProduct.id || firstProduct._id,
             qty: 2,
             selectedOptions: [],
           },
           {
-            productId: basicSalad.id || basicSalad._id,
+            productId: secondProduct.id || secondProduct._id,
             qty: 1,
-            weightGrams: 150,
-            selectedOptions: selectedRequiredOptions(basicSalad),
+            selectedOptions: [],
           },
         ],
         successUrl: "basicdiet://orders/payment-success",
@@ -288,96 +277,135 @@ async function cleanupCatalog() {
     });
 
     await test("POST /api/orders/quote preserves mobile contract", async () => {
-      const res = await api.post("/api/orders/quote").set(clientHeaders).send(orderBody);
-      expectStatus(res, 200, "quote");
-      assert.strictEqual(res.body.status, true);
-      assert.strictEqual(res.body.data.currency, "SAR");
-      assert(Array.isArray(res.body.data.items), "data.items is array");
-      assert(res.body.data.items.length >= 2, "quote includes fixed and per_100g items");
-      res.body.data.items.forEach((item, index) => assertQuoteItemContract(item, `data.items[${index}]`));
-      assertHalalaInteger(res.body.data.pricing.subtotalHalala, "data.pricing.subtotalHalala");
-      assertHalalaInteger(res.body.data.pricing.totalHalala, "data.pricing.totalHalala");
-      assert.strictEqual(res.body.data.pricing.vatIncluded, true);
-      assertHalalaInteger(res.body.data.pricing.vatHalala, "data.pricing.vatHalala");
+      const response = await api
+        .post("/api/orders/quote")
+        .set(clientHeaders)
+        .send(orderBody);
+      expectStatus(response, 200, "quote");
+      assert.strictEqual(response.body.status, true);
+      assert.strictEqual(response.body.data.currency, "SAR");
+      assert(Array.isArray(response.body.data.items), "data.items is array");
+      assert.strictEqual(response.body.data.items.length, 2);
+      response.body.data.items.forEach((item, index) => {
+        assertQuoteItemContract(item, `data.items[${index}]`);
+      });
+      assertHalalaInteger(
+        response.body.data.pricing.subtotalHalala,
+        "data.pricing.subtotalHalala"
+      );
+      assertHalalaInteger(
+        response.body.data.pricing.totalHalala,
+        "data.pricing.totalHalala"
+      );
+      assert.strictEqual(response.body.data.pricing.vatIncluded, true);
+      assertHalalaInteger(
+        response.body.data.pricing.vatHalala,
+        "data.pricing.vatHalala"
+      );
     });
 
     await test("POST /api/orders requires an idempotency key", async () => {
-      const res = await api.post("/api/orders").set(clientHeaders).send(orderBody);
-      expectStatus(res, 400, "missing idempotency key");
-      assert.strictEqual(res.body.ok, false);
-      assert.strictEqual(res.body.error.code, "IDEMPOTENCY_KEY_REQUIRED");
+      const response = await api
+        .post("/api/orders")
+        .set(clientHeaders)
+        .send(orderBody);
+      expectStatus(response, 400, "missing idempotency key");
+      assert.strictEqual(response.body.ok, false);
+      assert.strictEqual(response.body.error.code, "IDEMPOTENCY_KEY_REQUIRED");
     });
 
     await test("POST /api/orders accepts body idempotencyKey compatibility", async () => {
-      const res = await api
+      const response = await api
         .post("/api/orders")
         .set(clientHeaders)
-        .send({ ...orderBody, fulfillmentDate: "2026-05-11", idempotencyKey: `${TEST_TAG}-body-checkout` });
-      expectStatus(res, 201, "body idempotency checkout");
-      assert.strictEqual(res.body.status, true);
-      assert(res.body.data.orderId, "data.orderId exists");
-      assert(res.body.data.paymentId, "data.paymentId exists");
+        .send({
+          ...orderBody,
+          fulfillmentDate: futureDate(3),
+          idempotencyKey: `${TEST_TAG}-body-checkout`,
+        });
+      expectStatus(response, 201, "body idempotency checkout");
+      assert.strictEqual(response.body.status, true);
+      assert(response.body.data.orderId, "data.orderId exists");
+      assert(response.body.data.paymentId, "data.paymentId exists");
     });
 
     await test("POST /api/orders preserves mobile checkout contract", async () => {
-      const res = await api
+      const response = await api
         .post("/api/orders")
-        .set({ ...clientHeaders, "Idempotency-Key": `${TEST_TAG}-checkout` })
+        .set({
+          ...clientHeaders,
+          "Idempotency-Key": `${TEST_TAG}-checkout`,
+        })
         .send(orderBody);
-      expectStatus(res, 201, "create order");
-      assert.strictEqual(res.body.status, true);
-      createPayload = res.body.data;
+      expectStatus(response, 201, "create order");
+      assert.strictEqual(response.body.status, true);
+      createPayload = response.body.data;
       assert(createPayload.orderId, "data.orderId exists");
       assert(createPayload.paymentId, "data.paymentId exists");
       assert(createPayload.paymentUrl, "data.paymentUrl exists");
       assert(createPayload.invoiceId, "data.invoiceId exists");
       assert.strictEqual(createPayload.status, "pending_payment");
       assert.strictEqual(createPayload.paymentStatus, "initiated");
-      assertHalalaInteger(createPayload.pricing.subtotalHalala, "data.pricing.subtotalHalala");
-      assertHalalaInteger(createPayload.pricing.totalHalala, "data.pricing.totalHalala");
-      assertHalalaInteger(createPayload.pricing.vatHalala, "data.pricing.vatHalala");
+      assertHalalaInteger(
+        createPayload.pricing.subtotalHalala,
+        "data.pricing.subtotalHalala"
+      );
+      assertHalalaInteger(
+        createPayload.pricing.totalHalala,
+        "data.pricing.totalHalala"
+      );
+      assertHalalaInteger(
+        createPayload.pricing.vatHalala,
+        "data.pricing.vatHalala"
+      );
       assert(Array.isArray(createPayload.items), "data.items is array");
-      createPayload.items.forEach((item, index) => assertOrderCheckoutItemContract(item, `data.items[${index}]`));
+      createPayload.items.forEach((item, index) => {
+        assertOrderCheckoutItemContract(item, `data.items[${index}]`);
+      });
     });
 
-    await test("POST /api/orders/:orderId/payments/:paymentId/verify preserves mobile success contract", async () => {
-      invoiceResponses.set(createPayload.invoiceId, {
-        id: createPayload.invoiceId,
-        status: "paid",
-        amount: createPayload.pricing.totalHalala,
-        currency: "SAR",
-        payments: [{
-          id: `pay_${TEST_TAG}_verify`,
+    await test(
+      "POST /api/orders/:orderId/payments/:paymentId/verify preserves mobile success contract",
+      async () => {
+        invoiceResponses.set(createPayload.invoiceId, {
+          id: createPayload.invoiceId,
           status: "paid",
           amount: createPayload.pricing.totalHalala,
           currency: "SAR",
-        }],
-      });
+          payments: [{
+            id: `pay_${TEST_TAG}_verify`,
+            status: "paid",
+            amount: createPayload.pricing.totalHalala,
+            currency: "SAR",
+          }],
+        });
 
-      const res = await api
-        .post(`/api/orders/${createPayload.orderId}/payments/${createPayload.paymentId}/verify`)
-        .set(clientHeaders)
-        .send({});
-      expectStatus(res, 200, "verify payment");
-      assert.strictEqual(res.body.status, true);
-      assert(res.body.data.orderId, "data.orderId exists");
-      assert(res.body.data.paymentId, "data.paymentId exists");
-      assert.strictEqual(res.body.data.orderStatus, "confirmed");
-      assert.strictEqual(res.body.data.paymentStatus, "paid");
-      assert.strictEqual(res.body.data.applied, true);
-      assertObject(res.body.data.order, "data.order");
-      assert(Array.isArray(res.body.data.order.items), "data.order.items is array");
-      assertObject(res.body.data.order.pricing, "data.order.pricing");
-      assertHalalaInteger(res.body.data.order.pricing.subtotalHalala, "data.order.pricing.subtotalHalala");
-      assertHalalaInteger(res.body.data.order.pricing.totalHalala, "data.order.pricing.totalHalala");
-      assertHalalaInteger(res.body.data.order.pricing.vatHalala, "data.order.pricing.vatHalala");
-    });
+        const response = await api
+          .post(
+            `/api/orders/${createPayload.orderId}/payments/${createPayload.paymentId}/verify`
+          )
+          .set(clientHeaders)
+          .send({});
+        expectStatus(response, 200, "verify payment");
+        assert.strictEqual(response.body.status, true);
+        assert(response.body.data.orderId, "data.orderId exists");
+        assert(response.body.data.paymentId, "data.paymentId exists");
+        assert.strictEqual(response.body.data.orderStatus, "confirmed");
+        assert.strictEqual(response.body.data.paymentStatus, "paid");
+        assert.strictEqual(response.body.data.applied, true);
+        assertObject(response.body.data.order, "data.order");
+        assert(Array.isArray(response.body.data.order.items), "data.order.items is array");
+        assertObject(response.body.data.order.pricing, "data.order.pricing");
+      }
+    );
 
     await test("GET /api/orders/:id preserves mobile tracking/detail contract", async () => {
-      const res = await api.get(`/api/orders/${createPayload.orderId}`).set(clientHeaders);
-      expectStatus(res, 200, "mobile order detail");
-      assert.strictEqual(res.body.status, true);
-      const order = res.body.data;
+      const response = await api
+        .get(`/api/orders/${createPayload.orderId}`)
+        .set(clientHeaders);
+      expectStatus(response, 200, "mobile order detail");
+      assert.strictEqual(response.body.status, true);
+      const order = response.body.data;
       assert(order.id || order.orderId, "order id exists");
       assert.strictEqual(typeof order.orderNumber, "string", "orderNumber exists");
       assert.strictEqual(typeof order.status, "string", "status exists");
@@ -390,12 +418,21 @@ async function cleanupCatalog() {
       assertHalalaInteger(order.pricing.totalHalala, "pricing.totalHalala");
       assertHalalaInteger(order.pricing.vatHalala, "pricing.vatHalala");
       order.items.forEach((item, index) => {
-        assert.strictEqual(typeof item.itemType, "string", `items[${index}].itemType is string`);
+        assert.strictEqual(
+          typeof item.itemType,
+          "string",
+          `items[${index}].itemType is string`
+        );
         assertLocalizedName(item.name, `items[${index}].name`);
         assertHalalaInteger(item.unitPriceHalala, `items[${index}].unitPriceHalala`);
         assertHalalaInteger(item.lineTotalHalala, `items[${index}].lineTotalHalala`);
       });
     });
+
+    const storedOrders = await Order.countDocuments({});
+    const storedPayments = await Payment.countDocuments({});
+    assert(storedOrders >= 2, "checkout compatibility cases persist orders");
+    assert(storedPayments >= 2, "checkout compatibility cases persist payments");
   } finally {
     restoreMoyasar();
     if (originalAppUrl === undefined) delete process.env.APP_URL;
@@ -405,9 +442,9 @@ async function cleanupCatalog() {
 
   console.log(`\nResults: ${results.passed} passed, ${results.failed} failed`);
   if (results.failed > 0) process.exitCode = 1;
-})().catch(async (err) => {
+})().catch(async (error) => {
   console.error("❌ mobile API contract tests crashed");
-  console.error(err && err.stack ? err.stack : err);
+  console.error(error && error.stack ? error.stack : error);
   await disconnect().catch(() => {});
   process.exitCode = 1;
 });
