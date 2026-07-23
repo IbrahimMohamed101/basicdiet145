@@ -7,19 +7,22 @@ const mongoose = require("mongoose");
 const Setting = require("../../src/models/Setting");
 const MenuCategory = require("../../src/models/MenuCategory");
 const MenuProduct = require("../../src/models/MenuProduct");
+const MenuOptionGroup = require("../../src/models/MenuOptionGroup");
+const MenuOption = require("../../src/models/MenuOption");
 const Plan = require("../../src/models/Plan");
 const Addon = require("../../src/models/Addon");
-const { seedCatalog, seedSubscriptionAddons } = require("./seed-catalog");
+const { seedSettings } = require("./seed-catalog");
 const { seedSubscriptionPlans } = require("./seed-subscription-plans");
 const { bootstrapDefaultAccounts } = require("./seed-default-accounts");
-const { seedMealBuilderConfig } = require("./seed-meal-builder");
 const { seedNewMenu } = require("./seed-new-menu");
+const { verifyMenuWorkbookSource } = require("./verify-menu-workbook-source");
 const { verifyBootstrapStructure } = require("./verify-bootstrap-structure");
 const { backfillPremiumUpgrades } = require("../backfill-premium-upgrades");
 const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
+const menuSource = require("./fixtures/menu-workbook-source");
 
-const BOOTSTRAP_MARKER_KEY = "initial_data_bootstrap_v1";
-const BOOTSTRAP_VERSION = 1;
+const BOOTSTRAP_MARKER_KEY = "initial_data_bootstrap_v2";
+const BOOTSTRAP_VERSION = 2;
 
 function isTruthy(value) {
   return ["1", "true", "yes", "y"].includes(String(value || "").trim().toLowerCase());
@@ -48,7 +51,7 @@ function assertInitialImportOnly(args) {
   }
   if (args.requestedReset) {
     throw new Error(
-      "bootstrap:data never resets database rows. Use a dedicated, reviewed maintenance script for destructive work."
+      "bootstrap:data never resets database rows. Use the guarded workbook reconciliation command before adoption."
     );
   }
   if (args.requestedAccountSync) {
@@ -61,17 +64,29 @@ function assertInitialImportOnly(args) {
       "bootstrap:data never synchronizes an existing Meal Builder configuration. Dashboard-authored configuration is authoritative."
     );
   }
+  if (args.includeMealBuilder) {
+    throw new Error(
+      "MEAL_BUILDER_BOOTSTRAP is disabled for workbook v2 because the uploaded workbook does not define complete product-group relations."
+    );
+  }
 }
 
 function printDryRunPlan(args, log = console) {
   log.log("[bootstrap:dry-run] No database writes will be attempted.");
-  log.log("[bootstrap:dry-run] mode=one-time-initial-import");
-  log.log("[bootstrap:dry-run] existing database rows will never be updated, reset, deleted, or recreated after completion");
-  log.log(`[bootstrap:dry-run] existing-data adoption: ${args.adoptExisting ? "yes (verify and mark only)" : "no"}`);
-  log.log("[bootstrap:dry-run] catalog/menu/products/options/relations: create initial data only");
-  log.log("[bootstrap:dry-run] subscription plans/add-ons/settings/pickup locations: create initial data only");
-  log.log(`[bootstrap:dry-run] premium configs: create missing initial configs only${args.strictPremium ? " (strict unresolved check)" : ""}`);
-  log.log(`[bootstrap:dry-run] meal builder initial config: ${args.includeMealBuilder ? "yes" : "no"}`);
+  log.log("[bootstrap:dry-run] mode=one-time-workbook-initial-import");
+  log.log(`[bootstrap:dry-run] workbook=${menuSource.metadata.sourceWorkbook}`);
+  log.log(`[bootstrap:dry-run] workbookSha256=${menuSource.metadata.sha256}`);
+  log.log(
+    `[bootstrap:dry-run] menu rows: categories=${menuSource.metadata.categoryCount} `
+    + `products=${menuSource.metadata.productCount} ready=${menuSource.metadata.readyProductCount} `
+    + `review=${menuSource.metadata.draftProductCount} builderOptions=${menuSource.metadata.builderOptionCount}`
+  );
+  log.log("[bootstrap:dry-run] product candidates are retained in the source snapshot but are not inserted into menu collections");
+  log.log("[bootstrap:dry-run] existing database/dashboard rows will never be changed after completion");
+  log.log(`[bootstrap:dry-run] existing-data adoption: ${args.adoptExisting ? "yes (exact workbook verification and mark only)" : "no"}`);
+  log.log("[bootstrap:dry-run] subscription plans/settings/pickup locations: create missing initial rows only");
+  log.log("[bootstrap:dry-run] subscription add-on plans are not inferred because the workbook does not define them");
+  log.log(`[bootstrap:dry-run] premium configs: create missing discoverable configs only${args.strictPremium ? " (strict unresolved check)" : ""}`);
   log.log(`[bootstrap:dry-run] demo/default accounts: ${args.includeAccounts ? "yes" : "no"}`);
 }
 
@@ -89,6 +104,8 @@ async function writeBootstrapState(SettingModel, status, details = {}) {
   const now = new Date();
   const value = {
     version: BOOTSTRAP_VERSION,
+    sourceWorkbook: menuSource.metadata.sourceWorkbook,
+    sourceSha256: menuSource.metadata.sha256,
     status,
     updatedAt: now.toISOString(),
     ...details,
@@ -100,7 +117,7 @@ async function writeBootstrapState(SettingModel, status, details = {}) {
     {
       $set: {
         value,
-        description: "One-time initial data import state. Database/dashboard data is authoritative after completion.",
+        description: "One-time workbook initial data import state. Database/dashboard data is authoritative after completion.",
       },
     },
     { upsert: true, runValidators: true }
@@ -112,13 +129,17 @@ async function inspectManagedData(models = {}) {
   const {
     MenuCategory: MenuCategoryModel = MenuCategory,
     MenuProduct: MenuProductModel = MenuProduct,
+    MenuOptionGroup: MenuOptionGroupModel = MenuOptionGroup,
+    MenuOption: MenuOptionModel = MenuOption,
     Plan: PlanModel = Plan,
     Addon: AddonModel = Addon,
   } = models;
 
-  const [categories, products, plans, addons] = await Promise.all([
+  const [categories, products, optionGroups, options, plans, addons] = await Promise.all([
     MenuCategoryModel.countDocuments({}),
     MenuProductModel.countDocuments({}),
+    MenuOptionGroupModel.countDocuments({}),
+    MenuOptionModel.countDocuments({}),
     PlanModel.countDocuments({}),
     AddonModel.countDocuments({}),
   ]);
@@ -126,9 +147,12 @@ async function inspectManagedData(models = {}) {
   return {
     categories: Number(categories || 0),
     products: Number(products || 0),
+    optionGroups: Number(optionGroups || 0),
+    options: Number(options || 0),
     plans: Number(plans || 0),
     addons: Number(addons || 0),
-    total: Number(categories || 0) + Number(products || 0) + Number(plans || 0) + Number(addons || 0),
+    total: [categories, products, optionGroups, options, plans, addons]
+      .reduce((sum, value) => sum + Number(value || 0), 0),
   };
 }
 
@@ -138,15 +162,16 @@ function defaultDependencies() {
     Setting,
     MenuCategory,
     MenuProduct,
+    MenuOptionGroup,
+    MenuOption,
     Plan,
     Addon,
-    seedCatalog,
     seedNewMenu,
     seedSubscriptionPlans,
-    seedSubscriptionAddons,
+    seedSettings,
     backfillPremiumUpgrades,
-    seedMealBuilderConfig,
     bootstrapDefaultAccounts,
+    verifyMenuWorkbookSource,
     verifyBootstrapStructure,
     resolveMongoUri,
   };
@@ -170,13 +195,13 @@ async function runBootstrap(options = {}) {
   const deps = { ...defaultDependencies(), ...dependencies };
   const uri = deps.resolveMongoUri();
   await deps.mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-  log.log("Connected to MongoDB for one-time initial data import.");
+  log.log("Connected to MongoDB for one-time workbook initial data import.");
 
   let result;
   try {
     const currentState = await readBootstrapState(deps.Setting);
     if (currentState && currentState.status === "completed") {
-      log.log("Initial data import already completed. No database rows were touched.");
+      log.log("Workbook initial data import already completed. No database rows were touched.");
       result = { dryRun: false, skipped: true, state: currentState, args };
     } else {
       const existingData = await inspectManagedData(deps);
@@ -184,64 +209,74 @@ async function runBootstrap(options = {}) {
 
       if (existingData.total > 0 && !resumable && !args.adoptExisting) {
         const error = new Error(
-          "Managed catalog/subscription data already exists and has no bootstrap marker. "
-          + "Run bootstrap:verify first, then use --adopt-existing to mark it without changing any rows."
+          "Managed menu/subscription data already exists and has no workbook-v2 marker. "
+          + "Run bootstrap:menu:verify. If extra live rows are reported, run the guarded reconciliation. "
+          + "Then use bootstrap:data:adopt."
         );
-        error.code = "BOOTSTRAP_EXISTING_DATA_REQUIRES_ADOPTION";
+        error.code = "BOOTSTRAP_EXISTING_DATA_REQUIRES_WORKBOOK_RECONCILIATION";
         error.details = existingData;
         throw error;
       }
 
       if (args.adoptExisting) {
-        const verification = await deps.verifyBootstrapStructure({ strict: true, log });
+        const menuVerification = await deps.verifyMenuWorkbookSource({ strict: true, log });
+        const structuralVerification = await deps.verifyBootstrapStructure({ strict: false, log });
         const state = await writeBootstrapState(deps.Setting, "completed", {
-          mode: "adopted-existing-data",
+          mode: "adopted-existing-workbook-data",
           existingData,
-          verification: verification.summary,
+          verification: {
+            menu: menuVerification.summary,
+            structure: structuralVerification.summary,
+          },
         });
-        log.log("Existing data verified and adopted. No catalog rows were created or changed.");
-        result = { dryRun: false, skipped: false, adopted: true, state, verification, args };
+        log.log("Existing workbook data verified and adopted. No menu rows were created or changed.");
+        result = {
+          dryRun: false,
+          skipped: false,
+          adopted: true,
+          state,
+          verification: { menu: menuVerification, structure: structuralVerification },
+          args,
+        };
       } else {
         await writeBootstrapState(deps.Setting, "running", {
-          mode: resumable ? "resume-initial-import" : "initial-import",
+          mode: resumable ? "resume-workbook-import" : "workbook-initial-import",
           existingData,
         });
 
         try {
-          await deps.seedCatalog({
-            sync: false,
-            reset: false,
-            includeSubscriptionPlans: false,
-            skipStrictVerify: true,
-          });
-
-          await deps.seedNewMenu({ sync: false, log });
+          await deps.seedNewMenu({ sync: false, replaceExisting: false, log });
           await deps.seedSubscriptionPlans({ sync: false, cleanupFlatPlans: false, log });
-          await deps.seedSubscriptionAddons(null, { sync: false });
+          await deps.seedSettings({ sync: false });
 
-          log.log("Creating missing initial Premium Upgrade Config records...");
+          log.log("Creating missing Premium Upgrade Config records discoverable from workbook rows...");
           await deps.backfillPremiumUpgrades({
             sync: false,
             failOnUnresolved: args.strictPremium,
             log,
           });
 
-          if (args.includeMealBuilder) {
-            await deps.seedMealBuilderConfig({ sync: false, dryRun: false, log });
-          } else {
-            log.log("Meal Builder initial config skipped. Configure it from the dashboard or set MEAL_BUILDER_BOOTSTRAP=true for the first import.");
-          }
-
-          const verification = await deps.verifyBootstrapStructure({ strict: true, log });
+          const menuVerification = await deps.verifyMenuWorkbookSource({ strict: true, log });
+          const structuralVerification = await deps.verifyBootstrapStructure({ strict: false, log });
           const state = await writeBootstrapState(deps.Setting, "completed", {
-            mode: resumable ? "resumed-initial-import" : "initial-import",
-            verification: verification.summary,
+            mode: resumable ? "resumed-workbook-import" : "workbook-initial-import",
+            verification: {
+              menu: menuVerification.summary,
+              structure: structuralVerification.summary,
+            },
           });
 
-          result = { dryRun: false, skipped: false, adopted: false, state, verification, args };
+          result = {
+            dryRun: false,
+            skipped: false,
+            adopted: false,
+            state,
+            verification: { menu: menuVerification, structure: structuralVerification },
+            args,
+          };
         } catch (error) {
           await writeBootstrapState(deps.Setting, "failed", {
-            mode: resumable ? "resume-initial-import" : "initial-import",
+            mode: resumable ? "resume-workbook-import" : "workbook-initial-import",
             error: {
               code: error.code || "BOOTSTRAP_FAILED",
               message: error.message,
@@ -275,6 +310,7 @@ async function main() {
 if (require.main === module) {
   main().catch(async (err) => {
     console.error(`[bootstrap:data] ${err.code ? `${err.code}: ` : ""}${err.message}`);
+    if (Array.isArray(err.details)) console.error(JSON.stringify(err.details, null, 2));
     if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
     process.exit(1);
   });
