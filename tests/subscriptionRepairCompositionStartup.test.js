@@ -9,9 +9,11 @@ const assert = require("assert");
 const { createApp } = require("../src/app");
 const pricingService = require("../src/services/subscription/subscriptionAddonPricingService");
 const addonChoicesService = require("../src/services/subscription/subscriptionAddonChoicesService");
+const premiumPaymentService = require("../src/services/subscription/premiumExtraDayPaymentService");
 const selectionService = require("../src/services/subscription/subscriptionSelectionService");
 
 const COMPOSITION_STATE_KEY = Symbol.for("basicdiet.subscriptionBackendRepairComposition.state");
+const PREMIUM_BASE_ENTITLEMENT_STATE_KEY = Symbol.for("basicdiet.paidPremiumBaseMealEntitlement.installed");
 
 function run() {
   const state = globalThis[COMPOSITION_STATE_KEY];
@@ -27,6 +29,19 @@ function run() {
     pricingService.buildAddonChoicePricingPreview,
     pricingService.buildAddonChoicePricingPreviewCore,
     "public add-on pricing export remains the canonical core"
+  );
+
+  const premiumBaseState = globalThis[PREMIUM_BASE_ENTITLEMENT_STATE_KEY];
+  assert(premiumBaseState && premiumBaseState.installed === true, "paid Premium base meal entitlement guard is installed");
+  assert.strictEqual(
+    premiumPaymentService.settlePaidPremiumExtraDayPayment.__paidPremiumBaseMealEntitlement,
+    true,
+    "paid Premium settlement guarantees one base meal allocation per complete slot"
+  );
+  assert.strictEqual(
+    premiumPaymentService.verifyPremiumExtraDayPaymentFlow.__paidPremiumBaseMealEntitlement,
+    true,
+    "legacy Premium payment verification repairs missing base meal allocations"
   );
 
   assert.strictEqual(
