@@ -227,7 +227,7 @@ function convertLegacyPlannerSlotsToCanonical({
   return output;
 }
 
-async function applySession(query, session) {
+function applySession(query, session) {
   return session ? query.session(session) : query;
 }
 
