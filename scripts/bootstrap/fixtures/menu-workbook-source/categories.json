@@ -1,0 +1,202 @@
+[
+  {
+    "key": "breakfast",
+    "name": {
+      "ar": "الفطور",
+      "en": "Breakfast"
+    },
+    "description": {
+      "ar": "أطباق فطور صحية وخيارات صباحية خفيفة.",
+      "en": "Healthy breakfast dishes and light morning options."
+    },
+    "ui": {
+      "cardVariant": "compact_product_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 1,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "meals",
+    "name": {
+      "ar": "الوجبات",
+      "en": "Meals"
+    },
+    "description": {
+      "ar": "وجبات جاهزة وأطباق متكاملة تعتمد على البروتين.",
+      "en": "Ready meals and complete protein-based dishes."
+    },
+    "ui": {
+      "cardVariant": "meal_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 2,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "sandwiches",
+    "name": {
+      "ar": "الساندويتشات",
+      "en": "Sandwiches"
+    },
+    "description": {
+      "ar": "ساندويتشات جاهزة وقابلة للتخصيص.",
+      "en": "Ready and customizable sandwiches."
+    },
+    "ui": {
+      "cardVariant": "sandwich_collection",
+      "behaviorHint": "customize_optional_addons",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 3,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "salads",
+    "name": {
+      "ar": "السلطات",
+      "en": "Salads"
+    },
+    "description": {
+      "ar": "سلطات صغيرة وكبيرة وخيارات قابلة للتخصيص.",
+      "en": "Small, large and customizable salads."
+    },
+    "ui": {
+      "cardVariant": "meal_collection",
+      "behaviorHint": "customize_optional_addons",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 4,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "carbs",
+    "name": {
+      "ar": "الكارب",
+      "en": "Carbs & Sides"
+    },
+    "description": {
+      "ar": "الأرز والمكرونة والبطاطس والخضار الجانبية.",
+      "en": "Rice, pasta, potatoes and vegetable side dishes."
+    },
+    "ui": {
+      "cardVariant": "compact_product_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 5,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "greek_yogurt",
+    "name": {
+      "ar": "زبادي يوناني",
+      "en": "Greek Yogurt"
+    },
+    "description": {
+      "ar": "منتجات الزبادي اليوناني المنفردة.",
+      "en": "Individual Greek yogurt products."
+    },
+    "ui": {
+      "cardVariant": "compact_product_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 6,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "desserts",
+    "name": {
+      "ar": "الحلويات",
+      "en": "Desserts"
+    },
+    "description": {
+      "ar": "كيك وتشيز كيك وبراونيز وحلويات بروتين.",
+      "en": "Cakes, cheesecakes, brownies and protein desserts."
+    },
+    "ui": {
+      "cardVariant": "compact_product_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 7,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "ice_cream",
+    "name": {
+      "ar": "الآيس كريم",
+      "en": "Ice Cream"
+    },
+    "description": {
+      "ar": "منتجات وإضافات الآيس كريم.",
+      "en": "Ice cream products and add-ons."
+    },
+    "ui": {
+      "cardVariant": "addon_collection",
+      "behaviorHint": "customize_optional_addons",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 8,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "juices",
+    "name": {
+      "ar": "العصائر",
+      "en": "Juices"
+    },
+    "description": {
+      "ar": "عصائر ومشروبات فواكه وخضار.",
+      "en": "Fruit and vegetable juice options."
+    },
+    "ui": {
+      "cardVariant": "compact_product_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 9,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  },
+  {
+    "key": "drinks",
+    "name": {
+      "ar": "المشروبات",
+      "en": "Drinks"
+    },
+    "description": {
+      "ar": "مشروبات البروتين والمشروبات الباردة.",
+      "en": "Protein drinks and cold beverages."
+    },
+    "ui": {
+      "cardVariant": "compact_product_collection",
+      "behaviorHint": "direct_add",
+      "priceLabelMode": "fixed"
+    },
+    "sortOrder": 10,
+    "isActive": true,
+    "isVisible": true,
+    "isAvailable": true
+  }
+]
