@@ -36,6 +36,10 @@ require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
 require("../services/installDashboardMealPlannerCardActionDecorator");
 require("../services/installDashboardMealPlannerTwoTypePolicy");
+// The public planner canonicalizes old sandwich cards to full_meal_product. Keep
+// validator membership compatible with already-published versions that still
+// store those direct products under the historical sandwich selection type.
+require("../services/installFullMealProductMembershipCompatibility");
 require("../services/installDashboardMealBuilderDraftGuard");
 // Keep the historical bootstrap compatible when its source data exists, but do
 // not require old fixed products/groups for a fresh dashboard-owned catalog.
