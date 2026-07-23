@@ -27,9 +27,6 @@ require("../services/installSubscriptionAddonPaymentBoundaryGuard");
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
 require("../services/orders/installWeightPricingAuthority");
-// One-time Builder carbs are included by selected grams. Install before order
-// controllers capture the public menu and pricing service exports.
-require("../services/installOneTimeCarbGramContract");
 require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
 // dashboard build sends customer-visibility filters with picker requests.
