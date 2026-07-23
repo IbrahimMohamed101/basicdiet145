@@ -216,6 +216,31 @@ async function main() {
       .options.find((row) => row.optionId === String(includedCarb._id));
     assert.strictEqual(v2IncludedCarb.extraWeightUnitGrams, 50);
 
+    const defaultQuote = await menuPricingService.priceMenuCart({
+      userId: new mongoose.Types.ObjectId(),
+      items: [
+        {
+          productId: String(product._id),
+          qty: 1,
+          selectedOptions: [
+            {
+              groupId: String(group._id),
+              optionId: String(includedCarb._id),
+            },
+          ],
+        },
+      ],
+      fulfillmentMethod: "pickup",
+      pickup: { branchId: "main" },
+      requestBody: {},
+      lang: "ar",
+    });
+    assert.strictEqual(defaultQuote.items[0].unitPriceHalala, 1900);
+    assert.strictEqual(
+      defaultQuote.items[0].selectedOptions[0].extraWeightGrams,
+      50
+    );
+
     const includedQuote = await menuPricingService.priceMenuCart({
       userId: new mongoose.Types.ObjectId(),
       items: [
