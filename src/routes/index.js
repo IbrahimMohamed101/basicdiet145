@@ -48,6 +48,10 @@ require("../services/installIndependentMealBuilderAuthoring");
 // and catalog composition so the final service export is hydrated before the
 // builder controller captures it.
 require("../services/installPremiumUpgradeImageHydration");
+// Flutter must receive every eligible option/product attached to a published
+// card, while the membership validator accepts the exact same expanded catalog.
+// Install last so it decorates the final Meal Builder service composition.
+require("../services/installFlutterMealPlannerCatalogExpansion");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
