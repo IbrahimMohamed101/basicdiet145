@@ -220,7 +220,7 @@ async function run() {
     );
     assert.strictEqual(save.body.status, true);
     assert.strictEqual(save.body.data.paymentRequirement.requiresPayment, true);
-    assert.strictEqual(save.body.data.paymentRequirement.totalHalala, 2900);
+    assert.strictEqual(save.body.data.paymentRequirement.amountHalala, 2900);
     assert.strictEqual(save.body.data.mealSlots[0].productId, String(fixture.salad._id));
     assert.strictEqual(save.body.data.mealSlots[0].selectedOptions.length, 2);
 
