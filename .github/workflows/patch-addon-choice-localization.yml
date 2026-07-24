@@ -1,0 +1,92 @@
+name: Patch add-on choice localization
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+      - name: Prefer bilingual choice fields
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path('src/services/subscription/subscriptionAddonChoicesService.js')
+          text = target.read_text()
+          old = '''function serializeChoice(product, categoryKey, lang) {
+            const priceHalala = Number(product.priceHalala || 0);
+            const availableForNewSale = product.availableForNewSale !== false;
+            const availability = buildAddonSelectionAvailability({
+              product,
+              availableForNewSale,
+            });
+            return {
+              id: String(product._id),
+              productId: String(product._id),
+              menuProductId: String(product._id),
+              key: product.key || "",
+              name: localized(product.name, lang),
+              nameAr: pickLang(product.name, "ar") || "",
+              nameEn: pickLang(product.name, "en") || "",
+              nameI18n: {
+                ar: pickLang(product.name, "ar") || "",
+                en: pickLang(product.name, "en") || "",
+              },
+              description: localized(product.description, lang),
+              descriptionI18n: {
+                ar: pickLang(product.description, "ar") || "",
+                en: pickLang(product.description, "en") || "",
+              },'''
+          new = '''function serializeChoice(product, categoryKey, lang) {
+            const priceHalala = Number(product.priceHalala || 0);
+            const availableForNewSale = product.availableForNewSale !== false;
+            const availability = buildAddonSelectionAvailability({
+              product,
+              availableForNewSale,
+            });
+            // Historical rows may retain a scalar `name` in one language while
+            // `nameI18n` contains the authoritative bilingual snapshot. Always
+            // prefer the bilingual source so Accept-Language remains deterministic.
+            const nameSource = product.nameI18n || product.name;
+            const descriptionSource = product.descriptionI18n || product.description;
+            return {
+              id: String(product._id),
+              productId: String(product._id),
+              menuProductId: String(product._id),
+              key: product.key || "",
+              name: localized(nameSource, lang),
+              nameAr: pickLang(nameSource, "ar") || "",
+              nameEn: pickLang(nameSource, "en") || "",
+              nameI18n: {
+                ar: pickLang(nameSource, "ar") || "",
+                en: pickLang(nameSource, "en") || "",
+              },
+              description: localized(descriptionSource, lang),
+              descriptionI18n: {
+                ar: pickLang(descriptionSource, "ar") || "",
+                en: pickLang(descriptionSource, "en") || "",
+              },'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one serializer block, found {text.count(old)}')
+          target.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/patch-addon-choice-localization.yml').unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/services/subscription/subscriptionAddonChoicesService.js .github/workflows/patch-addon-choice-localization.yml
+          git commit -m "fix: preserve add-on choice response language"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
