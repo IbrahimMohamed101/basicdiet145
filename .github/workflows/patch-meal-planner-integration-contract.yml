@@ -48,8 +48,8 @@ jobs:
                   "    assertEqual(Number(shrimpBalance?.remainingQty || 0), 2, 'shrimp balance is not deducted before confirmation');\n    assertEqual(Number(shrimpBalance?.reservedQty || 0), 0, 'shrimp balance is not reserved before confirmation');\n    assertEqual(Number(saladBalance?.remainingQty || 0), 1, 'salad entitlement is not deducted before confirmation');\n    assertEqual(Number(saladBalance?.reservedQty || 0), 0, 'salad entitlement is not reserved before confirmation');",
               ),
               (
-                  "    assertEqual(verifyRes.body.data?.applied, true, 'verify marks payment applied');",
-                  "    assertEqual(verifyRes.body.data?.applied, true, `verify marks payment applied: ${JSON.stringify(verifyRes.body)}`);",
+                  "        oneTimeAddonSelections: pendingSelections.map((item) => ({\n          addonId: String(item.addonId),\n          name: item.name,\n          category: item.category,\n          unitPriceHalala: Number(item.priceHalala || 0),\n          currency: item.currency || 'SAR',\n        })),\n        paymentUrl: 'https://example.com/pay',",
+                  "        oneTimeAddonSelections: pendingSelections.map((item) => ({\n          addonSelectionId: String(item._id),\n          addonId: String(item.addonId),\n          name: item.name,\n          category: item.category,\n          priceHalala: Number(item.priceHalala || item.unitPriceHalala || 0),\n          currency: item.currency || 'SAR',\n          source: 'pending_payment',\n        })),\n        totalHalala: pendingSelections.reduce((sum, item) => sum + Number(item.priceHalala || item.unitPriceHalala || 0), 0),\n        paymentUrl: 'https://example.com/pay',",
               ),
           ]
 
