@@ -32,21 +32,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Mobile API contracts
-        id: mobile_contracts
+        run: npm run test:mobile-contracts
+      - name: Backend validation
+        id: backend_validation
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          npm run test:mobile-contracts 2>&1 | tee mobile-api-contracts.log
-      - name: Upload mobile contract log
+          npm run validate:backend 2>&1 | tee validate-backend.log
+      - name: Upload backend validation log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mobile-api-contracts-log
-          path: mobile-api-contracts.log
+          name: validate-backend-log
+          path: validate-backend.log
           if-no-files-found: error
-      - name: Enforce mobile contract result
-        if: steps.mobile_contracts.outcome == 'failure'
+      - name: Enforce backend validation result
+        if: steps.backend_validation.outcome == 'failure'
         run: exit 1
       - name: Dynamic catalog regression
         run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
@@ -70,5 +72,3 @@ jobs:
         run: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
       - name: Two type policy
         run: npm run test:meal-planner-two-types
-      - name: Backend validation
-        run: npm run validate:backend
