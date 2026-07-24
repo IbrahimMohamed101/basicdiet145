@@ -229,6 +229,7 @@ async function run() {
       .set(auth.headers)
       .send({
         key: "secondary_card",
+        selectionType: "full_meal_product",
         titleOverride: { ar: "كارت إضافي", en: "Secondary Card" },
         selectedProductIds: ids.slice(2, 4),
         sortOrder: 20,
@@ -251,6 +252,7 @@ async function run() {
       .set(auth.headers)
       .send({
         key: "duplicate_card",
+        selectionType: "full_meal_product",
         titleOverride: { ar: "مكرر", en: "Duplicate" },
         selectedProductIds: [ids[0]],
       });
@@ -423,14 +425,17 @@ async function run() {
     const republish = await request(app)
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
-      .send({ notes: "card delete publish" });
-    expectStatus(republish, 200, "publish deleted card layout");
-    assert.strictEqual(republish.body.data.validation.ready, true);
+      .send({ notes: "remove secondary card" });
+    expectStatus(republish, 200, "publish card delete");
+    assert.strictEqual(
+      sectionByKey(republish.body.data.config.sections, "secondary_card"),
+      null
+    );
 
     const publicAfterRepublish = await request(app).get(
       "/api/subscriptions/meal-planner-menu?lang=en"
     );
-    expectStatus(publicAfterRepublish, 200, "public menu after card delete");
+    expectStatus(publicAfterRepublish, 200, "public menu after card delete publish");
     assert.strictEqual(
       plannerSectionByKey(
         publicAfterRepublish.body.data.builderCatalog,
