@@ -38,6 +38,9 @@ require("../services/dashboard/installKitchenCatalogNameResolution");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
+// The preparation layer may inherit malformed legacy snapshot display strings.
+// Re-resolve final protein/carb names from the catalog and rebuild meal titles.
+require("../services/dashboard/installKitchenFinalNameRepair");
 require("../services/orders/installWeightPricingAuthority");
 // The published product/group relations are the one-time carb source of truth.
 // Install this before the gram decorator so every database-authorized carb gets
