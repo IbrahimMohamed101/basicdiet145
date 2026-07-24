@@ -13,6 +13,7 @@ const MenuOption = require("../src/models/MenuOption");
 const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
 const {
+  computePlannerCatalogHash,
   createTtlSingleFlightCache,
   hydrateAndOptimizeMenuImages,
   optimizeCloudinaryImageUrl,
@@ -143,14 +144,39 @@ async function testDatabaseImageHydration() {
         ],
       },
     ],
+    plannerCatalog: {
+      contractVersion: "meal_planner_menu.v3",
+      currency: "SAR",
+      sections: [
+        {
+          id: "section:test",
+          key: "test",
+          products: [{ id: String(product._id), name: "Product" }],
+        },
+      ],
+      rules: { version: "meal_planner_rules.v4" },
+      catalogHash: "sha256:stale-before-image-hydration",
+    },
   };
 
   const hydrated = await hydrateAndOptimizeMenuImages(originalPayload, { width: 900 });
   const hydratedProduct = hydrated.categories[0].products[0];
   const hydratedOption = hydratedProduct.optionGroups[0].options[0];
+  const plannerProduct = hydrated.plannerCatalog.sections[0].products[0];
 
   assertOptimizedCloudinaryUrl(hydratedProduct.imageUrl);
   assertOptimizedCloudinaryUrl(hydratedOption.imageUrl);
+  assertOptimizedCloudinaryUrl(plannerProduct.imageUrl);
+  assert.strictEqual(
+    hydrated.plannerCatalog.catalogHash,
+    computePlannerCatalogHash(hydrated.plannerCatalog),
+    "planner ETag hash must describe the final image-hydrated payload"
+  );
+  assert.notStrictEqual(
+    hydrated.plannerCatalog.catalogHash,
+    originalPayload.plannerCatalog.catalogHash,
+    "image hydration must replace a stale planner hash"
+  );
   assert.strictEqual(
     Object.prototype.hasOwnProperty.call(originalPayload.categories[0].products[0], "imageUrl"),
     false,
