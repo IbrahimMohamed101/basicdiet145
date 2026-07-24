@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "src/services/installDynamicDirectMealCatalogPolicy.js"
+      - "src/services/installDashboardDirectPickerClassificationGuard.js"
       - "src/routes/index.js"
       - "tests/dynamicDirectMealCatalogPolicy.test.js"
       - "tests/mealPlannerFullMealProductContract.test.js"
@@ -18,7 +19,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,3 +82,20 @@ jobs:
         run: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
       - name: Two type policy
         run: npm run test:meal-planner-two-types
+      - name: Backend validation
+        id: backend_validation
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run validate:backend 2>&1 | tee validate-backend.log
+      - name: Upload backend validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-backend-log
+          path: validate-backend.log
+          if-no-files-found: error
+      - name: Enforce backend validation result
+        if: steps.backend_validation.outcome == 'failure'
+        run: exit 1
