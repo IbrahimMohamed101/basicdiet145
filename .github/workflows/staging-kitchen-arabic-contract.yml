@@ -1,0 +1,121 @@
+name: Staging Kitchen Arabic Contract
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - "src/routes/index.js"
+      - "src/services/dashboard/**"
+      - "src/services/orders/preparationWeightService.js"
+      - "src/services/orders/installOrderPreparationWeightLifecycle.js"
+      - "src/contracts/kitchenArabicResponseContract.js"
+      - "tests/kitchenArabicCatalogAuthority.test.js"
+      - "tests/kitchenArabicFallbackKeys.test.js"
+      - "tests/kitchenCompleteWeightResponse.test.js"
+      - "tests/stagingKitchenArabicApiRequests.test.js"
+      - "tests/dashboardKitchenPreparationContract.test.js"
+      - "tests/flutterMobileStrictScalarContract.test.js"
+      - ".github/workflows/staging-kitchen-arabic-contract.yml"
+  pull_request:
+    paths:
+      - "src/routes/index.js"
+      - "src/services/dashboard/**"
+      - "src/services/orders/preparationWeightService.js"
+      - "src/services/orders/installOrderPreparationWeightLifecycle.js"
+      - "src/contracts/kitchenArabicResponseContract.js"
+      - "tests/kitchenArabicCatalogAuthority.test.js"
+      - "tests/kitchenArabicFallbackKeys.test.js"
+      - "tests/kitchenCompleteWeightResponse.test.js"
+      - "tests/stagingKitchenArabicApiRequests.test.js"
+      - "tests/dashboardKitchenPreparationContract.test.js"
+      - "tests/flutterMobileStrictScalarContract.test.js"
+      - ".github/workflows/staging-kitchen-arabic-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  kitchen-arabic-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      NODE_ENV: test
+      JWT_SECRET: staging-kitchen-test-secret
+      DASHBOARD_JWT_SECRET: staging-dashboard-test-secret
+    steps:
+      - name: Publish pending status
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state=pending \
+            -f context=staging-kitchen-arabic-contract \
+            -f description="Staging kitchen response verification is running" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --silent
+      - name: Verify complete kitchen weights and labels
+        run: node tests/kitchenCompleteWeightResponse.test.js
+      - name: Validate backend composition
+        id: backend_validation
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          npm run validate:backend > backend-validation.log 2>&1
+          status=$?
+          cat backend-validation.log
+          echo "$status" > backend-validation.exit
+          exit "$status"
+      - name: Upload backend validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-backend-validation-${{ github.run_id }}
+          path: |
+            backend-validation.log
+            backend-validation.exit
+          if-no-files-found: error
+          retention-days: 3
+      - name: Verify catalog authority over poisoned snapshots
+        run: node tests/kitchenArabicCatalogAuthority.test.js
+      - name: Verify Arabic fallback identities
+        run: node tests/kitchenArabicFallbackKeys.test.js
+      - name: Send multiple staging API requests
+        run: node tests/stagingKitchenArabicApiRequests.test.js
+      - name: Verify kitchen preparation contract
+        run: npm run test:kitchen-preparation-contract
+      - name: Verify Flutter strict scalar contract
+        run: node tests/flutterMobileStrictScalarContract.test.js
+      - name: Verify application startup
+        run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('staging app startup passed')"
+      - name: Enforce backend validation result
+        if: steps.backend_validation.outcome == 'failure'
+        run: exit 1
+      - name: Publish final status
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=success
+          description="Staging kitchen response verification passed"
+          if [ "${{ job.status }}" != "success" ]; then
+            state=failure
+            description="Staging kitchen response verification failed"
+          fi
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state="$state" \
+            -f context=staging-kitchen-arabic-contract \
+            -f description="$description" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

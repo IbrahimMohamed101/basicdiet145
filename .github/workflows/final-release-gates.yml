@@ -18,22 +18,13 @@ concurrency:
 
 jobs:
   release-gates:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    services:
-      mongodb:
-        image: mongo:7.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     env:
       NODE_ENV: test
-      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test
-      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_test
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_final_release_test?replicaSet=rs0
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_final_release_test?replicaSet=rs0
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_final_release_test?replicaSet=rs0
       MONGOMS_VERSION: 7.0.14
       DASHBOARD_JWT_SECRET: release-gate-dashboard-secret
       JWT_SECRET: release-gate-app-secret
@@ -50,8 +41,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Start MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh basicdiet-final-release-mongo
+
       - name: Validate backend syntax and composition
         run: npm run validate:backend
 
       - name: Run final release gates
-        run: npm run test:release-gates
+        id: final_release_gates
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:release-gates 2>&1 | tee final-release-gates.log
+
+      - name: Upload final release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-release-gates-${{ github.run_id }}
+          path: final-release-gates.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Enforce final release result
+        if: always() && steps.final_release_gates.outcome == 'failure'
+        run: exit 1
