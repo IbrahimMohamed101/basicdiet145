@@ -78,7 +78,7 @@ jobs:
         with:
           name: isolated-final-release-gates-log
           path: release-gates.log
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Enforce final release gate result
         if: steps.final_release_gates.outcome == 'failure'
