@@ -38,4 +38,21 @@ jobs:
         run: npm run validate:backend
 
       - name: Run final release gates
-        run: npm run test:release-gates
+        id: final_release_gates
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:release-gates 2>&1 | tee release-gates.log
+
+      - name: Upload final release gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-final-release-gates-log
+          path: release-gates.log
+          if-no-files-found: error
+
+      - name: Enforce final release gate result
+        if: steps.final_release_gates.outcome == 'failure'
+        run: exit 1
