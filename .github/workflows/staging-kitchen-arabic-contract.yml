@@ -7,9 +7,12 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/dashboard/**"
+      - "src/services/orders/preparationWeightService.js"
+      - "src/services/orders/installOrderPreparationWeightLifecycle.js"
       - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
       - "tests/kitchenArabicFallbackKeys.test.js"
+      - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -18,9 +21,12 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/dashboard/**"
+      - "src/services/orders/preparationWeightService.js"
+      - "src/services/orders/installOrderPreparationWeightLifecycle.js"
       - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
       - "tests/kitchenArabicFallbackKeys.test.js"
+      - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -64,6 +70,8 @@ jobs:
         run: node tests/kitchenArabicCatalogAuthority.test.js
       - name: Verify Arabic fallback identities
         run: node tests/kitchenArabicFallbackKeys.test.js
+      - name: Verify complete kitchen weights and labels
+        run: node tests/kitchenCompleteWeightResponse.test.js
       - name: Send multiple staging API requests
         run: node tests/stagingKitchenArabicApiRequests.test.js
       - name: Verify kitchen preparation contract
