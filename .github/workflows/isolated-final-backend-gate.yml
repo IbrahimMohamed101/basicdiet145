@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      USE_MONGODB_MEMORY_REPLSET: "true"
       MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
       MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
       MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
@@ -41,9 +40,6 @@ jobs:
 
       - name: Start MongoDB replica set
         run: bash scripts/ci/start-mongo-replset.sh basicdiet-isolated-mongo
-
-      - name: Normalize isolated checkout test database name
-        run: sed -i 's/checkout_integration_/checkout_integration_test_/g' tests/checkout.integration.test.js
 
       - name: Validate backend syntax and composition
         run: npm run validate:backend
