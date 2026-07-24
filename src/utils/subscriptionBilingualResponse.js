@@ -72,7 +72,7 @@ function requestedLanguage(req) {
     const normalized = normalizeLanguageCandidate(first);
     if (normalized) return normalized;
   }
-  return "en";
+  return "ar";
 }
 
 function selected(pair, lang) {
