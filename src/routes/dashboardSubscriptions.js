@@ -3,7 +3,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/subscriptionManualDeductionController");
 const auditController = require("../controllers/dashboard/subscriptionAuditController");
-const subscriptionCreationController = require("../controllers/dashboard/subscriptionCreationController");
+const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentRecordingController");
 const adminController = require("../controllers/adminController");
 const asyncHandler = require("../middleware/asyncHandler");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
@@ -21,14 +21,14 @@ router.post(
   "/quote",
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin", "cashier"]),
-  asyncHandler(subscriptionCreationController.quoteSubscriptionAdmin)
+  asyncHandler(subscriptionPaymentController.quoteSubscriptionAdmin)
 );
 
 router.post(
   "/",
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin", "cashier"]),
-  asyncHandler(subscriptionCreationController.createSubscriptionAdmin)
+  asyncHandler(subscriptionPaymentController.createSubscriptionAdmin)
 );
 
 router.get(

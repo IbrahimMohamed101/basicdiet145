@@ -1,0 +1,70 @@
+name: Dashboard subscription payment methods
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
+      - "src/controllers/dashboard/subscriptionPaymentReportController.js"
+      - "src/services/dashboard/subscriptionPaymentMethodReportService.js"
+      - "src/routes/dashboardSubscriptions.js"
+      - "src/routes/dashboardAccounting.js"
+      - "src/models/Payment.js"
+      - "tests/dashboardSubscriptionPaymentMethods.test.js"
+      - "tests/dashboardSubscriptionPaymentDailyReport.test.js"
+      - "tests/dashboardSubscriptionCreationContract.test.js"
+      - "tests/dashboardAccountingDailyReport.test.js"
+      - ".github/workflows/dashboard-subscription-payment-methods.yml"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      NODE_ENV: test
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test_dashboard_subscription_payment_methods
+      DASHBOARD_JWT_SECRET: dashboard-payment-methods-test-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate syntax
+        run: |
+          node --check src/controllers/dashboard/subscriptionPaymentRecordingController.js
+          node --check src/controllers/dashboard/subscriptionPaymentReportController.js
+          node --check src/services/dashboard/subscriptionPaymentMethodReportService.js
+          node --check src/routes/dashboardSubscriptions.js
+          node --check src/routes/dashboardAccounting.js
+          node --check src/models/Payment.js
+          node --check tests/dashboardSubscriptionPaymentMethods.test.js
+          node --check tests/dashboardSubscriptionPaymentDailyReport.test.js
+      - name: Verify cash and visa contract
+        run: node tests/dashboardSubscriptionPaymentMethods.test.js 2>&1 | tee payment-methods.log
+      - name: Verify daily report integration
+        run: node tests/dashboardSubscriptionPaymentDailyReport.test.js 2>&1 | tee payment-report.log
+      - name: Verify existing subscription creation contract
+        run: npm run test:dashboard-subscription-create 2>&1 | tee subscription-create.log
+      - name: Verify existing accounting contract
+        run: npm run test:dashboard-accounting 2>&1 | tee accounting.log
+      - name: Upload contract logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-subscription-payment-method-logs
+          path: |
+            payment-methods.log
+            payment-report.log
+            subscription-create.log
+            accounting.log
+          if-no-files-found: ignore

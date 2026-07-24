@@ -6,9 +6,12 @@ function normalizeOptionalProviderIdentifier(value) {
   return normalized || undefined;
 }
 
+const DASHBOARD_SUBSCRIPTION_CASH_SOURCE = "dashboard_subscription_cash";
+const DASHBOARD_SUBSCRIPTION_VISA_SOURCE = "dashboard_subscription_visa";
+
 const PaymentSchema = new mongoose.Schema(
   {
-    provider: { type: String, enum: ["moyasar", "cash"], required: true },
+    provider: { type: String, enum: ["moyasar", "cash", "manual"], required: true },
     type: {
       type: String,
       enum: [
@@ -54,6 +57,28 @@ const PaymentSchema = new mongoose.Schema(
 PaymentSchema.pre("validate", function normalizeProviderIdentifiersBeforeValidate(next) {
   this.providerInvoiceId = normalizeOptionalProviderIdentifier(this.providerInvoiceId);
   this.providerPaymentId = normalizeOptionalProviderIdentifier(this.providerPaymentId);
+
+  const source = String(this.source || "").trim().toLowerCase();
+  if (this.type === "subscription_activation" && source === DASHBOARD_SUBSCRIPTION_VISA_SOURCE) {
+    this.provider = "manual";
+    this.method = "visa";
+    this.metadata = {
+      ...(this.metadata && typeof this.metadata === "object" ? this.metadata : {}),
+      paymentMethod: "visa",
+      recordingMode: "dashboard_manual",
+      gatewayUsed: false,
+    };
+  } else if (this.type === "subscription_activation" && source === DASHBOARD_SUBSCRIPTION_CASH_SOURCE) {
+    this.provider = "cash";
+    this.method = "cash";
+    this.metadata = {
+      ...(this.metadata && typeof this.metadata === "object" ? this.metadata : {}),
+      paymentMethod: "cash",
+      recordingMode: "dashboard_manual",
+      gatewayUsed: false,
+    };
+  }
+
   next();
 });
 
@@ -90,5 +115,8 @@ PaymentSchema.index(
     },
   }
 );
+
+PaymentSchema.statics.DASHBOARD_SUBSCRIPTION_CASH_SOURCE = DASHBOARD_SUBSCRIPTION_CASH_SOURCE;
+PaymentSchema.statics.DASHBOARD_SUBSCRIPTION_VISA_SOURCE = DASHBOARD_SUBSCRIPTION_VISA_SOURCE;
 
 module.exports = mongoose.model("Payment", PaymentSchema);
