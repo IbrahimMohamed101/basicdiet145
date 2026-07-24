@@ -43,6 +43,14 @@ jobs:
                   "    startDate: startDate, endDate: endDate, status: 'active',\n    totalMeals: totalMeals,",
                   "    startDate: startDate, endDate: endDate, status: 'active',\n    contractMode: 'canonical',\n    totalMeals: totalMeals,",
               ),
+              (
+                  "    assertEqual(Number(shrimpBalance?.remainingQty || 0), 1, 'shrimp balance decremented once for premium meal');\n    assertEqual(Number(saladBalance?.remainingQty || 0), 0, 'salad entitlement decremented');",
+                  "    assertEqual(Number(shrimpBalance?.remainingQty || 0), 2, 'shrimp balance is not deducted before confirmation');\n    assertEqual(Number(shrimpBalance?.reservedQty || 0), 0, 'shrimp balance is not reserved before confirmation');\n    assertEqual(Number(saladBalance?.remainingQty || 0), 1, 'salad entitlement is not deducted before confirmation');\n    assertEqual(Number(saladBalance?.reservedQty || 0), 0, 'salad entitlement is not reserved before confirmation');",
+              ),
+              (
+                  "    assertEqual(verifyRes.body.data?.applied, true, 'verify marks payment applied');",
+                  "    assertEqual(verifyRes.body.data?.applied, true, `verify marks payment applied: ${JSON.stringify(verifyRes.body)}`);",
+              ),
           ]
 
           for old, new in replacements:
