@@ -117,6 +117,7 @@ function assignExistingName(target, pair) {
   if (hasOwn(target, "nameI18n")) next.nameI18n = { ar: pair.ar || pair.en, en: pair.en || pair.ar };
   if (hasOwn(target, "optionName")) next.optionName = pair.ar || pair.en;
   if (hasOwn(target, "optionNameI18n")) next.optionNameI18n = { ar: pair.ar || pair.en, en: pair.en || pair.ar };
+  if (hasOwn(target, "carbName")) next.carbName = pair.ar || pair.en;
   return next;
 }
 
@@ -124,7 +125,7 @@ function resolveProteinPair(slot = {}, catalogMaps = {}) {
   const id = idText(slot.proteinId || (slot.protein && (slot.protein.id || slot.protein._id)));
   const key = keyText(slot.proteinKey || slot.proteinFamilyKey || (slot.protein && slot.protein.key));
   const document = lookupCatalog(catalogMaps, ["protein", "option", "saladItem"], id, key);
-  const catalogName = localizedPair(document && document.name);
+  const catalogName = localizedPair(document && (document.nameI18n || document.name));
   if (catalogName.ar || catalogName.en) return catalogName;
   return localizedPair(slot.proteinNameI18n || slot.proteinName);
 }
@@ -133,9 +134,19 @@ function resolveCarbPair(carb = {}, catalogMaps = {}) {
   const id = idText(carb.carbId || carb.id || carb.optionId || carb._id);
   const key = keyText(carb.key || carb.carbKey || carb.optionKey);
   const document = lookupCatalog(catalogMaps, ["carb", "option"], id, key);
-  const catalogName = localizedPair(document && document.name);
+  const catalogName = localizedPair(document && (document.nameI18n || document.name));
   if (catalogName.ar || catalogName.en) return catalogName;
   return localizedPair(carb.nameI18n || carb.name || carb.carbName || carb.optionName);
+}
+
+function slotTitle(slot = {}) {
+  const protein = localizedPair(slot.proteinNameI18n || slot.proteinName);
+  const carbs = (Array.isArray(slot.carbSelections) ? slot.carbSelections : [])
+    .map((carb) => localizedPair(carb.nameI18n || carb.name || carb.carbName || carb.optionName));
+  return {
+    ar: [protein.ar, ...carbs.map((carb) => carb.ar)].filter(Boolean).join(" + "),
+    en: [protein.en, ...carbs.map((carb) => carb.en)].filter(Boolean).join(" + "),
+  };
 }
 
 function patchSlot(slot = {}, catalogMaps = {}) {
@@ -160,17 +171,41 @@ function patchSlot(slot = {}, catalogMaps = {}) {
     });
   }
 
+  if (MEAL_TYPES.has(String(slot.selectionType || ""))) {
+    const title = slotTitle(next);
+    if (title.ar || title.en) {
+      if (hasOwn(slot, "productName")) next.productName = title.ar || title.en;
+      if (hasOwn(slot, "productNameI18n")) {
+        next.productNameI18n = { ar: title.ar || title.en, en: title.en || title.ar };
+      }
+    }
+  }
+
   return next;
 }
 
-function slotTitle(slot = {}) {
+function gramSuffix(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? ` - ${Math.round(number)} جم` : "";
+}
+
+function repairedLines(card = {}, slot = {}) {
+  if (!Array.isArray(card.lines)) return card.lines;
+  const generated = [];
   const protein = localizedPair(slot.proteinNameI18n || slot.proteinName);
-  const carbs = (Array.isArray(slot.carbSelections) ? slot.carbSelections : [])
-    .map((carb) => localizedPair(carb.nameI18n || carb.name || carb.carbName || carb.optionName));
-  return {
-    ar: [protein.ar, ...carbs.map((carb) => carb.ar)].filter(Boolean).join(" + "),
-    en: [protein.en, ...carbs.map((carb) => carb.en)].filter(Boolean).join(" + "),
-  };
+  const proteinGrams = slot.proteinGrams
+    || (card.components && card.components.protein && card.components.protein.grams);
+  if (protein.ar) generated.push(`البروتين المطلوب: ${protein.ar}${gramSuffix(proteinGrams)}`);
+
+  const carbs = Array.isArray(slot.carbSelections) ? slot.carbSelections : [];
+  carbs.forEach((carb, index) => {
+    const name = localizedPair(carb.nameI18n || carb.name || carb.carbName || carb.optionName).ar;
+    const prefix = carbs.length > 1 ? `الكارب ${index + 1} من ${carbs.length}` : "الكارب";
+    if (name) generated.push(`${prefix}: ${name}${gramSuffix(carb.grams)}`);
+  });
+
+  if (!generated.length) return card.lines.map((line) => cleanText(String(line)));
+  return card.lines.map((line, index) => generated[index] || cleanText(String(line)));
 }
 
 function patchCard(card = {}, slot = {}) {
@@ -184,9 +219,13 @@ function patchCard(card = {}, slot = {}) {
   if ((title.ar || title.en) && hasOwn(card, "titleI18n")) {
     next.titleI18n = { ar: title.ar || title.en, en: title.en || title.ar };
   }
+  if (Array.isArray(card.lines)) next.lines = repairedLines(card, slot);
 
   if (card.components && typeof card.components === "object") {
     const components = { ...card.components };
+    if (components.product && typeof components.product === "object") {
+      components.product = assignExistingName(components.product, title);
+    }
     if (components.protein && typeof components.protein === "object") {
       components.protein = assignExistingName(
         components.protein,
@@ -196,7 +235,10 @@ function patchCard(card = {}, slot = {}) {
     if (Array.isArray(components.carbs) && Array.isArray(slot.carbSelections)) {
       components.carbs = components.carbs.map((component, index) => {
         const carb = slot.carbSelections[index] || {};
-        return assignExistingName(component, localizedPair(carb.nameI18n || carb.name));
+        return assignExistingName(
+          component,
+          localizedPair(carb.nameI18n || carb.name || carb.carbName || carb.optionName)
+        );
       });
     }
     next.components = components;
@@ -260,6 +302,7 @@ function installKitchenFinalNameRepair() {
     namesOnly: true,
     responseShapeChanged: false,
     recursiveTraversal: false,
+    existingFieldsOnly: true,
   });
   globalThis[INSTALL_MARK] = verification;
   return verification;
