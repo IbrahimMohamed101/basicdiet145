@@ -1,0 +1,26 @@
+name: Baseline mobile contract check
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/baseline-mobile-contract-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run mobile contracts on unmodified main
+        run: npm run test:mobile-contracts
