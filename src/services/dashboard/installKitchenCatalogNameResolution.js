@@ -33,7 +33,7 @@ function emptyRefs() {
 
 function addId(set, value) {
   const id = scalarId(value);
-  if (id) set.add(id);
+  if (id && /^[a-fA-F0-9]{24}$/.test(id)) set.add(id);
 }
 
 function addKey(set, value) {
