@@ -48,8 +48,18 @@ jobs:
           node --check src/models/Payment.js
           node --check tests/dashboardSubscriptionPaymentMethods.test.js
       - name: Verify cash and visa contract
-        run: node tests/dashboardSubscriptionPaymentMethods.test.js
+        run: node tests/dashboardSubscriptionPaymentMethods.test.js 2>&1 | tee payment-methods.log
       - name: Verify existing subscription creation contract
-        run: npm run test:dashboard-subscription-create
+        run: npm run test:dashboard-subscription-create 2>&1 | tee subscription-create.log
       - name: Verify existing accounting contract
-        run: npm run test:dashboard-accounting
+        run: npm run test:dashboard-accounting 2>&1 | tee accounting.log
+      - name: Upload contract logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-subscription-payment-method-logs
+          path: |
+            payment-methods.log
+            subscription-create.log
+            accounting.log
+          if-no-files-found: ignore
