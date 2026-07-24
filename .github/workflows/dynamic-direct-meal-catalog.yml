@@ -16,7 +16,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,7 +27,25 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run dynamic catalog regression
+      - name: Dynamic catalog regression
         run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
-      - name: Run Meal Builder closure
-        run: npm run test:meal-builder-backend-closure
+      - name: Source kind compatibility
+        run: npm run test:meal-builder-source-kind
+      - name: Complete catalog
+        run: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
+      - name: Full meal product contract
+        run: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
+      - name: Compatible default seed
+        run: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
+      - name: Sandwich card end to end
+        run: NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
+      - name: Option catalog closure
+        run: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
+      - name: Full meal end to end
+        run: NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js
+      - name: Dashboard mobile parity
+        run: NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js
+      - name: Flutter card policy
+        run: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
+      - name: Two type policy
+        run: npm run test:meal-planner-two-types
