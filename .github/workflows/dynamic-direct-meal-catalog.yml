@@ -7,6 +7,7 @@ on:
       - "src/routes/index.js"
       - "tests/dynamicDirectMealCatalogPolicy.test.js"
       - "tests/mealPlannerFullMealProductContract.test.js"
+      - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
       - "scripts/run-critical-tests.sh"
       - ".github/workflows/dynamic-direct-meal-catalog.yml"
   workflow_dispatch:
@@ -43,7 +44,22 @@ jobs:
       - name: Option catalog closure
         run: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
       - name: Full meal end to end
-        run: NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js
+        id: full_meal_e2e
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js 2>&1 | tee full-meal-e2e.log
+      - name: Upload full meal end-to-end log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-meal-e2e-log
+          path: full-meal-e2e.log
+          if-no-files-found: error
+      - name: Enforce full meal end-to-end result
+        if: steps.full_meal_e2e.outcome == 'failure'
+        run: exit 1
       - name: Dashboard mobile parity
         run: NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js
       - name: Flutter card policy
