@@ -1,0 +1,55 @@
+name: Menu images and performance
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installMenuDeliveryOptimization.js"
+      - "src/services/menu/menuImageDeliveryService.js"
+      - "tests/menuImageDeliveryOptimization.test.js"
+      - ".github/workflows/menu-images-performance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      JWT_SECRET: menu-images-test-secret
+      DASHBOARD_JWT_SECRET: menu-images-dashboard-secret
+      MENU_CATALOG_CACHE_TTL_MS: 60000
+      MENU_IMAGE_MAX_WIDTH: 900
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installMenuDeliveryOptimization.js
+          node -c src/services/menu/menuImageDeliveryService.js
+          node -c tests/menuImageDeliveryOptimization.test.js
+
+      - name: Verify image hydration and cache safety
+        run: node tests/menuImageDeliveryOptimization.test.js
+
+      - name: Verify one-time menu contract
+        run: npm run test:one-time-menu
+
+      - name: Verify Flutter planner cards
+        run: npm run test:meal-planner-flutter-cards
