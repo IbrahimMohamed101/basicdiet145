@@ -492,11 +492,12 @@ async function getSubscriptionMealPlannerMenu(req, res) {
       .lean(),
     MealCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     Addon.find({ isActive: true, kind: "item", billingMode: "flat_once" }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-    getMealPlannerCatalog({ lang, includeV3: true, includeV2: false }),
+    getMealPlannerCatalog({ lang, includeV3: true, includeV2: true }),
   ]);
   const addons = filterAndDedupeCanonicalAddons(rawAddons);
   const legacyBuilderCatalog = mealPlannerCatalog?.builderCatalog || mealPlannerCatalog || {};
   const plannerCatalog = mealPlannerCatalog?.plannerCatalog || null;
+  const builderCatalogV2 = mealPlannerCatalog?.builderCatalogV2 || null;
   const appBuilderCatalog = plannerCatalog || {};
   const premiumMeals = mapBuilderPremiumProteinsToLegacyRows(legacyBuilderCatalog);
   const mealCatalog = buildSubscriptionMealCatalog({
@@ -520,6 +521,8 @@ async function getSubscriptionMealPlannerMenu(req, res) {
 
   const data = {
     builderCatalog: appBuilderCatalog,
+    plannerCatalog: appBuilderCatalog,
+    builderCatalogV2,
     addonCatalog: authoritativeAddonChoices
       ? buildAuthoritativePlannerAddonCatalog(authoritativeAddonChoices)
       : { ...legacyAddonCatalog, entitlementResolved: false, source: "global_legacy_catalog" },

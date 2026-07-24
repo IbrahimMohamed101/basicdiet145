@@ -490,7 +490,8 @@ async function diagnoseAddonReleaseFailure({ subscriptionId, bucket, quantity, s
 
   if (!latestBucket) return "bucket_not_found";
   if (!bucketIdentityMatches(bucket, latestBucket)) return "bucket_identity_mismatch";
-  if (Number(latestBucket.consumedQty || 0) < quantity) return "no_consumed_balance";
+  const releasableQty = Number(latestBucket.reservedQty || 0) + Number(latestBucket.consumedQty || 0);
+  if (releasableQty < quantity) return "no_consumed_balance";
   return "atomic_release_failed";
 }
 
@@ -539,21 +540,40 @@ async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanI
     return { released: false, reason: "bucket_identity_mismatch" };
   }
 
-  const atomicResult = await Subscription.findOneAndUpdate(
-    {
-      _id: subscription._id,
-      addonBalance: {
-        $elemMatch: buildAddonBalanceReleaseIdentity(bucket, releaseQuantity),
+  // Current planner saves reserve allowance credits until fulfillment. Historical
+  // rows may have recorded the same saved selection directly in consumedQty.
+  // Release from exactly one ledger state using compare-and-set; never mint a
+  // credit when neither counter has a releasable unit.
+  const releaseAttempts = [
+    { counter: "reservedQty", releasedFrom: "reserved" },
+    { counter: "consumedQty", releasedFrom: "consumed" },
+  ];
+  let atomicResult = null;
+  let releasedFrom = null;
+  for (const attempt of releaseAttempts) {
+    atomicResult = await Subscription.findOneAndUpdate(
+      {
+        _id: subscription._id,
+        addonBalance: {
+          $elemMatch: {
+            ...buildAddonBalanceAtomicIdentity(bucket),
+            [attempt.counter]: { $gte: releaseQuantity },
+          },
+        },
       },
-    },
-    {
-      $inc: {
-        "addonBalance.$.remainingQty": releaseQuantity,
-        "addonBalance.$.consumedQty": -releaseQuantity,
+      {
+        $inc: {
+          "addonBalance.$.remainingQty": releaseQuantity,
+          [`addonBalance.$.${attempt.counter}`]: -releaseQuantity,
+        },
       },
-    },
-    { session, new: true }
-  );
+      { session, new: true }
+    );
+    if (atomicResult) {
+      releasedFrom = attempt.releasedFrom;
+      break;
+    }
+  }
 
   if (!atomicResult) {
     const reason = await diagnoseAddonReleaseFailure({
@@ -574,6 +594,7 @@ async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanI
   const updatedBucket = updatedBucketIndex >= 0 ? atomicResult.addonBalance[updatedBucketIndex] : null;
   if (inMemoryBucket) {
     inMemoryBucket.remainingQty = Number(updatedBucket && updatedBucket.remainingQty || 0);
+    inMemoryBucket.reservedQty = Number(updatedBucket && updatedBucket.reservedQty || 0);
     inMemoryBucket.consumedQty = Number(updatedBucket && updatedBucket.consumedQty || 0);
     if (typeof subscription.markModified === "function") {
       subscription.markModified("addonBalance");
@@ -582,7 +603,9 @@ async function releaseAddonBalanceAtomically({ subscription, addonId, addonPlanI
 
   return {
     released: true,
+    releasedFrom,
     remainingQty: Number(updatedBucket && updatedBucket.remainingQty || 0),
+    reservedQty: Number(updatedBucket && updatedBucket.reservedQty || 0),
     consumedQty: Number(updatedBucket && updatedBucket.consumedQty || 0),
   };
 }

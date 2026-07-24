@@ -14,6 +14,14 @@ function clean(value) {
   return value === undefined || value === null ? "" : String(value).trim();
 }
 
+function normalizeWindowKey(value) {
+  return clean(value)
+    .replace(/[\u2012\u2013\u2014\u2212]/g, "-")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 function normalizeDeliveryWindowOption(rawWindow, index) {
   const fallbackId = `delivery_slot_${index + 1}`;
 
@@ -64,6 +72,26 @@ function resolveDeliveryType(payload = {}, delivery = {}) {
   );
 }
 
+function resolveUniqueWindowMatch(options, requestedWindow) {
+  const requestedKey = normalizeWindowKey(requestedWindow);
+  if (!requestedKey) return null;
+
+  const matches = options.filter(
+    (option) => normalizeWindowKey(option.window) === requestedKey
+  );
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) {
+    throw deliverySlotError(
+      "INVALID_DELIVERY_SLOT",
+      "Invalid delivery window"
+    );
+  }
+  throw deliverySlotError(
+    "INVALID_DELIVERY_SLOT",
+    "Delivery window is ambiguous; delivery.slotId is required"
+  );
+}
+
 function normalizeDashboardDeliverySlotPayload(payload = {}, windows = []) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return payload;
@@ -111,27 +139,36 @@ function normalizeDashboardDeliverySlotPayload(payload = {}, windows = []) {
     const resolvedById = options.find(
       (option) => option.id === slotId || option.slotId === slotId
     );
-    if (resolvedById && !requestedWindow) {
+
+    if (resolvedById) {
+      if (
+        requestedWindow
+        && normalizeWindowKey(requestedWindow) !== normalizeWindowKey(resolvedById.window)
+      ) {
+        throw deliverySlotError(
+          "INVALID_DELIVERY_SLOT",
+          "delivery slotId does not match delivery window"
+        );
+      }
+      slotId = resolvedById.slotId;
       requestedWindow = resolvedById.window;
-    }
-  } else if (requestedWindow) {
-    const matches = options.filter(
-      (option) => option.window === requestedWindow
-    );
-    if (matches.length === 1) {
-      slotId = matches[0].slotId;
-      requestedWindow = matches[0].window;
-    } else if (matches.length === 0) {
-      throw deliverySlotError(
-        "INVALID_DELIVERY_SLOT",
-        "Invalid delivery window"
-      );
+    } else if (requestedWindow) {
+      // Some dashboard builds derive a display-only slotId from the window,
+      // for example `delivery-10:00-12:00`. The configured window remains the
+      // source of truth, so canonicalize only when it has one exact match.
+      const resolvedByWindow = resolveUniqueWindowMatch(options, requestedWindow);
+      slotId = resolvedByWindow.slotId;
+      requestedWindow = resolvedByWindow.window;
     } else {
       throw deliverySlotError(
         "INVALID_DELIVERY_SLOT",
-        "Delivery window is ambiguous; delivery.slotId is required"
+        "Invalid delivery slot"
       );
     }
+  } else if (requestedWindow) {
+    const resolvedByWindow = resolveUniqueWindowMatch(options, requestedWindow);
+    slotId = resolvedByWindow.slotId;
+    requestedWindow = resolvedByWindow.window;
   } else if (options.length === 1) {
     slotId = options[0].slotId;
     requestedWindow = options[0].window;
@@ -216,4 +253,5 @@ module.exports = {
   installDashboardDeliverySlotCompatibility,
   normalizeDashboardDeliverySlotPayload,
   normalizeDeliveryWindowOption,
+  normalizeWindowKey,
 };

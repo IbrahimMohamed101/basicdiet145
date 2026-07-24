@@ -1075,7 +1075,13 @@ async function main() {
     const repaired = await Subscription.findById(broken.subscription._id).lean();
     assert.strictEqual(repaired.addonBalance[0].purchasedQty, 7);
     assert.strictEqual(repaired.addonBalance[0].remainingQty, 6);
-    assert.strictEqual(repaired.addonBalance[0].consumedQty, 1);
+    assert.strictEqual(repaired.addonBalance[0].consumedQty, 0, "Saving a future-day selection does not consume the add-on before fulfillment");
+    assert.strictEqual(repaired.addonBalance[0].reservedQty, 1, "Saving a future-day selection reserves the included add-on");
+    assert.strictEqual(
+      repaired.addonBalance[0].purchasedQty,
+      repaired.addonBalance[0].remainingQty + repaired.addonBalance[0].reservedQty + repaired.addonBalance[0].consumedQty,
+      "Repaired add-on balance preserves the purchased = remaining + reserved + consumed invariant"
+    );
 
     const missingUser = await createUser("Missing remaining balance user");
     const missing = await createSubscriptionFixture({
@@ -1344,7 +1350,15 @@ async function main() {
     assert.strictEqual(res.body.data.paymentRequirement.requiresPayment, false);
     const repairedRecoveredMissing = await Subscription.findById(recoveredMissing.subscription._id).lean();
     assert.strictEqual(repairedRecoveredMissing.addonBalance[0].remainingQty, 6);
-    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 1);
+    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 0, "Saving the recovered future-day selection does not consume before fulfillment");
+    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].reservedQty, 1, "Saving the recovered future-day selection reserves one included add-on");
+    assert.strictEqual(
+      repairedRecoveredMissing.addonBalance[0].purchasedQty,
+      repairedRecoveredMissing.addonBalance[0].remainingQty
+        + repairedRecoveredMissing.addonBalance[0].reservedQty
+        + repairedRecoveredMissing.addonBalance[0].consumedQty,
+      "Recovered add-on balance preserves the purchased = remaining + reserved + consumed invariant"
+    );
 
     const unmappedMissingProductId = new mongoose.Types.ObjectId();
     const missingPlanId = new mongoose.Types.ObjectId();

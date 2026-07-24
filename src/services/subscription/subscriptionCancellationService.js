@@ -128,7 +128,7 @@ async function cancelSubscriptionDomain({
       transactionOpen = true;
     }
 
-    const subscription = await resolvedRuntime.findSubscriptionById({ subscriptionId, session });
+    let subscription = await resolvedRuntime.findSubscriptionById({ subscriptionId, session });
     if (!subscription) {
       if (transactionOpen) await session.abortTransaction();
       transactionOpen = false;
@@ -179,7 +179,10 @@ async function cancelSubscriptionDomain({
         Number(undeductedCommittedDays || 0) * mealsPerDay
       );
 
-      // Release addon & premium balances for future open/frozen days
+      // Release addon & premium balances for future open/frozen days.
+      // transitionDayEntitlements may migrate a legacy subscription to the v2
+      // entitlement ledger, so the parent document must be refreshed before the
+      // final compare-and-set cancellation update.
       const futureDays = await resolvedRuntime.findFutureOpenAndFrozenDays({
         subscriptionId: subscription._id,
         today,
@@ -240,6 +243,22 @@ async function cancelSubscriptionDomain({
         session,
       });
       removedFutureDays = Number((deleteResult && deleteResult.deletedCount) || 0);
+
+      const refreshedSubscription = await resolvedRuntime.findSubscriptionById({
+        subscriptionId: subscription._id,
+        session,
+      });
+      if (!refreshedSubscription) {
+        const err = new Error("Subscription disappeared during cancellation");
+        err.code = "SUBSCRIPTION_NOT_FOUND";
+        err.status = 404;
+        throw err;
+      }
+      subscription = refreshedSubscription;
+      preservedCredits = Math.min(
+        Number(subscription.remainingMeals || 0),
+        preservedCredits
+      );
     } else {
       preservedCredits = 0;
     }
@@ -252,9 +271,9 @@ async function cancelSubscriptionDomain({
       replacementSet.replacedBySubscriptionId = replacedBySubscriptionId;
       replacementSet.replacedAt = canceledAt;
     }
-    
-    // Atomic update to avoid in-memory read-then-write race conditions
-    // Try $inc first to preserve any concurrent deductions
+
+    // Atomic update to avoid in-memory read-then-write race conditions.
+    // Try $inc first to preserve any concurrent deductions.
     const updateQuery = {
       _id: subscription._id,
       ...entitlementVersionGuard(subscription),
@@ -267,17 +286,18 @@ async function cancelSubscriptionDomain({
       updateQuery,
       {
         ...buildCancellationBalanceUpdate(subscription, creditsToForfeit),
-        $set: { 
-          status: "canceled", 
+        $set: {
+          status: "canceled",
           canceledAt,
           ...replacementSet,
-        } 
+        },
       },
       { session, new: true }
     );
-    
+
     if (!updatedSub && creditsToForfeit > 0) {
-      // Fallback: if balance dropped concurrently below the forfeit amount, force it to preservedCredits
+      // Fallback: if balance dropped concurrently below the forfeit amount,
+      // force it to preservedCredits while retaining the same version guard.
       updatedSub = await Subscription.findOneAndUpdate(
         {
           _id: subscription._id,
@@ -299,8 +319,8 @@ async function cancelSubscriptionDomain({
       err.status = 409;
       throw err;
     }
-    
-    subscription.remainingMeals = updatedSub ? updatedSub.remainingMeals : preservedCredits;
+
+    subscription.remainingMeals = updatedSub.remainingMeals;
     subscription.status = "canceled";
     subscription.canceledAt = canceledAt;
 

@@ -170,6 +170,9 @@ async function run() {
   process.env.MONGO_URI = uri;
   process.env.MONGODB_URI = uri;
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+  // MongoDB cannot create a collection while the first transactional write is
+  // already running. Warm the collection and indexes before exercising the API.
+  await SubscriptionDay.init();
 
   try {
     const fixture = await seedFixture();

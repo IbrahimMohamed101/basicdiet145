@@ -14,8 +14,8 @@ const Plan = require("../src/models/Plan");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
-const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const ActivityLog = require("../src/models/ActivityLog");
+const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const Delivery = require("../src/models/Delivery");
 const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionTimelineService");
 const { applyOperationalSkipForDate } = require("../src/services/subscription/subscriptionSkipService");
@@ -25,6 +25,9 @@ const { recordCashierConsumption } = require("../src/services/dashboard/cashierC
 const { listOperations, getEnrichedDTO } = require("../src/services/dashboard/opsReadService");
 const { executeAction } = require("../src/services/dashboard/opsTransitionService");
 const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");
+const {
+  reserveSubscriptionMealsForPickupRequest,
+} = require("../src/services/subscription/subscriptionPickupRequestBalanceService");
 const {
   performDaySelectionUpdate,
   performDaySelectionValidation,
@@ -463,17 +466,27 @@ async function runTests() {
       pickupRequested: true,
       lockedSnapshot: { mealsPerDay: 2, requiredMealCount: 2 },
     });
-    await SubscriptionPickupRequest.create({
+    const pickupFulfillRequest = await SubscriptionPickupRequest.create({
       subscriptionId: sub2._id,
       userId: sub2.userId,
       date: "2026-06-09",
       mealCount: 2,
       status: "ready_for_pickup",
-      creditsReserved: true,
     });
+    const pickupReservation = await reserveSubscriptionMealsForPickupRequest({
+      subscriptionId: sub2._id,
+      pickupRequestId: pickupFulfillRequest._id,
+      mealCount: 2,
+    });
+    assert.strictEqual(pickupReservation.reserved, true, "Pickup reservation should reserve the requested meals");
+    await assertRemainingMeals(sub2._id, 28, "pickup reservation deducts the exact reserved count once");
+
     const pickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });
     assert.strictEqual(pickupFulfillResult.ok, true, "Pickup fulfill should succeed");
-    await assertRemainingMeals(sub2._id, 28, "pickup fulfill deducts exact fulfilled count");
+    await assertRemainingMeals(sub2._id, 28, "pickup fulfill consumes the reservation without deducting again");
+    const consumedPickupRequest = await SubscriptionPickupRequest.findById(pickupFulfillRequest._id).lean();
+    assert(consumedPickupRequest.creditsConsumedAt, "Pickup request reservation is marked consumed");
+
     const repeatedPickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });
     assert.strictEqual(repeatedPickupFulfillResult.ok, true, "Repeated pickup fulfill should be idempotent");
     await assertRemainingMeals(sub2._id, 28, "repeated pickup fulfill does not deduct again");
@@ -589,22 +602,29 @@ async function runTests() {
     const sub1AfterCashier = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1AfterCashier.remainingMeals, 19, "Remaining meals correctly decoupled from calendar and decremented");
     
-    const auditLogs = await SubscriptionAuditLog.find({ entityId: sub1._id, action: "cashier_manual_consumption" }).lean();
-    assert.strictEqual(auditLogs.length, 1, "Audit log correctly generated");
+    const auditLogs = await ActivityLog.find({
+      entityType: "subscription",
+      entityId: sub1._id,
+      action: "manual_subscription_meal_deduction",
+    }).lean();
+    assert.strictEqual(auditLogs.length, 1, "Canonical manual deduction audit log correctly generated");
+    assert.strictEqual(auditLogs[0].meta.reason, "cashier_manual_consumption", "Audit reason preserves the cashier compatibility source");
+    assert.strictEqual(auditLogs[0].meta.deductedRegularMeals, 7, "Audit log records the exact deducted meal count");
     
     // Test 6: Cashier cannot consume more than remainingMeals
     try {
       await recordCashierConsumption({
-        phone: sub1Phone,
-        subscriptionId: sub1._id,
+        phone: sub2Phone,
+        subscriptionId: sub2._id,
         mealCount: 50,
+        actor: { actorId: sub2._id, actorType: "admin" },
       });
       assert.fail("Should have thrown INSUFFICIENT_CREDITS");
     } catch (err) {
-      assert.strictEqual(err.code, "INSUFFICIENT_CREDITS", "Cannot consume more than available");
+      assert.strictEqual(err.code, "INSUFFICIENT_REMAINING_MEALS", "Cannot consume more than available");
     }
-    const sub1AfterFailedCashier = await Subscription.findById(sub1._id).lean();
-    assert.strictEqual(sub1AfterFailedCashier.remainingMeals, 19, "Failed over-consumption must not change remainingMeals");
+    const sub2AfterFailedCashier = await Subscription.findById(sub2._id).lean();
+    assert.strictEqual(sub2AfterFailedCashier.remainingMeals, 28, "Failed over-consumption must not change remainingMeals");
     
     // Test 7: Expired subscription blocks cashier consumption
     // Move validityEndDate to yesterday

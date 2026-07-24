@@ -210,7 +210,9 @@ async function testMobileContractRepair() {
     await seedWrongPrimaryProduct();
     const api = request(createApp());
     const beforeRepair = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
-    assert.strictEqual(beforeRepair.status, 503, JSON.stringify(beforeRepair.body));
+    assert.strictEqual(beforeRepair.status, 200, JSON.stringify(beforeRepair.body));
+    assert(hasFlutterPrimaryMealPickerContent(beforeRepair.body.data.builderCatalog));
+    assert(summarizeFlutterPrimaryMealPickerContent(beforeRepair.body.data.builderCatalog).standardProteinOptionCount > 0);
 
     const applied = await repairMealPlannerPrimaryContent({ apply: true });
     assert.strictEqual(applied.status, "updated");

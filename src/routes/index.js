@@ -47,6 +47,10 @@ require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
 // dashboard build sends customer-visibility filters with picker requests.
 require("../services/installDashboardAddonCatalogAuthoring");
+// The add-on picker is customer-facing authoring data even when it is requested
+// from dashboard routes. Re-apply active/visible/available state at the final
+// service boundary and keep category counts on that exact filtered list.
+require("../services/installAddonPickerAvailabilityGuard");
 require("../services/installDashboardMealBuilderFinalization");
 require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
@@ -68,6 +72,13 @@ require("../services/installPremiumUpgradeImageHydration");
 // card, while the membership validator accepts the exact same expanded catalog.
 // Install last so it decorates the final Meal Builder service composition.
 require("../services/installFlutterMealPlannerCatalogExpansion");
+// Direct subscription meals are owned by the live product catalog. The
+// historical sandwich card remains the Flutter-compatible presentation shell,
+// but its product membership is never sourced from stored selectedProductIds.
+require("../services/installDynamicDirectMealCatalogPolicy");
+// Re-apply the canonical meal-product classifier after the dashboard's explicit
+// authoring layer so add-ons/builders cannot appear as direct meal candidates.
+require("../services/installDashboardDirectPickerClassificationGuard");
 // Hydrate missing product/option media, deliver bounded Cloudinary images, and
 // cache only the static catalog layer before controllers capture service exports.
 const {

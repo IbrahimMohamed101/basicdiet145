@@ -55,8 +55,17 @@ function pairFrom(value, fallbacks = {}) {
 }
 
 function requestedLanguage(req) {
+  // requestLanguageMiddleware is the single authority for language negotiation.
+  // Reuse its resolved value instead of reparsing headers with a different fallback.
+  const attachedLanguage = normalizeLanguageCandidate(req && req.language);
+  if (attachedLanguage) return attachedLanguage;
+
+  const attachedLang = normalizeLanguageCandidate(req && req.lang);
+  if (attachedLang) return attachedLang;
+
   const queryLanguage = normalizeLanguageCandidate(req && req.query && req.query.lang);
   if (queryLanguage) return queryLanguage;
+
   const header = req && req.headers && req.headers["accept-language"];
   if (typeof header === "string" && header.trim()) {
     const first = header.split(",")[0].split(";")[0].trim();

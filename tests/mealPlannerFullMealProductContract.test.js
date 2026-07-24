@@ -45,7 +45,6 @@ async function seedCatalog() {
     publishedAt: now,
   });
 
-  // A separate product for testing standard_meal + zero option groups behavior
   const breakfastCategory = await MenuCategory.create({ key: "breakfast", name: { en: "Breakfast", ar: "إفطار" }, publishedAt: now });
   const breakfastProduct = await MenuProduct.create({
     categoryId: breakfastCategory._id,
@@ -56,7 +55,6 @@ async function seedCatalog() {
     priceHalala: 1500,
     availableFor: ["subscription"],
     publishedAt: now,
-    // NOTE: NO ProductOptionGroup entries — zero option groups intentionally to test standard_meal behavior
   });
 
   const sandwichCategory = await MenuCategory.create({
@@ -93,9 +91,8 @@ async function main() {
     const api = request(app);
     const { headers } = await dashboardAuth("admin", "full-meal-product-test");
 
-    // ── Test 1: full_meal_product section + zero option groups ─────────────────
-    // This is the primary positive case: a product in a full_meal_product section
-    // must publish as treatAsFullMeal=true, requiresBuilder=false.
+    // Direct full-meal products are normalized into the one system-managed live
+    // catalog section while preserving the Flutter direct-add contract.
     {
       const draftPayload = {
         sections: [
@@ -129,24 +126,29 @@ async function main() {
       const planner = res.body.data.builderCatalog;
       assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
 
-      const pastaSection = planner.sections.find((section) => section.key === "pasta_section");
-      assert(pastaSection, "pasta section should exist in contract");
+      const directSection = planner.sections.find((section) => section.key === "sandwich");
+      assert(directSection, "canonical live direct-meal section should exist");
+      assert.strictEqual(
+        planner.sections.filter((section) => section.key === "sandwich").length,
+        1,
+        "only one canonical direct-meal section should be returned"
+      );
 
-      const pastaItem = pastaSection.products[0];
-      assert.strictEqual(pastaItem.productId, String(fixture.pastaProduct._id));
+      const pastaItem = directSection.products.find(
+        (product) => String(product.productId || product.id) === String(fixture.pastaProduct._id)
+      );
+      assert(pastaItem, "standalone pasta meal should be sourced from the live catalog");
       assert.strictEqual(pastaItem.selectionType, "full_meal_product", "selectionType should map correctly");
       assert.deepStrictEqual(pastaItem.action, {
         type: "direct_add",
         requiresBuilder: false,
         treatAsFullMeal: true
-      }, "full_meal_product section: action must be treatAsFullMeal=true, requiresBuilder=false");
-      console.log("✓ Test 1 PASSED: full_meal_product section + zero option groups → treatAsFullMeal=true, requiresBuilder=false");
+      }, "canonical direct product action must remain Flutter-compatible");
+      console.log("✓ Test 1 PASSED: direct product normalized into canonical live section");
     }
 
-    // ── Test 2: standard_meal section + zero option groups ─────────────────────
-    // A product in a standard_meal section with zero option groups must NOT be
-    // silently treated as a full meal. The system should expose requiresBuilder=true.
-    // This prevents broken builder products from becoming accidental full meals.
+    // A standard_meal product with zero option groups must never become a direct
+    // full meal accidentally.
     {
       const draftPayload = {
         sections: [
@@ -156,7 +158,7 @@ async function main() {
             sourceCategoryId: String(fixture.breakfastCategory._id),
             includeMode: "selected",
             selectedProductIds: [String(fixture.breakfastProduct._id)],
-            selectionType: "standard_meal", // explicitly NOT full_meal_product
+            selectionType: "standard_meal",
             titleOverride: { en: "Breakfast", ar: "إفطار" },
             required: false,
             minSelections: 0,
@@ -171,10 +173,6 @@ async function main() {
       let res = await api.post("/api/dashboard/meal-builder/draft").set(headers).send(draftPayload);
       assert.strictEqual(res.status, 201, `Failed to create standard_meal draft: ${JSON.stringify(res.body)}`);
 
-      // Publishing this may or may not succeed depending on validation strictness,
-      // but the key contract assertion is: when the builder contract IS returned,
-      // a standard_meal product with zero option groups must NOT have treatAsFullMeal=true.
-      // We test this at the contract level even if publish fails.
       await api.post("/api/dashboard/meal-builder/publish").set(headers).send({});
 
       res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
@@ -183,7 +181,6 @@ async function main() {
         const breakfastSection = planner.sections.find((s) => s.key === "breakfast_section");
         if (breakfastSection && breakfastSection.products && breakfastSection.products.length > 0) {
           const item = breakfastSection.products[0];
-          // Core assertion: standard_meal + zero option groups must NOT become full meal
           assert.strictEqual(
             item.action?.treatAsFullMeal,
             undefined,
@@ -192,20 +189,15 @@ async function main() {
           assert.strictEqual(
             item.action?.requiresBuilder,
             true,
-            `standard_meal section with zero option groups must expose requiresBuilder=true (broken state, not silently full meal). Got: ${JSON.stringify(item.action)}`
+            `standard_meal section with zero option groups must expose requiresBuilder=true. Got: ${JSON.stringify(item.action)}`
           );
         }
       }
-      // Whether the endpoint returns the section or not (it may filter empty sections),
-      // the critical assertion is that it does NOT silently return treatAsFullMeal=true.
-      console.log("✓ Test 2 PASSED: standard_meal section + zero option groups → NOT treated as full meal");
+      console.log("✓ Test 2 PASSED: standard_meal + zero option groups is not treated as full meal");
     }
 
-    // ── Test 3: legacy sandwich membership + canonical mobile payload ──────────
-    // Older published versions stored direct cards as `sandwich`. The public
-    // catalog now canonicalizes them to `full_meal_product`, so validation must
-    // accept the exact product that the API exposed without opening membership to
-    // unrelated products or option groups.
+    // Legacy direct cards remain accepted as input, but both membership and the
+    // public response are resolved from the live direct-meal catalog.
     {
       const now = new Date();
       await MealBuilderConfig.updateMany(
@@ -253,7 +245,7 @@ async function main() {
           fixture.sandwichProduct._id
         ),
         true,
-        "canonical full_meal_product must resolve a product stored in legacy sandwich membership"
+        "legacy sandwich must resolve in canonical full-meal membership"
       );
       assert.strictEqual(
         mealBuilderConfigService.isProductIncluded(
@@ -261,8 +253,17 @@ async function main() {
           MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
           fixture.pastaProduct._id
         ),
+        true,
+        "active standalone meal must be included without stored membership"
+      );
+      assert.strictEqual(
+        mealBuilderConfigService.isProductIncluded(
+          publishedMembership.membership,
+          MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
+          fixture.breakfastProduct._id
+        ),
         false,
-        "compatibility must not allow a product that is absent from both direct-product membership scopes"
+        "configurable basic meal must not leak into direct membership"
       );
 
       const validation = await canonicalPlannerService.validateCanonicalMealSlots({
@@ -288,16 +289,32 @@ async function main() {
       const res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const directSection = res.body.data.builderCatalog.sections.find(
-        (section) => section.key === "legacy_sandwiches"
+        (section) => section.key === "sandwich"
       );
-      assert(directSection, "legacy direct section must remain visible in the public planner");
-      assert.strictEqual(
-        directSection.products[0].selectionType,
-        MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
-        "public planner must expose the canonical direct-product selection type"
+      assert(directSection, "canonical live direct-meal section must be present");
+      const directProductIds = directSection.products.map(
+        (product) => String(product.productId || product.id)
+      );
+      assert(
+        directProductIds.includes(String(fixture.sandwichProduct._id)),
+        "legacy sandwich product must be surfaced by the live catalog"
+      );
+      assert(
+        directProductIds.includes(String(fixture.pastaProduct._id)),
+        "unconfigured standalone product must be surfaced by the live catalog"
+      );
+      assert(
+        directSection.products.every(
+          (product) =>
+            product.selectionType === MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT &&
+            product.action?.type === "direct_add" &&
+            product.action?.requiresBuilder === false &&
+            product.action?.treatAsFullMeal === true
+        ),
+        "public live direct-meal items must preserve the canonical Flutter action contract"
       );
 
-      console.log("✓ Test 3 PASSED: legacy sandwich membership validates canonical full_meal_product payloads");
+      console.log("✓ Test 3 PASSED: live direct catalog validates canonical full_meal_product payloads");
     }
 
     console.log("\nAll Full Meal Product Contract tests passed!");
