@@ -1,0 +1,43 @@
+name: Apply over-consumption actor fixture
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+    paths:
+      - .github/workflows/apply-overconsumption-actor-fixture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+          fetch-depth: 0
+      - name: Apply exact actor fixture and self-delete
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          target = Path("tests/subscriptionBalancePolicy.test.js")
+          text = target.read_text(encoding="utf-8")
+          old = '''      await recordCashierConsumption({\n        phone: sub1Phone,\n        subscriptionId: sub1._id,\n        mealCount: 50,\n      });\n'''
+          new = '''      await recordCashierConsumption({\n        phone: sub1Phone,\n        subscriptionId: sub1._id,\n        mealCount: 50,\n        actor: { actorId: sub1._id, actorType: "admin" },\n      });\n'''
+          if text.count(old) != 1:
+              raise SystemExit("Expected over-consumption fixture exactly once")
+          target.write_text(text.replace(old, new, 1), encoding="utf-8")
+          Path(".github/workflows/apply-overconsumption-actor-fixture.yml").unlink()
+          PY
+      - name: Commit fixture correction
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionBalancePolicy.test.js .github/workflows/apply-overconsumption-actor-fixture.yml
+          git diff --cached --check
+          git commit -m "Provide actor for over-consumption balance test"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
