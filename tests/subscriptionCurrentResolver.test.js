@@ -89,7 +89,7 @@ async function run() {
     { businessDate, includeUpcoming: true }
   );
   assert.strictEqual(upcomingOnly.subscription, future);
-  assert.strictEqual(upcomingOnly.reason, "newest_active_upcoming_subscription");
+  assert.strictEqual(upcomingOnly.reason, "nearest_active_upcoming_subscription");
 
   const strictCurrentOnly = selectCurrentSubscription(
     [future, expiredNewest],
