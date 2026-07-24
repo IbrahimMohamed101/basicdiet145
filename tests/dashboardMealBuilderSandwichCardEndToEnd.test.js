@@ -105,111 +105,58 @@ async function run() {
     let response = await request(app)
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
-      .send({ sections: [], notes: "explicit card isolated draft" });
-    expectStatus(response, 201, "create empty draft");
+      .send({ sections: [], notes: "system managed direct meals" });
+    expectStatus(response, 201, "create system-managed draft");
 
     response = await request(app)
       .get(
         "/api/dashboard/meal-builder/pickers/products?limit=500&includeUnavailable=true&unassignedOnly=false"
       )
       .set(auth.headers);
-    expectStatus(response, 200, "manual product picker");
+    expectStatus(response, 200, "live direct product picker");
     const candidateKeys = new Set(
       response.body.data.candidates.map((candidate) => candidate.key)
     );
     assert(candidateKeys.has("manual_chicken_sandwich"));
     assert(candidateKeys.has("manual_beef_sandwich"));
-    assert(candidateKeys.has("manual_normal_product"));
+    assert(!candidateKeys.has("manual_normal_product"));
     assert.strictEqual(
-      response.body.data.rules.selectionTypeRequired,
-      true,
-      "picker tells Dashboard that card behavior must be chosen explicitly"
+      response.body.data.rules.classificationAuthority,
+      "meal_product_classification.v1"
+    );
+    assert.strictEqual(
+      response.body.data.rules.membershipSource,
+      "live_catalog"
     );
 
     response = await request(app)
-      .post("/api/dashboard/meal-builder/sections")
-      .set(auth.headers)
-      .send({
-        key: "missing_type",
-        titleOverride: { ar: "بدون نوع", en: "Missing type" },
-        selectedProductIds: [String(sandwichOne._id)],
-        sortOrder: 5,
-        visible: true,
-      });
-    expectStatus(response, 422, "reject card without explicit selectionType");
-    assert.strictEqual(
-      response.body.error.code,
-      "MEAL_BUILDER_CARD_SELECTION_TYPE_REQUIRED"
+      .get("/api/dashboard/meal-builder/state")
+      .set(auth.headers);
+    expectStatus(response, 200, "dashboard Meal Builder state");
+    const draftSection = findSection(response.body.data.draft, "sandwich");
+    assert(draftSection, "system-managed direct-meal section must exist in draft state");
+    assert.strictEqual(draftSection.metadata.membershipSource, "live_catalog");
+    assert.strictEqual(draftSection.metadata.systemManaged, true);
+    const draftProductIds = new Set(
+      (draftSection.selectedProductIds || []).map(String)
     );
+    assert(draftProductIds.has(String(sandwichOne._id)));
+    assert(draftProductIds.has(String(sandwichTwo._id)));
+    assert(!draftProductIds.has(String(normalMeal._id)));
 
-    response = await request(app)
-      .post("/api/dashboard/meal-builder/sections")
-      .set(auth.headers)
-      .send({
-        key: "sandwiches",
-        titleOverride: { ar: "ساندويتشات", en: "Sandwiches" },
-        selectedProductIds: [
-          String(sandwichOne._id),
-          String(sandwichTwo._id),
-        ],
-        selectionType: "full_meal_product",
-        sortOrder: 10,
-        visible: true,
-      });
-    expectStatus(response, 201, "create explicitly selected full-meal card");
-    assert.strictEqual(
-      response.body.data.section.selectionType,
-      "full_meal_product"
-    );
-    assert.strictEqual(
-      response.body.data.section.metadata.configuredExplicitly,
-      true
-    );
-    assert.strictEqual(
-      response.body.data.section.metadata.treatAsFullMeal,
-      true
-    );
-    assert.strictEqual(
-      response.body.data.section.metadata.requiresBuilder,
-      false
-    );
-    assert.strictEqual(response.body.data.section.rules.carbsRequired, false);
-
-    const productsAfterCreate = await MenuProduct.find({
-      _id: { $in: [sandwichOne._id, sandwichTwo._id] },
+    const productsAfterDraft = await MenuProduct.find({
+      _id: { $in: [sandwichOne._id, sandwichTwo._id, normalMeal._id] },
     }).lean();
     assert(
-      productsAfterCreate.every((product) => product.itemType === "product"),
-      "explicit card behavior must not mutate product itemType"
-    );
-
-    response = await request(app)
-      .post("/api/dashboard/meal-builder/sections")
-      .set(auth.headers)
-      .send({
-        key: "chef_choice",
-        titleOverride: { ar: "اختيار الشيف", en: "Chef Choice" },
-        selectedProductIds: [String(normalMeal._id)],
-        selectionType: "full_meal_product",
-        sortOrder: 20,
-        visible: true,
-      });
-    expectStatus(response, 201, "mark an arbitrary product as a full meal explicitly");
-    assert.strictEqual(
-      response.body.data.section.selectionType,
-      "full_meal_product"
-    );
-    assert.strictEqual(
-      (await MenuProduct.findById(normalMeal._id).lean()).itemType,
-      "product",
-      "normal product remains unchanged"
+      productsAfterDraft.every((product) => product.itemType === "product"),
+      "system-managed membership must not mutate product itemType"
     );
 
     response = await request(app)
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
-      .send({ notes: "publish explicit full meal cards" });
-    expectStatus(response, 200, "publish explicit Meal Builder cards");
+      .send({ notes: "publish live direct meals" });
+    expectStatus(response, 200, "publish system-managed Meal Builder");
 
     response = await request(app).get(
       "/api/subscriptions/meal-planner-menu?contractVersion=v3&lang=en"
@@ -217,24 +164,28 @@ async function run() {
     expectStatus(response, 200, "public Meal Planner contract");
 
     const contract = response.body.data.builderCatalog;
-    const sandwichSection = findSection(contract, "sandwiches");
-    const chefSection = findSection(contract, "chef_choice");
-    assert(sandwichSection, "sandwich card reaches public contract");
-    assert(chefSection, "arbitrary full-meal card reaches public contract");
+    const directSection = findSection(contract, "sandwich");
+    assert(directSection, "canonical live direct-meal section reaches public contract");
+    assert.strictEqual(
+      contract.sections.filter((section) => section.key === "sandwich").length,
+      1,
+      "public contract must contain one canonical direct-meal section"
+    );
 
-    for (const [section, productId] of [
-      [sandwichSection, sandwichOne._id],
-      [chefSection, normalMeal._id],
-    ]) {
-      const product = findProduct(section, productId);
-      assert(product, "selected product reaches public contract");
+    for (const productId of [sandwichOne._id, sandwichTwo._id]) {
+      const product = findProduct(directSection, productId);
+      assert(product, "live direct product reaches public contract");
       assert.strictEqual(product.selectionType, "full_meal_product");
       assert.strictEqual(product.action.type, "direct_add");
       assert.strictEqual(product.action.requiresBuilder, false);
       assert.strictEqual(product.action.treatAsFullMeal, true);
     }
+    assert(
+      !findProduct(directSection, normalMeal._id),
+      "unclassified normal product must not leak into direct meals"
+    );
 
-    console.log("dashboard Meal Builder explicit full-meal card end-to-end passed");
+    console.log("dashboard system-managed direct meal end-to-end passed");
   } finally {
     await disconnect();
   }
