@@ -201,11 +201,10 @@ async function main() {
       console.log("✓ Test 2 PASSED: standard_meal section + zero option groups → NOT treated as full meal");
     }
 
-    // ── Test 3: legacy sandwich membership + canonical mobile payload ──────────
+    // ── Test 3: live direct catalog membership + legacy mobile payload ──────────
     // Older published versions stored direct cards as `sandwich`. The public
-    // catalog now canonicalizes them to `full_meal_product`, so validation must
-    // accept the exact product that the API exposed without opening membership to
-    // unrelated products or option groups.
+    // catalog canonicalizes them to `full_meal_product`, while live standalone
+    // products are accepted even when they are absent from historical stored IDs.
     {
       const now = new Date();
       await MealBuilderConfig.updateMany(
@@ -261,8 +260,17 @@ async function main() {
           MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
           fixture.pastaProduct._id
         ),
+        true,
+        "an active standalone meal must be included from the live catalog without stored membership"
+      );
+      assert.strictEqual(
+        mealBuilderConfigService.isProductIncluded(
+          publishedMembership.membership,
+          MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
+          fixture.breakfastProduct._id
+        ),
         false,
-        "compatibility must not allow a product that is absent from both direct-product membership scopes"
+        "a configurable basic meal must not leak into direct full-meal membership"
       );
 
       const validation = await canonicalPlannerService.validateCanonicalMealSlots({
@@ -297,7 +305,7 @@ async function main() {
         "public planner must expose the canonical direct-product selection type"
       );
 
-      console.log("✓ Test 3 PASSED: legacy sandwich membership validates canonical full_meal_product payloads");
+      console.log("✓ Test 3 PASSED: live direct membership validates canonical full_meal_product payloads");
     }
 
     console.log("\nAll Full Meal Product Contract tests passed!");
