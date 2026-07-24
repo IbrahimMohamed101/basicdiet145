@@ -1,0 +1,50 @@
+name: Add-on plan availability
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/services/installSubscriptionAddonPlanAvailabilityPolicy.js"
+      - "src/services/subscription/subscriptionQuoteService.js"
+      - "src/routes/index.js"
+      - "tests/subscriptionAddonPlanAvailabilityPolicy.test.js"
+      - "package.json"
+      - ".github/workflows/addon-plan-availability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      JWT_SECRET: addon-plan-availability-test-secret
+      DASHBOARD_JWT_SECRET: addon-plan-availability-dashboard-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/services/installSubscriptionAddonPlanAvailabilityPolicy.js
+          node -c tests/subscriptionAddonPlanAvailabilityPolicy.test.js
+          node -c src/routes/index.js
+
+      - name: Run add-on plan regression
+        run: npm run test:dashboard-subscription-addon-plan-availability
+
+      - name: Run checkout regression
+        run: npm run test:dashboard-subscription-create

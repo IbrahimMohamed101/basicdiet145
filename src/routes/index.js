@@ -27,6 +27,10 @@ require("../services/installSubscriptionAddonPaymentBoundaryGuard");
 // canonical slotId. Resolve only unambiguous selections before controllers
 // capture the subscription quote service.
 require("../services/installDashboardDeliverySlotCompatibility");
+// Add-on plan availability is owned by the plan and its price matrix. Plan-only
+// checkout filters stale product links instead of rejecting the whole plan, and
+// still permits a temporarily empty product catalog.
+require("../services/installSubscriptionAddonPlanAvailabilityPolicy");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
