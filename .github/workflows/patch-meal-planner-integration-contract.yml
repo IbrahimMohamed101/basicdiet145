@@ -69,6 +69,15 @@ jobs:
           if count != 1:
               raise SystemExit(f'Expected one public alias assertion block, found {count}')
           compatibility.write_text(compatibility_text.replace(old_public_aliases, new_public_aliases, 1))
+
+          lifecycle = Path('tests/mealPlannerCardLifecycle.test.js')
+          lifecycle_text = lifecycle.read_text()
+          old_lifecycle_aliases = "    assert.strictEqual(publicMenu.body.data.builderCatalogV2, undefined);\n    assert.strictEqual(publicMenu.body.data.plannerCatalog, undefined);"
+          new_lifecycle_aliases = "    assert.strictEqual(publicMenu.body.data.builderCatalogV2.catalogVersion, 'meal_planner_menu.v2');\n    assert.strictEqual(publicMenu.body.data.plannerCatalog.contractVersion, 'meal_planner_menu.v3');"
+          count = lifecycle_text.count(old_lifecycle_aliases)
+          if count != 1:
+              raise SystemExit(f'Expected one lifecycle alias assertion block, found {count}')
+          lifecycle.write_text(lifecycle_text.replace(old_lifecycle_aliases, new_lifecycle_aliases, 1))
           PY
       - name: Run focused integration suite
         id: focused
@@ -98,6 +107,6 @@ jobs:
           rm .github/workflows/patch-meal-planner-integration-contract.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add tests/mealPlanner.integration.test.js tests/mealPlannerDashboardCompatibility.test.js .github/workflows/patch-meal-planner-integration-contract.yml
+          git add tests/mealPlanner.integration.test.js tests/mealPlannerDashboardCompatibility.test.js tests/mealPlannerCardLifecycle.test.js .github/workflows/patch-meal-planner-integration-contract.yml
           git commit -m "test: align meal planner integration with canonical contracts"
           git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
