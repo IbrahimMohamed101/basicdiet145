@@ -12,15 +12,32 @@ function assert(condition, message) {
   }
 }
 
+async function openRestaurantStub({ pickupLocationId, deliveryMode } = {}) {
+  return {
+    open: true,
+    pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,
+    deliveryMode: deliveryMode || null,
+  };
+}
+
+function withPolicyTestDependencies(payload) {
+  return {
+    ...payload,
+    assertRestaurantOpenForOrderingFn: payload && payload.assertRestaurantOpenForOrderingFn
+      ? payload.assertRestaurantOpenForOrderingFn
+      : openRestaurantStub,
+  };
+}
+
 async function expectAllowed(name, payload) {
-  const result = await assertSubscriptionDayModifiable(payload);
+  const result = await assertSubscriptionDayModifiable(withPolicyTestDependencies(payload));
   assert(result && result.allowed === true, `${name}: expected allowed result`);
   return result;
 }
 
 async function expectRejected(name, payload, expectedCode) {
   try {
-    await assertSubscriptionDayModifiable(payload);
+    await assertSubscriptionDayModifiable(withPolicyTestDependencies(payload));
   } catch (err) {
     assert(err && err.code === expectedCode, `${name}: expected code ${expectedCode}, got ${err && err.code}`);
     return err;
