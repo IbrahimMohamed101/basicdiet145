@@ -81,16 +81,16 @@ async function run() {
       sortOrder: 1,
     });
 
-    const [iceCream, baseMeal] = await MenuProduct.insertMany([
+    const [readyMeal, baseMeal] = await MenuProduct.insertMany([
       {
         categoryId: category._id,
-        key: "chocolate_ice_cream_full_meal",
+        key: "chocolate_ice_cream_ready_meal",
         name: { ar: "آيس كريم شوكولاتة", en: "Chocolate Ice Cream" },
         itemType: "product",
         pricingModel: "fixed",
         priceHalala: 1500,
         availableFor: ["subscription"],
-        ui: { cardVariant: "standard" },
+        ui: { cardVariant: "ready_meal" },
         isActive: true,
         isVisible: true,
         isAvailable: true,
@@ -257,8 +257,8 @@ async function run() {
     let response = await api
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
-      .send({ sections: [], notes: "Flutter card policy isolated draft" });
-    expectStatus(response, 201, "create empty draft");
+      .send({ sections: [], notes: "Flutter card policy live direct draft" });
+    expectStatus(response, 201, "create live direct draft");
 
     response = await api
       .get("/api/dashboard/meal-builder/catalog?lang=en")
@@ -277,45 +277,27 @@ async function run() {
     assert(
       response.body.data.searchFacets.productCategories.some(
         (entry) => entry.key === category.key
-      ),
-      "catalog provides product category filters"
+      )
     );
     assert(
       response.body.data.searchFacets.optionGroups.some(
         (entry) => entry.key === "proteins"
-      ),
-      "catalog provides option group filters"
+      )
     );
-    assert(
-      response.body.data.searchFacets.proteinFamilies.includes("beef"),
-      "catalog provides protein family filters"
-    );
+    assert(response.body.data.searchFacets.proteinFamilies.includes("beef"));
 
     response = await api
-      .post("/api/dashboard/meal-builder/sections")
-      .set(auth.headers)
-      .send({
-        cardType: "direct_product",
-        key: "ice_cream",
-        titleOverride: { ar: "آيس كريم", en: "Ice Cream" },
-        selectionType: "full_meal_product",
-        selectedProductIds: [String(iceCream._id)],
-        visible: true,
-        sortOrder: 10,
-      });
-    expectStatus(response, 201, "create direct ice cream card");
-    assert.equal(response.body.data.section.cardType, "direct_product");
-    assert.equal(response.body.data.section.completeByItself, true);
-    assert.equal(
-      response.body.data.section.flutterSlotContract.idField,
-      "sandwichId"
+      .get(
+        "/api/dashboard/meal-builder/pickers/products?limit=500&includeUnavailable=true&unassignedOnly=false"
+      )
+      .set(auth.headers);
+    expectStatus(response, 200, "load live direct picker");
+    const directCandidateIds = new Set(
+      response.body.data.candidates.map((candidate) => String(candidate.productId))
     );
-    assert.equal(response.body.data.section.selectionType, "full_meal_product");
-    assert.equal(
-      (await MenuProduct.findById(iceCream._id).lean()).itemType,
-      "product",
-      "card behavior must not mutate the menu product"
-    );
+    assert(directCandidateIds.has(String(readyMeal._id)));
+    assert(!directCandidateIds.has(String(baseMeal._id)));
+    assert.equal(response.body.data.rules.membershipSource, "live_catalog");
 
     response = await api
       .post("/api/dashboard/meal-builder/sections")
@@ -344,8 +326,7 @@ async function run() {
     assert(
       response.body.data.validation.errors.some(
         (item) => item.code === "MEAL_BUILDER_CARBS_CARD_REQUIRED"
-      ),
-      "protein-only configuration is not publishable for current Flutter"
+      )
     );
 
     response = await api
@@ -381,10 +362,7 @@ async function run() {
         selectedOptionIds: [String(beefSteak._id)],
       });
     expectStatus(response, 409, "reject duplicate option assignment");
-    assert.equal(
-      response.body.error.code,
-      "MEAL_BUILDER_OPTION_ALREADY_ASSIGNED"
-    );
+    assert.equal(response.body.error.code, "MEAL_BUILDER_OPTION_ALREADY_ASSIGNED");
 
     response = await api
       .post("/api/dashboard/meal-builder/sections")
@@ -438,15 +416,13 @@ async function run() {
     assert(
       response.body.data.candidates.some(
         (candidate) => candidate.optionId === String(beefSteak._id)
-      ),
-      "picker includes linked beef option"
+      )
     );
     assert.equal(
       response.body.data.candidates.some(
         (candidate) => candidate.optionId === String(unlinkedBeef._id)
       ),
-      false,
-      "picker is scoped to Product + Group + Option relations"
+      false
     );
 
     response = await api
@@ -459,7 +435,7 @@ async function run() {
     response = await api
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
-      .send({ notes: "Publish Flutter-aligned Product and Option cards" });
+      .send({ notes: "Publish Flutter-aligned live and option cards" });
     expectStatus(response, 200, "publish Flutter-compatible cards");
 
     response = await api.get(
@@ -472,23 +448,23 @@ async function run() {
     );
 
     const contract = response.body.data.builderCatalog;
-    const iceCreamSection = findSection(contract, "ice_cream");
+    const directSection = findSection(contract, "sandwich");
     const beefSection = findSection(contract, "beef");
     const carbsSection = findSection(contract, "carbs");
-    assert(iceCreamSection, "direct product card reaches Flutter contract");
+    assert(directSection, "system direct product card reaches Flutter contract");
     assert(beefSection, "protein option card reaches Flutter contract");
     assert(carbsSection, "carbs option card reaches Flutter contract");
 
-    const directProduct = findProduct(iceCreamSection, iceCream._id);
-    assert(directProduct, "ice cream product reaches direct card");
+    const directProduct = findProduct(directSection, readyMeal._id);
+    assert(directProduct, "ready meal reaches the live direct card");
     assert.equal(directProduct.selectionType, "full_meal_product");
     assert.equal(directProduct.action.type, "direct_add");
     assert.equal(directProduct.action.requiresBuilder, false);
     assert.equal(directProduct.action.treatAsFullMeal, true);
 
     const beefProduct = findProduct(beefSection, baseMeal._id);
-    const beefGroup = findGroup(beefProduct, proteinsGroup._id);
     assert(beefProduct, "base product is preserved for protein options");
+    const beefGroup = findGroup(beefProduct, proteinsGroup._id);
     assert(beefGroup, "real proteins group is preserved");
     assert.deepEqual(optionIds(beefGroup), [
       String(beefSteak._id),
@@ -496,13 +472,13 @@ async function run() {
     ]);
 
     const carbsProduct = findProduct(carbsSection, baseMeal._id);
-    const publicCarbsGroup = findGroup(carbsProduct, carbsGroup._id);
     assert(carbsProduct, "base product is preserved for carbs");
+    const publicCarbsGroup = findGroup(carbsProduct, carbsGroup._id);
     assert(publicCarbsGroup, "real carbs group is preserved");
     assert.deepEqual(optionIds(publicCarbsGroup), [String(whiteRice._id)]);
 
     console.log(
-      "dashboard Meal Planner Flutter Product/Option card policy passed"
+      "dashboard Meal Planner Flutter live Product/Option card policy passed"
     );
   } finally {
     await disconnect();
