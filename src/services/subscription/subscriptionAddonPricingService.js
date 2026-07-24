@@ -46,12 +46,15 @@ function resolveAddonSpendLimits({
   product = null,
   remainingQtyOverride = null,
 } = {}) {
+  // maxPerDay is the canonical explicit limit. Historical quantity fields are
+  // retained only as fallbacks because the schema may populate them with defaults
+  // that must not override an authored maxPerDay value.
   const defaultDailyQty = toPositiveInteger(
     entitlement && (
-      entitlement.quantityPerDay
+      entitlement.maxPerDay
+      || entitlement.quantityPerDay
       || entitlement.purchasedDailyQty
       || entitlement.dailyQuantity
-      || entitlement.maxPerDay
     ) || product && product.maxPerDay,
     1
   );
