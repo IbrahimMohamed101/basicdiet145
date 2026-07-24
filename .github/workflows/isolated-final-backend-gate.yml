@@ -45,7 +45,24 @@ jobs:
         run: npm run validate:backend
 
       - name: Verify pickup reservation balance lifecycle
-        run: NODE_ENV=test node tests/subscriptionBalancePolicy.test.js
+        id: pickup_balance
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test node tests/subscriptionBalancePolicy.test.js 2>&1 | tee pickup-balance.log
+
+      - name: Upload pickup balance log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pickup-reservation-balance-log
+          path: pickup-balance.log
+          if-no-files-found: error
+
+      - name: Enforce pickup reservation balance lifecycle
+        if: steps.pickup_balance.outcome == 'failure'
+        run: exit 1
 
       - name: Run final release gates
         id: final_release_gates
