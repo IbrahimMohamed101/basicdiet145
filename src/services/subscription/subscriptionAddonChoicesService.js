@@ -124,22 +124,27 @@ function serializeChoice(product, categoryKey, lang) {
     product,
     availableForNewSale,
   });
+  // Historical rows may retain a scalar `name` in one language while
+  // `nameI18n` contains the authoritative bilingual snapshot. Always
+  // prefer the bilingual source so Accept-Language remains deterministic.
+  const nameSource = product.nameI18n || product.name;
+  const descriptionSource = product.descriptionI18n || product.description;
   return {
     id: String(product._id),
     productId: String(product._id),
     menuProductId: String(product._id),
     key: product.key || "",
-    name: localized(product.name, lang),
-    nameAr: pickLang(product.name, "ar") || "",
-    nameEn: pickLang(product.name, "en") || "",
+    name: localized(nameSource, lang),
+    nameAr: pickLang(nameSource, "ar") || "",
+    nameEn: pickLang(nameSource, "en") || "",
     nameI18n: {
-      ar: pickLang(product.name, "ar") || "",
-      en: pickLang(product.name, "en") || "",
+      ar: pickLang(nameSource, "ar") || "",
+      en: pickLang(nameSource, "en") || "",
     },
-    description: localized(product.description, lang),
+    description: localized(descriptionSource, lang),
     descriptionI18n: {
-      ar: pickLang(product.description, "ar") || "",
-      en: pickLang(product.description, "en") || "",
+      ar: pickLang(descriptionSource, "ar") || "",
+      en: pickLang(descriptionSource, "en") || "",
     },
     imageUrl: product.imageUrl || "",
     priceHalala,
