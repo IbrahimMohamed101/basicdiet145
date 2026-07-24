@@ -1,0 +1,68 @@
+name: Dynamic Direct Meal Catalog
+
+on:
+  pull_request:
+    paths:
+      - "src/services/installDynamicDirectMealCatalogPolicy.js"
+      - "src/routes/index.js"
+      - "tests/dynamicDirectMealCatalogPolicy.test.js"
+      - "tests/mealPlannerFullMealProductContract.test.js"
+      - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
+      - "scripts/run-critical-tests.sh"
+      - ".github/workflows/dynamic-direct-meal-catalog.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Dynamic catalog regression
+        run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
+      - name: Source kind compatibility
+        run: npm run test:meal-builder-source-kind
+      - name: Complete catalog
+        run: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
+      - name: Full meal product contract
+        run: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
+      - name: Compatible default seed
+        run: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
+      - name: Sandwich card end to end
+        run: NODE_ENV=test node tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
+      - name: Option catalog closure
+        run: NODE_ENV=test node tests/dashboardMealBuilderOptionCatalogClosure.test.js
+      - name: Full meal end to end
+        id: full_meal_e2e
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test node tests/dashboardMealBuilderFullMealEndToEnd.test.js 2>&1 | tee full-meal-e2e.log
+      - name: Upload full meal end-to-end log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-meal-e2e-log
+          path: full-meal-e2e.log
+          if-no-files-found: error
+      - name: Enforce full meal end-to-end result
+        if: steps.full_meal_e2e.outcome == 'failure'
+        run: exit 1
+      - name: Dashboard mobile parity
+        run: NODE_ENV=test node tests/mealBuilderDashboardMobileParity.test.js
+      - name: Flutter card policy
+        run: NODE_ENV=test node tests/dashboardMealPlannerFlutterCardPolicy.test.js
+      - name: Two type policy
+        run: npm run test:meal-planner-two-types
