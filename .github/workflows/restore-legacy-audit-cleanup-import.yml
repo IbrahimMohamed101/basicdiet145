@@ -1,0 +1,45 @@
+name: Restore legacy audit cleanup import
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+    paths:
+      - .github/workflows/restore-legacy-audit-cleanup-import.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+          fetch-depth: 0
+      - name: Restore exact cleanup import and self-delete
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          target = Path("tests/subscriptionBalancePolicy.test.js")
+          text = target.read_text(encoding="utf-8")
+          marker = 'const ActivityLog = require("../src/models/ActivityLog");\n'
+          replacement = marker + 'const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");\n'
+          if text.count(marker) != 1:
+              raise SystemExit("Expected ActivityLog import exactly once")
+          if 'const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");' in text:
+              raise SystemExit("SubscriptionAuditLog import already exists")
+          target.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+          Path(".github/workflows/restore-legacy-audit-cleanup-import.yml").unlink()
+          PY
+      - name: Commit cleanup compatibility import
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionBalancePolicy.test.js .github/workflows/restore-legacy-audit-cleanup-import.yml
+          git diff --cached --check
+          git commit -m "Keep legacy audit model for balance test cleanup"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
