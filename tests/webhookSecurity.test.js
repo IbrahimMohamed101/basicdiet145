@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const assert = require("assert");
 const mongoose = require("mongoose");
+const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
@@ -17,6 +18,7 @@ const VALID_IP = "192.168.1.100";
 const INVALID_IP = "192.168.1.200";
 
 const results = { passed: 0, failed: 0 };
+let ownedMemoryServer = null;
 
 async function test(name, fn) {
   try {
@@ -32,9 +34,17 @@ async function test(name, fn) {
 
 async function connect() {
   if (mongoose.connection.readyState !== 0) return;
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test";
+  let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "";
+  if (!mongoUri && process.env.NODE_ENV === "test") {
+    const dbName = `webhook_security_${process.pid}_${Date.now()}_test`;
+    ownedMemoryServer = await MongoMemoryServer.create({
+      instance: { dbName },
+    });
+    mongoUri = ownedMemoryServer.getUri(dbName);
+  }
+  if (!mongoUri) mongoUri = "mongodb://localhost:27017/basicdiet_test";
   try {
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 });
   } catch (err) {
     console.error("Database connection failed with exact error:");
     console.error(err && err.stack ? err.stack : err);
@@ -43,6 +53,7 @@ async function connect() {
 }
 
 async function cleanup() {
+  if (mongoose.connection.readyState !== 1) return;
   const orders = await Order.find({ orderNumber: { $regex: TEST_TAG } }).select("_id paymentId").lean();
   const orderIds = orders.map((order) => order._id);
   const paymentIds = orders.map((order) => order.paymentId).filter(Boolean);
@@ -236,11 +247,21 @@ function setWebhookEnv({ secret = VALID_WEBHOOK_SECRET, allowedIps } = {}) {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
+    if (ownedMemoryServer) {
+      await ownedMemoryServer.stop();
+      ownedMemoryServer = null;
+    }
   }
 
   console.log(`\nResult: ${results.passed} passed, ${results.failed} failed`);
   if (results.failed > 0) process.exit(1);
-})().catch((err) => {
+})().catch(async (err) => {
   console.error(err && err.stack ? err.stack : err);
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect().catch(() => {});
+  }
+  if (ownedMemoryServer) {
+    await ownedMemoryServer.stop().catch(() => {});
+  }
   process.exit(1);
 });
