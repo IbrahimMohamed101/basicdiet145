@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const mongoose = require("mongoose");
 const CatalogItem = require("../../models/CatalogItem");
 const MenuProduct = require("../../models/MenuProduct");
@@ -14,6 +15,7 @@ const Meal = require("../../models/Meal");
 const DEFAULT_MENU_IMAGE_WIDTH = 900;
 const DEFAULT_MENU_CACHE_TTL_MS = 60 * 1000;
 const DEFAULT_MENU_CACHE_MAX_ENTRIES = 24;
+const PLANNER_CATALOG_V3_VERSION = "meal_planner_menu.v3";
 const MENU_IMAGE_ID_FIELDS = Object.freeze([
   "id",
   "_id",
@@ -212,12 +214,44 @@ function applyImageLookup(value, lookup, options, visited = new WeakSet()) {
   return value;
 }
 
+function computePlannerCatalogHash(catalog = {}) {
+  const stablePayload = {
+    contractVersion: catalog.contractVersion,
+    currency: catalog.currency,
+    sections: Array.isArray(catalog.sections) ? catalog.sections : [],
+    rules: catalog.rules && typeof catalog.rules === "object" ? catalog.rules : {},
+  };
+  return `sha256:${crypto.createHash("sha256").update(JSON.stringify(stablePayload)).digest("hex")}`;
+}
+
+function refreshPlannerCatalogHashes(value, visited = new WeakSet()) {
+  if (!value || typeof value !== "object") return value;
+  if (visited.has(value)) return value;
+  visited.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => refreshPlannerCatalogHashes(entry, visited));
+    return value;
+  }
+
+  Object.values(value).forEach((entry) => refreshPlannerCatalogHashes(entry, visited));
+  if (
+    value.contractVersion === PLANNER_CATALOG_V3_VERSION
+    && Array.isArray(value.sections)
+    && value.rules
+  ) {
+    value.catalogHash = computePlannerCatalogHash(value);
+  }
+  return value;
+}
+
 async function hydrateAndOptimizeMenuImages(payload, options = {}) {
   const cloned = clonePlain(payload);
   if (!cloned || typeof cloned !== "object") return cloned;
   const candidateIds = collectCandidateIds(cloned);
   const lookup = await loadImageLookup(candidateIds);
-  return applyImageLookup(cloned, lookup, options);
+  applyImageLookup(cloned, lookup, options);
+  return refreshPlannerCatalogHashes(cloned);
 }
 
 function createTtlSingleFlightCache({
@@ -304,9 +338,11 @@ module.exports = {
   DEFAULT_MENU_IMAGE_WIDTH,
   clonePlain,
   collectCandidateIds,
+  computePlannerCatalogHash,
   createTtlSingleFlightCache,
   hydrateAndOptimizeMenuImages,
   optimizeCloudinaryImageUrl,
+  refreshPlannerCatalogHashes,
   resolveMenuCacheTtlMs,
   resolveMenuImageWidth,
 };
