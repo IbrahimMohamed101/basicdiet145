@@ -32,6 +32,23 @@ function noStore(res) {
   res.set("Expires", "0");
 }
 
+function normalizeBuilderCatalogV2(catalog) {
+  return {
+    ...catalog,
+    sections: (catalog.sections || []).map((section) => {
+      const key = String(section?.key || section?.selectionType || "").trim().toLowerCase();
+      if (key !== "sandwich") return section;
+      return {
+        ...section,
+        products: (section.products || []).map((product) => ({
+          ...product,
+          selectionType: "sandwich",
+        })),
+      };
+    }),
+  };
+}
+
 function sanitizePublicData(source = {}) {
   const plannerCatalog = source.plannerCatalog || source.builderCatalog || null;
   if (!plannerCatalog || plannerCatalog.contractVersion !== FLUTTER_CONTRACT_VERSION) {
@@ -63,17 +80,18 @@ function sanitizePublicData(source = {}) {
     throw err;
   }
 
-  const builderCatalogV2 = source.builderCatalogV2 || null;
-  if (!builderCatalogV2 || builderCatalogV2.catalogVersion !== BUILDER_CATALOG_V2_VERSION) {
+  const rawBuilderCatalogV2 = source.builderCatalogV2 || null;
+  if (!rawBuilderCatalogV2 || rawBuilderCatalogV2.catalogVersion !== BUILDER_CATALOG_V2_VERSION) {
     const err = new Error("Meal Planner V2 compatibility catalog is unavailable");
     err.code = "MEAL_PLANNER_BUILDER_V2_CONTRACT_INVALID";
     err.status = 500;
     err.details = {
       expectedCatalogVersion: BUILDER_CATALOG_V2_VERSION,
-      receivedCatalogVersion: builderCatalogV2?.catalogVersion || null,
+      receivedCatalogVersion: rawBuilderCatalogV2?.catalogVersion || null,
     };
     throw err;
   }
+  const builderCatalogV2 = normalizeBuilderCatalogV2(rawBuilderCatalogV2);
 
   const data = {
     builderCatalog: plannerCatalog,
@@ -137,4 +155,8 @@ async function getMealPlannerMenu(req, res) {
   }
 }
 
-module.exports = { getMealPlannerMenu, sanitizePublicData };
+module.exports = {
+  getMealPlannerMenu,
+  normalizeBuilderCatalogV2,
+  sanitizePublicData,
+};
