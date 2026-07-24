@@ -617,6 +617,7 @@ async function runTests() {
         phone: sub1Phone,
         subscriptionId: sub1._id,
         mealCount: 50,
+        actor: { actorId: sub1._id, actorType: "admin" },
       });
       assert.fail("Should have thrown INSUFFICIENT_CREDITS");
     } catch (err) {
