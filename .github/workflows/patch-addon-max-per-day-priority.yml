@@ -1,0 +1,58 @@
+name: Patch add-on max-per-day priority
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/patch-addon-max-per-day-priority.yml"
+      - "src/services/subscription/subscriptionAddonPricingService.js"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+      - name: Prefer explicit maxPerDay over schema defaults
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path('src/services/subscription/subscriptionAddonPricingService.js')
+          text = target.read_text()
+          old = '''  const defaultDailyQty = toPositiveInteger(
+            entitlement && (
+              entitlement.quantityPerDay
+              || entitlement.purchasedDailyQty
+              || entitlement.dailyQuantity
+              || entitlement.maxPerDay
+            ) || product && product.maxPerDay,
+            1
+          );'''
+          new = '''  const defaultDailyQty = toPositiveInteger(
+            entitlement && (
+              entitlement.maxPerDay
+              || entitlement.quantityPerDay
+              || entitlement.purchasedDailyQty
+              || entitlement.dailyQuantity
+            ) || product && product.maxPerDay,
+            1
+          );'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one add-on daily limit block, found {text.count(old)}')
+          target.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/patch-addon-max-per-day-priority.yml').unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/services/subscription/subscriptionAddonPricingService.js .github/workflows/patch-addon-max-per-day-priority.yml
+          git commit -m "fix: honor explicit add-on daily limit"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
