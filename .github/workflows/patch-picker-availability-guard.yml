@@ -1,9 +1,10 @@
 name: Patch picker availability guard
 
 on:
-  push:
-    branches:
-      - agent/dynamic-direct-meal-catalog-safe
+  pull_request:
+    paths:
+      - ".github/workflows/patch-picker-availability-guard.yml"
+      - "src/services/orders/menuCatalogAdminService.js"
 
 permissions:
   contents: write
@@ -24,7 +25,6 @@ jobs:
 
           target = Path('src/services/orders/menuCatalogAdminService.js')
           text = target.read_text()
-
           marker = '''  async function listProducts(options = {}) {
               const query = buildProductFilter(options);'''
           helper = '''  function matchesPickerAvailability(row, options = {}) {
