@@ -196,6 +196,9 @@ function runtime(overrides = {}) {
         'if (!controller.resolveCheckoutQuoteOrThrow.__subscriptionAddonPlanAvailabilityPolicy) {',
         '  throw new Error("subscriptionController captured the pre-policy quote function")',
         '}',
+        'if (!controller.resolveCheckoutQuoteOrThrow.__dashboardDeliverySlotCompatible) {',
+        '  throw new Error("add-on policy did not preserve delivery-slot composition metadata")',
+        '}',
       ].join(";"),
     ],
     {
