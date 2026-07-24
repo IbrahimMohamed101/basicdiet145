@@ -1,0 +1,56 @@
+name: Apply manual deduction audit fixture
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+    paths:
+      - .github/workflows/apply-manual-deduction-audit-fixture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+          fetch-depth: 0
+
+      - name: Apply exact audit fixture patch and remove this workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          target = Path("tests/subscriptionBalancePolicy.test.js")
+          text = target.read_text(encoding="utf-8")
+
+          old_import = 'const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");\n'
+          new_import = 'const ActivityLog = require("../src/models/ActivityLog");\n'
+          if text.count(old_import) != 1:
+              raise SystemExit("Expected legacy audit import exactly once")
+          text = text.replace(old_import, new_import, 1)
+
+          old_assertion = '''    const auditLogs = await SubscriptionAuditLog.find({ entityId: sub1._id, action: "cashier_manual_consumption" }).lean();\n    assert.strictEqual(auditLogs.length, 1, "Audit log correctly generated");\n'''
+          new_assertion = '''    const auditLogs = await ActivityLog.find({\n      entityType: "subscription",\n      entityId: sub1._id,\n      action: "manual_subscription_meal_deduction",\n    }).lean();\n    assert.strictEqual(auditLogs.length, 1, "Canonical manual deduction audit log correctly generated");\n    assert.strictEqual(auditLogs[0].meta.reason, "cashier_manual_consumption", "Audit reason preserves the cashier compatibility source");\n    assert.strictEqual(auditLogs[0].meta.deductedRegularMeals, 7, "Audit log records the exact deducted meal count");\n'''
+          if text.count(old_assertion) != 1:
+              raise SystemExit("Expected legacy audit assertion exactly once")
+          text = text.replace(old_assertion, new_assertion, 1)
+          target.write_text(text, encoding="utf-8")
+
+          Path(".github/workflows/apply-manual-deduction-audit-fixture.yml").unlink()
+          PY
+
+      - name: Commit exact audit fixture correction
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionBalancePolicy.test.js .github/workflows/apply-manual-deduction-audit-fixture.yml
+          git diff --cached --check
+          git commit -m "Align balance policy test with canonical deduction audit"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
