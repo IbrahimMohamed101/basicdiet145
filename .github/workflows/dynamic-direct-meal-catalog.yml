@@ -36,7 +36,22 @@ jobs:
       - name: Complete catalog
         run: NODE_ENV=test node tests/dashboardMealBuilderCompleteCatalog.test.js
       - name: Full meal product contract
-        run: NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js
+        id: full_meal_contract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test node tests/mealPlannerFullMealProductContract.test.js 2>&1 | tee full-meal-product-contract.log
+      - name: Upload full meal contract log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-meal-product-contract-log
+          path: full-meal-product-contract.log
+          if-no-files-found: error
+      - name: Enforce full meal contract result
+        if: steps.full_meal_contract.outcome == 'failure'
+        run: exit 1
       - name: Compatible default seed
         run: NODE_ENV=test node tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
       - name: Sandwich card end to end
