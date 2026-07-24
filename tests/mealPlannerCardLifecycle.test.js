@@ -386,8 +386,8 @@ async function run() {
       productIdsFromPlanner(publicMenu.body.data.builderCatalog),
       new Set(ids)
     );
-    assert.strictEqual(publicMenu.body.data.builderCatalogV2, undefined);
-    assert.strictEqual(publicMenu.body.data.plannerCatalog, undefined);
+    assert.strictEqual(publicMenu.body.data.builderCatalogV2.catalogVersion, 'meal_planner_menu.v2');
+    assert.strictEqual(publicMenu.body.data.plannerCatalog.contractVersion, 'meal_planner_menu.v3');
 
     const deleteCard = await request(app)
       .delete("/api/dashboard/meal-builder/sections/secondary_card")

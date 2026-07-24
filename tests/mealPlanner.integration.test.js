@@ -864,6 +864,7 @@ async function createTestSubscription() {
   const subscription = new Subscription({
     userId: testUser._id, planId: testPlan._id, selectedMealsPerDay: mealsPerDay,
     startDate: startDate, endDate: endDate, status: 'active',
+    contractMode: 'canonical',
     totalMeals: totalMeals,
     remainingMeals: totalMeals,
     deliveryMode: 'pickup',
@@ -1025,8 +1026,10 @@ async function runTests() {
     assertEqual(defaultRes.body.status, true, 'default response status');
     assertNoTopLevelOk(defaultRes.body, 'default meal-planner-menu response');
     assertTrue(!!defaultRes.body.data?.builderCatalog, 'default builderCatalog');
-    assertEqual(Object.prototype.hasOwnProperty.call(defaultRes.body.data || {}, 'builderCatalogV2'), false, 'default response has no builderCatalogV2 mirror');
-    assertEqual(Object.prototype.hasOwnProperty.call(defaultRes.body.data || {}, 'plannerCatalog'), false, 'default response has no plannerCatalog mirror');
+    assertTrue(!!defaultRes.body.data?.builderCatalogV2, 'default builderCatalogV2 compatibility catalog');
+    assertEqual(defaultRes.body.data?.builderCatalogV2?.catalogVersion, 'meal_planner_menu.v2', 'default builderCatalogV2 contract');
+    assertTrue(!!defaultRes.body.data?.plannerCatalog, 'default plannerCatalog alias');
+    assertEqual(defaultRes.body.data?.plannerCatalog?.contractVersion, 'meal_planner_menu.v3', 'default plannerCatalog v3 contract');
     assertEqual(defaultRes.body.data?.builderCatalog?.contractVersion, 'meal_planner_menu.v3', 'default builderCatalog v3 contract');
     assertTrue(!!defaultRes.body.data?.addonCatalog, 'default addonCatalog');
     assertTrue(Array.isArray(defaultRes.body.data?.addonCatalog?.items), 'default addonCatalog.items');
@@ -1254,7 +1257,7 @@ async function runTests() {
         }),
       });
       assertEqual(rejected.status, 422, 'eight slots rejected');
-      assertEqual(rejected.body.error.code, 'MEAL_SLOT_COUNT_EXCEEDED', 'over maxConsumableMealsNow error');
+      assertEqual(rejected.body.error.code, 'MEAL_PLANNING_LIMIT_EXCEEDED', 'over subscription planning allowance error');
     } finally {
       await SubscriptionDay.deleteMany({ subscriptionId: balanceSub._id });
       await Subscription.deleteOne({ _id: balanceSub._id });
@@ -1336,8 +1339,10 @@ async function runTests() {
     const refreshedSub = await Subscription.findById(testSubscription._id).lean();
     const shrimpBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === 'shrimp');
     const saladBalance = (refreshedSub?.premiumBalance || []).find((row) => row.premiumKey === CUSTOM_PREMIUM_SALAD_KEY);
-    assertEqual(Number(shrimpBalance?.remainingQty || 0), 1, 'shrimp balance decremented once for premium meal');
-    assertEqual(Number(saladBalance?.remainingQty || 0), 0, 'salad entitlement decremented');
+    assertEqual(Number(shrimpBalance?.remainingQty || 0), 2, 'shrimp balance is not deducted before confirmation');
+    assertEqual(Number(shrimpBalance?.reservedQty || 0), 0, 'shrimp balance is not reserved before confirmation');
+    assertEqual(Number(saladBalance?.remainingQty || 0), 1, 'salad entitlement is not deducted before confirmation');
+    assertEqual(Number(saladBalance?.reservedQty || 0), 0, 'salad entitlement is not reserved before confirmation');
   });
 
   await test('editing away premium salad refunds premium entitlement consistently', async () => {
@@ -1451,12 +1456,15 @@ async function runTests() {
         dayId: String(storedDayBeforePayment._id),
         date: paymentDate,
         oneTimeAddonSelections: pendingSelections.map((item) => ({
+          addonSelectionId: String(item._id),
           addonId: String(item.addonId),
           name: item.name,
           category: item.category,
-          unitPriceHalala: Number(item.priceHalala || 0),
+          priceHalala: Number(item.priceHalala || item.unitPriceHalala || 0),
           currency: item.currency || 'SAR',
+          source: 'pending_payment',
         })),
+        totalHalala: pendingSelections.reduce((sum, item) => sum + Number(item.priceHalala || item.unitPriceHalala || 0), 0),
         paymentUrl: 'https://example.com/pay',
       },
     });
