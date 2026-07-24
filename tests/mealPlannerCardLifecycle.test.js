@@ -157,7 +157,7 @@ async function run() {
             selectedProductIds: ids.slice(0, 2),
             selectedOptionIds: [],
             includeMode: "selected",
-            selectionType: "",
+            selectionType: "full_meal_product",
             sortOrder: 10,
             required: false,
             minSelections: 0,
