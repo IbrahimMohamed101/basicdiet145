@@ -621,7 +621,7 @@ async function runTests() {
       });
       assert.fail("Should have thrown INSUFFICIENT_CREDITS");
     } catch (err) {
-      assert.strictEqual(err.code, "INSUFFICIENT_CREDITS", "Cannot consume more than available");
+      assert.strictEqual(err.code, "INSUFFICIENT_REMAINING_MEALS", "Cannot consume more than available");
     }
     const sub2AfterFailedCashier = await Subscription.findById(sub2._id).lean();
     assert.strictEqual(sub2AfterFailedCashier.remainingMeals, 28, "Failed over-consumption must not change remainingMeals");
