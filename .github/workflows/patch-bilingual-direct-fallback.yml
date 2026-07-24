@@ -1,0 +1,40 @@
+name: Patch bilingual direct fallback
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+      - name: Restore direct normalizer fallback
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path('src/utils/subscriptionBilingualResponse.js')
+          text = target.read_text()
+          old = '  return "en";\n}\n\nfunction selected(pair, lang) {'
+          new = '  return "ar";\n}\n\nfunction selected(pair, lang) {'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one fallback block, found {text.count(old)}')
+          target.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/patch-bilingual-direct-fallback.yml').unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/utils/subscriptionBilingualResponse.js .github/workflows/patch-bilingual-direct-fallback.yml
+          git commit -m "fix: preserve direct bilingual fallback"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
