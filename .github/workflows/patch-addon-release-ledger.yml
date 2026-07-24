@@ -1,0 +1,169 @@
+name: Patch add-on release ledger
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+      - name: Support reserved and legacy consumed add-on credits
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path('src/services/subscription/subscriptionSelectionService.js')
+          text = target.read_text()
+
+          old_diag = '''  if (!latestBucket) return "bucket_not_found";
+            if (!bucketIdentityMatches(bucket, latestBucket)) return "bucket_identity_mismatch";
+            if (Number(latestBucket.consumedQty || 0) < quantity) return "no_consumed_balance";
+            return "atomic_release_failed";'''
+          new_diag = '''  if (!latestBucket) return "bucket_not_found";
+            if (!bucketIdentityMatches(bucket, latestBucket)) return "bucket_identity_mismatch";
+            const releasableQty = Number(latestBucket.reservedQty || 0) + Number(latestBucket.consumedQty || 0);
+            if (releasableQty < quantity) return "no_consumed_balance";
+            return "atomic_release_failed";'''
+          if text.count(old_diag) != 1:
+              raise SystemExit(f'Expected one release diagnostic block, found {text.count(old_diag)}')
+          text = text.replace(old_diag, new_diag, 1)
+
+          old_release = '''  const atomicResult = await Subscription.findOneAndUpdate(
+              {
+                _id: subscription._id,
+                addonBalance: {
+                  $elemMatch: buildAddonBalanceReleaseIdentity(bucket, releaseQuantity),
+                },
+              },
+              {
+                $inc: {
+                  "addonBalance.$.remainingQty": releaseQuantity,
+                  "addonBalance.$.consumedQty": -releaseQuantity,
+                },
+              },
+              { session, new: true }
+            );
+
+            if (!atomicResult) {
+              const reason = await diagnoseAddonReleaseFailure({
+                subscriptionId: subscription._id,
+                bucket,
+                quantity: releaseQuantity,
+                session,
+              });
+              return { released: false, reason };
+            }
+
+            // Keep the in-memory Mongoose document synchronized with the atomic
+            // addon balance updates performed via findOneAndUpdate(). Without this,
+            // the subsequent subscription.save({ session }) could overwrite the
+            // atomically updated addonBalance with stale in-memory values.
+            const inMemoryBucket = subscription.addonBalance[bucketIndex];
+            const updatedBucketIndex = findAddonBalanceBucketIndex(atomicResult.addonBalance, bucket._id);
+            const updatedBucket = updatedBucketIndex >= 0 ? atomicResult.addonBalance[updatedBucketIndex] : null;
+            if (inMemoryBucket) {
+              inMemoryBucket.remainingQty = Number(updatedBucket && updatedBucket.remainingQty || 0);
+              inMemoryBucket.consumedQty = Number(updatedBucket && updatedBucket.consumedQty || 0);
+              if (typeof subscription.markModified === "function") {
+                subscription.markModified("addonBalance");
+              }
+            }
+
+            return {
+              released: true,
+              remainingQty: Number(updatedBucket && updatedBucket.remainingQty || 0),
+              consumedQty: Number(updatedBucket && updatedBucket.consumedQty || 0),
+            };'''
+          new_release = '''  // Current planner saves reserve allowance credits until fulfillment. Historical
+            // rows may have recorded the same saved selection directly in consumedQty.
+            // Release from exactly one ledger state using compare-and-set; never mint a
+            // credit when neither counter has a releasable unit.
+            const releaseAttempts = [
+              { counter: "reservedQty", releasedFrom: "reserved" },
+              { counter: "consumedQty", releasedFrom: "consumed" },
+            ];
+            let atomicResult = null;
+            let releasedFrom = null;
+            for (const attempt of releaseAttempts) {
+              atomicResult = await Subscription.findOneAndUpdate(
+                {
+                  _id: subscription._id,
+                  addonBalance: {
+                    $elemMatch: {
+                      ...buildAddonBalanceAtomicIdentity(bucket),
+                      [attempt.counter]: { $gte: releaseQuantity },
+                    },
+                  },
+                },
+                {
+                  $inc: {
+                    "addonBalance.$.remainingQty": releaseQuantity,
+                    [`addonBalance.$.${attempt.counter}`]: -releaseQuantity,
+                  },
+                },
+                { session, new: true }
+              );
+              if (atomicResult) {
+                releasedFrom = attempt.releasedFrom;
+                break;
+              }
+            }
+
+            if (!atomicResult) {
+              const reason = await diagnoseAddonReleaseFailure({
+                subscriptionId: subscription._id,
+                bucket,
+                quantity: releaseQuantity,
+                session,
+              });
+              return { released: false, reason };
+            }
+
+            // Keep the in-memory Mongoose document synchronized with the atomic
+            // addon balance updates performed via findOneAndUpdate(). Without this,
+            // the subsequent subscription.save({ session }) could overwrite the
+            // atomically updated addonBalance with stale in-memory values.
+            const inMemoryBucket = subscription.addonBalance[bucketIndex];
+            const updatedBucketIndex = findAddonBalanceBucketIndex(atomicResult.addonBalance, bucket._id);
+            const updatedBucket = updatedBucketIndex >= 0 ? atomicResult.addonBalance[updatedBucketIndex] : null;
+            if (inMemoryBucket) {
+              inMemoryBucket.remainingQty = Number(updatedBucket && updatedBucket.remainingQty || 0);
+              inMemoryBucket.reservedQty = Number(updatedBucket && updatedBucket.reservedQty || 0);
+              inMemoryBucket.consumedQty = Number(updatedBucket && updatedBucket.consumedQty || 0);
+              if (typeof subscription.markModified === "function") {
+                subscription.markModified("addonBalance");
+              }
+            }
+
+            return {
+              released: true,
+              releasedFrom,
+              remainingQty: Number(updatedBucket && updatedBucket.remainingQty || 0),
+              reservedQty: Number(updatedBucket && updatedBucket.reservedQty || 0),
+              consumedQty: Number(updatedBucket && updatedBucket.consumedQty || 0),
+            };'''
+          if text.count(old_release) != 1:
+              raise SystemExit(f'Expected one atomic release block, found {text.count(old_release)}')
+          text = text.replace(old_release, new_release, 1)
+
+          target.write_text(text)
+          Path('.github/workflows/patch-addon-release-ledger.yml').unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/services/subscription/subscriptionSelectionService.js .github/workflows/patch-addon-release-ledger.yml
+          git commit -m "fix: release reserved add-on credits on selection removal"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
