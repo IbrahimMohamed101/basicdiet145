@@ -1,0 +1,56 @@
+name: Apply real pickup reservation fixture
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+    paths:
+      - .github/workflows/apply-real-pickup-reservation-fixture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+          fetch-depth: 0
+
+      - name: Apply exact fixture patch and remove this workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          target = Path("tests/subscriptionBalancePolicy.test.js")
+          text = target.read_text(encoding="utf-8")
+
+          old_import = 'const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");\n'
+          new_import = old_import + '''const {\n  reserveSubscriptionMealsForPickupRequest,\n} = require("../src/services/subscription/subscriptionPickupRequestBalanceService");\n'''
+          if text.count(old_import) != 1:
+              raise SystemExit("Expected fulfillment import exactly once")
+          text = text.replace(old_import, new_import, 1)
+
+          old_block = '''    await SubscriptionPickupRequest.create({\n      subscriptionId: sub2._id,\n      userId: sub2.userId,\n      date: "2026-06-09",\n      mealCount: 2,\n      status: "ready_for_pickup",\n      creditsReserved: true,\n    });\n    const pickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });\n    assert.strictEqual(pickupFulfillResult.ok, true, "Pickup fulfill should succeed");\n    await assertRemainingMeals(sub2._id, 28, "pickup fulfill deducts exact fulfilled count");\n    const repeatedPickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });\n    assert.strictEqual(repeatedPickupFulfillResult.ok, true, "Repeated pickup fulfill should be idempotent");\n    await assertRemainingMeals(sub2._id, 28, "repeated pickup fulfill does not deduct again");\n'''
+          new_block = '''    const pickupFulfillRequest = await SubscriptionPickupRequest.create({\n      subscriptionId: sub2._id,\n      userId: sub2.userId,\n      date: "2026-06-09",\n      mealCount: 2,\n      status: "ready_for_pickup",\n    });\n    const pickupReservation = await reserveSubscriptionMealsForPickupRequest({\n      subscriptionId: sub2._id,\n      pickupRequestId: pickupFulfillRequest._id,\n      mealCount: 2,\n    });\n    assert.strictEqual(pickupReservation.reserved, true, "Pickup reservation should reserve the requested meals");\n    await assertRemainingMeals(sub2._id, 28, "pickup reservation deducts the exact reserved count once");\n\n    const pickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });\n    assert.strictEqual(pickupFulfillResult.ok, true, "Pickup fulfill should succeed");\n    await assertRemainingMeals(sub2._id, 28, "pickup fulfill consumes the reservation without deducting again");\n    const consumedPickupRequest = await SubscriptionPickupRequest.findById(pickupFulfillRequest._id).lean();\n    assert(consumedPickupRequest.creditsConsumedAt, "Pickup request reservation is marked consumed");\n\n    const repeatedPickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });\n    assert.strictEqual(repeatedPickupFulfillResult.ok, true, "Repeated pickup fulfill should be idempotent");\n    await assertRemainingMeals(sub2._id, 28, "repeated pickup fulfill does not deduct again");\n'''
+          if text.count(old_block) != 1:
+              raise SystemExit("Expected pickup fulfillment fixture block exactly once")
+          text = text.replace(old_block, new_block, 1)
+          target.write_text(text, encoding="utf-8")
+
+          Path(".github/workflows/apply-real-pickup-reservation-fixture.yml").unlink()
+          PY
+
+      - name: Commit exact fixture correction
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionBalancePolicy.test.js .github/workflows/apply-real-pickup-reservation-fixture.yml
+          git diff --cached --check
+          git commit -m "Use real pickup reservation in balance policy test"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
