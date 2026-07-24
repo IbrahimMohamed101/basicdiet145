@@ -80,6 +80,13 @@ function installKitchenAddonProductIdentityGuard() {
 
 installKitchenAddonProductIdentityGuard();
 
+// Compose weight persistence and DTO recovery before the preparation contract
+// wraps the same mappers. The preparation layer then projects these repaired
+// serving weights into the canonical kitchen.v2 response.
+require("../orders/installOrderPreparationWeightLifecycle");
+require("./installKitchenWeightResponseContract");
+require("./installKitchenWeightPreparationBridge");
+
 module.exports = {
   hasPlanProductIdentityCollision,
   installKitchenAddonProductIdentityGuard,
