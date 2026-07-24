@@ -1,11 +1,14 @@
-name: One-time menu deduplication
+name: One-time menu contract
 
 on:
   pull_request:
     branches:
       - main
     paths:
+      - "src/routes/index.js"
+      - "src/services/installOneTimeCarbGramContract.js"
       - "src/services/orders/orderMenuService.js"
+      - "tests/oneTimeCarbGramContract.test.js"
       - "tests/oneTimeMenuDeduplication.test.js"
       - ".github/workflows/one-time-menu-deduplication.yml"
   workflow_dispatch:
@@ -16,9 +19,12 @@ permissions:
 jobs:
   contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       NODE_ENV: test
+      MONGOMS_VERSION: 7.0.14
+      DASHBOARD_JWT_SECRET: one-time-carb-dashboard-secret
+      JWT_SECRET: one-time-carb-app-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,7 +39,14 @@ jobs:
         run: npm ci --silent
 
       - name: Validate syntax
-        run: node -c src/services/orders/orderMenuService.js
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installOneTimeCarbGramContract.js
+          node -c src/services/orders/orderMenuService.js
+          node -c tests/oneTimeCarbGramContract.test.js
 
       - name: Verify one-time menu deduplication
         run: node tests/oneTimeMenuDeduplication.test.js
+
+      - name: Verify one-time carb grams and pricing
+        run: node tests/oneTimeCarbGramContract.test.js
