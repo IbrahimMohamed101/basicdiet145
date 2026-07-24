@@ -1,0 +1,101 @@
+name: Verify production carb grams
+
+on:
+  push:
+    branches:
+      - agent/verify-production-carb-grams
+
+permissions:
+  contents: read
+
+jobs:
+  production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify deployed menu response
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://basicdiet145-production-51e9.up.railway.app/api/orders/menu"
+
+          for attempt in $(seq 1 30); do
+            echo "Production verification attempt ${attempt}/30"
+            status=$(curl --silent --show-error --location \
+              --connect-timeout 10 --max-time 40 \
+              --header 'Accept: application/json' \
+              --header 'Accept-Language: en' \
+              --output menu.json \
+              --write-out '%{http_code}' \
+              "${endpoint}" || true)
+
+            if [ "${status}" = "200" ] && node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('menu.json', 'utf8'));
+          const menu = body && body.data ? body.data : body;
+          const products = (menu.categories || []).flatMap((category) => category.products || []);
+          const product = products.find((row) => row && row.key === 'basic_meal');
+          if (!product) throw new Error('basic_meal was not returned by production');
+
+          const options = (product.optionGroups || []).flatMap((group) =>
+            (group.options || []).map((option) => ({
+              groupKey: group.key,
+              key: option.key,
+              nameI18n: option.nameI18n,
+              extraWeightUnitGrams: option.extraWeightUnitGrams,
+              extraWeightPriceHalala: option.extraWeightPriceHalala,
+              displayCategoryKey: option.displayCategoryKey,
+            }))
+          );
+          const targets = ['white_rice', 'red_sauce_pasta'];
+          const selected = targets.map((key) => options.filter((option) => option.key === key));
+
+          for (let index = 0; index < targets.length; index += 1) {
+            const key = targets[index];
+            const rows = selected[index];
+            if (rows.length !== 1) {
+              throw new Error(`${key} must appear exactly once; found ${rows.length}`);
+            }
+            if (Number(rows[0].extraWeightUnitGrams) !== 50) {
+              throw new Error(`${key} still returns extraWeightUnitGrams=${rows[0].extraWeightUnitGrams}`);
+            }
+            if (Number(rows[0].extraWeightPriceHalala) !== 0) {
+              throw new Error(`${key} unexpectedly returns a paid gram price`);
+            }
+          }
+
+          const summary = {
+            verifiedAt: new Date().toISOString(),
+            endpoint: 'GET /api/orders/menu',
+            product: {
+              key: product.key,
+              pricingModel: product.pricingModel,
+              weightStepGrams: product.weightStepGrams,
+            },
+            carbs: selected.map((rows) => rows[0]),
+          };
+          fs.writeFileSync('production-smoke.json', JSON.stringify(summary, null, 2));
+          console.log(JSON.stringify(summary, null, 2));
+          NODE
+            then
+              echo "Production carb gram contract verified."
+              exit 0
+            fi
+
+            echo "Deployment is not serving the expected contract yet (HTTP ${status})."
+            sleep 10
+          done
+
+          echo "Production did not serve the expected carb gram contract within the verification window."
+          [ -f menu.json ] && head -c 4000 menu.json || true
+          exit 1
+
+      - name: Upload production verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-carb-grams-verification
+          path: |
+            production-smoke.json
+            menu.json
+          if-no-files-found: warn
