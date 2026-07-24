@@ -47,6 +47,10 @@ require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
 // dashboard build sends customer-visibility filters with picker requests.
 require("../services/installDashboardAddonCatalogAuthoring");
+// The add-on picker is customer-facing authoring data even when it is requested
+// from dashboard routes. Re-apply active/visible/available state at the final
+// service boundary and keep category counts on that exact filtered list.
+require("../services/installAddonPickerAvailabilityGuard");
 require("../services/installDashboardMealBuilderFinalization");
 require("../services/installDashboardMealBuilderExplicitDirectCardPolicy");
 require("../services/installDashboardMealPlannerFlutterCardPolicy");
