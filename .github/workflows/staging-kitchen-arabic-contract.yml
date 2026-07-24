@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   kitchen-arabic-contract:
@@ -35,6 +36,15 @@ jobs:
       JWT_SECRET: staging-kitchen-test-secret
       DASHBOARD_JWT_SECRET: staging-dashboard-test-secret
     steps:
+      - name: Publish pending status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state=pending \
+            -f context=staging-kitchen-arabic-contract \
+            -f description="Staging Arabic kitchen response verification is running" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -54,3 +64,19 @@ jobs:
         run: node tests/flutterMobileStrictScalarContract.test.js
       - name: Verify application startup
         run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('staging app startup passed')"
+      - name: Publish final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=success
+          description="Staging Arabic kitchen response verification passed"
+          if [ "${{ job.status }}" != "success" ]; then
+            state=failure
+            description="Staging Arabic kitchen response verification failed"
+          fi
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state="$state" \
+            -f context=staging-kitchen-arabic-contract \
+            -f description="$description" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
