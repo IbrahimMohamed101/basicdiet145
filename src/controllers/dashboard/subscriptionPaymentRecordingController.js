@@ -66,7 +66,6 @@ function decorateQuotePayload(payload) {
 function createCaptureResponse() {
   let statusCode = 200;
   let payload;
-  let sent = false;
   const headers = {};
   const res = {
     statusCode,
@@ -77,12 +76,10 @@ function createCaptureResponse() {
     },
     json(value) {
       payload = value;
-      sent = true;
       return this;
     },
     send(value) {
       payload = value;
-      sent = true;
       return this;
     },
     setHeader(name, value) {
@@ -96,7 +93,7 @@ function createCaptureResponse() {
   return {
     res,
     result() {
-      return { statusCode, payload, sent, headers };
+      return { statusCode, payload, headers };
     },
   };
 }
@@ -105,6 +102,12 @@ async function invokeCaptured(handler, req, next) {
   const capture = createCaptureResponse();
   await handler(req, capture.res, next);
   return capture.result();
+}
+
+function cloneRequestWithBody(req, body) {
+  const cloned = Object.create(req || null);
+  cloned.body = body;
+  return cloned;
 }
 
 function extractQuoteTotalHalala(payload) {
@@ -129,82 +132,48 @@ function extractSubscriptionId(payload) {
   return String(data.id || data._id || data.subscriptionId || subscription.id || subscription._id || "").trim();
 }
 
-async function persistRecordedPayment({ subscriptionId, userId, method, amountHalala, currency, req }) {
-  let payment = await Payment.findOne({
-    subscriptionId,
-    type: "subscription_activation",
-  }).sort({ createdAt: -1 });
-
-  if (!payment) {
-    payment = new Payment({
-      provider: method === "visa" ? "manual" : "cash",
-      type: "subscription_activation",
-      status: "paid",
-      amount: amountHalala,
-      currency: currency || "SAR",
-      userId,
-      subscriptionId,
-      paidAt: new Date(),
-      applied: true,
-    });
-  }
-
-  payment.provider = method === "visa" ? "manual" : "cash";
-  payment.method = method;
-  payment.status = "paid";
-  payment.amount = amountHalala;
-  payment.currency = currency || payment.currency || "SAR";
-  payment.source = "dashboard_subscription_creation";
-  payment.collectedBy = req.dashboardUserId || payment.collectedBy;
-  payment.applied = true;
-  payment.paidAt = payment.paidAt || new Date();
-  payment.metadata = {
-    ...(payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {}),
-    paymentMethod: method,
-    recordingMode: "dashboard_manual",
-    gatewayUsed: false,
-    dashboardUserRole: req.dashboardUserRole || null,
-  };
-  await payment.save();
-
-  const desiredAction = method === "visa"
-    ? "subscription_visa_payment_recorded"
-    : "subscription_cash_payment_collected";
-  await ActivityLog.findOneAndUpdate(
-    {
-      entityType: "subscription",
-      entityId: subscriptionId,
-      action: "subscription_cash_payment_collected",
-    },
-    {
-      $set: {
-        action: desiredAction,
-        "meta.paymentMethod": method,
-        "meta.paymentId": String(payment._id),
-        "meta.collectedAmount": amountHalala,
-        "meta.gatewayUsed": false,
-        "meta.recordingMode": "dashboard_manual",
-      },
-    },
-    { sort: { createdAt: -1 } }
-  );
-
-  return payment;
-}
-
-function buildPaymentResponse(payment, method, defaulted) {
+function buildPaymentResponse(payment, method, defaulted, fallback = {}) {
   return {
     id: payment && payment._id ? String(payment._id) : null,
     method,
     provider: payment && payment.provider ? payment.provider : method === "visa" ? "manual" : "cash",
-    status: "paid",
-    amountHalala: Number(payment && payment.amount || 0),
-    currency: String(payment && payment.currency || "SAR"),
+    status: payment && payment.status ? payment.status : "paid",
+    amountHalala: Number(payment && payment.amount !== undefined ? payment.amount : fallback.amountHalala || 0),
+    currency: String(payment && payment.currency || fallback.currency || "SAR"),
     gatewayUsed: false,
     recordingMode: "dashboard_manual",
     defaultedFromLegacyRequest: Boolean(defaulted),
     paidAt: payment && payment.paidAt ? new Date(payment.paidAt).toISOString() : null,
   };
+}
+
+async function correctPaymentActivityLogBestEffort({ subscriptionId, payment, method, amountHalala }) {
+  const desiredAction = method === "visa"
+    ? "subscription_visa_payment_recorded"
+    : "subscription_cash_payment_collected";
+  try {
+    await ActivityLog.findOneAndUpdate(
+      {
+        entityType: "subscription",
+        entityId: subscriptionId,
+        action: "subscription_cash_payment_collected",
+      },
+      {
+        $set: {
+          action: desiredAction,
+          "meta.paymentMethod": method,
+          "meta.paymentId": payment && payment._id ? String(payment._id) : null,
+          "meta.collectedAmount": amountHalala,
+          "meta.gatewayUsed": false,
+          "meta.recordingMode": "dashboard_manual",
+        },
+      },
+      { sort: { createdAt: -1 } }
+    );
+  } catch (_err) {
+    // The Payment row is the accounting source of truth. Audit correction is best-effort
+    // and must never turn an already-created subscription into an apparent failure.
+  }
 }
 
 async function quoteSubscriptionAdmin(req, res, next) {
@@ -226,10 +195,7 @@ async function createSubscriptionAdmin(req, res, next) {
     });
   }
 
-  const quoteRequest = {
-    ...req,
-    body: { ...(req.body || {}) },
-  };
+  const quoteRequest = cloneRequestWithBody(req, { ...(req.body || {}) });
   const quoteCaptured = await invokeCaptured(subscriptionCreationController.quoteSubscriptionAdmin, quoteRequest, next);
   if (quoteCaptured.statusCode >= 400 || !quoteCaptured.payload || quoteCaptured.payload.status !== true) {
     return res.status(quoteCaptured.statusCode).json(quoteCaptured.payload);
@@ -255,20 +221,23 @@ async function createSubscriptionAdmin(req, res, next) {
   const originalPayment = req.body && req.body.payment && typeof req.body.payment === "object"
     ? req.body.payment
     : {};
-  const coreRequest = {
-    ...req,
-    body: {
-      ...(req.body || {}),
-      payment: {
-        ...originalPayment,
-        method: "cash",
-        status: "paid",
-        collectedAmountHalala: totalHalala,
-        paidAt: originalPayment.paidAt || new Date().toISOString(),
-      },
-      source: req.body && req.body.source || "dashboard_subscription_creation",
+  const recordingSource = selection.method === "visa"
+    ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
+    : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE;
+  const coreRequest = cloneRequestWithBody(req, {
+    ...(req.body || {}),
+    payment: {
+      ...originalPayment,
+      // The established activation transaction validates the internal cash shape.
+      // Payment model normalization uses the dedicated source to atomically persist
+      // the user-selected public method before the transaction commits.
+      method: "cash",
+      status: "paid",
+      collectedAmountHalala: totalHalala,
+      paidAt: originalPayment.paidAt || new Date().toISOString(),
     },
-  };
+    source: recordingSource,
+  });
 
   const createCaptured = await invokeCaptured(subscriptionCreationController.createSubscriptionAdmin, coreRequest, next);
   if (createCaptured.statusCode >= 400 || !createCaptured.payload || createCaptured.payload.status !== true) {
@@ -277,53 +246,57 @@ async function createSubscriptionAdmin(req, res, next) {
 
   const subscriptionId = extractSubscriptionId(createCaptured.payload);
   if (!subscriptionId) {
-    return res.status(500).json({
-      status: false,
-      message: "Subscription was created but its identifier was not returned",
-      messageAr: "تم إنشاء الاشتراك لكن لم يتم إرجاع معرّف الاشتراك",
-      error: { code: "SUBSCRIPTION_ID_MISSING" },
-    });
-  }
-
-  try {
-    const payment = await persistRecordedPayment({
-      subscriptionId,
-      userId: coreRequest.body.userId,
-      method: selection.method,
-      amountHalala: totalHalala,
-      currency,
-      req,
-    });
-    const paymentResponse = buildPaymentResponse(payment, selection.method, selection.defaulted);
-    const payload = {
+    return res.status(createCaptured.statusCode).json({
       ...createCaptured.payload,
-      data: {
-        ...createCaptured.payload.data,
-        payment: paymentResponse,
-        paymentMethod: selection.method,
-      },
       meta: {
         ...(createCaptured.payload.meta || {}),
-        payment: paymentResponse,
         paymentMethod: selection.method,
         paymentGatewayUsed: false,
       },
-    };
-    return res.status(createCaptured.statusCode).json(payload);
-  } catch (err) {
-    return res.status(500).json({
-      status: false,
-      message: "Subscription was created but payment method recording failed",
-      messageAr: "تم إنشاء الاشتراك لكن تعذر تسجيل طريقة الدفع",
-      error: { code: "PAYMENT_RECORDING_FAILED", message: err.message },
-      data: { subscriptionId },
     });
   }
+
+  let payment = null;
+  try {
+    payment = await Payment.findOne({
+      subscriptionId,
+      type: "subscription_activation",
+      status: "paid",
+    }).sort({ createdAt: -1 }).lean();
+  } catch (_err) {
+    // Creation already committed atomically. The response can safely use quote data.
+  }
+  await correctPaymentActivityLogBestEffort({
+    subscriptionId,
+    payment,
+    method: selection.method,
+    amountHalala: totalHalala,
+  });
+
+  const paymentResponse = buildPaymentResponse(payment, selection.method, selection.defaulted, {
+    amountHalala: totalHalala,
+    currency,
+  });
+  return res.status(createCaptured.statusCode).json({
+    ...createCaptured.payload,
+    data: {
+      ...createCaptured.payload.data,
+      payment: paymentResponse,
+      paymentMethod: selection.method,
+    },
+    meta: {
+      ...(createCaptured.payload.meta || {}),
+      payment: paymentResponse,
+      paymentMethod: selection.method,
+      paymentGatewayUsed: false,
+    },
+  });
 }
 
 module.exports = {
   PAYMENT_METHODS,
   buildPaymentResponse,
+  cloneRequestWithBody,
   createSubscriptionAdmin,
   decorateQuotePayload,
   extractQuoteTotalHalala,
