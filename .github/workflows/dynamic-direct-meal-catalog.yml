@@ -11,6 +11,7 @@ on:
       - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
       - "tests/mobileApiContracts.test.js"
       - "scripts/run-critical-tests.sh"
+      - "scripts/validate-backend.js"
       - ".github/workflows/dynamic-direct-meal-catalog.yml"
   workflow_dispatch:
 
@@ -34,22 +35,7 @@ jobs:
       - name: Mobile API contracts
         run: npm run test:mobile-contracts
       - name: Backend validation
-        id: backend_validation
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run validate:backend 2>&1 | tee validate-backend.log
-      - name: Upload backend validation log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: validate-backend-log
-          path: validate-backend.log
-          if-no-files-found: error
-      - name: Enforce backend validation result
-        if: steps.backend_validation.outcome == 'failure'
-        run: exit 1
+        run: npm run validate:backend
       - name: Dynamic catalog regression
         run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
       - name: Source kind compatibility
