@@ -54,13 +54,26 @@ jobs:
           target.write_text(text)
           PY
       - name: Run focused integration suite
+        id: focused
+        continue-on-error: true
         shell: bash
         env:
           NODE_ENV: test
           USE_MONGODB_MEMORY_REPLSET: "true"
           JWT_SECRET: supersecret
           DASHBOARD_JWT_SECRET: dashboardsecret
-        run: npm run test:integration
+        run: |
+          set -o pipefail
+          npm run test:integration 2>&1 | tee meal-planner-integration.log
+      - name: Upload focused integration log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meal-planner-integration-log
+          path: meal-planner-integration.log
+      - name: Enforce focused integration result
+        if: steps.focused.outcome != 'success'
+        run: exit 1
       - name: Remove temporary workflow and commit
         if: success()
         shell: bash
