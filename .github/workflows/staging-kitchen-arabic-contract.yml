@@ -41,6 +41,8 @@ jobs:
       DASHBOARD_JWT_SECRET: staging-dashboard-test-secret
     steps:
       - name: Publish pending status
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,7 +73,8 @@ jobs:
       - name: Verify application startup
         run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('staging app startup passed')"
       - name: Publish final status
-        if: always()
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
