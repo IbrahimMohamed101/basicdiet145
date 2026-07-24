@@ -9,6 +9,7 @@ on:
       - "src/services/dashboard/**"
       - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
+      - "tests/kitchenArabicFallbackKeys.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -19,6 +20,7 @@ on:
       - "src/services/dashboard/**"
       - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
+      - "tests/kitchenArabicFallbackKeys.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -58,6 +60,8 @@ jobs:
         run: npm run validate:backend
       - name: Verify catalog authority over poisoned snapshots
         run: node tests/kitchenArabicCatalogAuthority.test.js
+      - name: Verify Arabic fallback identities
+        run: node tests/kitchenArabicFallbackKeys.test.js
       - name: Send multiple staging API requests
         run: node tests/stagingKitchenArabicApiRequests.test.js
       - name: Verify kitchen preparation contract
