@@ -31,6 +31,10 @@ require("../services/installDashboardDeliverySlotCompatibility");
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
 require("../services/orders/installWeightPricingAuthority");
+// The published product/group relations are the one-time carb source of truth.
+// Install this before the gram decorator so every database-authorized carb gets
+// the same free 50g contract and order routes capture the final service export.
+require("../services/installOneTimeCarbCatalogAuthority");
 // One-time Builder carbs may be included by grams without an added price. Apply
 // this after menu deduplication/weight pricing and before order routes capture
 // menu and pricing service exports.
