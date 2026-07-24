@@ -44,6 +44,9 @@ jobs:
       - name: Validate backend syntax and composition
         run: npm run validate:backend
 
+      - name: Verify pickup reservation balance lifecycle
+        run: NODE_ENV=test node tests/subscriptionBalancePolicy.test.js
+
       - name: Run final release gates
         id: final_release_gates
         continue-on-error: true
