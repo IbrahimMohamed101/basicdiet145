@@ -7,6 +7,7 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/dashboard/**"
+      - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
@@ -16,6 +17,7 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/dashboard/**"
+      - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
