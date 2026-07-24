@@ -43,6 +43,9 @@ require("../services/dashboard/installKitchenCatalogNameResolution");
 // products, proteins, carbs, options, salads, and add-ons from the live bilingual
 // catalog before DTO builders capture the payload service.
 require("../services/dashboard/installKitchenArabicCatalogAuthority");
+// An add-on plan describes allowance and pricing; it is never the selected food
+// product. Keep a missing product explicit instead of displaying the plan as food.
+require("../services/dashboard/installKitchenAddonProductIdentityGuard");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
