@@ -14,7 +14,7 @@ const Plan = require("../src/models/Plan");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
-const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
+const ActivityLog = require("../src/models/ActivityLog");
 const ActivityLog = require("../src/models/ActivityLog");
 const Delivery = require("../src/models/Delivery");
 const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionTimelineService");
@@ -602,8 +602,14 @@ async function runTests() {
     const sub1AfterCashier = await Subscription.findById(sub1._id).lean();
     assert.strictEqual(sub1AfterCashier.remainingMeals, 19, "Remaining meals correctly decoupled from calendar and decremented");
     
-    const auditLogs = await SubscriptionAuditLog.find({ entityId: sub1._id, action: "cashier_manual_consumption" }).lean();
-    assert.strictEqual(auditLogs.length, 1, "Audit log correctly generated");
+    const auditLogs = await ActivityLog.find({
+      entityType: "subscription",
+      entityId: sub1._id,
+      action: "manual_subscription_meal_deduction",
+    }).lean();
+    assert.strictEqual(auditLogs.length, 1, "Canonical manual deduction audit log correctly generated");
+    assert.strictEqual(auditLogs[0].meta.reason, "cashier_manual_consumption", "Audit reason preserves the cashier compatibility source");
+    assert.strictEqual(auditLogs[0].meta.deductedRegularMeals, 7, "Audit log records the exact deducted meal count");
     
     // Test 6: Cashier cannot consume more than remainingMeals
     try {
