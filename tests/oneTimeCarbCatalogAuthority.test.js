@@ -193,6 +193,9 @@ async function main() {
 
     const restoredOption = options.find((option) => option.key === "creamy_pasta");
     const priced = await menuPricingService.priceMenuCart({
+      userId: "test-user",
+      fulfillmentMethod: "pickup",
+      requestBody: {},
       items: [{
         productId: String(product._id),
         qty: 1,
