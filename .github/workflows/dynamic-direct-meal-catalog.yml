@@ -1,0 +1,33 @@
+name: Dynamic Direct Meal Catalog
+
+on:
+  pull_request:
+    paths:
+      - "src/services/installDynamicDirectMealCatalogPolicy.js"
+      - "src/routes/index.js"
+      - "tests/dynamicDirectMealCatalogPolicy.test.js"
+      - "scripts/run-critical-tests.sh"
+      - ".github/workflows/dynamic-direct-meal-catalog.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run dynamic catalog regression
+        run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
+      - name: Run Meal Builder closure
+        run: npm run test:meal-builder-backend-closure
