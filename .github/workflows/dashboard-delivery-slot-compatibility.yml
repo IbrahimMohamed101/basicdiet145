@@ -1,0 +1,48 @@
+name: Dashboard delivery slot compatibility
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installDashboardDeliverySlotCompatibility.js"
+      - "tests/dashboardDeliverySlotCompatibility.test.js"
+      - ".github/workflows/dashboard-delivery-slot-compatibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      JWT_SECRET: dashboard-delivery-slot-test-secret
+      DASHBOARD_JWT_SECRET: dashboard-delivery-slot-dashboard-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installDashboardDeliverySlotCompatibility.js
+          node -c tests/dashboardDeliverySlotCompatibility.test.js
+
+      - name: Verify delivery slot compatibility
+        run: node tests/dashboardDeliverySlotCompatibility.test.js
+
+      - name: Verify dashboard subscription contract
+        run: node tests/dashboardSubscriptionCreationContract.test.js
