@@ -8,7 +8,7 @@ function normalizeOptionalProviderIdentifier(value) {
 
 const PaymentSchema = new mongoose.Schema(
   {
-    provider: { type: String, enum: ["moyasar", "cash"], required: true },
+    provider: { type: String, enum: ["moyasar", "cash", "manual"], required: true },
     type: {
       type: String,
       enum: [
