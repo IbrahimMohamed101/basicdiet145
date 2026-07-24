@@ -13,6 +13,9 @@ const DashboardUser = require("../src/models/DashboardUser");
 const opsReadServiceV2 = require("../src/services/dashboard/opsReadServiceV2");
 const dashboardDtoService = require("../src/services/dashboard/dashboardDtoService");
 const { DASHBOARD_JWT_SECRET } = require("../src/services/dashboardTokenService");
+const {
+  validateKitchenOperationsResponse,
+} = require("../src/contracts/kitchenArabicResponseContract");
 
 const IDS = Object.freeze({
   dashboardUser: "507f191e810c19729de88001",
@@ -112,6 +115,7 @@ function buildDto(lang) {
 }
 
 function assertArabicResponse(body, requestLabel) {
+  validateKitchenOperationsResponse(body);
   assert.strictEqual(body.status, true, `${requestLabel}: status`);
   assert(Array.isArray(body.data) && body.data.length === 1, `${requestLabel}: one operation expected`);
   const card = body.data[0].kitchen.cards[0];
@@ -127,6 +131,21 @@ function assertArabicResponse(body, requestLabel) {
   const serialized = JSON.stringify(body.data[0].kitchen);
   assert(!serialized.includes("[object Object]"), `${requestLabel}: object coercion`);
   assert(!serialized.includes('"ar":"chicken"'), `${requestLabel}: English must not leak into Arabic`);
+}
+
+function responseSummary(response, label) {
+  const operation = response.body.data && response.body.data[0];
+  const card = operation && operation.kitchen && operation.kitchen.cards && operation.kitchen.cards[0];
+  return {
+    request: label,
+    httpStatus: response.status,
+    responseStatus: response.body.status,
+    title: card && card.title,
+    titleI18n: card && card.titleI18n,
+    protein: card && card.components && card.components.protein,
+    carbs: card && card.components && card.components.carbs,
+    lines: card && card.lines,
+  };
 }
 
 (async function run() {
@@ -173,6 +192,7 @@ function assertArabicResponse(body, requestLabel) {
       .get("/api/dashboard/ops/list?date=2026-07-25")
       .set({ ...auth, "Accept-Language": "en" });
     assert.strictEqual(enPrimary.status, 200, JSON.stringify(enPrimary.body));
+    validateKitchenOperationsResponse(enPrimary.body);
     const enCard = enPrimary.body.data[0].kitchen.cards[0];
     assert.strictEqual(enCard.titleI18n.ar, "دجاج + أرز أبيض");
     assert.strictEqual(enCard.titleI18n.en, "Chicken + White Rice");
@@ -184,6 +204,17 @@ function assertArabicResponse(body, requestLabel) {
     assert.strictEqual(missingDate.status, 400);
     assert.strictEqual(missingDate.body.ok, false);
 
+    console.log(JSON.stringify([
+      responseSummary(arPrimary, "GET /api/dashboard/ops/list Accept-Language=ar"),
+      responseSummary(arAlias, "GET /api/dashboard/operations/list Accept-Language=ar-SA"),
+      responseSummary(enPrimary, "GET /api/dashboard/ops/list Accept-Language=en"),
+      {
+        request: "GET /api/dashboard/ops/list without date",
+        httpStatus: missingDate.status,
+        responseStatus: missingDate.body.status,
+        errorCode: missingDate.body.error && missingDate.body.error.code,
+      },
+    ], null, 2));
     console.log("Staging kitchen API requests passed: 4 requests");
   } finally {
     DashboardUser.findById = originalFindById;
