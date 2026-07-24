@@ -203,7 +203,7 @@ async function main() {
 
     // ── Test 3: live direct catalog membership + legacy mobile payload ──────────
     // Older published versions stored direct cards as `sandwich`. The public
-    // catalog canonicalizes them to `full_meal_product`, while live standalone
+    // contract now exposes one canonical live-catalog card, while standalone
     // products are accepted even when they are absent from historical stored IDs.
     {
       const now = new Date();
@@ -296,16 +296,32 @@ async function main() {
       const res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const directSection = res.body.data.builderCatalog.sections.find(
-        (section) => section.key === "legacy_sandwiches"
+        (section) => section.key === "sandwich"
       );
-      assert(directSection, "legacy direct section must remain visible in the public planner");
-      assert.strictEqual(
-        directSection.products[0].selectionType,
-        MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
-        "public planner must expose the canonical direct-product selection type"
+      assert(directSection, "canonical live direct-meal section must be present");
+      const directProductIds = directSection.products.map(
+        (product) => String(product.productId || product.id)
+      );
+      assert(
+        directProductIds.includes(String(fixture.sandwichProduct._id)),
+        "legacy sandwich product must be surfaced by the live catalog"
+      );
+      assert(
+        directProductIds.includes(String(fixture.pastaProduct._id)),
+        "unconfigured standalone product must be surfaced by the live catalog"
+      );
+      assert(
+        directSection.products.every(
+          (product) =>
+            product.selectionType === MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT &&
+            product.action?.type === "direct_add" &&
+            product.action?.requiresBuilder === false &&
+            product.action?.treatAsFullMeal === true
+        ),
+        "public live direct-meal items must preserve the canonical Flutter action contract"
       );
 
-      console.log("✓ Test 3 PASSED: live direct membership validates canonical full_meal_product payloads");
+      console.log("✓ Test 3 PASSED: live direct catalog validates canonical full_meal_product payloads");
     }
 
     console.log("\nAll Full Meal Product Contract tests passed!");
