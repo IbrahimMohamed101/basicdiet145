@@ -31,6 +31,10 @@ require("../services/installDashboardDeliverySlotCompatibility");
 // checkout filters stale product links instead of rejecting the whole plan, and
 // still permits a temporarily empty product catalog.
 require("../services/installSubscriptionAddonPlanAvailabilityPolicy");
+// Protein/carb ids may belong to the live MenuOption catalog rather than the
+// legacy Builder collections. Resolve both sources before ops readers capture
+// the kitchen catalog service so every returned component has its real name.
+require("../services/dashboard/installKitchenCatalogNameResolution");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
