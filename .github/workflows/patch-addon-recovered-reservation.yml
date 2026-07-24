@@ -1,0 +1,49 @@
+name: Patch recovered add-on reservation expectation
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+      - name: Align recovered balance expectation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path('tests/subscriptionAddonEntitlementAuthority.integration.test.js')
+          text = target.read_text()
+          old = '    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 1);'
+          new = '''    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 0, "Saving the recovered future-day selection does not consume before fulfillment");
+              assert.strictEqual(repairedRecoveredMissing.addonBalance[0].reservedQty, 1, "Saving the recovered future-day selection reserves one included add-on");
+              assert.strictEqual(
+                repairedRecoveredMissing.addonBalance[0].purchasedQty,
+                repairedRecoveredMissing.addonBalance[0].remainingQty
+                  + repairedRecoveredMissing.addonBalance[0].reservedQty
+                  + repairedRecoveredMissing.addonBalance[0].consumedQty,
+                "Recovered add-on balance preserves the purchased = remaining + reserved + consumed invariant"
+              );'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one target assertion, found {text.count(old)}')
+          target.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/patch-addon-recovered-reservation.yml').unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/subscriptionAddonEntitlementAuthority.integration.test.js .github/workflows/patch-addon-recovered-reservation.yml
+          git commit -m "test: align recovered add-on reservation lifecycle"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
