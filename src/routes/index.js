@@ -39,6 +39,10 @@ require("../services/installCurrentSubscriptionOverviewFlutterCompatibility");
 // legacy Builder collections. Resolve both sources before ops readers capture
 // the kitchen catalog service so every returned component has its real name.
 require("../services/dashboard/installKitchenCatalogNameResolution");
+// Snapshot labels are historical evidence, not the food-name authority. Resolve
+// products, proteins, carbs, options, salads, and add-ons from the live bilingual
+// catalog before DTO builders capture the payload service.
+require("../services/dashboard/installKitchenArabicCatalogAuthority");
 // Operations cards are a food-preparation contract. Install before dashboard
 // route modules capture DTO builders or the canonical serializer.
 require("../services/dashboard/installKitchenPreparationContract");
