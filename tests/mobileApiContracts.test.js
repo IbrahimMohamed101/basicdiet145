@@ -86,6 +86,18 @@ function findProduct(menu, key) {
   return flattenProducts(menu).find((product) => product.key === key);
 }
 
+function findOrderableFixedProduct(menu) {
+  return flattenProducts(menu).find((product) => {
+    if (!product || product.key === "basic_salad") return false;
+    if (product.pricingModel !== "fixed") return false;
+    if (product.requiresBuilder === true) return false;
+    if (!Number.isInteger(product.priceHalala) || product.priceHalala <= 0) return false;
+    return !(product.optionGroups || []).some(
+      (group) => Number(group.minSelections || 0) > 0
+    );
+  });
+}
+
 function selectedRequiredOptions(product) {
   return (product.optionGroups || []).flatMap((group) => {
     const count = Number(group.minSelections || 0);
@@ -255,11 +267,11 @@ async function cleanupCatalog() {
       const category = res.body.data.categories[0];
       assert(Array.isArray(category.products), "category.products is array");
       assert(!category.ui || Object.keys(category.ui).length === 0, "category visual ui is omitted from mobile contract");
-      const water = findProduct(res.body.data, "water");
+      const fixedProduct = findOrderableFixedProduct(res.body.data);
       const basicSalad = findProduct(res.body.data, "basic_salad");
-      assert(water, "water product exists");
+      assert(fixedProduct, "an orderable fixed-price product exists");
       assert(basicSalad, "basic_salad product exists");
-      assertMenuProductContract(water, "water");
+      assertMenuProductContract(fixedProduct, `fixedProduct(${fixedProduct.key})`);
       assertMenuProductContract(basicSalad, "basic_salad");
 
       orderBody = {
@@ -271,7 +283,7 @@ async function cleanupCatalog() {
         },
         items: [
           {
-            productId: water.id || water._id,
+            productId: fixedProduct.id || fixedProduct._id,
             qty: 2,
             selectedOptions: [],
           },
