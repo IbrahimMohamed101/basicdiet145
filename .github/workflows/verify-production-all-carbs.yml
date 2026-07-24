@@ -1,0 +1,105 @@
+name: Verify production all carbs
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/verify-production-all-carbs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for Railway deployment and verify carbs
+        env:
+          MENU_URL: https://basicdiet145-production-51e9.up.railway.app/api/orders/menu?includePublicV2=true&lang=en
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          success=0
+          for attempt in $(seq 1 30); do
+            echo "Production verification attempt ${attempt}"
+            if curl --fail --silent --show-error --max-time 30 \
+              --retry 2 --retry-all-errors \
+              "$MENU_URL" -o verification/menu.json; then
+              if node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('verification/menu.json', 'utf8'));
+          if (body.status !== true || !body.data) process.exit(1);
+          const expected = [
+            'vermicelli_rice',
+            'yellow_rice',
+            'vegetable_rice',
+            'white_rice',
+            'mashed_potatoes',
+            'creamy_pasta',
+            'red_sauce_pasta',
+            'mixed_vegetables',
+            'roasted_potatoes',
+            'sweet_potatoes',
+          ];
+          const products = (body.data.categories || []).flatMap((category) => category.products || []);
+          const basicMeal = products.find((product) => product.key === 'basic_meal');
+          if (!basicMeal) process.exit(1);
+          const carbGroup = (basicMeal.optionGroups || []).find((group) => group.key === 'carbs');
+          if (!carbGroup) process.exit(1);
+          const keys = (carbGroup.options || []).map((option) => option.key);
+          const unique = [...new Set(keys)];
+          if (unique.length !== keys.length) process.exit(1);
+          if (JSON.stringify(keys) !== JSON.stringify(expected)) process.exit(1);
+          if (!(carbGroup.options || []).every((option) => (
+            option.extraWeightUnitGrams === 50
+            && option.extraWeightPriceHalala === 0
+          ))) process.exit(1);
+
+          const publicProducts = (body.data.publicMenuV2?.sections || []).flatMap((section) => section.products || []);
+          const publicBasicMeal = publicProducts.find((product) => product.key === 'basic_meal');
+          const publicCarbs = (publicBasicMeal?.optionGroups || []).find((group) => group.key === 'carbs');
+          const publicKeys = (publicCarbs?.options || []).map((option) => option.key);
+          if (JSON.stringify(publicKeys) !== JSON.stringify(expected)) process.exit(1);
+
+          fs.writeFileSync('verification/result.json', JSON.stringify({
+            verifiedAt: new Date().toISOString(),
+            endpoint: 'GET /api/orders/menu',
+            productId: basicMeal.id,
+            groupId: carbGroup.id || carbGroup.groupId,
+            count: keys.length,
+            keys,
+            options: carbGroup.options.map((option) => ({
+              id: option.id,
+              key: option.key,
+              nameI18n: option.nameI18n,
+              extraWeightUnitGrams: option.extraWeightUnitGrams,
+              extraWeightPriceHalala: option.extraWeightPriceHalala,
+            })),
+          }, null, 2));
+          console.log(`Verified ${keys.length} production carb options: ${keys.join(', ')}`);
+          NODE
+              then
+                success=1
+                break
+              fi
+            fi
+            sleep 10
+          done
+          if [ "$success" -ne 1 ]; then
+            echo "Production did not return the expected complete carb catalog"
+            cat verification/menu.json || true
+            exit 1
+          fi
+
+      - name: Upload verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-all-carbs-verification
+          path: verification/
+          if-no-files-found: error
