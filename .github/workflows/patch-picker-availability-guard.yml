@@ -25,82 +25,81 @@ jobs:
 
           target = Path('src/services/orders/menuCatalogAdminService.js')
           text = target.read_text()
-          marker = '''  async function listProducts(options = {}) {
-              const query = buildProductFilter(options);'''
+
+          marker = '  async function listProducts(options = {}) {'
           helper = '''  function matchesPickerAvailability(row, options = {}) {
-              if (!row || options.includeInactive) return Boolean(row);
-              if (row.isActive !== true) return false;
+            if (!row || options.includeInactive) return Boolean(row);
+            if (row.isActive !== true) return false;
 
-              const hasVisibleFilter = options.isVisible !== undefined
-                && options.isVisible !== null
-                && String(options.isVisible).trim() !== "";
-              const expectedVisible = hasVisibleFilter
-                ? normalizeBoolean(options.isVisible, "isVisible")
-                : true;
-              if (Boolean(row.isVisible !== false) !== expectedVisible) return false;
+            const hasVisibleFilter = options.isVisible !== undefined
+              && options.isVisible !== null
+              && String(options.isVisible).trim() !== "";
+            const expectedVisible = hasVisibleFilter
+              ? normalizeBoolean(options.isVisible, "isVisible")
+              : true;
+            if (Boolean(row.isVisible !== false) !== expectedVisible) return false;
 
-              const hasAvailableFilter = options.isAvailable !== undefined
-                && options.isAvailable !== null
-                && String(options.isAvailable).trim() !== "";
-              const expectedAvailable = hasAvailableFilter
-                ? normalizeBoolean(options.isAvailable, "isAvailable")
-                : true;
-              if (Boolean(row.isAvailable !== false) !== expectedAvailable) return false;
+            const hasAvailableFilter = options.isAvailable !== undefined
+              && options.isAvailable !== null
+              && String(options.isAvailable).trim() !== "";
+            const expectedAvailable = hasAvailableFilter
+              ? normalizeBoolean(options.isAvailable, "isAvailable")
+              : true;
+            if (Boolean(row.isAvailable !== false) !== expectedAvailable) return false;
 
-              return true;
-            }
+            return true;
+          }
 
-            async function listProducts(options = {}) {
-              const query = buildProductFilter(options);'''
+          async function listProducts(options = {}) {'''
           if text.count(marker) != 1:
               raise SystemExit(f'Expected one listProducts marker, found {text.count(marker)}')
           text = text.replace(marker, helper, 1)
 
           old_no_page = '''    if (!pagination) {
-                const rows = await find;
-                return rows.map(serializeFn);
-              }'''
+              const rows = await find;
+              return rows.map(serializeFn);
+            }'''
           new_no_page = '''    if (!pagination) {
-                const rows = await find;
-                const filteredRows = isPickerView
-                  ? rows.filter((row) => matchesPickerAvailability(row, options))
-                  : rows;
-                return filteredRows.map(serializeFn);
-              }'''
+              const rows = await find;
+              const filteredRows = isPickerView
+                ? rows.filter((row) => matchesPickerAvailability(row, options))
+                : rows;
+              return filteredRows.map(serializeFn);
+            }'''
           if text.count(old_no_page) != 1:
               raise SystemExit(f'Expected one non-paginated product block, found {text.count(old_no_page)}')
           text = text.replace(old_no_page, new_no_page, 1)
 
           old_page = '''    const [rows, total] = await Promise.all([
-                find.skip(pagination.skip).limit(pagination.limit),
-                MenuProduct.countDocuments(query),
-              ]);
+              find.skip(pagination.skip).limit(pagination.limit),
+              MenuProduct.countDocuments(query),
+            ]);
 
-              return {
-                items: rows.map(serializeFn),'''
+            return {
+              items: rows.map(serializeFn),'''
           new_page = '''    const [rows, total] = await Promise.all([
-                find.skip(pagination.skip).limit(pagination.limit),
-                MenuProduct.countDocuments(query),
-              ]);
-              const filteredRows = isPickerView
-                ? rows.filter((row) => matchesPickerAvailability(row, options))
-                : rows;
+              find.skip(pagination.skip).limit(pagination.limit),
+              MenuProduct.countDocuments(query),
+            ]);
+            const filteredRows = isPickerView
+              ? rows.filter((row) => matchesPickerAvailability(row, options))
+              : rows;
 
-              return {
-                items: filteredRows.map(serializeFn),'''
+            return {
+              items: filteredRows.map(serializeFn),'''
           if text.count(old_page) != 1:
               raise SystemExit(f'Expected one paginated product block, found {text.count(old_page)}')
           text = text.replace(old_page, new_page, 1)
 
           old_counts = '''      const products = await MenuProduct.find(productQuery).select("categoryId").lean();
-              const countMap = new Map();
-              for (const p of products) {'''
+            const countMap = new Map();
+            for (const p of products) {'''
           new_counts = '''      const productRows = await MenuProduct.find(productQuery)
-                .select("categoryId isActive isVisible isAvailable")
-                .lean();
-              const products = productRows.filter((row) => matchesPickerAvailability(row, options));
-              const countMap = new Map();
-              for (const p of products) {'''
+              .select("categoryId isActive isVisible isAvailable")
+              .lean();
+            const products = productRows.filter((row) => matchesPickerAvailability(row, options));
+            const countMap = new Map();
+            for (const p of products) {'''
           if text.count(old_counts) != 1:
               raise SystemExit(f'Expected one picker category count block, found {text.count(old_counts)}')
           text = text.replace(old_counts, new_counts, 1)
