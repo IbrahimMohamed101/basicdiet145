@@ -15,6 +15,7 @@ const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const ActivityLog = require("../src/models/ActivityLog");
+const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const Delivery = require("../src/models/Delivery");
 const { buildSubscriptionTimeline } = require("../src/services/subscription/subscriptionTimelineService");
 const { applyOperationalSkipForDate } = require("../src/services/subscription/subscriptionSkipService");
