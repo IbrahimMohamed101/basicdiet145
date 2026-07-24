@@ -117,6 +117,8 @@ async function run() {
       "meal_product_classification.v1"
     );
 
+    // Keep an arbitrary legacy/manual direct card in the draft to prove that
+    // public membership comes from the live catalog rather than its stored IDs.
     const draft = await request(app)
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
@@ -155,24 +157,29 @@ async function run() {
     );
     expectStatus(publicMenu, 200, "public Meal Planner menu");
     const section = publicMenu.body.data.builderCatalog.sections.find(
-      (item) => item.key === "ready_meals"
+      (item) => item.key === "sandwich"
     );
-    assert.ok(section, "ready meals section must reach the public contract");
-    const product = section.products.find(
-      (item) => item.productId === String(readyMeal._id)
-    );
-    assert.ok(product, "production ready meal must reach the public contract");
-    assert.strictEqual(product.selectionType, "full_meal_product");
-    assert.deepStrictEqual(product.action, {
-      type: "direct_add",
-      requiresBuilder: false,
-      treatAsFullMeal: true,
-    });
+    assert.ok(section, "canonical live direct-meal section must reach the public contract");
 
-    assert.ok(String(sandwich._id));
-    assert.ok(String(explicitFullMeal._id));
-    assert.ok(String(addon._id));
-    console.log("dashboard Meal Builder full meal end-to-end passed");
+    const byProductId = new Map(
+      section.products.map((item) => [String(item.productId || item.id), item])
+    );
+    for (const expectedProduct of [readyMeal, sandwich, explicitFullMeal]) {
+      const product = byProductId.get(String(expectedProduct._id));
+      assert.ok(product, `${expectedProduct.key} must be sourced from the live catalog`);
+      assert.strictEqual(product.selectionType, "full_meal_product");
+      assert.deepStrictEqual(product.action, {
+        type: "direct_add",
+        requiresBuilder: false,
+        treatAsFullMeal: true,
+      });
+    }
+    assert.ok(
+      !byProductId.has(String(addon._id)),
+      "add-on products must not leak into the live direct-meal section"
+    );
+
+    console.log("dashboard Meal Builder live full meal end-to-end passed");
   } finally {
     await disconnect();
   }
