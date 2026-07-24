@@ -1,0 +1,54 @@
+name: Apply day policy unit stub
+
+on:
+  push:
+    branches:
+      - agent/dynamic-direct-meal-catalog-safe
+    paths:
+      - .github/workflows/apply-day-policy-unit-stub.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+          fetch-depth: 0
+      - name: Apply exact dependency stub and self-delete
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          target = Path("tests/subscriptionDayModificationPolicy.test.js")
+          text = target.read_text(encoding="utf-8")
+
+          marker = '''function assert(condition, message) {\n  if (!condition) {\n    throw new Error(message || "Assertion failed");\n  }\n}\n\n'''
+          helper = marker + '''async function openRestaurantStub({ pickupLocationId, deliveryMode } = {}) {\n  return {\n    open: true,\n    pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,\n    deliveryMode: deliveryMode || null,\n  };\n}\n\nfunction withPolicyTestDependencies(payload) {\n  return {\n    ...payload,\n    assertRestaurantOpenForOrderingFn: payload && payload.assertRestaurantOpenForOrderingFn\n      ? payload.assertRestaurantOpenForOrderingFn\n      : openRestaurantStub,\n  };\n}\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("Expected assertion helper marker exactly once")
+          text = text.replace(marker, helper, 1)
+
+          old_allowed = '  const result = await assertSubscriptionDayModifiable(payload);\n'
+          new_allowed = '  const result = await assertSubscriptionDayModifiable(withPolicyTestDependencies(payload));\n'
+          old_rejected = '    await assertSubscriptionDayModifiable(payload);\n'
+          new_rejected = '    await assertSubscriptionDayModifiable(withPolicyTestDependencies(payload));\n'
+          if text.count(old_allowed) != 1 or text.count(old_rejected) != 1:
+              raise SystemExit("Expected policy invocation sites exactly once")
+          text = text.replace(old_allowed, new_allowed, 1)
+          text = text.replace(old_rejected, new_rejected, 1)
+          target.write_text(text, encoding="utf-8")
+          Path(".github/workflows/apply-day-policy-unit-stub.yml").unlink()
+          PY
+      - name: Commit isolated policy fixture
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionDayModificationPolicy.test.js .github/workflows/apply-day-policy-unit-stub.yml
+          git diff --cached --check
+          git commit -m "Isolate day modification policy unit test"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
