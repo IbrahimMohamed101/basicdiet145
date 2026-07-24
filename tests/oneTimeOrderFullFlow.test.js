@@ -61,8 +61,6 @@ function appAuth(userId) {
   return { Authorization: `Bearer ${token}`, "Accept-Language": "en" };
 }
 
-// function dashboardAuth replaced by helper
-
 function flattenProducts(menu) {
   return (menu.categories || []).flatMap((category) => (
     category.products || []
@@ -374,21 +372,38 @@ async function cleanupCatalog() {
       assert.strictEqual(canonicalRow.customer.name, expectedCustomerName);
       assert.deepStrictEqual(opsActionIds(canonicalRow), ["prepare", "cancel"]);
       assert.strictEqual(canonicalRow.kitchenDetails, undefined, "canonical DTO omits legacy kitchenDetails mirror");
-      const secondaryItem = canonicalRow.items.find((item) => item.productKey === secondaryProduct.key);
+      assert.strictEqual(canonicalRow.kitchen.version, "v2");
+      assert(Array.isArray(canonicalRow.kitchen.cards) && canonicalRow.kitchen.cards.length === 2, "canonical kitchen DTO has two cards");
+
+      const confirmedDetailRes = await api
+        .get(`/api/dashboard/orders/${createRes.body.data.orderId}`)
+        .set(adminHeaders);
+      expectStatus(confirmedDetailRes, 200, "confirmed order detail");
+      const confirmedDetail = confirmedDetailRes.body.data;
+      const secondaryItem = confirmedDetail.items.find((item) => (
+        item.productKey === secondaryProduct.key || item.productSnapshot?.key === secondaryProduct.key
+      ));
       const persistedSecondaryItem = createdOrder.items.find((item) => item.productSnapshot.key === secondaryProduct.key);
-      assert(secondaryItem, "canonical DTO includes the second selected product");
+      assert(secondaryItem, "order detail includes the second selected product");
       assert(persistedSecondaryItem, "persisted order includes the second selected product");
-      assert.strictEqual(secondaryItem.selectedOptions.length, persistedSecondaryItem.selectedOptions.length);
-      assert.strictEqual(new Set(secondaryItem.selectedOptions.map((option) => `${option.groupId}:${option.optionId}`)).size, secondaryItem.selectedOptions.length);
+      const detailSelectedOptions = secondaryItem.selectedOptions || [];
+      const persistedSelectedOptions = persistedSecondaryItem.selectedOptions || [];
+      assert.strictEqual(detailSelectedOptions.length, persistedSelectedOptions.length);
+      assert.strictEqual(new Set(detailSelectedOptions.map((option) => `${option.groupId}:${option.optionId}`)).size, detailSelectedOptions.length);
       assert.strictEqual(secondaryItem.pricingSnapshot.basePriceHalala, persistedSecondaryItem.pricingSnapshot.basePriceHalala);
       assert.strictEqual(secondaryItem.pricingSnapshot.optionsTotalHalala, persistedSecondaryItem.pricingSnapshot.optionsTotalHalala);
       assert.strictEqual(secondaryItem.pricingSnapshot.unitPriceHalala, persistedSecondaryItem.pricingSnapshot.unitPriceHalala);
       assert.strictEqual(secondaryItem.pricingSnapshot.lineTotalHalala, persistedSecondaryItem.pricingSnapshot.lineTotalHalala);
-      assert.strictEqual(canonicalRow.pricing.subtotalHalala, createdOrder.pricing.subtotalHalala);
-      assert.strictEqual(canonicalRow.pricing.vatHalala, createdOrder.pricing.vatHalala);
-      assert.strictEqual(canonicalRow.pricing.totalHalala, createdOrder.pricing.totalHalala);
+      assert.strictEqual(confirmedDetail.pricing.subtotalHalala, createdOrder.pricing.subtotalHalala);
+      assert.strictEqual(confirmedDetail.pricing.vatHalala, createdOrder.pricing.vatHalala);
+      assert.strictEqual(confirmedDetail.pricing.totalHalala, createdOrder.pricing.totalHalala);
       assert.strictEqual(canonicalRow.fulfillment.pickup.branchName.en, "Main Branch");
       assert.strictEqual(canonicalRow.fulfillment.pickup.pickupWindow, "18:00-20:00");
+      const secondarySnapshotName = persistedSecondaryItem.productSnapshot.name.en;
+      assert(
+        canonicalRow.kitchen.cards.some((card) => card.titleI18n?.en === secondarySnapshotName || card.title === secondarySnapshotName),
+        "canonical kitchen cards preserve the second product snapshot name"
+      );
 
       ({ listRow: canonicalRow } = await executeOpsAction("prepare", "in_preparation"));
       assert.deepStrictEqual(opsActionIds(canonicalRow), ["ready_for_pickup", "cancel"]);
@@ -400,7 +415,7 @@ async function cleanupCatalog() {
       ({ listRow: canonicalRow } = await executeOpsAction("fulfill", "fulfilled"));
       assert.deepStrictEqual(opsActionIds(canonicalRow), []);
 
-      let listRes = await api.get("/api/dashboard/orders").set(adminHeaders);
+      const listRes = await api.get("/api/dashboard/orders").set(adminHeaders);
       expectStatus(listRes, 200, "dashboard list");
       const dashboardOrder = listRes.body.data.items.find((item) => item.orderId === createRes.body.data.orderId);
       assert(dashboardOrder, "dashboard list includes fulfilled order for superadmin");
