@@ -1,4 +1,5 @@
 name: Isolated final backend gate
+# Runs the balance preflight before the full sequential release suite.
 
 on:
   pull_request:
