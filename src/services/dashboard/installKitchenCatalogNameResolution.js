@@ -1,18 +1,33 @@
 "use strict";
 
 const MenuOption = require("../../models/MenuOption");
+const CatalogItem = require("../../models/CatalogItem");
 
 const INSTALL_MARK = Symbol.for("basicdiet.dashboardKitchenCatalogNameResolution.installed");
 const WRAPPED_MARK = Symbol.for("basicdiet.dashboardKitchenCatalogNameResolution.wrapped");
 
 function scalarId(value) {
   if (value === undefined || value === null || value === "") return null;
-  if (value && typeof value === "object" && value._id) return scalarId(value._id);
   if (["string", "number"].includes(typeof value)) {
     const text = String(value).trim();
     return text || null;
   }
-  if (value && typeof value.toHexString === "function") return value.toHexString();
+  if (value && typeof value.toHexString === "function") {
+    try {
+      return String(value.toHexString()).trim() || null;
+    } catch (_) {
+      return null;
+    }
+  }
+  if (
+    value
+    && typeof value === "object"
+    && value._id !== undefined
+    && value._id !== null
+    && value._id !== value
+  ) {
+    return scalarId(value._id);
+  }
   return null;
 }
 
@@ -20,6 +35,16 @@ function scalarKey(value) {
   return ["string", "number"].includes(typeof value) && String(value).trim()
     ? String(value).trim()
     : null;
+}
+
+function hasLocalizedName(value) {
+  if (typeof value === "string") return Boolean(value.trim());
+  return Boolean(
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && ([value.ar, value.en].some((entry) => typeof entry === "string" && entry.trim()))
+  );
 }
 
 function emptyRefs() {
@@ -49,11 +74,11 @@ function collectGroupedOption(option, refs) {
   if (!option || typeof option !== "object") return;
   const groupKey = canonicalGroupKey(option);
   if (["protein", "proteins"].includes(groupKey)) {
-    addId(refs.proteinIds, option.optionId || option.id || option._id);
+    addId(refs.proteinIds, option.optionId || option.id || option._id || option.catalogItemId);
     addKey(refs.proteinKeys, option.optionKey || option.key);
   }
   if (["carb", "carbs", "carbohydrate", "carbohydrates", "starch", "starches"].includes(groupKey)) {
-    addId(refs.carbIds, option.optionId || option.id || option._id);
+    addId(refs.carbIds, option.optionId || option.id || option._id || option.catalogItemId);
     addKey(refs.carbKeys, option.optionKey || option.key);
   }
 }
@@ -72,7 +97,7 @@ function collectSlot(slot = {}, refs) {
     .concat(Array.isArray(slot.carbs) ? slot.carbs : [])
     .concat(slot.carbId ? [{ carbId: slot.carbId, key: slot.carbKey }] : [])) {
     if (!carb || typeof carb !== "object") continue;
-    addId(refs.carbIds, carb.carbId || carb.optionId || carb.id || carb._id);
+    addId(refs.carbIds, carb.carbId || carb.optionId || carb.id || carb._id || carb.catalogItemId);
     addKey(refs.carbKeys, carb.key || carb.optionKey || carb.carbKey);
   }
 
@@ -118,6 +143,14 @@ function mapCopy(value) {
   return value instanceof Map ? new Map(value) : new Map();
 }
 
+function rowIds(row = {}) {
+  return [...new Set([
+    scalarId(row._id),
+    scalarId(row.id),
+    scalarId(row.catalogItemId),
+  ].filter(Boolean))];
+}
+
 function mergeCatalogRows(catalogMaps = {}, refs = emptyRefs(), rows = []) {
   const merged = {
     ...catalogMaps,
@@ -131,30 +164,30 @@ function mergeCatalogRows(catalogMaps = {}, refs = emptyRefs(), rows = []) {
 
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== "object") continue;
-    const id = scalarId(row._id || row.id);
+    const ids = rowIds(row);
     const key = scalarKey(row.key);
     const proteinFamilyKey = scalarKey(row.proteinFamilyKey);
 
-    if (id) merged.optionById.set(id, row);
+    ids.forEach((id) => merged.optionById.set(id, row));
     if (key) merged.optionByKey.set(key, row);
 
     const isReferencedProtein = Boolean(
-      (id && refs.proteinIds.has(id))
+      ids.some((id) => refs.proteinIds.has(id))
       || (key && refs.proteinKeys.has(key))
       || (proteinFamilyKey && refs.proteinKeys.has(proteinFamilyKey))
     );
     if (isReferencedProtein) {
-      if (id) merged.proteinById.set(id, row);
+      ids.forEach((id) => merged.proteinById.set(id, row));
       if (key) merged.proteinByKey.set(key, row);
       if (proteinFamilyKey) merged.proteinByKey.set(proteinFamilyKey, row);
     }
 
     const isReferencedCarb = Boolean(
-      (id && refs.carbIds.has(id))
+      ids.some((id) => refs.carbIds.has(id))
       || (key && refs.carbKeys.has(key))
     );
     if (isReferencedCarb) {
-      if (id) merged.carbById.set(id, row);
+      ids.forEach((id) => merged.carbById.set(id, row));
       if (key) merged.carbByKey.set(key, row);
     }
   }
@@ -162,16 +195,61 @@ function mergeCatalogRows(catalogMaps = {}, refs = emptyRefs(), rows = []) {
   return merged;
 }
 
-function buildQuery(refs) {
+function optionQuery(refs) {
   const ids = [...new Set([...refs.proteinIds, ...refs.carbIds])];
   const keys = [...new Set([...refs.proteinKeys, ...refs.carbKeys])];
   const or = [];
-  if (ids.length) or.push({ _id: { $in: ids } });
+  if (ids.length) {
+    or.push({ _id: { $in: ids } });
+    or.push({ catalogItemId: { $in: ids } });
+  }
   if (keys.length) {
     or.push({ key: { $in: keys } });
     or.push({ proteinFamilyKey: { $in: keys } });
   }
   return or.length ? { $or: or } : null;
+}
+
+function catalogItemQuery(refs, linkedCatalogIds = []) {
+  const ids = [...new Set([
+    ...refs.proteinIds,
+    ...refs.carbIds,
+    ...linkedCatalogIds,
+  ])];
+  const keys = [...new Set([...refs.proteinKeys, ...refs.carbKeys])];
+  const or = [];
+  if (ids.length) or.push({ _id: { $in: ids } });
+  if (keys.length) or.push({ key: { $in: keys } });
+  return or.length ? { $or: or } : null;
+}
+
+function normalizeRows(menuOptions = [], catalogItems = []) {
+  const catalogById = new Map(
+    (Array.isArray(catalogItems) ? catalogItems : [])
+      .map((item) => [scalarId(item && item._id), item])
+      .filter(([id]) => Boolean(id))
+  );
+
+  const optionRows = (Array.isArray(menuOptions) ? menuOptions : []).map((option) => {
+    const linked = catalogById.get(scalarId(option && option.catalogItemId)) || null;
+    const linkedName = linked && (linked.nameI18n || linked.name);
+    return {
+      ...option,
+      key: option.key || (linked && linked.key) || null,
+      name: hasLocalizedName(linkedName) ? linkedName : option.name,
+      itemKind: (linked && linked.itemKind) || option.itemKind || null,
+    };
+  });
+
+  const catalogRows = (Array.isArray(catalogItems) ? catalogItems : []).map((item) => ({
+    _id: item._id,
+    catalogItemId: item._id,
+    key: item.key || null,
+    name: item.nameI18n || item.name,
+    itemKind: item.itemKind || null,
+  }));
+
+  return [...optionRows, ...catalogRows];
 }
 
 function installKitchenCatalogNameResolution() {
@@ -184,19 +262,31 @@ function installKitchenCatalogNameResolution() {
     const wrapped = async function buildResolvedKitchenCatalogMaps(documents, ...args) {
       const catalogMaps = await original.call(this, documents, ...args);
       const refs = collectOperationalOptionRefs(documents);
-      const query = buildQuery(refs);
+      const query = optionQuery(refs);
       if (!query) return catalogMaps;
 
-      const rows = await MenuOption.find(query)
-        .select("_id key name proteinFamilyKey displayCategoryKey selectionType")
+      const menuOptions = await MenuOption.find(query)
+        .select("_id catalogItemId key name proteinFamilyKey displayCategoryKey selectionType")
         .lean();
-      return mergeCatalogRows(catalogMaps, refs, rows);
+      const linkedCatalogIds = menuOptions
+        .map((row) => scalarId(row && row.catalogItemId))
+        .filter(Boolean);
+      const itemQuery = catalogItemQuery(refs, linkedCatalogIds);
+      const catalogItems = itemQuery
+        ? await CatalogItem.find(itemQuery).select("_id key nameI18n itemKind").lean()
+        : [];
+
+      return mergeCatalogRows(catalogMaps, refs, normalizeRows(menuOptions, catalogItems));
     };
     wrapped[WRAPPED_MARK] = true;
     service.buildKitchenCatalogMaps = wrapped;
   }
 
-  const verification = Object.freeze({ installed: true, kitchenCatalogWrapped: true });
+  const verification = Object.freeze({
+    installed: true,
+    kitchenCatalogWrapped: true,
+    menuOptionAndCatalogItemIdsSupported: true,
+  });
   globalThis[INSTALL_MARK] = verification;
   return verification;
 }
@@ -207,4 +297,5 @@ module.exports = {
   collectOperationalOptionRefs,
   installKitchenCatalogNameResolution,
   mergeCatalogRows,
+  normalizeRows,
 };
