@@ -69,10 +69,6 @@ function flattenProducts(menu) {
   ).map((product) => ({ ...product, categoryKey: category.key })));
 }
 
-function findProduct(menu, key) {
-  return flattenProducts(menu).find((product) => product.key === key);
-}
-
 function selectedRequiredOptions(product) {
   return (product.optionGroups || []).flatMap((group) => {
     const count = Number(group.minSelections || 0);
@@ -205,14 +201,14 @@ async function cleanupCatalog() {
       assert.strictEqual(menuRes.body.data.vatIncluded, true);
       assert.strictEqual(menuRes.body.data.delivery, undefined);
       assert(Array.isArray(menuRes.body.data.categories) && menuRes.body.data.categories.length > 0, "menu has categories");
-      assert(flattenProducts(menuRes.body.data).length > 0, "menu has products");
+      const menuProducts = flattenProducts(menuRes.body.data);
+      assert(menuProducts.length > 0, "menu has products");
 
-      const water = findProduct(menuRes.body.data, "water");
-      const basicSalad = findProduct(menuRes.body.data, "basic_salad");
-      assert(water, "water product exists");
-      assert(basicSalad, "basic_salad product exists");
-      assert.strictEqual(water.pricingModel, "fixed");
-      assert.strictEqual(basicSalad.pricingModel, "per_100g");
+      const fixedProducts = menuProducts.filter((product) => product.pricingModel === "fixed");
+      assert(fixedProducts.length >= 2, "menu has at least two ready fixed-price products");
+      const primaryProduct = fixedProducts[0];
+      const secondaryProduct = fixedProducts.find((product) => product.id !== primaryProduct.id);
+      assert(secondaryProduct, "a second fixed-price product exists");
 
       const fulfillmentDate = "2026-05-10";
       const orderBody = {
@@ -224,15 +220,14 @@ async function cleanupCatalog() {
         },
         items: [
           {
-            productId: water.id,
+            productId: primaryProduct.id,
             qty: 2,
-            selectedOptions: [],
+            selectedOptions: selectedRequiredOptions(primaryProduct),
           },
           {
-            productId: basicSalad.id,
+            productId: secondaryProduct.id,
             qty: 1,
-            weightGrams: 150,
-            selectedOptions: selectedRequiredOptions(basicSalad),
+            selectedOptions: selectedRequiredOptions(secondaryProduct),
           },
         ],
         successUrl: "basicdiet://orders/payment-success",
@@ -296,7 +291,10 @@ async function cleanupCatalog() {
       });
       const originalSnapshotNames = createdOrder.items.map((item) => item.productSnapshot.name.en);
 
-      await MenuProduct.updateOne({ _id: water.id }, { $set: { name: { en: `${TEST_TAG} Mutated Water`, ar: "ماء معدل" }, priceHalala: 999999 } });
+      await MenuProduct.updateOne(
+        { _id: primaryProduct.id },
+        { $set: { name: { en: `${TEST_TAG} Mutated Product`, ar: "منتج معدل" }, priceHalala: 999999 } }
+      );
       const snapshotAfterCatalogMutation = await Order.findById(createRes.body.data.orderId).lean();
       assert.deepStrictEqual(
         snapshotAfterCatalogMutation.items.map((item) => item.productSnapshot.name.en),
@@ -376,15 +374,16 @@ async function cleanupCatalog() {
       assert.strictEqual(canonicalRow.customer.name, expectedCustomerName);
       assert.deepStrictEqual(opsActionIds(canonicalRow), ["prepare", "cancel"]);
       assert.strictEqual(canonicalRow.kitchenDetails, undefined, "canonical DTO omits legacy kitchenDetails mirror");
-      const saladItem = canonicalRow.items.find((item) => item.productKey === "basic_salad");
-      const persistedSaladItem = createdOrder.items.find((item) => item.productSnapshot.key === "basic_salad");
-      assert(saladItem, "canonical DTO includes the basic salad item");
-      assert.strictEqual(saladItem.selectedOptions.length, persistedSaladItem.selectedOptions.length);
-      assert.strictEqual(new Set(saladItem.selectedOptions.map((option) => `${option.groupId}:${option.optionId}`)).size, saladItem.selectedOptions.length);
-      assert.strictEqual(saladItem.pricingSnapshot.basePriceHalala, persistedSaladItem.pricingSnapshot.basePriceHalala);
-      assert.strictEqual(saladItem.pricingSnapshot.optionsTotalHalala, persistedSaladItem.pricingSnapshot.optionsTotalHalala);
-      assert.strictEqual(saladItem.pricingSnapshot.unitPriceHalala, persistedSaladItem.pricingSnapshot.unitPriceHalala);
-      assert.strictEqual(saladItem.pricingSnapshot.lineTotalHalala, persistedSaladItem.pricingSnapshot.lineTotalHalala);
+      const secondaryItem = canonicalRow.items.find((item) => item.productKey === secondaryProduct.key);
+      const persistedSecondaryItem = createdOrder.items.find((item) => item.productSnapshot.key === secondaryProduct.key);
+      assert(secondaryItem, "canonical DTO includes the second selected product");
+      assert(persistedSecondaryItem, "persisted order includes the second selected product");
+      assert.strictEqual(secondaryItem.selectedOptions.length, persistedSecondaryItem.selectedOptions.length);
+      assert.strictEqual(new Set(secondaryItem.selectedOptions.map((option) => `${option.groupId}:${option.optionId}`)).size, secondaryItem.selectedOptions.length);
+      assert.strictEqual(secondaryItem.pricingSnapshot.basePriceHalala, persistedSecondaryItem.pricingSnapshot.basePriceHalala);
+      assert.strictEqual(secondaryItem.pricingSnapshot.optionsTotalHalala, persistedSecondaryItem.pricingSnapshot.optionsTotalHalala);
+      assert.strictEqual(secondaryItem.pricingSnapshot.unitPriceHalala, persistedSecondaryItem.pricingSnapshot.unitPriceHalala);
+      assert.strictEqual(secondaryItem.pricingSnapshot.lineTotalHalala, persistedSecondaryItem.pricingSnapshot.lineTotalHalala);
       assert.strictEqual(canonicalRow.pricing.subtotalHalala, createdOrder.pricing.subtotalHalala);
       assert.strictEqual(canonicalRow.pricing.vatHalala, createdOrder.pricing.vatHalala);
       assert.strictEqual(canonicalRow.pricing.totalHalala, createdOrder.pricing.totalHalala);
