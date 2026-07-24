@@ -10,6 +10,7 @@ on:
       - "src/routes/dashboardAccounting.js"
       - "src/models/Payment.js"
       - "tests/dashboardSubscriptionPaymentMethods.test.js"
+      - "tests/dashboardSubscriptionPaymentDailyReport.test.js"
       - "tests/dashboardSubscriptionCreationContract.test.js"
       - "tests/dashboardAccountingDailyReport.test.js"
       - ".github/workflows/dashboard-subscription-payment-methods.yml"
@@ -47,8 +48,11 @@ jobs:
           node --check src/routes/dashboardAccounting.js
           node --check src/models/Payment.js
           node --check tests/dashboardSubscriptionPaymentMethods.test.js
+          node --check tests/dashboardSubscriptionPaymentDailyReport.test.js
       - name: Verify cash and visa contract
         run: node tests/dashboardSubscriptionPaymentMethods.test.js 2>&1 | tee payment-methods.log
+      - name: Verify daily report integration
+        run: node tests/dashboardSubscriptionPaymentDailyReport.test.js 2>&1 | tee payment-report.log
       - name: Verify existing subscription creation contract
         run: npm run test:dashboard-subscription-create 2>&1 | tee subscription-create.log
       - name: Verify existing accounting contract
@@ -60,6 +64,7 @@ jobs:
           name: dashboard-subscription-payment-method-logs
           path: |
             payment-methods.log
+            payment-report.log
             subscription-create.log
             accounting.log
           if-no-files-found: ignore
