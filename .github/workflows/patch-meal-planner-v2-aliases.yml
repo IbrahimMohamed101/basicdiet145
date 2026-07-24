@@ -1,0 +1,60 @@
+name: Patch Meal Planner compatibility bundle
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/patch-meal-planner-v2-aliases.yml"
+      - "src/controllers/menuController.js"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/dynamic-direct-meal-catalog-safe
+      - name: Preserve V2 and V3 planner aliases at source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("src/controllers/menuController.js")
+          text = target.read_text()
+
+          replacements = [
+              (
+                  'getMealPlannerCatalog({ lang, includeV3: true, includeV2: false }),',
+                  'getMealPlannerCatalog({ lang, includeV3: true, includeV2: true }),',
+              ),
+              (
+                  '  const plannerCatalog = mealPlannerCatalog?.plannerCatalog || null;\n  const appBuilderCatalog = plannerCatalog || {};',
+                  '  const plannerCatalog = mealPlannerCatalog?.plannerCatalog || null;\n  const builderCatalogV2 = mealPlannerCatalog?.builderCatalogV2 || null;\n  const appBuilderCatalog = plannerCatalog || {};',
+              ),
+              (
+                  '  const data = {\n    builderCatalog: appBuilderCatalog,\n    addonCatalog:',
+                  '  const data = {\n    builderCatalog: appBuilderCatalog,\n    plannerCatalog: appBuilderCatalog,\n    builderCatalogV2,\n    addonCatalog:',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one match, found {count}: {old[:80]}")
+              text = text.replace(old, new, 1)
+
+          target.write_text(text)
+          Path(".github/workflows/patch-meal-planner-v2-aliases.yml").unlink()
+          PY
+      - name: Commit source patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/controllers/menuController.js .github/workflows/patch-meal-planner-v2-aliases.yml
+          git commit -m "fix: expose planner v2 and v3 compatibility catalogs"
+          git push origin HEAD:agent/dynamic-direct-meal-catalog-safe
