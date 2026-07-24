@@ -29,7 +29,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
     return { ok: false, code: "INVALID_TRANSITION", message: "Invalid state transition" };
   }
 
-  const sub = await Subscription.findById(day.subscriptionId).populate("planId").session(session);
+  let sub = await Subscription.findById(day.subscriptionId).populate("planId").session(session);
   if (!sub) {
     return { ok: false, code: "NOT_FOUND", message: "Subscription not found" };
   }
@@ -83,6 +83,21 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
       session ? { session } : {}
     );
     day.creditsDeducted = true;
+  }
+
+  // transitionDayEntitlements always ensures/migrates the entitlement ledger.
+  // When the day has no projected allocations, the legacy fallback debit must
+  // use the refreshed entitlementVersion rather than the stale document loaded
+  // before that migration, otherwise its compare-and-set guard can fail
+  // spuriously and report INSUFFICIENT_CREDITS.
+  if (!entitlementSettlement.handled) {
+    const refreshedSub = await Subscription.findById(day.subscriptionId)
+      .populate("planId")
+      .session(session);
+    if (!refreshedSub) {
+      return { ok: false, code: "NOT_FOUND", message: "Subscription not found" };
+    }
+    sub = refreshedSub;
   }
 
   let pickupSettlement = null;
