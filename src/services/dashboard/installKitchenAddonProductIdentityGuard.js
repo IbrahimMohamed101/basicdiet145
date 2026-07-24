@@ -80,12 +80,12 @@ function installKitchenAddonProductIdentityGuard() {
 
 installKitchenAddonProductIdentityGuard();
 
-// Compose persistence, DTO recovery, preparation bridging, and a final serializer
-// guard before the preparation contract captures these service methods.
+// Persistence and DTO recovery must be installed before the preparation layer
+// captures mappers. Final serialization polish is intentionally installed later
+// from routes/index.js, after preparation and final name repair.
 require("../orders/installOrderPreparationWeightLifecycle");
 require("./installKitchenWeightResponseContract");
 require("./installKitchenWeightPreparationBridge");
-require("./installKitchenFinalResponsePolish");
 
 module.exports = {
   hasPlanProductIdentityCollision,
