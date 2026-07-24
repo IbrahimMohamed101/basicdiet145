@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
 
       - name: Enforce pickup reservation balance lifecycle
-        if: steps.pickup_balance.outcome == 'failure'
+        if: always() && steps.pickup_balance.outcome == 'failure'
         run: exit 1
 
       - name: Run final release gates
@@ -81,5 +81,5 @@ jobs:
           if-no-files-found: ignore
 
       - name: Enforce final release gate result
-        if: steps.final_release_gates.outcome == 'failure'
+        if: always() && steps.final_release_gates.outcome == 'failure'
         run: exit 1
