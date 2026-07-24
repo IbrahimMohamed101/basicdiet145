@@ -72,9 +72,10 @@ require("../services/installFlutterMealPlannerCatalogExpansion");
 // historical sandwich card remains the Flutter-compatible presentation shell,
 // but its product membership is never sourced from stored selectedProductIds.
 require("../services/installDynamicDirectMealCatalogPolicy");
-// Re-apply the canonical meal-product classifier after the dashboard's explicit
-// authoring layer so add-ons/builders cannot appear as direct meal candidates.
-require("../services/installDashboardDirectPickerClassificationGuard");
+// Dashboard pickers use the same fail-closed direct-meal identity as Flutter.
+require("../services/installDynamicDirectMealPickerPolicy");
+// Legacy direct cards collapse into one system-managed live-catalog section.
+require("../services/installCanonicalDynamicDirectMealSectionPolicy");
 // Hydrate missing product/option media, deliver bounded Cloudinary images, and
 // cache only the static catalog layer before controllers capture service exports.
 const {
