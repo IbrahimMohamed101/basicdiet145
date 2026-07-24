@@ -13,6 +13,8 @@ const npmScripts = packageJson.scripts || {};
 const RUN_DB_CHECKS = process.env.VALIDATE_BACKEND_WITH_LOCAL_DB === "true";
 const RUN_CATALOG_DB_CHECK = process.env.VALIDATE_BACKEND_CATALOG_DB === "true";
 const RUN_NEWMAN = process.env.VALIDATE_BACKEND_NEWMAN === "true";
+const TEST_DB_URI = process.env.MONGO_URI_TEST || process.env.MONGODB_URI_TEST || "";
+const HAS_EXPLICIT_TEST_DB = Boolean(TEST_DB_URI.trim());
 
 const steps = [
   {
@@ -40,10 +42,14 @@ const steps = [
     requiredScript: "test:mobile-contracts",
   },
   {
-    title: "Weekly menu dashboard validation",
+    title: "Weekly menu dashboard validation (optional external test MongoDB)",
     command: "npm",
     args: ["run", "test:weekly-menu-dashboard"],
     requiredScript: "test:weekly-menu-dashboard",
+    optional: true,
+    enabled: RUN_DB_CHECKS && HAS_EXPLICIT_TEST_DB,
+    skipReason:
+      "Set VALIDATE_BACKEND_WITH_LOCAL_DB=true and MONGO_URI_TEST to an isolated non-production database.",
   },
   {
     title: "Payment init logging and redirect safety",
@@ -152,7 +158,12 @@ function shouldSkip(step) {
 function isUnsafeProductionDbStep(step) {
   if (!step.optional) return false;
   if (!step.enabled) return false;
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "";
+  const mongoUri =
+    process.env.MONGO_URI_TEST ||
+    process.env.MONGODB_URI_TEST ||
+    process.env.MONGO_URI ||
+    process.env.MONGODB_URI ||
+    "";
   const lowered = mongoUri.toLowerCase();
   return lowered.includes("prod") || lowered.includes("production");
 }
@@ -167,7 +178,7 @@ function runStep(step) {
   }
 
   if (isUnsafeProductionDbStep(step)) {
-    console.warn("WARNING: skipped - MONGO_URI appears to reference production. Use a test or staging database only.");
+    console.warn("WARNING: skipped - MongoDB URI appears to reference production. Use an isolated test or staging database only.");
     return;
   }
 
@@ -198,7 +209,7 @@ function runStep(step) {
 
 console.log("BasicDiet Backend Validation");
 console.log("Default mode avoids production DB, production seeds, and live payment provider calls.");
-console.log("Optional DB checks require explicit opt-in environment flags.");
+console.log("External database checks require explicit opt-in and an isolated test database URI.");
 
 for (const step of steps) {
   runStep(step);
