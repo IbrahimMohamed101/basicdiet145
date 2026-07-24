@@ -9,8 +9,20 @@ const WRAPPED_MARK = Symbol.for("basicdiet.orderPreparationWeightLifecycle.wrapp
 
 function idText(value) {
   if (value === undefined || value === null || value === "") return "";
-  if (value && typeof value === "object") return idText(value._id || value.id);
-  return String(value);
+  if (value && typeof value.toHexString === "function") {
+    try {
+      return String(value.toHexString());
+    } catch (_) {
+      return "";
+    }
+  }
+  if (value && typeof value === "object") {
+    const nested = value._id !== undefined && value._id !== value
+      ? value._id
+      : (value.id !== undefined && value.id !== value ? value.id : null);
+    return nested === null ? "" : idText(nested);
+  }
+  return String(value).trim();
 }
 
 function ensureOrderItemWeightSchema() {
@@ -136,6 +148,7 @@ function installOrderPreparationWeightLifecycle() {
     schemaExtended,
     fixedServingWeightsPersisted: true,
     selectedWeightsPersisted: true,
+    mongooseObjectIdsSafe: true,
   });
   globalThis[INSTALL_MARK] = verification;
   return verification;
