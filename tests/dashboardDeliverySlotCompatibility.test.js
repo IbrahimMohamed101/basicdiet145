@@ -3,6 +3,8 @@
 process.env.NODE_ENV = "test";
 
 const assert = require("assert");
+const path = require("path");
+const { execFileSync } = require("child_process");
 const {
   normalizeDashboardDeliverySlotPayload,
 } = require("../src/services/installDashboardDeliverySlotCompatibility");
@@ -132,6 +134,32 @@ function deliveryPayload(overrides = {}) {
         ]
       ),
     (error) => error && error.code === "INVALID_DELIVERY_SLOT"
+  );
+
+  const projectRoot = path.join(__dirname, "..");
+  execFileSync(
+    process.execPath,
+    [
+      "-e",
+      [
+        'require("./src/routes/index")',
+        'const controller = require("./src/controllers/subscriptionController")',
+        'if (!controller.resolveCheckoutQuoteOrThrow.__dashboardDeliverySlotCompatible) {',
+        '  throw new Error("subscriptionController captured the pre-compatibility quote function")',
+        '}',
+      ].join(";"),
+    ],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        JWT_SECRET: process.env.JWT_SECRET || "delivery-slot-test-secret",
+        DASHBOARD_JWT_SECRET:
+          process.env.DASHBOARD_JWT_SECRET || "delivery-slot-dashboard-secret",
+      },
+      stdio: "pipe",
+    }
   );
 
   console.log("dashboardDeliverySlotCompatibility.test.js passed");
