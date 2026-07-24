@@ -41,15 +41,19 @@ async function test(name, fn) {
     await fn();
     results.passed += 1;
     console.log(`✅ ${name}`);
-  } catch (err) {
+  } catch (error) {
     results.failed += 1;
     console.error(`❌ ${name}`);
-    console.error(err && err.stack ? err.stack : err);
+    console.error(error && error.stack ? error.stack : error);
   }
 }
 
-function expectStatus(res, status, label) {
-  assert.strictEqual(res.status, status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.body)}`);
+function expectStatus(response, expected, label) {
+  assert.strictEqual(
+    response.status,
+    expected,
+    `${label}: expected ${expected}, got ${response.status} ${JSON.stringify(response.body)}`
+  );
 }
 
 function appAuth(userId) {
@@ -62,16 +66,22 @@ function appAuth(userId) {
 }
 
 function flattenProducts(menu) {
-  return (menu.categories || []).flatMap((category) => (
-    category.products || []
-  ).map((product) => ({ ...product, categoryKey: category.key })));
+  return (menu.categories || []).flatMap((category) =>
+    (category.products || []).map((product) => ({
+      ...product,
+      categoryKey: category.key,
+    }))
+  );
 }
 
 function selectedRequiredOptions(product) {
   return (product.optionGroups || []).flatMap((group) => {
     const count = Number(group.minSelections || 0);
     if (count <= 0) return [];
-    assert((group.options || []).length >= count, `${product.key}.${group.key} has enough options`);
+    assert(
+      (group.options || []).length >= count,
+      `${product.key}.${group.key} has enough options`
+    );
     return group.options.slice(0, count).map((option) => ({
       groupId: group.id,
       optionId: option.id,
@@ -81,10 +91,7 @@ function selectedRequiredOptions(product) {
 
 async function startMemoryMongo() {
   replSet = await MongoMemoryReplSet.create({
-    replSet: {
-      count: 1,
-      dbName: TEST_DB_NAME,
-    },
+    replSet: { count: 1, dbName: TEST_DB_NAME },
   });
   const uri = replSet.getUri(TEST_DB_NAME);
   process.env.MONGO_URI = uri;
@@ -92,14 +99,8 @@ async function startMemoryMongo() {
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
 }
 
-async function resetDatabase() {
-  await mongoose.connection.db.dropDatabase();
-}
-
 async function disconnect() {
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.disconnect();
-  }
+  if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
   if (replSet) {
     await replSet.stop();
     replSet = null;
@@ -128,9 +129,9 @@ function installMoyasarMock() {
   moyasarService.getInvoice = async (invoiceId) => {
     const invoice = invoiceResponses.get(invoiceId);
     if (!invoice) {
-      const err = new Error(`Mock invoice not found: ${invoiceId}`);
-      err.status = 404;
-      throw err;
+      const error = new Error(`Mock invoice not found: ${invoiceId}`);
+      error.status = 404;
+      throw error;
     }
     return invoice;
   };
@@ -143,21 +144,12 @@ function installMoyasarMock() {
   };
 }
 
-async function seedPublishedCatalog() {
-  await Setting.updateOne(
-    { key: "vat_percentage" },
-    { $set: { value: 15, description: `${TEST_TAG} VAT` } },
-    { upsert: true }
-  );
-  await seedOneTimeMenu({ actor: { role: "test" }, notes: TEST_TAG, mode: "force" });
-}
-
-async function cleanupCatalog() {
+async function resetAndSeedCatalog() {
+  await mongoose.connection.db.dropDatabase();
   await Promise.all([
     ActivityLog.deleteMany({}),
     Payment.deleteMany({}),
     Order.deleteMany({}),
-    User.deleteMany({ phone: { $regex: TEST_TAG } }),
     ProductOptionGroup.deleteMany({}),
     ProductGroupOption.deleteMany({}),
     MenuVersion.deleteMany({}),
@@ -167,6 +159,16 @@ async function cleanupCatalog() {
     MenuCategory.deleteMany({}),
     Setting.deleteMany({ key: "vat_percentage" }),
   ]);
+  await Setting.updateOne(
+    { key: "vat_percentage" },
+    { $set: { value: 15, description: `${TEST_TAG} VAT` } },
+    { upsert: true }
+  );
+  await seedOneTimeMenu({
+    actor: { role: "test" },
+    notes: TEST_TAG,
+    mode: "force",
+  });
 }
 
 (async function run() {
@@ -176,9 +178,7 @@ async function cleanupCatalog() {
 
   try {
     await startMemoryMongo();
-    await resetDatabase();
-    await cleanupCatalog();
-    await seedPublishedCatalog();
+    await resetAndSeedCatalog();
 
     const app = createApp();
     const api = request(app);
@@ -189,265 +189,354 @@ async function cleanupCatalog() {
       isActive: true,
     });
     const clientHeaders = appAuth(user._id);
-    const { headers: adminHeaders } = await dashboardAuth("superadmin", TEST_TAG);
+    const { headers: adminHeaders } = await dashboardAuth(
+      "superadmin",
+      TEST_TAG
+    );
 
-    await test("complete one-time pickup order lifecycle from menu to fulfillment", async () => {
-      const menuRes = await api.get("/api/orders/menu?lang=en");
-      expectStatus(menuRes, 200, "menu");
-      assert.strictEqual(menuRes.body.status, true);
-      assert.strictEqual(menuRes.body.data.fulfillmentMethod, "pickup");
-      assert.strictEqual(menuRes.body.data.vatIncluded, true);
-      assert.strictEqual(menuRes.body.data.delivery, undefined);
-      assert(Array.isArray(menuRes.body.data.categories) && menuRes.body.data.categories.length > 0, "menu has categories");
-      const menuProducts = flattenProducts(menuRes.body.data);
-      assert(menuProducts.length > 0, "menu has products");
+    await test(
+      "complete one-time pickup order lifecycle from menu to fulfillment",
+      async () => {
+        const menuResponse = await api.get("/api/orders/menu?lang=en");
+        expectStatus(menuResponse, 200, "menu");
+        assert.strictEqual(menuResponse.body.status, true);
+        assert.strictEqual(menuResponse.body.data.fulfillmentMethod, "pickup");
+        assert.strictEqual(menuResponse.body.data.vatIncluded, true);
+        assert.strictEqual(menuResponse.body.data.delivery, undefined);
 
-      const fixedProducts = menuProducts.filter((product) => product.pricingModel === "fixed");
-      assert(fixedProducts.length >= 2, "menu has at least two ready fixed-price products");
-      const primaryProduct = fixedProducts[0];
-      const secondaryProduct = fixedProducts.find((product) => product.id !== primaryProduct.id);
-      assert(secondaryProduct, "a second fixed-price product exists");
+        const menuProducts = flattenProducts(menuResponse.body.data);
+        const fixedProducts = menuProducts.filter(
+          (product) => product.pricingModel === "fixed"
+        );
+        assert(
+          fixedProducts.length >= 2,
+          "menu has at least two ready fixed-price products"
+        );
+        const primaryProduct = fixedProducts[0];
+        const secondaryProduct = fixedProducts.find(
+          (product) => product.id !== primaryProduct.id
+        );
+        assert(secondaryProduct, "second fixed-price product exists");
 
-      const fulfillmentDate = "2026-05-10";
-      const orderBody = {
-        fulfillmentMethod: "pickup",
-        fulfillmentDate,
-        pickup: {
-          branchId: "main",
-          pickupWindow: "18:00-20:00",
-        },
-        items: [
-          {
-            productId: primaryProduct.id,
-            qty: 2,
-            selectedOptions: selectedRequiredOptions(primaryProduct),
+        const fulfillmentDate = "2026-05-10";
+        const orderBody = {
+          fulfillmentMethod: "pickup",
+          fulfillmentDate,
+          pickup: {
+            branchId: "main",
+            pickupWindow: "18:00-20:00",
           },
+          items: [
+            {
+              productId: primaryProduct.id,
+              qty: 2,
+              selectedOptions: selectedRequiredOptions(primaryProduct),
+            },
+            {
+              productId: secondaryProduct.id,
+              qty: 1,
+              selectedOptions: selectedRequiredOptions(secondaryProduct),
+            },
+          ],
+          successUrl: "basicdiet://orders/payment-success",
+          backUrl: "basicdiet://orders/payment-cancel",
+        };
+
+        const quoteResponse = await api
+          .post("/api/orders/quote")
+          .set(clientHeaders)
+          .send(orderBody);
+        expectStatus(quoteResponse, 200, "quote");
+        assert.strictEqual(quoteResponse.body.status, true);
+        assert(quoteResponse.body.data.pricing.totalHalala > 0);
+        assert.strictEqual(
+          quoteResponse.body.data.pricing.deliveryFeeHalala,
+          0
+        );
+
+        const idempotencyKey = `${TEST_TAG}-create-order`;
+        const createResponse = await api
+          .post("/api/orders")
+          .set({ ...clientHeaders, "Idempotency-Key": idempotencyKey })
+          .send(orderBody);
+        expectStatus(createResponse, 201, "create order");
+        assert.strictEqual(createResponse.body.data.status, "pending_payment");
+        assert(createResponse.body.data.orderId);
+        assert(createResponse.body.data.paymentId);
+        assert(createResponse.body.data.paymentUrl);
+
+        assert.strictEqual(invoicePayloads.length, 1);
+        assert.strictEqual(
+          invoicePayloads[0].successUrl,
+          "https://api.example.test/payment-success"
+        );
+        assert.strictEqual(
+          invoicePayloads[0].backUrl,
+          "https://api.example.test/payment-cancel"
+        );
+        assert.strictEqual(
+          invoicePayloads[0].callbackUrl,
+          "https://api.example.test/api/webhooks/moyasar"
+        );
+
+        const retryResponse = await api
+          .post("/api/orders")
+          .set({ ...clientHeaders, "Idempotency-Key": idempotencyKey })
+          .send(orderBody);
+        expectStatus(retryResponse, 200, "retry create");
+        assert.strictEqual(retryResponse.body.data.reused, true);
+        assert.strictEqual(
+          retryResponse.body.data.orderId,
+          createResponse.body.data.orderId
+        );
+        assert.strictEqual(invoicePayloads.length, 1);
+
+        const createdOrder = await Order.findById(
+          createResponse.body.data.orderId
+        ).lean();
+        assert(createdOrder);
+        assert.strictEqual(createdOrder.fulfillmentMethod, "pickup");
+        assert.strictEqual(createdOrder.pickup.branchId, "main");
+        assert.strictEqual(createdOrder.pickup.branchName.en, "Main Branch");
+        assert.strictEqual(createdOrder.pickup.pickupWindow, "18:00-20:00");
+        assert(
+          createdOrder.items.every((item) => item.productSnapshot),
+          "product snapshots persisted"
+        );
+        assert(
+          createdOrder.items.every((item) => item.pricingSnapshot),
+          "pricing snapshots persisted"
+        );
+        createdOrder.items.forEach((item, index) => {
+          assert.strictEqual(
+            item.pricingSnapshot.unitPriceHalala,
+            quoteResponse.body.data.items[index].pricingSnapshot
+              .unitPriceHalala
+          );
+          assert.strictEqual(
+            item.pricingSnapshot.lineTotalHalala,
+            quoteResponse.body.data.items[index].pricingSnapshot
+              .lineTotalHalala
+          );
+        });
+
+        const originalSnapshotNames = createdOrder.items.map(
+          (item) => item.productSnapshot.name.en
+        );
+        await MenuProduct.updateOne(
+          { _id: primaryProduct.id },
           {
-            productId: secondaryProduct.id,
-            qty: 1,
-            selectedOptions: selectedRequiredOptions(secondaryProduct),
-          },
-        ],
-        successUrl: "basicdiet://orders/payment-success",
-        backUrl: "basicdiet://orders/payment-cancel",
-      };
+            $set: {
+              name: {
+                en: `${TEST_TAG} Mutated Product`,
+                ar: "منتج معدل",
+              },
+              priceHalala: 999999,
+            },
+          }
+        );
+        const orderAfterMutation = await Order.findById(
+          createResponse.body.data.orderId
+        ).lean();
+        assert.deepStrictEqual(
+          orderAfterMutation.items.map(
+            (item) => item.productSnapshot.name.en
+          ),
+          originalSnapshotNames,
+          "order snapshots remain immutable"
+        );
 
-      const quoteRes = await api.post("/api/orders/quote").set(clientHeaders).send(orderBody);
-      expectStatus(quoteRes, 200, "quote");
-      assert.strictEqual(quoteRes.body.status, true);
-      assert(quoteRes.body.data.pricing.totalHalala > 0, "quote total is positive");
-      assert.strictEqual(quoteRes.body.data.pricing.vatIncluded, true);
-      assert.strictEqual(quoteRes.body.data.pricing.deliveryFeeHalala, 0);
-      assert.strictEqual(quoteRes.body.data.delivery, undefined);
-
-      const idempotencyKey = `${TEST_TAG}-create-order`;
-      const createRes = await api
-        .post("/api/orders")
-        .set({ ...clientHeaders, "Idempotency-Key": idempotencyKey })
-        .send(orderBody);
-      expectStatus(createRes, 201, "create order");
-      assert.strictEqual(createRes.body.status, true);
-      assert(createRes.body.data.orderId, "orderId exists");
-      assert(createRes.body.data.paymentId, "paymentId exists");
-      assert(createRes.body.data.paymentUrl, "paymentUrl exists");
-      assert.strictEqual(createRes.body.data.status, "pending_payment");
-      assert.strictEqual(createRes.body.data.pricing.vatIncluded, true);
-
-      assert.strictEqual(invoicePayloads.length, 1, "one Moyasar invoice was created");
-      assert.strictEqual(invoicePayloads[0].successUrl, "https://api.example.test/payment-success");
-      assert.strictEqual(invoicePayloads[0].backUrl, "https://api.example.test/payment-cancel");
-      assert.strictEqual(invoicePayloads[0].callbackUrl, "https://api.example.test/api/webhooks/moyasar");
-      assert.notStrictEqual(invoicePayloads[0].successUrl.slice(0, "basicdiet://".length), "basicdiet://");
-      assert.strictEqual(invoicePayloads[0].metadata.type, "one_time_order");
-
-      const retryCreateRes = await api
-        .post("/api/orders")
-        .set({ ...clientHeaders, "Idempotency-Key": idempotencyKey })
-        .send(orderBody);
-      expectStatus(retryCreateRes, 200, "retry create");
-      assert.strictEqual(retryCreateRes.body.data.reused, true);
-      assert.strictEqual(retryCreateRes.body.data.orderId, createRes.body.data.orderId);
-      assert.strictEqual(retryCreateRes.body.data.paymentId, createRes.body.data.paymentId);
-      assert.strictEqual(invoicePayloads.length, 1, "idempotent retry did not create a second invoice");
-
-      const createdOrder = await Order.findById(createRes.body.data.orderId).lean();
-      assert(createdOrder, "created order persisted");
-      assert.strictEqual(createdOrder.fulfillmentMethod, "pickup");
-      assert.strictEqual(createdOrder.pickup.branchId, "main");
-      assert.strictEqual(createdOrder.pickup.branchName.ar, "الفرع الرئيسي");
-      assert.strictEqual(createdOrder.pickup.branchName.en, "Main Branch");
-      assert.strictEqual(createdOrder.pickup.pickupWindow, "18:00-20:00");
-      assert.strictEqual(createdOrder.delivery.zoneId, undefined);
-      assert.strictEqual(createdOrder.pricing.vatIncluded, true);
-      assert(createdOrder.items.every((item) => item.productSnapshot), "item product snapshots are persisted");
-      assert(createdOrder.items.every((item) => item.pricingSnapshot), "item pricing snapshots are persisted");
-      createdOrder.items.forEach((item, index) => {
-        assert.strictEqual(item.pricingSnapshot.unitPriceHalala, quoteRes.body.data.items[index].pricingSnapshot.unitPriceHalala);
-        assert.strictEqual(item.pricingSnapshot.lineTotalHalala, quoteRes.body.data.items[index].pricingSnapshot.lineTotalHalala);
-        assert.strictEqual(item.pricingSnapshot.currency, "SAR");
-        assert.strictEqual(item.pricingSnapshot.vatIncluded, true);
-      });
-      const originalSnapshotNames = createdOrder.items.map((item) => item.productSnapshot.name.en);
-
-      await MenuProduct.updateOne(
-        { _id: primaryProduct.id },
-        { $set: { name: { en: `${TEST_TAG} Mutated Product`, ar: "منتج معدل" }, priceHalala: 999999 } }
-      );
-      const snapshotAfterCatalogMutation = await Order.findById(createRes.body.data.orderId).lean();
-      assert.deepStrictEqual(
-        snapshotAfterCatalogMutation.items.map((item) => item.productSnapshot.name.en),
-        originalSnapshotNames,
-        "order item snapshots stay immutable after catalog mutation"
-      );
-
-      invoiceResponses.set(createRes.body.data.invoiceId, {
-        id: createRes.body.data.invoiceId,
-        status: "paid",
-        amount: createRes.body.data.pricing.totalHalala,
-        currency: "SAR",
-        payments: [{
-          id: `pay_${TEST_TAG}_manual_verify`,
+        invoiceResponses.set(createResponse.body.data.invoiceId, {
+          id: createResponse.body.data.invoiceId,
           status: "paid",
-          amount: createRes.body.data.pricing.totalHalala,
+          amount: createResponse.body.data.pricing.totalHalala,
           currency: "SAR",
-        }],
-      });
+          payments: [
+            {
+              id: `pay_${TEST_TAG}_manual_verify`,
+              status: "paid",
+              amount: createResponse.body.data.pricing.totalHalala,
+              currency: "SAR",
+            },
+          ],
+        });
 
-      const verifyRes = await api
-        .post(`/api/orders/${createRes.body.data.orderId}/payments/${createRes.body.data.paymentId}/verify`)
-        .set(clientHeaders)
-        .send({});
-      expectStatus(verifyRes, 200, "verify payment");
-      assert.strictEqual(verifyRes.body.data.orderStatus, "confirmed");
-      assert.strictEqual(verifyRes.body.data.paymentStatus, "paid");
-      assert.strictEqual(verifyRes.body.data.applied, true);
-      assert.strictEqual(verifyRes.body.data.isFinal, true);
+        const verifyResponse = await api
+          .post(
+            `/api/orders/${createResponse.body.data.orderId}/payments/${createResponse.body.data.paymentId}/verify`
+          )
+          .set(clientHeaders)
+          .send({});
+        expectStatus(verifyResponse, 200, "verify payment");
+        assert.strictEqual(verifyResponse.body.data.orderStatus, "confirmed");
+        assert.strictEqual(verifyResponse.body.data.paymentStatus, "paid");
+        assert.strictEqual(verifyResponse.body.data.applied, true);
 
-      const expectedCustomerName = `${TEST_TAG} App Profile`;
-      await AppUser.create({
-        coreUserId: user._id,
-        phone: user.phone,
-        fullName: expectedCustomerName,
-      });
-      await User.updateOne({ _id: user._id }, { $unset: { name: 1 } });
+        const expectedCustomerName = `${TEST_TAG} App Profile`;
+        await AppUser.create({
+          coreUserId: user._id,
+          phone: user.phone,
+          fullName: expectedCustomerName,
+        });
+        await User.updateOne({ _id: user._id }, { $unset: { name: 1 } });
 
-      const expectedLabels = {
-        confirmed: "Confirmed",
-        in_preparation: "Preparing",
-        ready_for_pickup: "Ready for pickup",
-        fulfilled: "Fulfilled",
-      };
-      const opsActionIds = (row) => (row.allowedActions || []).map((action) => action.id);
-      const getOpsOrder = async (expectedStatus) => {
-        const response = await api
-          .get(`/api/dashboard/ops/list?date=${fulfillmentDate}`)
+        const expectedLabels = {
+          confirmed: "Confirmed",
+          in_preparation: "Preparing",
+          ready_for_pickup: "Ready for pickup",
+          fulfilled: "Fulfilled",
+        };
+        const actionIds = (row) =>
+          (row.allowedActions || []).map((action) => action.id);
+
+        const getOpsOrder = async (expectedStatus) => {
+          const response = await api
+            .get(`/api/dashboard/ops/list?date=${fulfillmentDate}`)
+            .set(adminHeaders);
+          expectStatus(response, 200, `ops list ${expectedStatus}`);
+          const row = response.body.data.find(
+            (item) => item.orderId === createResponse.body.data.orderId
+          );
+          assert(row, `ops list includes order in ${expectedStatus}`);
+          assert.strictEqual(row.status, expectedStatus);
+          assert.strictEqual(row.statusLabel, expectedLabels[expectedStatus]);
+          return row;
+        };
+
+        const executeAction = async (action, expectedStatus) => {
+          const response = await api
+            .post(`/api/dashboard/ops/actions/${action}`)
+            .set(adminHeaders)
+            .send({
+              entityId: createResponse.body.data.orderId,
+              entityType: "order",
+              source: "one_time_order",
+            });
+          expectStatus(response, 200, `ops action ${action}`);
+          assert.strictEqual(response.body.data.status, expectedStatus);
+          const nextRow = await getOpsOrder(expectedStatus);
+          assert.deepStrictEqual(
+            actionIds(response.body.data),
+            actionIds(nextRow)
+          );
+          return nextRow;
+        };
+
+        let opsRow = await getOpsOrder("confirmed");
+        assert.strictEqual(opsRow.customer.name, expectedCustomerName);
+        assert.deepStrictEqual(actionIds(opsRow), ["prepare", "cancel"]);
+        assert.strictEqual(opsRow.kitchenDetails, undefined);
+        assert.strictEqual(opsRow.kitchen.version, "v2");
+        assert.strictEqual(opsRow.kitchen.cards.length, 2);
+        assert.strictEqual(
+          opsRow.fulfillment.pickup.branchName.en,
+          "Main Branch"
+        );
+        assert.strictEqual(
+          opsRow.fulfillment.pickup.pickupWindow,
+          "18:00-20:00"
+        );
+
+        const confirmedDetailResponse = await api
+          .get(`/api/dashboard/orders/${createResponse.body.data.orderId}`)
           .set(adminHeaders);
-        expectStatus(response, 200, `ops list ${expectedStatus}`);
-        const row = response.body.data.find((item) => item.orderId === createRes.body.data.orderId);
-        assert(row, `ops list includes order in ${expectedStatus}`);
-        assert.strictEqual(row.status, expectedStatus);
-        assert.strictEqual(row.statusLabel, expectedLabels[expectedStatus]);
-        return row;
-      };
-      const executeOpsAction = async (action, expectedStatus) => {
-        const response = await api
-          .post(`/api/dashboard/ops/actions/${action}`)
-          .set(adminHeaders)
-          .send({
-            entityId: createRes.body.data.orderId,
-            entityType: "order",
-            source: "one_time_order",
-          });
-        expectStatus(response, 200, `ops action ${action}`);
-        assert.strictEqual(response.body.data.status, expectedStatus);
-        assert.strictEqual(response.body.data.statusLabel, expectedLabels[expectedStatus]);
-        const nextListRow = await getOpsOrder(expectedStatus);
-        assert.strictEqual(response.body.data.status, nextListRow.status);
-        assert.strictEqual(response.body.data.statusLabel, nextListRow.statusLabel);
-        assert.deepStrictEqual(opsActionIds(response.body.data), opsActionIds(nextListRow));
-        return { actionRow: response.body.data, listRow: nextListRow };
-      };
+        expectStatus(confirmedDetailResponse, 200, "confirmed order detail");
+        const confirmedDetail = confirmedDetailResponse.body.data;
+        assert.strictEqual(confirmedDetail.items.length, 2);
+        assert.strictEqual(
+          confirmedDetail.pricing.totalHalala,
+          createdOrder.pricing.totalHalala
+        );
 
-      let canonicalRow = await getOpsOrder("confirmed");
-      assert.strictEqual(canonicalRow.customer.name, expectedCustomerName);
-      assert.deepStrictEqual(opsActionIds(canonicalRow), ["prepare", "cancel"]);
-      assert.strictEqual(canonicalRow.kitchenDetails, undefined, "canonical DTO omits legacy kitchenDetails mirror");
-      assert.strictEqual(canonicalRow.kitchen.version, "v2");
-      assert(Array.isArray(canonicalRow.kitchen.cards) && canonicalRow.kitchen.cards.length === 2, "canonical kitchen DTO has two cards");
+        const persistedSecondaryItem = createdOrder.items.find(
+          (item) => item.productSnapshot.key === secondaryProduct.key
+        );
+        const detailSecondaryItem = confirmedDetail.items.find(
+          (item) => item.productSnapshot?.key === secondaryProduct.key
+        );
+        assert(persistedSecondaryItem);
+        assert(detailSecondaryItem);
+        assert.strictEqual(
+          detailSecondaryItem.productSnapshot.name.en,
+          persistedSecondaryItem.productSnapshot.name.en
+        );
+        assert.strictEqual(
+          detailSecondaryItem.unitPriceHalala,
+          persistedSecondaryItem.pricingSnapshot.unitPriceHalala
+        );
+        assert.strictEqual(
+          detailSecondaryItem.lineTotalHalala,
+          persistedSecondaryItem.pricingSnapshot.lineTotalHalala
+        );
+        assert(
+          opsRow.kitchen.cards.some(
+            (card) =>
+              card.titleI18n?.en ===
+                persistedSecondaryItem.productSnapshot.name.en ||
+              card.title === persistedSecondaryItem.productSnapshot.name.en
+          ),
+          "kitchen card preserves snapshot name"
+        );
 
-      const confirmedDetailRes = await api
-        .get(`/api/dashboard/orders/${createRes.body.data.orderId}`)
-        .set(adminHeaders);
-      expectStatus(confirmedDetailRes, 200, "confirmed order detail");
-      const confirmedDetail = confirmedDetailRes.body.data;
-      const secondaryItem = confirmedDetail.items.find((item) => (
-        item.productKey === secondaryProduct.key || item.productSnapshot?.key === secondaryProduct.key
-      ));
-      const persistedSecondaryItem = createdOrder.items.find((item) => item.productSnapshot.key === secondaryProduct.key);
-      assert(secondaryItem, "order detail includes the second selected product");
-      assert(persistedSecondaryItem, "persisted order includes the second selected product");
-      const detailSelectedOptions = secondaryItem.selectedOptions || [];
-      const persistedSelectedOptions = persistedSecondaryItem.selectedOptions || [];
-      assert.strictEqual(detailSelectedOptions.length, persistedSelectedOptions.length);
-      assert.strictEqual(new Set(detailSelectedOptions.map((option) => `${option.groupId}:${option.optionId}`)).size, detailSelectedOptions.length);
-      assert.strictEqual(secondaryItem.pricingSnapshot.basePriceHalala, persistedSecondaryItem.pricingSnapshot.basePriceHalala);
-      assert.strictEqual(secondaryItem.pricingSnapshot.optionsTotalHalala, persistedSecondaryItem.pricingSnapshot.optionsTotalHalala);
-      assert.strictEqual(secondaryItem.pricingSnapshot.unitPriceHalala, persistedSecondaryItem.pricingSnapshot.unitPriceHalala);
-      assert.strictEqual(secondaryItem.pricingSnapshot.lineTotalHalala, persistedSecondaryItem.pricingSnapshot.lineTotalHalala);
-      assert.strictEqual(confirmedDetail.pricing.subtotalHalala, createdOrder.pricing.subtotalHalala);
-      assert.strictEqual(confirmedDetail.pricing.vatHalala, createdOrder.pricing.vatHalala);
-      assert.strictEqual(confirmedDetail.pricing.totalHalala, createdOrder.pricing.totalHalala);
-      assert.strictEqual(canonicalRow.fulfillment.pickup.branchName.en, "Main Branch");
-      assert.strictEqual(canonicalRow.fulfillment.pickup.pickupWindow, "18:00-20:00");
-      const secondarySnapshotName = persistedSecondaryItem.productSnapshot.name.en;
-      assert(
-        canonicalRow.kitchen.cards.some((card) => card.titleI18n?.en === secondarySnapshotName || card.title === secondarySnapshotName),
-        "canonical kitchen cards preserve the second product snapshot name"
-      );
+        opsRow = await executeAction("prepare", "in_preparation");
+        assert.deepStrictEqual(actionIds(opsRow), [
+          "ready_for_pickup",
+          "cancel",
+        ]);
+        opsRow = await executeAction(
+          "ready_for_pickup",
+          "ready_for_pickup"
+        );
+        assert.deepStrictEqual(actionIds(opsRow), ["fulfill", "cancel"]);
+        assert(opsRow.fulfillment.pickup.pickupCode);
+        opsRow = await executeAction("fulfill", "fulfilled");
+        assert.deepStrictEqual(actionIds(opsRow), []);
 
-      ({ listRow: canonicalRow } = await executeOpsAction("prepare", "in_preparation"));
-      assert.deepStrictEqual(opsActionIds(canonicalRow), ["ready_for_pickup", "cancel"]);
+        const listResponse = await api
+          .get("/api/dashboard/orders")
+          .set(adminHeaders);
+        expectStatus(listResponse, 200, "dashboard list");
+        const listedOrder = listResponse.body.data.items.find(
+          (item) => item.orderId === createResponse.body.data.orderId
+        );
+        assert(listedOrder);
+        assert.strictEqual(listedOrder.status, "fulfilled");
 
-      ({ listRow: canonicalRow } = await executeOpsAction("ready_for_pickup", "ready_for_pickup"));
-      assert.deepStrictEqual(opsActionIds(canonicalRow), ["fulfill", "cancel"]);
-      assert(canonicalRow.fulfillment.pickup.pickupCode, "pickup code exists in canonical response");
+        const finalDetailResponse = await api
+          .get(`/api/dashboard/orders/${createResponse.body.data.orderId}`)
+          .set(adminHeaders);
+        expectStatus(finalDetailResponse, 200, "final detail");
+        const finalDetail = finalDetailResponse.body.data;
+        assert.strictEqual(finalDetail.status, "fulfilled");
+        assert.strictEqual(finalDetail.fulfillmentMethod, "pickup");
+        assert.strictEqual(finalDetail.items.length, 2);
+        assert.deepStrictEqual(finalDetail.delivery, {});
 
-      ({ listRow: canonicalRow } = await executeOpsAction("fulfill", "fulfilled"));
-      assert.deepStrictEqual(opsActionIds(canonicalRow), []);
+        const activityActions = new Set(
+          (finalDetail.activity || []).map((entry) => entry.action)
+        );
+        [
+          "order_created",
+          "order_payment_confirmed",
+          "dashboard_order_prepare",
+          "dashboard_order_ready_for_pickup",
+          "dashboard_order_fulfill",
+        ].forEach((action) =>
+          assert(activityActions.has(action), `activity includes ${action}`)
+        );
 
-      const listRes = await api.get("/api/dashboard/orders").set(adminHeaders);
-      expectStatus(listRes, 200, "dashboard list");
-      const dashboardOrder = listRes.body.data.items.find((item) => item.orderId === createRes.body.data.orderId);
-      assert(dashboardOrder, "dashboard list includes fulfilled order for superadmin");
-      assert.strictEqual(dashboardOrder.status, "fulfilled");
-
-      const detailRes = await api.get(`/api/dashboard/orders/${createRes.body.data.orderId}`).set(adminHeaders);
-      expectStatus(detailRes, 200, "final detail");
-      assert.strictEqual(detailRes.body.data.status, "fulfilled");
-      assert.strictEqual(detailRes.body.data.fulfillmentMethod, "pickup");
-      assert.strictEqual(detailRes.body.data.pricing.vatIncluded, true);
-      assert(Array.isArray(detailRes.body.data.items) && detailRes.body.data.items.length === 2, "final detail has items");
-      assert(detailRes.body.data.pricing.totalHalala > 0, "final detail keeps pricing snapshot");
-      assert.deepStrictEqual(detailRes.body.data.delivery, {}, "pickup dashboard detail has no delivery payload");
-
-      const activityActions = new Set((detailRes.body.data.activity || []).map((entry) => entry.action));
-      [
-        "order_created",
-        "order_payment_confirmed",
-        "dashboard_order_prepare",
-        "dashboard_order_ready_for_pickup",
-        "dashboard_order_fulfill",
-      ].forEach((action) => assert(activityActions.has(action), `activity includes ${action}`));
-
-      const finalOrder = await Order.findById(createRes.body.data.orderId).lean();
-      const finalPayment = await Payment.findById(createRes.body.data.paymentId).lean();
-      assert.strictEqual(finalOrder.status, "fulfilled");
-      assert.strictEqual(finalOrder.paymentStatus, "paid");
-      assert(finalOrder.items.every((item) => item.productSnapshot), "persisted final order keeps item snapshots");
-      assert(finalOrder.items.every((item) => item.pricingSnapshot), "persisted final order keeps pricing snapshots");
-      assert.strictEqual(finalPayment.status, "paid");
-      assert.strictEqual(finalPayment.applied, true);
-    });
+        const finalOrder = await Order.findById(
+          createResponse.body.data.orderId
+        ).lean();
+        const finalPayment = await Payment.findById(
+          createResponse.body.data.paymentId
+        ).lean();
+        assert.strictEqual(finalOrder.status, "fulfilled");
+        assert.strictEqual(finalOrder.paymentStatus, "paid");
+        assert.strictEqual(finalPayment.status, "paid");
+        assert.strictEqual(finalPayment.applied, true);
+      }
+    );
   } finally {
     restoreMoyasar();
     if (originalAppUrl === undefined) delete process.env.APP_URL;
@@ -457,9 +546,9 @@ async function cleanupCatalog() {
 
   console.log(`\nResults: ${results.passed} passed, ${results.failed} failed`);
   if (results.failed > 0) process.exitCode = 1;
-})().catch(async (err) => {
+})().catch(async (error) => {
   console.error("❌ one-time order full flow test crashed");
-  console.error(err && err.stack ? err.stack : err);
+  console.error(error && error.stack ? error.stack : error);
   await disconnect().catch(() => {});
   process.exitCode = 1;
 });
