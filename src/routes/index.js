@@ -68,6 +68,10 @@ require("../services/installPremiumUpgradeImageHydration");
 // card, while the membership validator accepts the exact same expanded catalog.
 // Install last so it decorates the final Meal Builder service composition.
 require("../services/installFlutterMealPlannerCatalogExpansion");
+// Direct subscription meals are owned by the live product catalog. The
+// historical sandwich card remains the Flutter-compatible presentation shell,
+// but its product membership is never sourced from stored selectedProductIds.
+require("../services/installDynamicDirectMealCatalogPolicy");
 // Hydrate missing product/option media, deliver bounded Cloudinary images, and
 // cache only the static catalog layer before controllers capture service exports.
 const {
