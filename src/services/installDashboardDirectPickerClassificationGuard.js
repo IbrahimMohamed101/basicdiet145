@@ -2,6 +2,7 @@
 
 const MenuProduct = require("../models/MenuProduct");
 const compatibilityService = require("./subscription/dashboardMealPlannerCompatibilityService");
+const dashboardMealBuilderService = require("./subscription/dashboardMealPlannerDashboardService");
 const {
   isProductionDirectProduct,
 } = require("./catalog/mealProductClassificationService");
@@ -10,6 +11,7 @@ const STATE_KEY = Symbol.for(
   "basicdiet.dashboardDirectPickerClassificationGuard.state"
 );
 const WRAPPER_MARKER = "__dashboardDirectPickerClassificationGuard";
+const AUTHORITY = "meal_product_classification.v1";
 const MAX_PICKER_LIMIT = 1000;
 
 function positiveInteger(value, fallback) {
@@ -39,6 +41,17 @@ function recalculateMeta(rows, page, limit, previousMeta = {}) {
   };
 }
 
+function normalizeClassificationAuthority(result) {
+  if (!result || result.candidateType !== "product") return result;
+  return {
+    ...result,
+    rules: {
+      ...(result.rules || {}),
+      classificationAuthority: AUTHORITY,
+    },
+  };
+}
+
 async function filterDirectCandidates(result, options = {}) {
   if (!result || result.candidateType !== "product") return result;
 
@@ -64,15 +77,55 @@ async function filterDirectCandidates(result, options = {}) {
   );
   const skip = (page - 1) * limit;
 
-  return {
+  return normalizeClassificationAuthority({
     ...result,
     candidates: rows.slice(skip, skip + limit),
-    rules: {
-      ...(result.rules || {}),
-      classificationAuthority: "meal_product_classification.v1",
-    },
     meta: recalculateMeta(rows, page, limit, result.meta || {}),
+  });
+}
+
+function wrapCompatibilityPicker() {
+  const original = compatibilityService.getDirectProductPicker;
+  if (typeof original !== "function") {
+    throw new Error("Missing dashboard direct product picker");
+  }
+  if (original[WRAPPER_MARKER]) return;
+
+  const wrapped = async function classifiedDashboardDirectPicker(options = {}) {
+    const requestedPage = positiveInteger(options.page, 1);
+    const requestedLimit = Math.min(
+      MAX_PICKER_LIMIT,
+      positiveInteger(options.limit, 100)
+    );
+    const complete = await original.call(compatibilityService, {
+      ...options,
+      page: 1,
+      limit: MAX_PICKER_LIMIT,
+    });
+    return filterDirectCandidates(complete, {
+      ...options,
+      page: requestedPage,
+      limit: requestedLimit,
+    });
   };
+  Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
+  compatibilityService.getDirectProductPicker = wrapped;
+}
+
+function wrapFinalDashboardPicker() {
+  const original = dashboardMealBuilderService.getSectionPicker;
+  if (typeof original !== "function") {
+    throw new Error("Missing final dashboard Meal Builder picker");
+  }
+  if (original[WRAPPER_MARKER]) return;
+
+  const wrapped = async function canonicalDashboardPickerAuthority(options = {}) {
+    return normalizeClassificationAuthority(
+      await original.call(dashboardMealBuilderService, options)
+    );
+  };
+  Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
+  dashboardMealBuilderService.getSectionPicker = wrapped;
 }
 
 function installDashboardDirectPickerClassificationGuard() {
@@ -83,38 +136,13 @@ function installDashboardDirectPickerClassificationGuard() {
   globalThis[STATE_KEY] = state;
 
   try {
-    const original = compatibilityService.getDirectProductPicker;
-    if (typeof original !== "function") {
-      throw new Error("Missing dashboard direct product picker");
-    }
-    if (!original[WRAPPER_MARKER]) {
-      const wrapped = async function classifiedDashboardDirectPicker(
-        options = {}
-      ) {
-        const requestedPage = positiveInteger(options.page, 1);
-        const requestedLimit = Math.min(
-          MAX_PICKER_LIMIT,
-          positiveInteger(options.limit, 100)
-        );
-        const complete = await original.call(compatibilityService, {
-          ...options,
-          page: 1,
-          limit: MAX_PICKER_LIMIT,
-        });
-        return filterDirectCandidates(complete, {
-          ...options,
-          page: requestedPage,
-          limit: requestedLimit,
-        });
-      };
-      Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
-      compatibilityService.getDirectProductPicker = wrapped;
-    }
+    wrapCompatibilityPicker();
+    wrapFinalDashboardPicker();
 
     Object.assign(state, {
       status: "installed",
       installedAt: new Date(),
-      classificationAuthority: "meal_product_classification.v1",
+      classificationAuthority: AUTHORITY,
       preservesGenericStandaloneProducts: true,
       excludesNonMealAndBuilderProducts: true,
     });
@@ -133,4 +161,5 @@ installDashboardDirectPickerClassificationGuard();
 module.exports = {
   filterDirectCandidates,
   installDashboardDirectPickerClassificationGuard,
+  normalizeClassificationAuthority,
 };
