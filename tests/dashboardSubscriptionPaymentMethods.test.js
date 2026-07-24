@@ -122,6 +122,39 @@ function read(relativePath) {
     assert(providerEnum.includes("manual"));
   });
 
+  await test("visa method is persisted by validation inside the activation transaction", async () => {
+    const payment = new Payment({
+      provider: "cash",
+      type: "subscription_activation",
+      status: "paid",
+      amount: 254200,
+      currency: "SAR",
+      source: Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE,
+    });
+    await payment.validate();
+    assert.strictEqual(payment.provider, "manual");
+    assert.strictEqual(payment.method, "visa");
+    assert.strictEqual(payment.metadata.paymentMethod, "visa");
+    assert.strictEqual(payment.metadata.recordingMode, "dashboard_manual");
+    assert.strictEqual(payment.metadata.gatewayUsed, false);
+  });
+
+  await test("cash method is persisted with the same manual-recording metadata", async () => {
+    const payment = new Payment({
+      provider: "cash",
+      type: "subscription_activation",
+      status: "paid",
+      amount: 254200,
+      currency: "SAR",
+      source: Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE,
+    });
+    await payment.validate();
+    assert.strictEqual(payment.provider, "cash");
+    assert.strictEqual(payment.method, "cash");
+    assert.strictEqual(payment.metadata.paymentMethod, "cash");
+    assert.strictEqual(payment.metadata.gatewayUsed, false);
+  });
+
   await test("canonical dashboard routes use payment recording and expose the daily report", async () => {
     const subscriptionsRoute = read("src/routes/dashboardSubscriptions.js");
     assert(subscriptionsRoute.includes('require("../controllers/dashboard/subscriptionPaymentRecordingController")'));
@@ -136,8 +169,8 @@ function read(relativePath) {
 
   await test("visa recording code never invokes a payment gateway", async () => {
     const source = read("src/controllers/dashboard/subscriptionPaymentRecordingController.js");
-    assert(source.includes('gatewayUsed: false'));
-    assert(source.includes('paymentGatewayRequired: false'));
+    assert(source.includes("paymentGatewayRequired: false"));
+    assert(source.includes("DASHBOARD_SUBSCRIPTION_VISA_SOURCE"));
     assert(!source.includes("moyasarService"));
     assert(!source.includes("createInvoice"));
     assert(!source.includes("paymentUrl"));
