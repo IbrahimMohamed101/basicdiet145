@@ -96,8 +96,8 @@ async function run() {
     let response = await api
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
-      .send({ sections: [], notes: "two-type isolated draft" });
-    expectStatus(response, 201, "create empty draft");
+      .send({ sections: [], notes: "two-type system-managed draft" });
+    expectStatus(response, 201, "create system-managed draft");
 
     response = await api
       .get("/api/dashboard/meal-builder/catalog?lang=en")
@@ -139,54 +139,58 @@ async function run() {
     assert.deepEqual(response.body.data.rules.deprecatedSelectionTypes, [
       "sandwich",
     ]);
+    assert.equal(response.body.data.rules.membershipSource, "live_catalog");
     assert(
       response.body.data.candidates.every(
         (candidate) => candidate.selectionType === "full_meal_product"
       ),
-      "all direct product candidates use the canonical selection type"
+      "all direct candidates use the canonical selection type"
     );
-
-    response = await api
-      .post("/api/dashboard/meal-builder/sections")
-      .set(auth.headers)
-      .send({
-        cardType: "direct_product",
-        key: "sandwiches",
-        titleOverride: { ar: "ساندويتشات", en: "Sandwiches" },
-        selectionType: "sandwich",
-        selectedProductIds: [String(product._id)],
-        visible: true,
-        sortOrder: 10,
-      });
-    expectStatus(response, 201, "accept legacy sandwich alias");
-    assert.equal(
-      response.body.data.section.selectionType,
-      "full_meal_product"
-    );
-    assert.equal(
-      response.body.data.section.metadata.cardKind,
-      "full_meal_product"
+    assert(
+      response.body.data.candidates.some(
+        (candidate) => candidate.productId === String(product._id)
+      ),
+      "live direct product is present without manual membership"
     );
 
     let draft = await MealBuilderConfig.findOne({
       status: "draft",
       isCurrent: true,
     }).lean();
-    assert.equal(draft.sections[0].selectionType, "full_meal_product");
+    let storedSection = draft.sections.find(
+      (section) => section.key === "sandwich"
+    );
+    assert(storedSection, "system-managed canonical section is stored");
+    assert.equal(storedSection.selectionType, "full_meal_product");
+    assert(
+      storedSection.selectedProductIds.map(String).includes(String(product._id))
+    );
 
+    // Simulate a historical database document. Runtime state, validation and
+    // publication must normalize both the old key and the deprecated type.
     await MealBuilderConfig.updateOne(
-      { _id: draft._id, "sections.key": "sandwiches" },
-      { $set: { "sections.$.selectionType": "sandwich" } }
+      { _id: draft._id, "sections.key": "sandwich" },
+      {
+        $set: {
+          "sections.$.key": "sandwiches",
+          "sections.$.selectionType": "sandwich",
+          "sections.$.metadata.membershipSource": "legacy_selected_ids",
+          "sections.$.metadata.systemManaged": false,
+        },
+      }
     );
 
     response = await api
       .get("/api/dashboard/meal-builder")
       .set(auth.headers);
     expectStatus(response, 200, "canonicalize historical dashboard config");
-    const dashboardSection = response.body.data.draft.sections.find(
-      (section) => section.key === "sandwiches"
+    const dashboardSections = response.body.data.draft.sections.filter(
+      (section) => section.key === "sandwich"
     );
-    assert.equal(dashboardSection.selectionType, "full_meal_product");
+    assert.equal(dashboardSections.length, 1);
+    assert.equal(dashboardSections[0].selectionType, "full_meal_product");
+    assert.equal(dashboardSections[0].metadata.membershipSource, "live_catalog");
+    assert.equal(dashboardSections[0].metadata.systemManaged, true);
 
     response = await api
       .post("/api/dashboard/meal-builder/validate")
@@ -199,31 +203,41 @@ async function run() {
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
       .send({ notes: "publish canonical two-type contract" });
-    expectStatus(response, 200, "publish canonicalized legacy draft");
+    expectStatus(response, 200, "publish canonicalized historical draft");
 
     const published = await MealBuilderConfig.findOne({
       status: "published",
       isCurrent: true,
     }).lean();
-    const storedPublishedSection = published.sections.find(
-      (section) => section.key === "sandwiches"
+    const publishedDirectSections = published.sections.filter(
+      (section) => section.key === "sandwich"
     );
-    assert.equal(storedPublishedSection.selectionType, "full_meal_product");
+    assert.equal(publishedDirectSections.length, 1);
+    assert.equal(
+      publishedDirectSections[0].selectionType,
+      "full_meal_product"
+    );
+    assert.equal(
+      publishedDirectSections[0].metadata.membershipSource,
+      "live_catalog"
+    );
 
     response = await api.get(
       "/api/subscriptions/meal-planner-menu?contractVersion=v3&lang=en"
     );
     expectStatus(response, 200, "read Flutter V3 canonical contract");
     const contract = response.body.data.builderCatalog;
-    const publicSection = findSection(contract, "sandwiches");
-    assert(publicSection, "named Sandwiches card remains available");
+    const publicSection = findSection(contract, "sandwich");
+    assert(publicSection, "canonical direct section remains available");
     assert.equal(publicSection.selectionType, "full_meal_product");
     assert(
       !selectionTypes(contract).includes("sandwich"),
       "Flutter V3 does not expose sandwich as a selection type"
     );
-    const directProduct = (publicSection.products || [])[0];
-    assert(directProduct, "direct product reaches Flutter V3");
+    const directProduct = (publicSection.products || []).find(
+      (item) => String(item.productId || item.id) === String(product._id)
+    );
+    assert(directProduct, "live direct product reaches Flutter V3");
     assert.equal(directProduct.selectionType, "full_meal_product");
     assert.equal(directProduct.action.type, "direct_add");
     assert.equal(directProduct.action.requiresBuilder, false);
@@ -232,10 +246,10 @@ async function run() {
     assert.equal(
       (await MenuProduct.findById(product._id).lean()).itemType,
       "product",
-      "selection type migration never mutates MenuProduct"
+      "normalization never mutates MenuProduct"
     );
 
-    console.log("dashboard Meal Planner two-type policy passed");
+    console.log("dashboard Meal Planner canonical two-type policy passed");
   } finally {
     await disconnect();
   }
