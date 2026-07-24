@@ -102,6 +102,82 @@ function deliveryPayload(overrides = {}) {
   assert.strictEqual(explicitId.delivery.slot.slotId, "slot_12_14");
   assert.strictEqual(explicitId.delivery.slot.window, "12:00-14:00");
 
+  const dashboardGeneratedId = normalizeDashboardDeliverySlotPayload(
+    deliveryPayload({
+      window: "10:00-12:00",
+      slot: {
+        type: "delivery",
+        slotId: "delivery-10:00-12:00",
+        window: "10:00-12:00",
+      },
+    }),
+    windows
+  );
+  assert.strictEqual(
+    dashboardGeneratedId.delivery.slot.slotId,
+    "slot_10_12",
+    "a display-only dashboard slotId must be replaced by the canonical configured slotId when the window is unique"
+  );
+  assert.strictEqual(
+    dashboardGeneratedId.delivery.slot.window,
+    "10:00-12:00"
+  );
+
+  const formattingCompatibleWindow = normalizeDashboardDeliverySlotPayload(
+    deliveryPayload({
+      slot: {
+        type: "delivery",
+        slotId: "delivery-10:00-12:00",
+        window: "10:00-12:00",
+      },
+    }),
+    [{ id: "configured_10_12", window: "10:00 - 12:00" }]
+  );
+  assert.strictEqual(
+    formattingCompatibleWindow.delivery.slot.slotId,
+    "configured_10_12",
+    "spacing around the window separator must not invalidate the same delivery period"
+  );
+  assert.strictEqual(
+    formattingCompatibleWindow.delivery.slot.window,
+    "10:00 - 12:00"
+  );
+
+  assert.throws(
+    () =>
+      normalizeDashboardDeliverySlotPayload(
+        deliveryPayload({
+          slot: {
+            type: "delivery",
+            slotId: "slot_10_12",
+            window: "12:00-14:00",
+          },
+        }),
+        windows
+      ),
+    (error) =>
+      error
+      && error.code === "INVALID_DELIVERY_SLOT"
+      && /does not match/.test(error.message),
+    "a real mismatch between a canonical slotId and window must still be rejected"
+  );
+
+  assert.throws(
+    () =>
+      normalizeDashboardDeliverySlotPayload(
+        deliveryPayload({
+          slot: {
+            type: "delivery",
+            slotId: "unknown_slot",
+            window: "",
+          },
+        }),
+        windows
+      ),
+    (error) => error && error.code === "INVALID_DELIVERY_SLOT",
+    "an unknown slotId without a usable window must remain invalid"
+  );
+
   const pickupPayload = {
     delivery: {
       type: "pickup",
