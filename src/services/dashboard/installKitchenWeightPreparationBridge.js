@@ -54,7 +54,14 @@ function enrichBasicSaladSlot(slot = {}, card = {}) {
 
   const options = Array.isArray(slot.selectedOptions) ? slot.selectedOptions.map((option) => ({ ...option })) : [];
   const optionIndex = options.findIndex(isProteinOption);
-  if (optionIndex < 0) return slot;
+  if (optionIndex < 0) {
+    return {
+      ...slot,
+      productGrams: null,
+      weightGrams: null,
+      servingWeightGrams: null,
+    };
+  }
 
   const option = options[optionIndex];
   const declared = extractDeclaredWeightGrams(
@@ -69,6 +76,10 @@ function enrichBasicSaladSlot(slot = {}, card = {}) {
 
   return {
     ...slot,
+    // The declared 100g in Basic Salad is a protein portion, not total salad weight.
+    productGrams: null,
+    weightGrams: null,
+    servingWeightGrams: null,
     proteinId: option.optionId || option.id || slot.proteinId || null,
     proteinKey: option.optionKey || option.key || slot.proteinKey || null,
     proteinName: name.ar || name.en || slot.proteinName || "",
@@ -132,6 +143,7 @@ function installKitchenWeightPreparationBridge() {
   const verification = Object.freeze({
     installed: true,
     basicSaladProteinProjected: true,
+    basicSaladProductWeightSuppressed: true,
     unplannedAddonLabelsLocalized: true,
   });
   globalThis[INSTALL_MARK] = verification;
