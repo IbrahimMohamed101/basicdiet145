@@ -64,6 +64,11 @@ require("../services/installPremiumUpgradeImageHydration");
 // card, while the membership validator accepts the exact same expanded catalog.
 // Install last so it decorates the final Meal Builder service composition.
 require("../services/installFlutterMealPlannerCatalogExpansion");
+// Hydrate missing product/option media, deliver bounded Cloudinary images, and
+// cache only the static catalog layer before controllers capture service exports.
+const {
+  menuMutationCacheInvalidationMiddleware,
+} = require("../services/installMenuDeliveryOptimization");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
@@ -108,6 +113,10 @@ const asyncHandler = require("../middleware/asyncHandler");
 const webhookRoutes = require("./webhooks");
 
 const router = Router();
+
+// Successful dashboard catalog writes invalidate both static catalog caches.
+// User-specific subscription balances/add-on allowances are never cached here.
+router.use(menuMutationCacheInvalidationMiddleware);
 
 router.use("/webhooks", webhookRoutes);
 router.use("/payments", paymentRoutes.apiRouter);
