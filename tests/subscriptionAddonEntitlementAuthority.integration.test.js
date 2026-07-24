@@ -1075,7 +1075,13 @@ async function main() {
     const repaired = await Subscription.findById(broken.subscription._id).lean();
     assert.strictEqual(repaired.addonBalance[0].purchasedQty, 7);
     assert.strictEqual(repaired.addonBalance[0].remainingQty, 6);
-    assert.strictEqual(repaired.addonBalance[0].consumedQty, 1);
+    assert.strictEqual(repaired.addonBalance[0].consumedQty, 0, "Saving a future-day selection does not consume the add-on before fulfillment");
+    assert.strictEqual(repaired.addonBalance[0].reservedQty, 1, "Saving a future-day selection reserves the included add-on");
+    assert.strictEqual(
+      repaired.addonBalance[0].purchasedQty,
+      repaired.addonBalance[0].remainingQty + repaired.addonBalance[0].reservedQty + repaired.addonBalance[0].consumedQty,
+      "Repaired add-on balance preserves the purchased = remaining + reserved + consumed invariant"
+    );
 
     const missingUser = await createUser("Missing remaining balance user");
     const missing = await createSubscriptionFixture({
