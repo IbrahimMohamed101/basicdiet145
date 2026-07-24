@@ -395,20 +395,27 @@ async function run() {
     expectStatus(deleteCard, 200, "delete secondary card");
     assert.strictEqual(deleteCard.body.data.action, "deleted");
     assert.strictEqual(deleteCard.body.data.previousSectionKey, "secondary_card");
-    assert.strictEqual(deleteCard.body.data.summary.sectionCount, 1);
+    assert.strictEqual(deleteCard.body.data.summary.sectionCount, 2);
     assert.strictEqual(
       sectionByKey(deleteCard.body.data.draft.sections, "secondary_card"),
       null
+    );
+    const systemDirectSection = sectionByKey(
+      deleteCard.body.data.draft.sections,
+      "sandwich"
+    );
+    assert.ok(systemDirectSection, "live catalog system card remains after deleting a manual card");
+    assert.deepStrictEqual(
+      new Set(systemDirectSection.selectedProductIds),
+      new Set(ids)
     );
 
     const productsAfterDelete = await request(app)
       .get("/api/dashboard/meal-builder/pickers/products?limit=1000")
       .set(auth.headers);
-    expectStatus(productsAfterDelete, 200, "products released after card delete");
-    assert.deepStrictEqual(
-      new Set(productsAfterDelete.body.data.candidates.map((product) => product.productId)),
-      new Set(ids.slice(2))
-    );
+    expectStatus(productsAfterDelete, 200, "live catalog owns products after card delete");
+    assert.deepStrictEqual(productsAfterDelete.body.data.candidates, []);
+    assert.strictEqual(productsAfterDelete.body.data.meta.unassigned, 0);
 
     const publicBeforeRepublish = await request(app).get(
       "/api/subscriptions/meal-planner-menu?lang=en"
@@ -431,6 +438,7 @@ async function run() {
       sectionByKey(republish.body.data.config.sections, "secondary_card"),
       null
     );
+    assert.ok(sectionByKey(republish.body.data.config.sections, "sandwich"));
 
     const publicAfterRepublish = await request(app).get(
       "/api/subscriptions/meal-planner-menu?lang=en"
@@ -443,9 +451,12 @@ async function run() {
       ),
       null
     );
+    assert.ok(
+      plannerSectionByKey(publicAfterRepublish.body.data.builderCatalog, "sandwich")
+    );
     assert.deepStrictEqual(
       productIdsFromPlanner(publicAfterRepublish.body.data.builderCatalog),
-      new Set(ids.slice(0, 2))
+      new Set(ids)
     );
 
     console.log("mealPlannerCardLifecycle.test.js passed");
