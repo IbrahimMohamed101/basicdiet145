@@ -26,6 +26,9 @@ const { listOperations, getEnrichedDTO } = require("../src/services/dashboard/op
 const { executeAction } = require("../src/services/dashboard/opsTransitionService");
 const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");
 const {
+  reserveSubscriptionMealsForPickupRequest,
+} = require("../src/services/subscription/subscriptionPickupRequestBalanceService");
+const {
   performDaySelectionUpdate,
   performDaySelectionValidation,
 } = require("../src/services/subscription/subscriptionSelectionService");
@@ -463,17 +466,27 @@ async function runTests() {
       pickupRequested: true,
       lockedSnapshot: { mealsPerDay: 2, requiredMealCount: 2 },
     });
-    await SubscriptionPickupRequest.create({
+    const pickupFulfillRequest = await SubscriptionPickupRequest.create({
       subscriptionId: sub2._id,
       userId: sub2.userId,
       date: "2026-06-09",
       mealCount: 2,
       status: "ready_for_pickup",
-      creditsReserved: true,
     });
+    const pickupReservation = await reserveSubscriptionMealsForPickupRequest({
+      subscriptionId: sub2._id,
+      pickupRequestId: pickupFulfillRequest._id,
+      mealCount: 2,
+    });
+    assert.strictEqual(pickupReservation.reserved, true, "Pickup reservation should reserve the requested meals");
+    await assertRemainingMeals(sub2._id, 28, "pickup reservation deducts the exact reserved count once");
+
     const pickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });
     assert.strictEqual(pickupFulfillResult.ok, true, "Pickup fulfill should succeed");
-    await assertRemainingMeals(sub2._id, 28, "pickup fulfill deducts exact fulfilled count");
+    await assertRemainingMeals(sub2._id, 28, "pickup fulfill consumes the reservation without deducting again");
+    const consumedPickupRequest = await SubscriptionPickupRequest.findById(pickupFulfillRequest._id).lean();
+    assert(consumedPickupRequest.creditsConsumedAt, "Pickup request reservation is marked consumed");
+
     const repeatedPickupFulfillResult = await fulfillSubscriptionDay({ dayId: pickupFulfillDay._id });
     assert.strictEqual(repeatedPickupFulfillResult.ok, true, "Repeated pickup fulfill should be idempotent");
     await assertRemainingMeals(sub2._id, 28, "repeated pickup fulfill does not deduct again");
