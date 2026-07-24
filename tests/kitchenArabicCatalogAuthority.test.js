@@ -7,6 +7,7 @@ process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboar
 const assert = require("assert");
 
 require("../src/services/dashboard/installKitchenArabicCatalogAuthority");
+require("../src/services/dashboard/installKitchenAddonProductIdentityGuard");
 require("../src/services/dashboard/installKitchenPreparationContract");
 require("../src/services/dashboard/installKitchenFinalNameRepair");
 
@@ -67,7 +68,7 @@ function catalogMaps() {
     optionByKey: new Map([[protein.key, protein], [carb.key, carb]]),
     saladItemById: new Map(),
     saladItemByKey: new Map(),
-    addonById: new Map([[IDS.addonProduct, addonProduct]]),
+    addonById: new Map([[IDS.addonProduct, addonProduct], [IDS.addonPlan, addonPlan]]),
     addonByKey: new Map([[addonProduct.key, addonProduct]]),
     addonPlanById: new Map([[IDS.addonPlan, addonPlan]]),
   };
