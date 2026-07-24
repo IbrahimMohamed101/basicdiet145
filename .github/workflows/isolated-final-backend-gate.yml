@@ -1,5 +1,5 @@
 name: Isolated final backend gate
-# Runs balance, negotiated-language, and lifecycle preflight before the full sequential release suite.
+# Runs balance, add-on release, negotiated-language, and lifecycle preflight before the full sequential release suite.
 
 on:
   pull_request:
@@ -63,6 +63,26 @@ jobs:
 
       - name: Enforce pickup reservation balance lifecycle
         if: always() && steps.pickup_balance.outcome == 'failure'
+        run: exit 1
+
+      - name: Verify add-on selection removal releases credits
+        id: addon_release
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/addonBalanceE2ECollectionWarmup.js node tests/addon_balance_e2e.test.js 2>&1 | tee addon-release.log
+
+      - name: Upload add-on release log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: addon-release-balance-log
+          path: addon-release.log
+          if-no-files-found: error
+
+      - name: Enforce add-on release lifecycle
+        if: always() && steps.addon_release.outcome == 'failure'
         run: exit 1
 
       - name: Run final release gates
