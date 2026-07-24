@@ -614,17 +614,17 @@ async function runTests() {
     // Test 6: Cashier cannot consume more than remainingMeals
     try {
       await recordCashierConsumption({
-        phone: sub1Phone,
-        subscriptionId: sub1._id,
+        phone: sub2Phone,
+        subscriptionId: sub2._id,
         mealCount: 50,
-        actor: { actorId: sub1._id, actorType: "admin" },
+        actor: { actorId: sub2._id, actorType: "admin" },
       });
       assert.fail("Should have thrown INSUFFICIENT_CREDITS");
     } catch (err) {
       assert.strictEqual(err.code, "INSUFFICIENT_CREDITS", "Cannot consume more than available");
     }
-    const sub1AfterFailedCashier = await Subscription.findById(sub1._id).lean();
-    assert.strictEqual(sub1AfterFailedCashier.remainingMeals, 19, "Failed over-consumption must not change remainingMeals");
+    const sub2AfterFailedCashier = await Subscription.findById(sub2._id).lean();
+    assert.strictEqual(sub2AfterFailedCashier.remainingMeals, 28, "Failed over-consumption must not change remainingMeals");
     
     // Test 7: Expired subscription blocks cashier consumption
     // Move validityEndDate to yesterday
