@@ -1,0 +1,100 @@
+name: Verify production Home product aliases
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-production-home-product-aliases.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for Railway deployment and verify aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://basicdiet145-production-51e9.up.railway.app/api/orders/menu"
+          for attempt in $(seq 1 24); do
+            echo "Production verification attempt ${attempt}/24"
+            if curl -fsS --max-time 30 "$url" -o menu.json; then
+              if python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("menu.json").read_text())
+          assert payload.get("status") is True, payload
+
+          products = []
+          for category in payload.get("data", {}).get("categories", []):
+              for product in category.get("products", []):
+                  products.append({"categoryKey": category.get("key"), **product})
+
+          by_key = {product.get("key"): product for product in products}
+          expected = {
+              "fruit_salad": "salads_fruit_salad_150g",
+              "greek_yogurt": "greek_yogurt_greek_yogurt_200g",
+          }
+
+          result = {}
+          for alias, canonical in expected.items():
+              product = by_key.get(alias)
+              assert product, f"Missing production alias: {alias}"
+              assert product.get("canonicalKey") == canonical, product
+              assert product.get("id"), product
+              assert int(product.get("priceHalala") or 0) > 0, product
+              assert product.get("canAddDirectly") is True, product
+              assert product.get("requiresBuilder") is False, product
+              result[alias] = {
+                  "id": product.get("id"),
+                  "key": product.get("key"),
+                  "canonicalKey": product.get("canonicalKey"),
+                  "priceHalala": product.get("priceHalala"),
+                  "canAddDirectly": product.get("canAddDirectly"),
+                  "requiresBuilder": product.get("requiresBuilder"),
+              }
+
+          Path("verification.json").write_text(
+              json.dumps(result, ensure_ascii=False, indent=2)
+          )
+          print(json.dumps(result, ensure_ascii=False, indent=2))
+          PY
+              then
+                exit 0
+              fi
+            fi
+            sleep 15
+          done
+
+          echo "Production did not expose the expected aliases before timeout" >&2
+          if [[ -f menu.json ]]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("menu.json").read_text())
+          for category in payload.get("data", {}).get("categories", []):
+              for product in category.get("products", []):
+                  if product.get("key") in {
+                      "fruit_salad",
+                      "greek_yogurt",
+                      "salads_fruit_salad_150g",
+                      "greek_yogurt_greek_yogurt_200g",
+                  } or product.get("canonicalKey") in {
+                      "salads_fruit_salad_150g",
+                      "greek_yogurt_greek_yogurt_200g",
+                  }:
+                      print(category.get("key"), product)
+          PY
+          fi
+          exit 1
+
+      - name: Upload verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-home-product-aliases
+          path: |
+            verification.json
+            menu.json
