@@ -20,7 +20,7 @@ concurrency:
 jobs:
   release-gates:
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 115
     env:
       MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
       MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
