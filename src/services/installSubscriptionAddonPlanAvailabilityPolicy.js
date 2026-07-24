@@ -137,6 +137,15 @@ function resolveRuntime(overrides = {}) {
   return { ...defaultRuntime, ...(overrides || {}) };
 }
 
+function inheritFunctionCompositionMarkers(original, wrapped) {
+  for (const propertyName of Object.getOwnPropertyNames(original || {})) {
+    if (!propertyName.startsWith("__")) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(original, propertyName);
+    if (descriptor) Object.defineProperty(wrapped, propertyName, descriptor);
+  }
+  return wrapped;
+}
+
 async function preparePlanOnlyAddonSelections(payload, runtimeOverrides = {}) {
   const rawAddons = payload && payload.addons;
   if (!Array.isArray(rawAddons) || rawAddons.length === 0) {
@@ -469,6 +478,7 @@ function installSubscriptionAddonPlanAvailabilityPolicy() {
 
   const original = subscriptionQuoteService.resolveCheckoutQuoteOrThrow;
   const wrapped = createAddonPlanAvailabilityQuoteResolver({ original });
+  inheritFunctionCompositionMarkers(original, wrapped);
   Object.defineProperty(wrapped, WRAPPED_KEY, {
     value: true,
     configurable: false,
@@ -486,6 +496,7 @@ module.exports = {
   appendDeferredAddonPlansToQuote,
   createAddonPlanAvailabilityQuoteResolver,
   hasExplicitProductSelection,
+  inheritFunctionCompositionMarkers,
   installSubscriptionAddonPlanAvailabilityPolicy,
   isNewSaleProductUsable,
   isPlanOnlySelection,
