@@ -9,6 +9,8 @@ const {
 
 const FLUTTER_CONTRACT_VERSION = PLANNER_CATALOG_V3_VERSION;
 const BUILDER_CATALOG_V2_VERSION = "meal_planner_menu.v2";
+// Default responses intentionally preserve both canonical V3 aliases and the V2
+// compatibility catalog; legacy meal/add-on lists remain opt-in only.
 const OPTIONAL_ADDON_FIELDS = [
   "addonChoices",
   "addonChoiceGroups",
