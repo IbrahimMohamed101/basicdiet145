@@ -131,6 +131,7 @@ const {
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
 const dashboardStaffUserRoutes = require("./dashboardStaffUsers");
+const dashboardRestaurantCapabilitiesRoutes = require("./dashboardRestaurantCapabilities");
 const appAuthRoutes = require("./appAuth");
 const planRoutes = require("./plans");
 const popularPackageRoutes = require("./popularPackages");
@@ -210,12 +211,15 @@ router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
 router.use("/dashboard", dashboardBoardRoutes);
+router.use("/dashboard", dashboardRestaurantCapabilitiesRoutes);
 router.use("/dashboard", adminRoutes);
 router.use("/dashboard/menu-identities-audit", dashboardMenuIdentityRoutes);
 router.use("/dashboard", dashboardMenuIdentityRoutes);
+router.use("/admin", dashboardRestaurantCapabilitiesRoutes);
 router.use("/admin", adminRoutes);
 router.use("/health", healthRoutes);
 router.use("/client", clientRoutes);
+router.use("/account-deletion", accountDeletionRoutes);
 
 router.use("/courier", courierRoutes);
 router.use("/kitchen", kitchenRoutes);
