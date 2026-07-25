@@ -3,6 +3,11 @@
 const INSTALL_MARK = Symbol.for("basicdiet.pickupAvailabilityResponseFinalRepair.installed");
 const WRAP_MARK = Symbol.for("basicdiet.pickupAvailabilityResponseFinalRepair.wrapped");
 const MALFORMED_TEXT = /\[object\s+(?:Object|Array)\]/i;
+const GENERIC_TITLES = new Set([
+  "", "وجبة", "وجبة عادية", "وجبة قياسية", "وجبة مميزة", "سلطة مميزة",
+  "ساندويتش", "ساندوتش", "إضافة", "عنصر", "meal", "standard meal",
+  "premium meal", "premium salad", "sandwich", "add-on", "addon", "item",
+]);
 
 const KNOWN_NAMES = Object.freeze({
   chicken: { ar: "دجاج", en: "Chicken" },
@@ -46,18 +51,12 @@ function mergePair(primary = {}, fallback = {}) {
   return {
     ar: (primaryAr && hasArabic(primaryAr) ? primaryAr : "")
       || (fallbackAr && hasArabic(fallbackAr) ? fallbackAr : "")
-      || primaryAr
-      || fallbackAr
-      || primaryEn
-      || fallbackEn,
+      || primaryAr || fallbackAr || primaryEn || fallbackEn,
     en: (primaryEn && !hasArabic(primaryEn) ? primaryEn : "")
       || (fallbackEn && !hasArabic(fallbackEn) ? fallbackEn : "")
       || (primaryAr && !hasArabic(primaryAr) ? primaryAr : "")
       || (fallbackAr && !hasArabic(fallbackAr) ? fallbackAr : "")
-      || primaryEn
-      || fallbackEn
-      || primaryAr
-      || fallbackAr,
+      || primaryEn || fallbackEn || primaryAr || fallbackAr,
   };
 }
 
@@ -73,7 +72,6 @@ function localizedPair(value, depth = 0, seen = new WeakSet()) {
   }
   if (typeof value !== "object" || seen.has(value)) return { ar: "", en: "" };
   seen.add(value);
-
   const arRaw = scalar(value.ar || value.arabic || value.nameAr || value.titleAr);
   const enRaw = scalar(value.en || value.english || value.nameEn || value.titleEn);
   let result = {
@@ -97,15 +95,17 @@ function normalizedKey(value) {
   return scalar(value).toLowerCase().replace(/[\s-]+/g, "_").replace(/^carbs_/, "");
 }
 
+function isOnlyGeneric(value) {
+  const localized = localizedPair(value);
+  const rows = [localized.ar, localized.en].map((entry) => scalar(entry).toLowerCase()).filter(Boolean);
+  return rows.length > 0 && rows.every((entry) => GENERIC_TITLES.has(entry));
+}
+
 function componentKind(component = {}) {
   const source = asRecord(component) || {};
   const text = [
-    source.type,
-    source.groupKey,
-    source.canonicalGroupKey,
-    source.categoryKey,
-    source.groupName,
-    source.groupNameI18n,
+    source.type, source.groupKey, source.canonicalGroupKey, source.categoryKey,
+    source.groupName, source.groupNameI18n,
   ].map((entry) => JSON.stringify(entry || "")).join(" ").toLowerCase();
   if (text.includes("protein") || text.includes("بروتين")) return "protein";
   if (text.includes("carb") || text.includes("كارب") || text.includes("نشوي")) return "carb";
@@ -124,14 +124,8 @@ function knownComponentName(component = {}) {
 function componentName(component = {}) {
   const source = asRecord(component) || {};
   const stored = localizedPair(
-    source.nameI18n
-      || source.name
-      || source.optionNameI18n
-      || source.optionName
-      || source.labelI18n
-      || source.label
-      || source.valueI18n
-      || source.value
+    source.nameI18n || source.name || source.optionNameI18n || source.optionName
+      || source.labelI18n || source.label || source.valueI18n || source.value
   );
   return mergePair(knownComponentName(source), stored);
 }
@@ -143,20 +137,20 @@ function composedMealTitle(entry = {}) {
     : (Array.isArray(source.options)
       ? source.options
       : (Array.isArray(source.selectedOptions) ? source.selectedOptions : []));
-  const ordered = [];
+  const rows = [];
   for (const wantedKind of ["protein", "carb"]) {
     for (const component of components) {
       if (componentKind(component) !== wantedKind) continue;
       const name = componentName(component);
       if (!name.ar && !name.en) continue;
       const identity = `${name.ar}\u0000${name.en}`;
-      if (ordered.some((row) => row.identity === identity)) continue;
-      ordered.push({ ...name, identity });
+      if (rows.some((row) => row.identity === identity)) continue;
+      rows.push({ ...name, identity });
     }
   }
   return {
-    ar: ordered.map((row) => row.ar || row.en).filter(Boolean).join(" + "),
-    en: ordered.map((row) => row.en || row.ar).filter(Boolean).join(" + "),
+    ar: rows.map((row) => row.ar || row.en).filter(Boolean).join(" + "),
+    en: rows.map((row) => row.en || row.ar).filter(Boolean).join(" + "),
   };
 }
 
@@ -175,20 +169,19 @@ function currentTitle(entry = {}) {
   const display = asRecord(source.display);
   let result = { ar: "", en: "" };
   for (const value of [
-    product && (product.nameI18n || product.name),
-    source.productNameI18n,
     source.canonicalTitleI18n,
     source.titleI18n,
     source.title,
     meal && meal.title,
     display && { ar: display.titleAr, en: display.titleEn },
+    product && (product.nameI18n || product.name),
+    source.productNameI18n,
     source.productName,
   ]) {
     const candidate = localizedPair(value);
-    if (candidate.ar || candidate.en) {
-      result = mergePair(result, candidate);
-      if (result.ar && result.en) break;
-    }
+    if ((!candidate.ar && !candidate.en) || isOnlyGeneric(candidate)) continue;
+    result = mergePair(result, candidate);
+    if (result.ar && result.en) break;
   }
   return result;
 }
@@ -214,12 +207,10 @@ function repairEntry(entry) {
   source.productNameI18n = title;
   source.productName = title.en || title.ar;
   source.canonicalTitleI18n = title;
-
   const display = asRecord(source.display) || {};
   display.titleAr = title.ar;
   display.titleEn = title.en;
   source.display = display;
-
   const meal = asRecord(source.meal);
   if (meal) meal.title = title;
   const product = asRecord(source.product);
