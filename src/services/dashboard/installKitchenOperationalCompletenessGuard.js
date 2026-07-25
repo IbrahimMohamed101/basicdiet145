@@ -23,9 +23,32 @@ function productLine(card = {}) {
 function completeDirectCard(card = {}) {
   const next = { ...card };
   const lines = Array.isArray(card.lines) ? [...card.lines] : [];
-  const product = card.components && card.components.product;
+  const components = card.components && typeof card.components === "object"
+    ? { ...card.components }
+    : {};
+  const product = components.product && typeof components.product === "object"
+    ? { ...components.product }
+    : null;
+
+  // Direct products and sandwiches are one catalog item. The card title has already
+  // been resolved from the live product catalog, so it is the authoritative display
+  // identity. This also prevents a later generic key fallback (Chicken/Beef/Rice)
+  // from shortening a complete product name.
+  if (product && card.title) {
+    const titleI18n = card.titleI18n && typeof card.titleI18n === "object"
+      ? card.titleI18n
+      : { ar: String(card.title), en: String(card.title) };
+    product.name = String(titleI18n.ar || card.title);
+    product.nameI18n = {
+      ar: String(titleI18n.ar || card.title),
+      en: String(titleI18n.en || titleI18n.ar || card.title),
+    };
+    components.product = product;
+    next.components = components;
+  }
+
   if (product && product.name && !lines.some((line) => String(line || "").startsWith("الصنف المطلوب:"))) {
-    lines.unshift(productLine(card));
+    lines.unshift(productLine({ ...next, components }));
   }
   next.lines = unique(lines);
   return next;
@@ -104,6 +127,7 @@ function installKitchenOperationalCompletenessGuard() {
   const verification = Object.freeze({
     installed: true,
     directPreparationLinesComplete: true,
+    directProductLocalizationComplete: true,
     incompleteBuilderCardsExplicit: true,
     responseShapePreserved: true,
   });
