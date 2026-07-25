@@ -6,6 +6,9 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const {
+  sanitizePublicData,
+} = require("../src/controllers/subscriptionMealPlannerV4Controller");
+const {
   CARD_TYPES,
   isPremiumSection,
   isRetiredLegacySandwichSection,
@@ -156,6 +159,35 @@ assert(payload.createdAt instanceof Date, "dates must survive response sanitizat
 assert.strictEqual(payload.plannerCatalog.sections.length, 1);
 assert.strictEqual(payload.plannerCatalog.sections[0].systemManaged, false);
 
+const intentionallyEmptyCatalog = {
+  contractVersion: "meal_planner_menu.v3",
+  currency: "SAR",
+  sections: [],
+  rules: { source: "meal_builder_config" },
+};
+const emptyPublicData = sanitizePublicData({
+  plannerCatalog: intentionallyEmptyCatalog,
+  builderCatalogV2: {
+    catalogVersion: "meal_planner_menu.v2",
+    currency: "SAR",
+    sections: [],
+  },
+  addonCatalog: {
+    items: [],
+    byCategory: {},
+    totalCount: 0,
+    entitlementResolved: false,
+    source: "empty_catalog",
+  },
+});
+assert.deepStrictEqual(
+  emptyPublicData.plannerCatalog.sections,
+  [],
+  "removing the last ordinary card must return a valid empty catalog instead of 503"
+);
+assert.deepStrictEqual(emptyPublicData.builderCatalog.sections, []);
+assert.deepStrictEqual(emptyPublicData.builderCatalogV2.sections, []);
+
 console.log(
-  "legacy sandwich card is retired; future dashboard cards remain editable"
+  "legacy sandwich card is retired; empty authored catalog and future cards are supported"
 );
