@@ -16,10 +16,9 @@ const router = Router();
 
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
 
-// Kitchen staff need the catalog for fulfillment, but catalog configuration is
-// an administrative concern. Keep all reads available while denying every
-// mutation unless the current Dashboard user is an admin/superadmin.
-router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
+// Restaurant staff own day-to-day menu operations. Kitchen remains read-only,
+// while restaurant/admin/superadmin may create, update, publish, and remove menu data.
+router.use(dashboardMutationRoleMiddleware(["admin", "superadmin", "restaurant"]));
 // Older Dashboard forms serialize omitted UI metadata as null. Treat that exact
 // value as an omitted field so existing/default metadata is preserved. Invalid
 // UI objects still pass through to the service validators and remain rejected.
@@ -35,7 +34,7 @@ router.patch("/categories/:id", asyncHandler(controller.updateCategory));
 router.post("/categories/:id/products", asyncHandler(controller.bulkAssignProductsToCategory));
 router.patch("/categories/:id/visibility", asyncHandler(controller.updateCategoryVisibility));
 router.patch("/categories/:id/availability", asyncHandler(controller.updateCategoryAvailability));
-router.delete("/categories/:id", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.deleteCategory));
+router.delete("/categories/:id", dashboardRoleMiddleware(["admin", "superadmin", "restaurant"]), asyncHandler(controller.deleteCategory));
 
 router.get("/products", asyncHandler(controller.listProducts));
 router.post("/products", asyncHandler(controller.createProduct));
@@ -64,7 +63,7 @@ router.delete("/products/:productId/option-groups/:groupId/options/:optionId", a
 router.get("/products/:id", asyncHandler(controller.getProduct));
 router.patch("/products/:id", asyncHandler(controller.updateProduct));
 router.patch("/products/:id/visibility", asyncHandler(controller.updateProductVisibility));
-router.delete("/products/:id", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.deleteProduct));
+router.delete("/products/:id", dashboardRoleMiddleware(["admin", "superadmin", "restaurant"]), asyncHandler(controller.deleteProduct));
 router.patch("/products/:productId/availability", asyncHandler(controller.updateProductAvailability));
 
 router.get("/customization-library", asyncHandler(controller.getCustomizationLibrary));
@@ -92,7 +91,7 @@ router.patch("/options/:id/toggle", asyncHandler(controller.toggleOption));
 
 router.post("/publish", asyncHandler(controller.publishMenu));
 router.get("/versions", asyncHandler(controller.listVersions));
-router.post("/rollback/:versionId", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.rollbackMenu));
+router.post("/rollback/:versionId", dashboardRoleMiddleware(["admin", "superadmin", "restaurant"]), asyncHandler(controller.rollbackMenu));
 router.get("/diff", asyncHandler(controller.getDiff));
 router.post("/validate", asyncHandler(controller.validateMenu));
 router.get("/audit-logs", asyncHandler(controller.listAuditLogs));

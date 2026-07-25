@@ -7,7 +7,7 @@ const {
 
 const router = Router();
 
-router.use(adminAuthMiddleware, dashboardRoleMiddleware(["admin"]));
+router.use(adminAuthMiddleware, dashboardRoleMiddleware(["admin", "restaurant"]));
 
 router.get("/categories", controller.listCategories);
 router.post("/categories", controller.createCategory);

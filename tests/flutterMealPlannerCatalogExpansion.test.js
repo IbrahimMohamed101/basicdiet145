@@ -235,6 +235,11 @@ async function run() {
     assert.strictEqual(response.status, 200, JSON.stringify(response.body));
     const catalog = response.body.data.builderCatalog;
     assert.strictEqual(catalog.contractVersion, "meal_planner_menu.v3");
+    assert.strictEqual(
+      catalog.selectionAuthority,
+      "published_meal_builder_selected_ids",
+      "published Meal Builder selections must remain the final Flutter authority"
+    );
 
     const beefSection = catalog.sections.find((section) => section.key === "beef");
     const beefGroup = beefSection.products[0].optionGroups.find(
@@ -242,8 +247,8 @@ async function run() {
     );
     assert.deepStrictEqual(
       ids(beefGroup.options),
-      proteinOptions.map((option) => String(option._id)),
-      "Flutter beef picker must receive every eligible related option"
+      proteinOptions.slice(0, 2).map((option) => String(option._id)),
+      "Flutter beef picker must expose only the options selected in the published dashboard config"
     );
 
     const carbsSection = catalog.sections.find((section) => section.key === "carbs");
@@ -252,8 +257,8 @@ async function run() {
     );
     assert.deepStrictEqual(
       ids(carbsGroup.options),
-      carbOptions.map((option) => String(option._id)),
-      "Flutter carb picker must receive every eligible related option"
+      [String(carbOptions[0]._id)],
+      "Flutter carb picker must expose only the options selected in the published dashboard config"
     );
     assert.strictEqual(catalog.rules.maxCarbItemsPerMeal, 2);
     assert.strictEqual(catalog.rules.maxCarbTotalGrams, 300);
@@ -265,8 +270,8 @@ async function run() {
     );
     assert.deepStrictEqual(
       ids(directSection.products),
-      directProducts.map((product) => String(product._id)),
-      "Flutter direct-product tab must receive every eligible product in the configured category"
+      directProducts.slice(0, 2).map((product) => String(product._id)),
+      "Flutter direct-product tab must expose only products selected in the published dashboard config"
     );
 
     const membershipResult = await mealBuilderConfigService.buildPublishedMembership();
@@ -278,8 +283,8 @@ async function run() {
         proteins._id,
         proteinOptions[2]._id
       ),
-      true,
-      "an option exposed to Flutter must also be accepted by backend membership validation"
+      false,
+      "an option omitted from the published dashboard config must be rejected by membership validation"
     );
     assert.strictEqual(
       mealBuilderConfigService.isOptionIncluded(
@@ -289,8 +294,8 @@ async function run() {
         carbs._id,
         carbOptions[1]._id
       ),
-      true,
-      "a gram-based carb exposed to Flutter must also be accepted by backend membership validation"
+      false,
+      "a carb omitted from the published dashboard config must be rejected by membership validation"
     );
     assert.strictEqual(
       mealBuilderConfigService.isProductIncluded(
@@ -298,11 +303,11 @@ async function run() {
         "full_meal_product",
         directProducts[2]._id
       ),
-      true,
-      "a direct product exposed to Flutter must also be accepted by backend membership validation"
+      false,
+      "a direct product omitted from the published dashboard config must be rejected by membership validation"
     );
 
-    console.log("Flutter Meal Planner catalog expansion contract passed");
+    console.log("Flutter Meal Planner published-selection contract passed");
   } finally {
     await disconnect();
   }
