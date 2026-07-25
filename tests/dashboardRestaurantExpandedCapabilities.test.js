@@ -99,6 +99,31 @@ function run() {
     "restaurant must not mutate courier state"
   );
   assertIncludes(
+    courier,
+    "function restaurantCourierReadOnlyResponse",
+    "restaurant courier response sanitizer"
+  );
+  assertIncludes(
+    courier,
+    "allowedActions: []",
+    "restaurant courier actions must be hidden"
+  );
+  assertIncludes(
+    courier,
+    "allowedActionIds: []",
+    "restaurant courier action ids must be hidden"
+  );
+  assertIncludes(
+    courier,
+    "restaurantCourierReadOnlyResponse,\n  asyncHandler(controller.listTodayDeliveries)",
+    "subscription delivery list must be read-only for restaurant"
+  );
+  assertIncludes(
+    courier,
+    "restaurantCourierReadOnlyResponse,\n  asyncHandler(orderController.listTodayOrders)",
+    "one-time delivery list must be read-only for restaurant"
+  );
+  assertIncludes(
     boards,
     'dashboardRoleMiddleware(["admin", "courier", "restaurant"])',
     "delivery schedule restaurant read access"
