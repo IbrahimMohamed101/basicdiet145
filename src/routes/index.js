@@ -7,6 +7,9 @@ require("../services/installIndependentPremiumAuthority");
 // authored for standard_meal (carbs and any future side groups) available while
 // the Premium section remains authoritative for the upgraded source option.
 require("../services/installPremiumMealBaseBuilderInheritance");
+// Pickup snapshots may contain nested localized objects. Repair them before the
+// subscription composition captures pickup availability service functions.
+require("../services/installPickupAvailabilityNameRepair");
 require("../services/installSubscriptionBackendRepairComposition");
 // A paid Premium selection is an upgrade of one subscription meal, never a
 // replacement for its base meal credit. Install this invariant before payment,
