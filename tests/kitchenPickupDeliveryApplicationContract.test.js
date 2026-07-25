@@ -25,7 +25,7 @@ const IDS = Object.freeze({
   deliveryDay: "507f191e810c19729de89006",
   protein: "6a62197c79ee075a57f7012c",
   legacyWhiteRice: "6a62198179ee075a57f7013e",
-  directProduct: "6a62193a79ee075a57f7003e",
+  directProduct: "6a62194f79ee075a57f7008a",
   addonProduct: "6a62196879ee075a57f700ea",
   addonPlan: "6a6219a0f4f8d0974cebc49d",
   addonBucket: "507f191e810c19729de89007",
@@ -49,8 +49,8 @@ const whiteRice = {
 };
 const directProduct = {
   _id: IDS.directProduct,
-  key: "meals_chicken_white_sauce_pasta",
-  name: { ar: "باستا وايت صوص بالدجاج", en: "Chicken White Sauce Pasta" },
+  key: "sandwiches_grilled_chicken_sandwich",
+  name: { ar: "ساندويش دجاج مشوي", en: "Grilled Chicken Sandwich" },
 };
 const juiceProduct = {
   _id: IDS.addonProduct,
@@ -67,8 +67,8 @@ const maps = {
   optionByKey: new Map([[protein.key, protein], [whiteRice.key, whiteRice]]),
   productById: new Map([[IDS.directProduct, directProduct], [IDS.addonProduct, juiceProduct]]),
   productByKey: new Map([[directProduct.key, directProduct], [juiceProduct.key, juiceProduct]]),
-  sandwichById: new Map(),
-  sandwichByKey: new Map(),
+  sandwichById: new Map([[IDS.directProduct, directProduct]]),
+  sandwichByKey: new Map([[directProduct.key, directProduct]]),
   saladItemById: new Map(),
   saladItemByKey: new Map(),
   addonById: new Map(),
@@ -121,8 +121,10 @@ function rawDay(id, subscriptionId, mode) {
         selectionType: "sandwich",
         productId: IDS.directProduct,
         productKey: directProduct.key,
-        productName: "باستا وايت صوص بالدجاج",
-        productNameI18n: { ar: "باستا وايت صوص بالدجاج", en: "Chicken" },
+        sandwichId: IDS.directProduct,
+        sandwichKey: directProduct.key,
+        productName: "ساندويش دجاج مشوي",
+        productNameI18n: { ar: "ساندويش دجاج مشوي", en: "Chicken" },
       },
     ],
     addonSelections: [],
@@ -164,10 +166,10 @@ function assertCompleteOperation(operation, expectedMode) {
   assert(!meal.warnings.includes("KITCHEN_COMPONENTS_INCOMPLETE"));
 
   const direct = operation.kitchen.cards[1];
-  assert.strictEqual(direct.title, "باستا وايت صوص بالدجاج");
-  assert.strictEqual(direct.titleI18n.en, "Chicken White Sauce Pasta");
-  assert.strictEqual(direct.components.product.nameI18n.en, "Chicken White Sauce Pasta");
-  assert(direct.lines.includes("الصنف المطلوب: باستا وايت صوص بالدجاج"));
+  assert.strictEqual(direct.title, "ساندويش دجاج مشوي");
+  assert.strictEqual(direct.titleI18n.en, "Grilled Chicken Sandwich");
+  assert.strictEqual(direct.components.product.nameI18n.en, "Grilled Chicken Sandwich");
+  assert(direct.lines.includes("الصنف المطلوب: ساندويش دجاج مشوي"));
 }
 
 async function assertAddonProductIdentityPersists() {
