@@ -159,6 +159,24 @@ function sanitizeConfig(config) {
   };
 }
 
+function looksLikeSection(value = {}) {
+  if (!isPlainObject(value)) return false;
+  const hasSectionShape =
+    Object.prototype.hasOwnProperty.call(value, "sectionType") ||
+    Object.prototype.hasOwnProperty.call(value, "builderSectionType") ||
+    Object.prototype.hasOwnProperty.call(value, "selectedProductIds") ||
+    Object.prototype.hasOwnProperty.call(value, "selectedOptionIds") ||
+    Object.prototype.hasOwnProperty.call(value, "sourceKind");
+  const keyedDecoratedSection =
+    Boolean(sectionKey(value)) &&
+    (
+      Object.prototype.hasOwnProperty.call(value, "systemManaged") ||
+      Object.prototype.hasOwnProperty.call(value, "metadata") ||
+      Object.prototype.hasOwnProperty.call(value, "ui")
+    );
+  return hasSectionShape || keyedDecoratedSection;
+}
+
 function sanitizePayload(value) {
   if (Array.isArray(value)) return value.map(sanitizePayload);
   if (!isPlainObject(value)) return value;
@@ -170,15 +188,7 @@ function sanitizePayload(value) {
       : sanitizePayload(entry);
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(output, "sectionType") ||
-    Object.prototype.hasOwnProperty.call(output, "cardType") ||
-    Object.prototype.hasOwnProperty.call(output, "selectedProductIds") ||
-    Object.prototype.hasOwnProperty.call(output, "selectedOptionIds")
-  ) {
-    return normalizeEditableSection(output);
-  }
-  return output;
+  return looksLikeSection(output) ? normalizeEditableSection(output) : output;
 }
 
 function sectionFingerprint(sections = []) {
@@ -193,6 +203,7 @@ module.exports = {
   isPlainObject,
   isPremiumSection,
   isRetiredLegacySandwichSection,
+  looksLikeSection,
   normalizeEditableSection,
   sanitizeConfig,
   sanitizePayload,
