@@ -29,4 +29,11 @@ router.get(
   asyncHandler(subscriptionPaymentController.getDailySubscriptionPayments)
 );
 
+router.get(
+  "/subscription-payments/monthly",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin"]),
+  asyncHandler(subscriptionPaymentController.getMonthlySubscriptionPayments)
+);
+
 module.exports = router;
