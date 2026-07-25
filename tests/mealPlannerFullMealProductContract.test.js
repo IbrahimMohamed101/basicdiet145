@@ -91,8 +91,8 @@ async function main() {
     const api = request(app);
     const { headers } = await dashboardAuth("admin", "full-meal-product-test");
 
-    // Direct full-meal products are normalized into the one system-managed live
-    // catalog section while preserving the Flutter direct-add contract.
+    // A dashboard-authored direct product card must reach Flutter under the same
+    // card key. The backend must not create an extra app-only `sandwich` card.
     {
       const draftPayload = {
         sections: [
@@ -125,26 +125,26 @@ async function main() {
 
       const planner = res.body.data.builderCatalog;
       assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
-
-      const directSection = planner.sections.find((section) => section.key === "sandwich");
-      assert(directSection, "canonical live direct-meal section should exist");
       assert.strictEqual(
-        planner.sections.filter((section) => section.key === "sandwich").length,
-        1,
-        "only one canonical direct-meal section should be returned"
+        planner.sections.some((section) => section.key === "sandwich"),
+        false,
+        "backend must not inject an app-only sandwich card"
       );
+
+      const directSection = planner.sections.find((section) => section.key === "pasta_section");
+      assert(directSection, "dashboard-authored direct meal card should exist");
 
       const pastaItem = directSection.products.find(
         (product) => String(product.productId || product.id) === String(fixture.pastaProduct._id)
       );
-      assert(pastaItem, "standalone pasta meal should be sourced from the live catalog");
+      assert(pastaItem, "selected standalone pasta meal should remain in its authored card");
       assert.strictEqual(pastaItem.selectionType, "full_meal_product", "selectionType should map correctly");
       assert.deepStrictEqual(pastaItem.action, {
         type: "direct_add",
         requiresBuilder: false,
         treatAsFullMeal: true
-      }, "canonical direct product action must remain Flutter-compatible");
-      console.log("✓ Test 1 PASSED: direct product normalized into canonical live section");
+      }, "dashboard-authored direct product action must remain Flutter-compatible");
+      console.log("✓ Test 1 PASSED: direct product remains in its dashboard-authored card");
     }
 
     // A standard_meal product with zero option groups must never become a direct
@@ -196,8 +196,9 @@ async function main() {
       console.log("✓ Test 2 PASSED: standard_meal + zero option groups is not treated as full meal");
     }
 
-    // Legacy direct cards remain accepted as input, but both membership and the
-    // public response are resolved from the live direct-meal catalog.
+    // Historical sandwich selectionType remains readable for existing published
+    // configs, but it must stay in the authored card and must not grant every live
+    // standalone product implicit membership.
     {
       const now = new Date();
       await MealBuilderConfig.updateMany(
@@ -253,8 +254,8 @@ async function main() {
           MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT,
           fixture.pastaProduct._id
         ),
-        true,
-        "active standalone meal must be included without stored membership"
+        false,
+        "un-authored standalone meals must not receive implicit membership"
       );
       assert.strictEqual(
         mealBuilderConfigService.isProductIncluded(
@@ -288,20 +289,25 @@ async function main() {
 
       const res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
-      const directSection = res.body.data.builderCatalog.sections.find(
-        (section) => section.key === "sandwich"
+      assert.strictEqual(
+        res.body.data.builderCatalog.sections.some((section) => section.key === "sandwich"),
+        false,
+        "legacy config must not create an additional app-only sandwich card"
       );
-      assert(directSection, "canonical live direct-meal section must be present");
+      const directSection = res.body.data.builderCatalog.sections.find(
+        (section) => section.key === "legacy_sandwiches"
+      );
+      assert(directSection, "legacy authored direct-meal section must be present");
       const directProductIds = directSection.products.map(
         (product) => String(product.productId || product.id)
       );
       assert(
         directProductIds.includes(String(fixture.sandwichProduct._id)),
-        "legacy sandwich product must be surfaced by the live catalog"
+        "legacy authored sandwich product must remain visible"
       );
       assert(
-        directProductIds.includes(String(fixture.pastaProduct._id)),
-        "unconfigured standalone product must be surfaced by the live catalog"
+        !directProductIds.includes(String(fixture.pastaProduct._id)),
+        "un-authored standalone product must not leak into the legacy card"
       );
       assert(
         directSection.products.every(
@@ -311,10 +317,10 @@ async function main() {
             product.action?.requiresBuilder === false &&
             product.action?.treatAsFullMeal === true
         ),
-        "public live direct-meal items must preserve the canonical Flutter action contract"
+        "authored direct-meal items must preserve the canonical Flutter action contract"
       );
 
-      console.log("✓ Test 3 PASSED: live direct catalog validates canonical full_meal_product payloads");
+      console.log("✓ Test 3 PASSED: legacy direct card stays authored and membership-scoped");
     }
 
     console.log("\nAll Full Meal Product Contract tests passed!");
