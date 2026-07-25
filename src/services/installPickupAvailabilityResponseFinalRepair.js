@@ -133,7 +133,7 @@ function componentName(component = {}) {
       || source.valueI18n
       || source.value
   );
-  return mergePair(stored, knownComponentName(source));
+  return mergePair(knownComponentName(source), stored);
 }
 
 function composedMealTitle(entry = {}) {
