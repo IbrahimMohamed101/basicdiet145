@@ -1,9 +1,9 @@
 name: Debug Flutter Card Policy
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/editable-sandwich-card-20260725
+      - main
   workflow_dispatch:
 
 jobs:
