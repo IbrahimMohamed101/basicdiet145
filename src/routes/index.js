@@ -110,6 +110,10 @@ require("../services/installFlutterMealPlannerCatalogExpansion");
 // Re-apply the canonical meal-product classifier after the dashboard's explicit
 // authoring layer so add-ons/builders cannot appear as direct meal candidates.
 require("../services/installDashboardDirectPickerClassificationGuard");
+// The Premium card is read-only in Meal Builder, but its visible items are owned
+// by PremiumUpgradeConfig. Mirror the same active/ready rows returned by the
+// Premium Upgrades endpoint into every dashboard system_premium card response.
+require("../services/installDashboardPremiumCardHydration");
 // Hydrate missing product/option media, deliver bounded Cloudinary images, and
 // cache only the static catalog layer before controllers capture service exports.
 const {
