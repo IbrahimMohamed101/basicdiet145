@@ -47,7 +47,7 @@ function stripRetiredSandwichCardDeep(value, seen = new WeakSet()) {
 
 function copyFunctionProperties(source, target) {
   for (const key of Reflect.ownKeys(source)) {
-    if (["name", "length", "prototype", "arguments", "caller"].includes(String(key))) continue;
+    if (["name", "length", "prototype", "arguments", "caller", "__original"].includes(String(key))) continue;
     if (key === WRAPPED_KEY) continue;
     try {
       const descriptor = Object.getOwnPropertyDescriptor(source, key);
