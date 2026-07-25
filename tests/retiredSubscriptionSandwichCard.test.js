@@ -18,17 +18,14 @@ const injectorPath = path.join(
   __dirname,
   "../src/services/installDynamicDirectMealCatalogPolicy.js"
 );
-const membershipCompatibilityPath = path.join(
+const finalGuardPath = path.join(
   __dirname,
-  "../src/services/installFullMealProductMembershipCompatibility.js"
+  "../src/services/installDashboardDirectPickerClassificationGuard.js"
 );
 
 const routesSource = fs.readFileSync(routesPath, "utf8");
 const injectorSource = fs.readFileSync(injectorPath, "utf8");
-const membershipCompatibilitySource = fs.readFileSync(
-  membershipCompatibilityPath,
-  "utf8"
-);
+const finalGuardSource = fs.readFileSync(finalGuardPath, "utf8");
 
 assert(
   injectorSource.includes('const DYNAMIC_SECTION_KEY = "sandwich"'),
@@ -57,10 +54,8 @@ assert(
   "dashboard direct-product catalog classification must remain installed"
 );
 assert(
-  membershipCompatibilitySource.includes(
-    'require("./installRetiredLegacySandwichCard")'
-  ),
-  "legacy sandwich retirement must be installed before Meal Builder controllers load"
+  finalGuardSource.includes('require("./installRetiredLegacySandwichCard")'),
+  "legacy sandwich retirement must install after the final Meal Builder picker guard"
 );
 
 const retiredLegacySandwich = {
