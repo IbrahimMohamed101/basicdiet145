@@ -149,7 +149,7 @@ function repairNamedComponent(component, source = null) {
   const linked = localizedPair(source && (source.nameI18n || source.name));
   const fallback = fallbackPair(component.key || (source && source.key));
   const ar = linked.ar || stored.ar || fallback.ar || stored.en || linked.en;
-  const en = linked.en || stored.en || fallback.en || linked.ar || stored.ar;
+  const en = linked.en || fallback.en || stored.en || linked.ar || stored.ar;
   return {
     ...component,
     name: normalizeFoodText(ar || en),
