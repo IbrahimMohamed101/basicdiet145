@@ -157,6 +157,9 @@ function installDashboardDirectPickerClassificationGuard() {
 }
 
 installDashboardDirectPickerClassificationGuard();
+// Install last so no later Meal Builder wrapper can reclassify the retired
+// sandwich card as a fixed Premium card or re-expose it to Flutter.
+require("./installRetiredLegacySandwichCard");
 
 module.exports = {
   filterDirectCandidates,
