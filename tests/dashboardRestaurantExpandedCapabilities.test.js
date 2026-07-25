@@ -41,8 +41,18 @@ function run() {
   );
   assertIncludes(
     capabilities,
-    'router.post("/users", asyncHandler(adminController.createAppUserAdmin))',
+    'router.post(\n  "/users",',
     "restaurant customer creation endpoint"
+  );
+  assertIncludes(
+    capabilities,
+    "asyncHandler(adminController.createAppUserAdmin)",
+    "restaurant customer creation handler"
+  );
+  assertNotIncludes(
+    capabilities,
+    "router.use(\n  dashboardAuthMiddleware",
+    "scoped capability router must not block unrelated dashboard routes"
   );
 
   const scopedMount = routeIndex.indexOf('router.use("/dashboard", dashboardRestaurantCapabilitiesRoutes)');
