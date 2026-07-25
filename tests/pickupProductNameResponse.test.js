@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+require("../src/services/installPickupAvailabilityResponseFinalRepair");
 const {
   normalizePickupProductNamesResponse,
 } = require("../src/utils/pickupProductNameResponse");
@@ -61,6 +62,68 @@ function testGenericProductFallsBackToComponents() {
     ar: "دجاج + أرز",
     en: "Chicken + Rice",
   });
+}
+
+function testScreenshotMalformedBuilderNamesAreRebuiltForFlutter() {
+  const proteins = [
+    ["chicken", "white_rice", "دجاج + رز أبيض", "Chicken + White Rice"],
+    ["beef", "yellow_rice", "لحم بقري + رز أصفر", "Beef + Yellow Rice"],
+    ["fish", "white_rice", "سمك + رز أبيض", "Fish + White Rice"],
+  ];
+  const pickupItems = proteins.map(([proteinKey, carbKey], index) => ({
+    itemId: `slot_${index + 1}`,
+    itemType: "meal",
+    selectionType: "standard_meal",
+    title: { ar: `${proteinKey} + [object Object]`, en: `${proteinKey} + [object Object]` },
+    product: {
+      name: { ar: `${proteinKey} + [object Object]`, en: `${proteinKey} + [object Object]` },
+    },
+    meal: {
+      title: { ar: `${proteinKey} + [object Object]`, en: `${proteinKey} + [object Object]` },
+    },
+    components: [
+      {
+        type: "protein",
+        key: proteinKey,
+        name: { value: { ar: proteinKey, en: proteinKey } },
+      },
+      {
+        type: "carb",
+        key: carbKey,
+        name: { ar: { value: {} }, en: { value: {} } },
+      },
+    ],
+    display: {
+      titleAr: `${proteinKey} + [object Object]`,
+      titleEn: `${proteinKey} + [object Object]`,
+    },
+  }));
+  const payload = {
+    status: true,
+    data: {
+      pickupItems,
+      sections: [{
+        key: "meals",
+        items: pickupItems.map((item) => ({ itemId: item.itemId })),
+      }],
+    },
+  };
+
+  const result = normalizePickupProductNamesResponse(
+    clone(payload),
+    "/api/subscriptions/sub_1/pickup-availability?date=2026-07-25&includeUnavailable=true"
+  );
+
+  proteins.forEach(([, , expectedAr, expectedEn], index) => {
+    const item = result.data.pickupItems[index];
+    assert.deepStrictEqual(item.title, { ar: expectedAr, en: expectedEn });
+    assert.strictEqual(item.display.titleAr, expectedAr);
+    assert.strictEqual(item.display.titleEn, expectedEn);
+    assert.strictEqual(item.meal.title.ar, expectedAr);
+    assert.strictEqual(item.product.name.ar, expectedAr);
+    assert.strictEqual(result.data.sections[0].items[index].display.titleAr, expectedAr);
+  });
+  assert(!JSON.stringify(result).includes("[object Object]"));
 }
 
 function testDashboardKitchenCardUsesSameProductName() {
@@ -146,6 +209,7 @@ function testFrozenLegacyCardFailsOpen() {
 function run() {
   testFlutterAvailabilityUsesRealProductName();
   testGenericProductFallsBackToComponents();
+  testScreenshotMalformedBuilderNamesAreRebuiltForFlutter();
   testDashboardKitchenCardUsesSameProductName();
   testMalformedComponentsCannotBreakOpsList();
   testFrozenLegacyCardFailsOpen();
