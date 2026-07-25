@@ -4,6 +4,7 @@ const { Router } = require("express");
 const adminController = require("../controllers/adminController");
 const builderPremiumMealController = require("../controllers/builderPremiumMealController");
 const zoneController = require("../controllers/zoneController");
+const dashboardPromoCodeRoutes = require("./dashboardPromoCodes");
 const asyncHandler = require("../middleware/asyncHandler");
 const {
   dashboardAuthMiddleware,
@@ -18,6 +19,12 @@ const subscriptionStaffReadAccess = dashboardRoleMiddleware([
   "restaurant",
   "kitchen",
 ]);
+
+// Promo codes are a restaurant business-management capability. Mount this
+// scoped router before the broad admin router so restaurant users can list,
+// create, update, validate, toggle, and archive promo codes without receiving
+// unrelated admin access.
+router.use("/promo-codes", dashboardPromoCodeRoutes);
 
 // The create-subscription workspace uses these exact legacy dashboard reads.
 // Keep them narrowly scoped and read-only so restaurant/kitchen staff can load
