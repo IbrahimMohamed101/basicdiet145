@@ -81,31 +81,37 @@ function inferredEditableCardType(section = {}) {
     section.sectionType || section.builderSectionType || section.type
   );
 
-  // Explicit type always wins. Option sections can carry an empty
-  // selectedProductIds array, so product-array presence must not classify them as
-  // direct-product cards before their option identity is checked.
   if (explicit === CARD_TYPES.DIRECT_PRODUCT) return CARD_TYPES.DIRECT_PRODUCT;
   if (explicit === CARD_TYPES.OPTION_FAMILY) return CARD_TYPES.OPTION_FAMILY;
 
+  // Structural type is authoritative because both persisted section shapes carry
+  // empty arrays for the opposite entity type.
+  if (sectionType === "product_list" || sectionType === "product_category") {
+    return CARD_TYPES.DIRECT_PRODUCT;
+  }
   if (
     sectionType === "option_group" ||
     sectionType === "option_family" ||
-    sectionType === "configurable_product" ||
-    section.itemEntity === "MenuOption" ||
-    Array.isArray(section.selectedOptionIds) ||
-    Array.isArray(section.optionIds) ||
-    section.productContextId ||
-    section.sourceGroupId
+    sectionType === "configurable_product"
   ) {
     return CARD_TYPES.OPTION_FAMILY;
   }
 
+  if (section.itemEntity === "MenuProduct" || section.completeByItself === true) {
+    return CARD_TYPES.DIRECT_PRODUCT;
+  }
   if (
-    sectionType === "product_list" ||
-    section.itemEntity === "MenuProduct" ||
-    section.completeByItself === true ||
-    Array.isArray(section.selectedProductIds) ||
-    Array.isArray(section.productIds)
+    section.itemEntity === "MenuOption" ||
+    section.productContextId ||
+    section.sourceGroupId ||
+    (Array.isArray(section.selectedOptionIds) && section.selectedOptionIds.length > 0) ||
+    (Array.isArray(section.optionIds) && section.optionIds.length > 0)
+  ) {
+    return CARD_TYPES.OPTION_FAMILY;
+  }
+  if (
+    (Array.isArray(section.selectedProductIds) && section.selectedProductIds.length > 0) ||
+    (Array.isArray(section.productIds) && section.productIds.length > 0)
   ) {
     return CARD_TYPES.DIRECT_PRODUCT;
   }
