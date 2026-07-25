@@ -66,6 +66,16 @@ const sandwichCard = {
   sectionType: "product_list",
   products: [{ id: "sandwich-1" }],
 };
+const futureDashboardSandwichCard = {
+  key: "sandwich",
+  sectionType: "product_list",
+  products: [{ id: "sandwich-2" }],
+  metadata: {
+    configuredExplicitly: true,
+    configuredBy: "dashboard_user",
+    cardType: "direct_product",
+  },
+};
 const ordinaryCard = {
   key: "ready_meals",
   sectionType: "product_list",
@@ -81,6 +91,11 @@ assert.deepStrictEqual(
   removeRetiredSections([sandwichCard, ordinaryCard, premiumCard]),
   [ordinaryCard, premiumCard],
   "only the historical sandwich card must be removed"
+);
+assert.deepStrictEqual(
+  removeRetiredSections([futureDashboardSandwichCard]),
+  [futureDashboardSandwichCard],
+  "a future explicitly dashboard-authored replacement card may reuse the key"
 );
 
 const sanitized = sanitizeValue({
@@ -128,5 +143,5 @@ assert.deepStrictEqual(
 require("./dashboardPremiumCardHydration.test");
 
 console.log(
-  "legacy sandwich card is removed completely; Premium remains the only fixed card"
+  "historical sandwich card is removed; Premium stays fixed and future cards stay editable"
 );
