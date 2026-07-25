@@ -2,6 +2,11 @@
 
 const ActivityLog = require("../../models/ActivityLog");
 const Payment = require("../../models/Payment");
+const PromoCode = require("../../models/PromoCode");
+const PromoUsage = require("../../models/PromoUsage");
+// Install promo-aware dashboard quote/activation behavior before the admin
+// subscription controller captures service exports.
+require("../../services/installDashboardSubscriptionPromoFlow");
 const subscriptionCreationController = require("./subscriptionCreationController");
 
 const PAYMENT_METHODS = Object.freeze(["cash", "visa"]);
@@ -59,6 +64,66 @@ function decorateQuotePayload(payload) {
       paymentMethodOptions: paymentMethodOptions(),
       paymentGatewayRequired: false,
       paymentRecordingMode: "dashboard_manual",
+    },
+  };
+}
+
+function normalizePromoCode(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function readDiscountHalala(data = {}) {
+  const candidates = [
+    data.breakdown && data.breakdown.discountHalala,
+    data.pricing && data.pricing.discountHalala,
+    data.checkoutSummary && data.checkoutSummary.pricing && data.checkoutSummary.pricing.discountHalala,
+  ];
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return Math.round(parsed);
+  }
+  return 0;
+}
+
+async function decoratePromoQuotePayload(payload, body = {}) {
+  const code = normalizePromoCode(body.promoCode || body.promo_code);
+  if (!code || !payload || payload.status !== true || !payload.data || typeof payload.data !== "object") {
+    return payload;
+  }
+
+  const promo = await PromoCode.findOne({ codeNormalized: code, deletedAt: null }).lean();
+  const discountAmountHalala = readDiscountHalala(payload.data);
+  const promoBlock = {
+    promoCodeId: promo && promo._id ? String(promo._id) : null,
+    code,
+    title: promo && promo.title ? String(promo.title) : "",
+    description: promo && promo.description ? String(promo.description) : "",
+    discountType: promo && promo.discountType ? String(promo.discountType) : "",
+    discountValue: Number(promo && promo.discountValue || 0),
+    discountAmountHalala,
+    discountAmountSar: discountAmountHalala / 100,
+    message: discountAmountHalala > 0
+      ? `Promo ${code} applied`
+      : `Promo ${code} is valid but does not change this subscription total`,
+    isApplied: true,
+    validityState: "applied",
+  };
+
+  const checkoutSummary = payload.data.checkoutSummary && typeof payload.data.checkoutSummary === "object"
+    ? { ...payload.data.checkoutSummary, promoCode: promoBlock, appliedPromo: promoBlock }
+    : payload.data.checkoutSummary;
+  const quoteSummary = payload.data.quoteSummary && typeof payload.data.quoteSummary === "object"
+    ? { ...payload.data.quoteSummary, promoCode: promoBlock, appliedPromo: promoBlock }
+    : payload.data.quoteSummary;
+
+  return {
+    ...payload,
+    data: {
+      ...payload.data,
+      promoCode: promoBlock,
+      appliedPromo: promoBlock,
+      checkoutSummary,
+      quoteSummary,
     },
   };
 }
@@ -176,9 +241,27 @@ async function correctPaymentActivityLogBestEffort({ subscriptionId, payment, me
   }
 }
 
+async function linkPromoUsagePaymentBestEffort({ subscriptionId, payment }) {
+  if (!subscriptionId || !payment || !payment._id) return;
+  try {
+    await PromoUsage.updateOne(
+      {
+        subscriptionId,
+        status: "consumed",
+        $or: [{ paymentId: null }, { paymentId: { $exists: false } }],
+      },
+      { $set: { paymentId: payment._id } }
+    );
+  } catch (_err) {
+    // Promo usage is already consumed with the subscription. Linking the payment
+    // is useful audit metadata, but it must not fail a completed subscription.
+  }
+}
+
 async function quoteSubscriptionAdmin(req, res, next) {
   const captured = await invokeCaptured(subscriptionCreationController.quoteSubscriptionAdmin, req, next);
-  const payload = decorateQuotePayload(captured.payload);
+  const withPayment = decorateQuotePayload(captured.payload);
+  const payload = await decoratePromoQuotePayload(withPayment, req.body || {});
   return res.status(captured.statusCode).json(payload);
 }
 
@@ -266,6 +349,7 @@ async function createSubscriptionAdmin(req, res, next) {
   } catch (_err) {
     // Creation already committed atomically. The response can safely use quote data.
   }
+  await linkPromoUsagePaymentBestEffort({ subscriptionId, payment });
   await correctPaymentActivityLogBestEffort({
     subscriptionId,
     payment,
@@ -298,8 +382,10 @@ module.exports = {
   buildPaymentResponse,
   cloneRequestWithBody,
   createSubscriptionAdmin,
+  decoratePromoQuotePayload,
   decorateQuotePayload,
   extractQuoteTotalHalala,
+  linkPromoUsagePaymentBestEffort,
   normalizeDashboardPaymentMethod,
   paymentMethodOptions,
   quoteSubscriptionAdmin,
