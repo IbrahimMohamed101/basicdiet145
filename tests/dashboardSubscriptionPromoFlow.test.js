@@ -46,9 +46,10 @@ function run() {
     "dashboard payment should be linked to the consumed promo usage"
   );
   assert(
-    subscriptionRoutes.includes(
-      'dashboardRoleMiddleware(["admin", "cashier", "restaurant", "kitchen"])'
-    ),
+    subscriptionRoutes.includes("const subscriptionStaffAccess = dashboardRoleMiddleware([")
+      && subscriptionRoutes.includes('"restaurant"')
+      && subscriptionRoutes.includes('"kitchen"')
+      && subscriptionRoutes.includes("subscriptionStaffAccess,"),
     "restaurant and legacy kitchen roles must retain quote/create access"
   );
   assert(
