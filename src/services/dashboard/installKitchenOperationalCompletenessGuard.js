@@ -3,14 +3,68 @@
 const INSTALL_MARK = Symbol.for("basicdiet.dashboardKitchenOperationalCompletenessGuard.installed");
 const WRAPPED_MARK = Symbol.for("basicdiet.dashboardKitchenOperationalCompletenessGuard.wrapped");
 const COMPOSITE_TYPES = new Set(["standard_meal", "premium_meal"]);
+const LEGACY_CARB_COMPONENTS = Object.freeze({
+  "6a62198179ee075a57f7013e": {
+    key: "white_rice",
+    nameI18n: { ar: "رز أبيض", en: "White Rice" },
+  },
+});
+const CARB_KEY_COMPONENTS = Object.freeze({
+  white_rice: { ar: "رز أبيض", en: "White Rice" },
+  carbs_white_rice: { ar: "رز أبيض", en: "White Rice" },
+  vermicelli_rice: { ar: "رز بالشعيرية", en: "Vermicelli Rice" },
+  carbs_vermicelli_rice: { ar: "رز بالشعيرية", en: "Vermicelli Rice" },
+  yellow_rice: { ar: "رز أصفر", en: "Yellow Rice" },
+  carbs_yellow_rice: { ar: "رز أصفر", en: "Yellow Rice" },
+  vegetable_rice: { ar: "رز بالخضار", en: "Vegetable Rice" },
+  carbs_vegetable_rice: { ar: "رز بالخضار", en: "Vegetable Rice" },
+  mashed_potatoes: { ar: "بطاطس مهروسة", en: "Mashed Potatoes" },
+  carbs_mashed_potatoes: { ar: "بطاطس مهروسة", en: "Mashed Potatoes" },
+  creamy_pasta: { ar: "مكرونة بالكريمة", en: "Creamy Pasta" },
+  carbs_creamy_pasta: { ar: "مكرونة بالكريمة", en: "Creamy Pasta" },
+  red_sauce_pasta: { ar: "مكرونة حمراء", en: "Red Sauce Pasta" },
+  carbs_red_sauce_pasta: { ar: "مكرونة حمراء", en: "Red Sauce Pasta" },
+  mixed_vegetables: { ar: "خضار مشكل", en: "Mixed Vegetables" },
+  carbs_mixed_vegetables: { ar: "خضار مشكل", en: "Mixed Vegetables" },
+  roasted_potatoes: { ar: "بطاطس مشوية", en: "Roasted Potatoes" },
+  carbs_roasted_potatoes: { ar: "بطاطس مشوية", en: "Roasted Potatoes" },
+  sweet_potatoes: { ar: "بطاطا حلوة", en: "Sweet Potatoes" },
+  carbs_sweet_potatoes: { ar: "بطاطا حلوة", en: "Sweet Potatoes" },
+});
 
 function positiveInteger(value) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
+function idText(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (value && typeof value.toHexString === "function") {
+    try { return String(value.toHexString()).trim() || null; } catch (_) { return null; }
+  }
+  if (value && typeof value === "object") {
+    if (value._id !== undefined && value._id !== value) return idText(value._id);
+    if (value.id !== undefined && value.id !== value) return idText(value.id);
+    return null;
+  }
+  return String(value).trim() || null;
+}
+
 function unique(values) {
   return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))];
+}
+
+function pair(value) {
+  if (!value) return { ar: "", en: "" };
+  if (typeof value === "string") {
+    return /[\u0600-\u06FF]/u.test(value) ? { ar: value, en: "" } : { ar: "", en: value };
+  }
+  if (typeof value !== "object" || Array.isArray(value)) return { ar: "", en: "" };
+  const source = value.nameI18n || value.name || value.titleI18n || value.title;
+  if (source && source !== value) return pair(source);
+  const ar = typeof value.ar === "string" ? value.ar.trim() : "";
+  const en = typeof value.en === "string" ? value.en.trim() : "";
+  return { ar, en };
 }
 
 function productLine(card = {}) {
@@ -54,14 +108,88 @@ function completeDirectCard(card = {}) {
   return next;
 }
 
-function completeCompositeCard(card = {}) {
-  const next = { ...card };
-  const components = card.components && typeof card.components === "object" ? card.components : {};
+function repairFinalCarb(carb = {}) {
+  if (!carb || typeof carb !== "object" || Array.isArray(carb)) return carb;
+  const id = idText(carb.id || carb.carbId || carb.optionId || carb._id);
+  const legacy = id && LEGACY_CARB_COMPONENTS[id];
+  const key = String(carb.key || carb.carbKey || carb.optionKey || (legacy && legacy.key) || "").trim().toLowerCase();
+  const fallback = (legacy && legacy.nameI18n) || CARB_KEY_COMPONENTS[key] || null;
+  const stored = pair(carb.nameI18n || carb.name);
+  const ar = stored.ar || (fallback && fallback.ar) || "";
+  const en = stored.en || (fallback && fallback.en) || "";
+  return {
+    ...carb,
+    id: id || carb.id || null,
+    key: key || null,
+    name: ar || en,
+    nameI18n: { ar: ar || en, en: en || ar },
+  };
+}
+
+function rebuildCompositePresentation(card = {}, components = {}) {
   const protein = components.protein && typeof components.protein === "object" ? components.protein : null;
   const carbs = Array.isArray(components.carbs) ? components.carbs : [];
+  const proteinName = pair(protein && (protein.nameI18n || protein.name));
+  const carbNames = carbs.map((carb) => pair(carb && (carb.nameI18n || carb.name)));
+  const titleI18n = {
+    ar: [proteinName.ar, ...carbNames.map((name) => name.ar)].filter(Boolean).join(" + "),
+    en: [proteinName.en, ...carbNames.map((name) => name.en)].filter(Boolean).join(" + "),
+  };
+
+  const preparationLines = [];
+  if (protein && (proteinName.ar || proteinName.en)) {
+    const grams = positiveInteger(protein.grams);
+    preparationLines.push(`البروتين المطلوب: ${proteinName.ar || proteinName.en}${grams ? ` - ${grams} جم` : ""}`);
+  }
+  carbs.forEach((carb, index) => {
+    const name = carbNames[index];
+    if (!name.ar && !name.en) return;
+    const grams = positiveInteger(carb && carb.grams);
+    const prefix = carbs.length > 1 ? `الكارب ${index + 1} من ${carbs.length}` : "الكارب";
+    preparationLines.push(`${prefix}: ${name.ar || name.en}${grams ? ` - ${grams} جم` : ""}`);
+  });
+  const otherLines = (Array.isArray(card.lines) ? card.lines : []).filter((line) => {
+    const value = String(line || "");
+    return !value.startsWith("البروتين المطلوب:")
+      && !value.startsWith("الكارب:")
+      && !/^الكارب \d+ من \d+:/u.test(value);
+  });
+
+  const next = {
+    ...card,
+    lines: unique([...preparationLines, ...otherLines]),
+  };
+  if (titleI18n.ar || titleI18n.en) {
+    next.title = titleI18n.ar || titleI18n.en;
+    next.titleI18n = {
+      ar: titleI18n.ar || titleI18n.en,
+      en: titleI18n.en || titleI18n.ar,
+    };
+    if (components.product && typeof components.product === "object") {
+      components.product = {
+        ...components.product,
+        name: next.title,
+        nameI18n: { ...next.titleI18n },
+      };
+    }
+  }
+  return next;
+}
+
+function completeCompositeCard(card = {}) {
+  const originalComponents = card.components && typeof card.components === "object" ? card.components : {};
+  const components = {
+    ...originalComponents,
+    carbs: (Array.isArray(originalComponents.carbs) ? originalComponents.carbs : []).map(repairFinalCarb),
+  };
+  let next = rebuildCompositePresentation({ ...card }, components);
+  next.components = components;
+
+  const protein = components.protein && typeof components.protein === "object" ? components.protein : null;
+  const carbs = components.carbs;
   const namedCarbs = carbs.filter((carb) => carb && String(carb.name || "").trim());
-  const warnings = Array.isArray(card.warnings) ? [...card.warnings] : [];
-  const lines = Array.isArray(card.lines) ? [...card.lines] : [];
+  const warnings = Array.isArray(next.warnings) ? [...next.warnings] : [];
+  const lines = Array.isArray(next.lines) ? [...next.lines] : [];
 
   if (!protein || !String(protein.name || "").trim() || !positiveInteger(protein.grams)) {
     warnings.push("KITCHEN_PROTEIN_INCOMPLETE");
@@ -128,6 +256,8 @@ function installKitchenOperationalCompletenessGuard() {
     installed: true,
     directPreparationLinesComplete: true,
     directProductLocalizationComplete: true,
+    finalCarbIdentityComplete: true,
+    compositeTitlesRebuilt: true,
     incompleteBuilderCardsExplicit: true,
     responseShapePreserved: true,
   });
@@ -141,4 +271,5 @@ module.exports = {
   completeCard,
   completeOperation,
   installKitchenOperationalCompletenessGuard,
+  repairFinalCarb,
 };
