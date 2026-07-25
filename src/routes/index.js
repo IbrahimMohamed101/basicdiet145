@@ -219,7 +219,6 @@ router.use("/admin", dashboardRestaurantCapabilitiesRoutes);
 router.use("/admin", adminRoutes);
 router.use("/health", healthRoutes);
 router.use("/client", clientRoutes);
-router.use("/account-deletion", accountDeletionRoutes);
 
 router.use("/courier", courierRoutes);
 router.use("/kitchen", kitchenRoutes);
