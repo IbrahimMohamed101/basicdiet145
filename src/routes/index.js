@@ -107,6 +107,10 @@ require("../services/installPremiumUpgradeImageHydration");
 // card, while the membership validator accepts the exact same expanded catalog.
 // Install last so it decorates the final Meal Builder service composition.
 require("../services/installFlutterMealPlannerCatalogExpansion");
+// The dashboard's published selected ids are the customer-facing source of truth.
+// Prune category/relation expansion back to those exact products/options before
+// Flutter controllers capture the final planner service methods.
+require("../services/installFlutterPublishedSelectionAuthority");
 // Re-apply the canonical meal-product classifier after the dashboard's explicit
 // authoring layer so add-ons/builders cannot appear as direct meal candidates.
 require("../services/installDashboardDirectPickerClassificationGuard");
