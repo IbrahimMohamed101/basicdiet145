@@ -7,13 +7,13 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/dashboard/**"
-      - "src/services/orders/preparationWeightService.js"
-      - "src/services/orders/installOrderPreparationWeightLifecycle.js"
+      - "src/services/orders/**"
       - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
       - "tests/kitchenArabicFallbackKeys.test.js"
       - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/kitchenProductionResponseRegression.test.js"
+      - "tests/kitchenPickupDeliveryApplicationContract.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -22,13 +22,13 @@ on:
     paths:
       - "src/routes/index.js"
       - "src/services/dashboard/**"
-      - "src/services/orders/preparationWeightService.js"
-      - "src/services/orders/installOrderPreparationWeightLifecycle.js"
+      - "src/services/orders/**"
       - "src/contracts/kitchenArabicResponseContract.js"
       - "tests/kitchenArabicCatalogAuthority.test.js"
       - "tests/kitchenArabicFallbackKeys.test.js"
       - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/kitchenProductionResponseRegression.test.js"
+      - "tests/kitchenPickupDeliveryApplicationContract.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -70,6 +70,8 @@ jobs:
         run: node tests/kitchenCompleteWeightResponse.test.js
       - name: Verify uploaded production response regressions
         run: node tests/kitchenProductionResponseRegression.test.js
+      - name: Verify pickup, delivery, add-on, and Builder application contracts
+        run: node tests/kitchenPickupDeliveryApplicationContract.test.js
       - name: Validate backend composition
         id: backend_validation
         continue-on-error: true
