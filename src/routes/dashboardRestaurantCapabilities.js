@@ -10,14 +10,14 @@ const {
 
 const router = Router();
 
-router.use(
-  dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "restaurant"])
-);
-
 // Restaurant staff may create a customer account before creating that
-// customer's subscription. The broader admin router remains protected, so
-// this grant does not expose settings, payments, staff management, or reports.
-router.post("/users", asyncHandler(adminController.createAppUserAdmin));
+// customer's subscription. Keep authorization on this exact endpoint so the
+// scoped router never blocks legacy cashier/kitchen reads on other paths.
+router.post(
+  "/users",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "restaurant"]),
+  asyncHandler(adminController.createAppUserAdmin)
+);
 
 module.exports = router;
