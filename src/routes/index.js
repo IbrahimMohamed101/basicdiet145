@@ -106,10 +106,6 @@ require("../services/installFlutterMealPlannerCatalogExpansion");
 // Re-apply the canonical meal-product classifier after the dashboard's explicit
 // authoring layer so add-ons/builders cannot appear as direct meal candidates.
 require("../services/installDashboardDirectPickerClassificationGuard");
-// The old automatic `sandwich` section bypassed Dashboard authoring and appeared
-// only in Flutter. Retire it at every read/write boundary while preserving
-// dashboard-managed full_meal_product cards and historical fulfilled orders.
-require("../services/installRetiredSubscriptionSandwichCard");
 // Hydrate missing product/option media, deliver bounded Cloudinary images, and
 // cache only the static catalog layer before controllers capture service exports.
 const {
