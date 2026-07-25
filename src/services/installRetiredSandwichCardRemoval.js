@@ -23,8 +23,33 @@ function sectionKey(section = {}) {
   return token(section.key || section.sectionKey);
 }
 
+function metadataOf(section = {}) {
+  return isPlainObject(section.metadata) ? section.metadata : {};
+}
+
+function isExplicitDashboardCard(section = {}) {
+  const metadata = metadataOf(section);
+  return (
+    metadata.configuredExplicitly === true ||
+    token(metadata.configuredBy) === "dashboard_user"
+  );
+}
+
+function hasHistoricalFixedMarker(section = {}) {
+  const metadata = metadataOf(section);
+  return (
+    section.systemManaged === true ||
+    metadata.systemManaged === true ||
+    token(section.cardType) === "system_premium" ||
+    token(metadata.cardType) === "system_premium"
+  );
+}
+
 function isRetiredSandwichSection(section = {}) {
-  return sectionKey(section) === RETIRED_SECTION_KEY;
+  if (sectionKey(section) !== RETIRED_SECTION_KEY) return false;
+  // Remove the historical bootstrap/fixed card. A future card explicitly created
+  // from the Dashboard may reuse the same key and remains an ordinary card.
+  return hasHistoricalFixedMarker(section) || !isExplicitDashboardCard(section);
 }
 
 function removeRetiredSections(sections = []) {
@@ -43,7 +68,7 @@ function sanitizeValue(value) {
       continue;
     }
     // The legacy catalog mirror is opt-in only, but it must not resurrect the
-    // removed sandwiches while the administrator is authoring a replacement card.
+    // removed historical sandwiches while a replacement card is being authored.
     if (key === "sandwiches" && Array.isArray(entry)) {
       output[key] = [];
       continue;
@@ -207,7 +232,9 @@ installRetiredSandwichCardRemoval();
 
 module.exports = {
   RETIRED_SECTION_KEY,
+  hasHistoricalFixedMarker,
   installRetiredSandwichCardRemoval,
+  isExplicitDashboardCard,
   isRetiredSandwichSection,
   persistRetiredCardRemoval,
   removeRetiredSections,
