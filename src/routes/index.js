@@ -10,6 +10,10 @@ require("../services/installPremiumMealBaseBuilderInheritance");
 // Pickup snapshots may contain nested localized objects. Repair them before the
 // subscription composition captures pickup availability service functions.
 require("../services/installPickupAvailabilityNameRepair");
+// app.js loads this route composition before it captures the JSON response
+// normalizer. Patch that final boundary so Flutter never receives malformed
+// display.titleAr/titleEn values such as `chicken + [object Object]`.
+require("../services/installPickupAvailabilityResponseFinalRepair");
 require("../services/installSubscriptionBackendRepairComposition");
 // A paid Premium selection is an upgrade of one subscription meal, never a
 // replacement for its base meal credit. Install this invariant before payment,
