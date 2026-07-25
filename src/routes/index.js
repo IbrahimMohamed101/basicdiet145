@@ -111,6 +111,10 @@ require("../services/installFlutterMealPlannerCatalogExpansion");
 // Prune category/relation expansion back to those exact products/options before
 // Flutter controllers capture the final planner service methods.
 require("../services/installFlutterPublishedSelectionAuthority");
+// The automatic Premium card carries the large-salad product identity, while its
+// configurable groups remain owned by the product/group relations. Hydrate all
+// six Flutter groups and mirror the same ids into published membership.
+require("../services/installFlutterPremiumLargeSaladOptionGroups");
 // Re-apply the canonical meal-product classifier after the dashboard's explicit
 // authoring layer so add-ons/builders cannot appear as direct meal candidates.
 require("../services/installDashboardDirectPickerClassificationGuard");
