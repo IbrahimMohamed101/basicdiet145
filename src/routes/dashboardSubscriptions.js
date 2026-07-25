@@ -13,21 +13,21 @@ const router = Router();
 router.get(
   "/search",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(controller.searchByPhone)
 );
 
 router.post(
   "/quote",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(subscriptionPaymentController.quoteSubscriptionAdmin)
 );
 
 router.post(
   "/",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(subscriptionPaymentController.createSubscriptionAdmin)
 );
 
@@ -48,28 +48,28 @@ router.get(
 router.get(
   "/:id/addon-entitlements",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(adminController.getSubscriptionAddonEntitlementsAdmin)
 );
 
 router.get(
   "/:id/balances",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(adminController.getSubscriptionBalancesAdmin)
 );
 
 router.post(
   "/:subscriptionId/manual-deduction",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(controller.manualDeduction)
 );
 
 router.get(
   "/:subscriptionId/manual-deductions",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
   asyncHandler(controller.listManualDeductions)
 );
 

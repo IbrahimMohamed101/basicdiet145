@@ -10,8 +10,12 @@ class ManualDeductionError extends Error {
 }
 
 function assertCashierOrAdminRole(role) {
-  if (!["admin", "superadmin", "cashier"].includes(String(role || ""))) {
-    throw new ManualDeductionError("FORBIDDEN", "Dashboard admin or cashier permission is required", 403);
+  if (!["admin", "superadmin", "cashier", "restaurant"].includes(String(role || ""))) {
+    throw new ManualDeductionError(
+      "FORBIDDEN",
+      "Dashboard admin, cashier, or restaurant permission is required",
+      403
+    );
   }
 }
 
