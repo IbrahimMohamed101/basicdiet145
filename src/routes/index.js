@@ -43,8 +43,8 @@ require("../services/dashboard/installKitchenCatalogNameResolution");
 // products, proteins, carbs, options, salads, and add-ons from the live bilingual
 // catalog before DTO builders capture the payload service.
 require("../services/dashboard/installKitchenArabicCatalogAuthority");
-// Keep full Arabic and English product names authoritative and recover legacy
-// protein/carb snapshots through the same resolver for pickup and delivery.
+// Keep full Arabic and English product names authoritative and recover historical
+// protein/carb snapshots through one resolver for pickup and home delivery.
 require("../services/dashboard/installKitchenBilingualCatalogCompleteness");
 // An add-on plan describes allowance and pricing; it is never the selected food
 // product. Keep a missing product explicit instead of displaying the plan as food.
@@ -55,10 +55,9 @@ require("../services/dashboard/installKitchenPreparationContract");
 // The preparation layer may inherit malformed legacy snapshot display strings.
 // Re-resolve final protein/carb names from the catalog and rebuild meal titles.
 require("../services/dashboard/installKitchenFinalNameRepair");
-// Apply the final weight/name cleanup before the completeness guard checks cards.
+// Apply the final historical weight/name cleanup, then enforce that every direct
+// product has a preparation line and incomplete Builder cards are explicit.
 require("../services/dashboard/installKitchenFinalResponsePolish");
-// Every direct product needs a preparation line; historical incomplete Builder
-// cards remain visible but are explicitly flagged instead of silently guessing.
 require("../services/dashboard/installKitchenOperationalCompletenessGuard");
 require("../services/orders/installWeightPricingAuthority");
 // The published product/group relations are the one-time carb source of truth.
@@ -69,8 +68,8 @@ require("../services/installOneTimeCarbCatalogAuthority");
 // this after menu deduplication/weight pricing and before order routes capture
 // menu and pricing service exports.
 require("../services/installOneTimeCarbGramContract");
-// Quote and checkout use the same final pricing export. Reject a Basic Meal when
-// protein or carb groups are missing before an unpreparable order can be stored.
+// Quote and checkout share the same final pricing export. Reject a Basic Meal
+// before storage when either the protein or carb selection is missing.
 require("../services/orders/installOneTimeBuilderSelectionContract");
 require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
@@ -189,20 +188,23 @@ router.use("/dashboard/meal-planner", adminMealPlannerMenuRoutes);
 router.use("/dashboard/menu", dashboardMenuRoutes);
 router.use("/dashboard/meal-builder", dashboardMealBuilderRoutes);
 router.use("/dashboard/catalog-items", dashboardCatalogItemRoutes);
-router.use("/dashboard/menu-identity", dashboardMenuIdentityRoutes);
 router.use("/dashboard/premium-upgrades", dashboardPremiumUpgradesRoutes);
-router.use("/dashboard", adminRoutes);
 router.use("/dashboard/ops", dashboardOpsRoutes);
 router.use("/dashboard/operations", dashboardOpsRoutes);
 router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
-router.use("/dashboard/boards", dashboardBoardRoutes);
+router.use("/dashboard", dashboardBoardRoutes);
+router.use("/dashboard", adminRoutes);
+router.use("/dashboard/menu-identities-audit", dashboardMenuIdentityRoutes);
+router.use("/dashboard", dashboardMenuIdentityRoutes);
+router.use("/admin", adminRoutes);
+router.use("/health", healthRoutes);
+router.use("/client", clientRoutes);
+
 router.use("/courier", courierRoutes);
 router.use("/kitchen", kitchenRoutes);
-router.use("/client", clientRoutes);
-router.use("/health", healthRoutes);
-router.get("/settings", asyncHandler(getSettings));
 router.get("/categories-with-meals", asyncHandler(listCategoriesWithMeals));
+router.get("/settings", asyncHandler(getSettings));
 
 module.exports = router;
