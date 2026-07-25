@@ -118,6 +118,9 @@ require("../services/installDashboardDirectPickerClassificationGuard");
 // by PremiumUpgradeConfig. Mirror the same active/ready rows returned by the
 // Premium Upgrades endpoint into every dashboard system_premium card response.
 require("../services/installDashboardPremiumCardHydration");
+// The historical `sandwich` card is retired completely. Keep Premium as the only
+// fixed card and remove the old sandwich section from drafts and public catalogs.
+require("../services/installRetiredSandwichCardRemoval");
 // Hydrate missing product/option media, deliver bounded Cloudinary images, and
 // cache only the static catalog layer before controllers capture service exports.
 const {
