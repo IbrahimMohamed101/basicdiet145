@@ -41,5 +41,13 @@ assert(
   ),
   "dashboard direct-product catalog classification must remain installed"
 );
+assert(
+  routesSource.includes(
+    'require("../services/installDashboardPremiumCardHydration")'
+  ),
+  "dashboard system Premium cards must mirror active PremiumUpgradeConfig rows"
+);
+
+require("./dashboardPremiumCardHydration.test");
 
 console.log("app-only subscription sandwich card injector is retired");
