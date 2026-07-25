@@ -46,6 +46,10 @@ require("../services/dashboard/installKitchenArabicCatalogAuthority");
 // Keep full Arabic and English product names authoritative and recover historical
 // protein/carb snapshots through one resolver for pickup and home delivery.
 require("../services/dashboard/installKitchenBilingualCatalogCompleteness");
+// Flutter's pickup sheet consumes a separate availability contract. Install the
+// same bilingual catalog and legacy carb recovery before subscription routes
+// capture buildAvailabilityFromDay.
+require("../services/installPickupAvailabilityNameCompatibility");
 // An add-on plan describes allowance and pricing; it is never the selected food
 // product. Keep a missing product explicit instead of displaying the plan as food.
 require("../services/dashboard/installKitchenAddonProductIdentityGuard");
