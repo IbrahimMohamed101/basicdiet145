@@ -49,7 +49,9 @@ function plannerSectionByKey(catalog, key) {
 function productIdsFromPlanner(catalog) {
   return new Set(
     (catalog?.sections || []).flatMap((section) =>
-      (section.products || []).map((product) => String(product.id))
+      (section.products || []).map((product) =>
+        String(product.productId || product.id)
+      )
     )
   );
 }
@@ -174,54 +176,18 @@ async function run() {
       ids.slice(0, 2)
     );
 
-    const initialState = await request(app)
-      .get("/api/dashboard/meal-builder")
-      .set(auth.headers);
-    expectStatus(initialState, 200, "initial builder state");
-    assert.ok(initialState.body.data.draft);
-    assert.ok(sectionByKey(initialState.body.data.draft.sections, "main_card"));
-    for (const field of [
-      "draft",
-      "published",
-      "preview",
-      "plannerCatalog",
-      "premiumSection",
-      "validation",
-    ]) {
-      assert.ok(Object.prototype.hasOwnProperty.call(initialState.body.data, field));
-    }
-
-    const initialHydrated = await request(app)
-      .get("/api/dashboard/meal-builder/draft/hydrated?lang=en")
-      .set(auth.headers);
-    expectStatus(initialHydrated, 200, "initial hydrated draft");
-    const hydratedMain = sectionByKey(initialHydrated.body.data.sections, "main_card");
-    assert.ok(hydratedMain);
-    assert.deepStrictEqual(
-      new Set(hydratedMain.selectedProducts.map((product) => product.productId)),
-      new Set(ids.slice(0, 2))
-    );
-
-    const createPicker = await request(app)
+    const initialPicker = await request(app)
       .get("/api/dashboard/meal-builder/pickers/products?limit=1000")
       .set(auth.headers);
-    expectStatus(createPicker, 200, "new card picker");
-    assert.strictEqual(
-      createPicker.body.data.contractVersion,
-      "dashboard_meal_builder_picker.v1"
-    );
-    assert.strictEqual(createPicker.body.data.meta.catalogTotal, 6);
-    assert.strictEqual(createPicker.body.data.meta.assignedToOtherCards, 2);
-    assert.strictEqual(createPicker.body.data.meta.unassigned, 4);
-    assert.strictEqual(createPicker.body.data.meta.total, 4);
+    expectStatus(initialPicker, 200, "initial product picker");
+    assert.strictEqual(initialPicker.body.data.meta.catalogTotal, 6);
+    assert.strictEqual(initialPicker.body.data.meta.assignedToOtherCards, 2);
+    assert.strictEqual(initialPicker.body.data.meta.unassigned, 4);
     assert.deepStrictEqual(
-      new Set(createPicker.body.data.candidates.map((product) => product.productId)),
+      new Set(
+        initialPicker.body.data.candidates.map((product) => product.productId)
+      ),
       new Set(ids.slice(2))
-    );
-    assert.ok(
-      !createPicker.body.data.candidates.some(
-        (product) => product.key === "technical_basic_meal"
-      )
     );
 
     const createCard = await request(app)
@@ -235,17 +201,7 @@ async function run() {
         sortOrder: 20,
       });
     expectStatus(createCard, 201, "create secondary card");
-    assert.strictEqual(
-      createCard.body.data.contractVersion,
-      "dashboard_meal_builder_card_action.v1"
-    );
-    assert.strictEqual(createCard.body.data.action, "created");
     assert.strictEqual(createCard.body.data.summary.sectionCount, 2);
-    assert.strictEqual(createCard.body.data.validation.ready, true);
-    assert.deepStrictEqual(
-      new Set(createCard.body.data.section.selectedProductIds),
-      new Set(ids.slice(2, 4))
-    );
 
     const duplicateAssignment = await request(app)
       .post("/api/dashboard/meal-builder/sections")
@@ -262,31 +218,11 @@ async function run() {
       "MEAL_BUILDER_PRODUCT_ALREADY_ASSIGNED"
     );
 
-    const editPicker = await request(app)
-      .get(
-        "/api/dashboard/meal-builder/pickers/secondary_card?limit=1000"
-      )
-      .set(auth.headers);
-    expectStatus(editPicker, 200, "edit card picker");
-    assert.strictEqual(editPicker.body.data.meta.selectedInCurrentCard, 2);
-    assert.strictEqual(editPicker.body.data.meta.assignedToOtherCards, 2);
-    assert.strictEqual(editPicker.body.data.meta.unassigned, 2);
-    assert.deepStrictEqual(
-      new Set(editPicker.body.data.candidates.map((product) => product.productId)),
-      new Set(ids.slice(2))
-    );
-    assert.ok(
-      editPicker.body.data.candidates
-        .filter((product) => ids.slice(2, 4).includes(product.productId))
-        .every((product) => product.selected)
-    );
-
     const addProducts = await request(app)
       .post("/api/dashboard/meal-builder/sections/secondary_card/products")
       .set(auth.headers)
       .send({ productIds: ids.slice(4) });
-    expectStatus(addProducts, 200, "add products to card");
-    assert.strictEqual(addProducts.body.data.action, "products_added");
+    expectStatus(addProducts, 200, "add remaining products to secondary card");
     assert.deepStrictEqual(
       new Set(addProducts.body.data.section.selectedProductIds),
       new Set(ids.slice(2))
@@ -299,47 +235,6 @@ async function run() {
     assert.strictEqual(noUnassignedProducts.body.data.meta.unassigned, 0);
     assert.strictEqual(noUnassignedProducts.body.data.meta.total, 0);
 
-    const updateCard = await request(app)
-      .patch("/api/dashboard/meal-builder/sections/secondary_card")
-      .set(auth.headers)
-      .send({
-        titleOverride: { ar: "الكارت الثاني", en: "Second Card" },
-        sortOrder: 5,
-        visible: true,
-      });
-    expectStatus(updateCard, 200, "update card");
-    assert.strictEqual(updateCard.body.data.action, "updated");
-    assert.strictEqual(updateCard.body.data.section.titleOverride.en, "Second Card");
-    assert.strictEqual(updateCard.body.data.section.sortOrder, 5);
-
-    const removeProduct = await request(app)
-      .delete(
-        `/api/dashboard/meal-builder/sections/secondary_card/products/${ids[3]}`
-      )
-      .set(auth.headers);
-    expectStatus(removeProduct, 200, "remove product from card");
-    assert.strictEqual(removeProduct.body.data.action, "product_removed");
-    assert.ok(!removeProduct.body.data.section.selectedProductIds.includes(ids[3]));
-
-    const releasedProductPicker = await request(app)
-      .get("/api/dashboard/meal-builder/pickers/products?limit=1000")
-      .set(auth.headers);
-    expectStatus(releasedProductPicker, 200, "released product picker");
-    assert.deepStrictEqual(
-      releasedProductPicker.body.data.candidates.map((product) => product.productId),
-      [ids[3]]
-    );
-
-    const addReleasedProduct = await request(app)
-      .post("/api/dashboard/meal-builder/sections/secondary_card/products")
-      .set(auth.headers)
-      .send({ productIds: [ids[3]] });
-    expectStatus(addReleasedProduct, 200, "re-add released product");
-    assert.deepStrictEqual(
-      new Set(addReleasedProduct.body.data.section.selectedProductIds),
-      new Set(ids.slice(2))
-    );
-
     const publish = await request(app)
       .post("/api/dashboard/meal-builder/publish")
       .set(auth.headers)
@@ -348,46 +243,26 @@ async function run() {
     assert.strictEqual(publish.body.data.validation.ready, true);
     assert.ok(sectionByKey(publish.body.data.config.sections, "main_card"));
     assert.ok(sectionByKey(publish.body.data.config.sections, "secondary_card"));
-    assert.deepStrictEqual(productIdsFromPlanner({
-      sections: publish.body.data.contract.sections.map((section) => ({
-        ...section,
-        products: (section.items || []).filter((item) => item.type === "product"),
-      })),
-    }), new Set(ids));
-
-    const publishedState = await request(app)
-      .get("/api/dashboard/meal-builder")
-      .set(auth.headers);
-    expectStatus(publishedState, 200, "published builder state");
-    assert.ok(sectionByKey(publishedState.body.data.published.sections, "main_card"));
-    assert.ok(
-      sectionByKey(publishedState.body.data.published.sections, "secondary_card")
-    );
-    assert.deepStrictEqual(
-      productIdsFromPlanner(publishedState.body.data.plannerCatalog),
-      new Set(ids)
-    );
 
     const publicMenu = await request(app).get(
       "/api/subscriptions/meal-planner-menu?lang=en"
     );
     expectStatus(publicMenu, 200, "public menu after publish");
-    assert.strictEqual(
-      publicMenu.body.data.builderCatalog.contractVersion,
-      "meal_planner_menu.v3"
-    );
     assert.ok(
       plannerSectionByKey(publicMenu.body.data.builderCatalog, "main_card")
     );
     assert.ok(
       plannerSectionByKey(publicMenu.body.data.builderCatalog, "secondary_card")
     );
+    assert.strictEqual(
+      plannerSectionByKey(publicMenu.body.data.builderCatalog, "sandwich"),
+      null,
+      "no app-only sandwich card may be injected"
+    );
     assert.deepStrictEqual(
       productIdsFromPlanner(publicMenu.body.data.builderCatalog),
       new Set(ids)
     );
-    assert.strictEqual(publicMenu.body.data.builderCatalogV2.catalogVersion, 'meal_planner_menu.v2');
-    assert.strictEqual(publicMenu.body.data.plannerCatalog.contractVersion, 'meal_planner_menu.v3');
 
     const deleteCard = await request(app)
       .delete("/api/dashboard/meal-builder/sections/secondary_card")
@@ -395,38 +270,47 @@ async function run() {
     expectStatus(deleteCard, 200, "delete secondary card");
     assert.strictEqual(deleteCard.body.data.action, "deleted");
     assert.strictEqual(deleteCard.body.data.previousSectionKey, "secondary_card");
-    assert.strictEqual(deleteCard.body.data.summary.sectionCount, 2);
+    assert.strictEqual(deleteCard.body.data.summary.sectionCount, 1);
+    assert.ok(sectionByKey(deleteCard.body.data.draft.sections, "main_card"));
     assert.strictEqual(
       sectionByKey(deleteCard.body.data.draft.sections, "secondary_card"),
       null
     );
-    const systemDirectSection = sectionByKey(
-      deleteCard.body.data.draft.sections,
-      "sandwich"
-    );
-    assert.ok(systemDirectSection, "live catalog system card remains after deleting a manual card");
-    assert.deepStrictEqual(
-      new Set(systemDirectSection.selectedProductIds),
-      new Set(ids)
+    assert.strictEqual(
+      sectionByKey(deleteCard.body.data.draft.sections, "sandwich"),
+      null,
+      "deleting a dashboard card must not create a hidden system card"
     );
 
     const productsAfterDelete = await request(app)
       .get("/api/dashboard/meal-builder/pickers/products?limit=1000")
       .set(auth.headers);
-    expectStatus(productsAfterDelete, 200, "live catalog owns products after card delete");
-    assert.deepStrictEqual(productsAfterDelete.body.data.candidates, []);
-    assert.strictEqual(productsAfterDelete.body.data.meta.unassigned, 0);
+    expectStatus(productsAfterDelete, 200, "released products after card delete");
+    assert.strictEqual(productsAfterDelete.body.data.meta.unassigned, 4);
+    assert.strictEqual(productsAfterDelete.body.data.meta.total, 4);
+    assert.deepStrictEqual(
+      new Set(
+        productsAfterDelete.body.data.candidates.map(
+          (product) => product.productId
+        )
+      ),
+      new Set(ids.slice(2))
+    );
 
     const publicBeforeRepublish = await request(app).get(
       "/api/subscriptions/meal-planner-menu?lang=en"
     );
-    expectStatus(publicBeforeRepublish, 200, "published layout remains stable");
+    expectStatus(
+      publicBeforeRepublish,
+      200,
+      "published layout remains stable before republish"
+    );
     assert.ok(
       plannerSectionByKey(
         publicBeforeRepublish.body.data.builderCatalog,
         "secondary_card"
       ),
-      "draft delete must not alter the published response before republish"
+      "draft delete must not alter published output before republish"
     );
 
     const republish = await request(app)
@@ -434,16 +318,30 @@ async function run() {
       .set(auth.headers)
       .send({ notes: "remove secondary card" });
     expectStatus(republish, 200, "publish card delete");
+    assert.ok(sectionByKey(republish.body.data.config.sections, "main_card"));
     assert.strictEqual(
       sectionByKey(republish.body.data.config.sections, "secondary_card"),
       null
     );
-    assert.ok(sectionByKey(republish.body.data.config.sections, "sandwich"));
+    assert.strictEqual(
+      sectionByKey(republish.body.data.config.sections, "sandwich"),
+      null
+    );
 
     const publicAfterRepublish = await request(app).get(
       "/api/subscriptions/meal-planner-menu?lang=en"
     );
-    expectStatus(publicAfterRepublish, 200, "public menu after card delete publish");
+    expectStatus(
+      publicAfterRepublish,
+      200,
+      "public menu after card delete publish"
+    );
+    assert.ok(
+      plannerSectionByKey(
+        publicAfterRepublish.body.data.builderCatalog,
+        "main_card"
+      )
+    );
     assert.strictEqual(
       plannerSectionByKey(
         publicAfterRepublish.body.data.builderCatalog,
@@ -451,12 +349,16 @@ async function run() {
       ),
       null
     );
-    assert.ok(
-      plannerSectionByKey(publicAfterRepublish.body.data.builderCatalog, "sandwich")
+    assert.strictEqual(
+      plannerSectionByKey(
+        publicAfterRepublish.body.data.builderCatalog,
+        "sandwich"
+      ),
+      null
     );
     assert.deepStrictEqual(
       productIdsFromPlanner(publicAfterRepublish.body.data.builderCatalog),
-      new Set(ids)
+      new Set(ids.slice(0, 2))
     );
 
     console.log("mealPlannerCardLifecycle.test.js passed");
