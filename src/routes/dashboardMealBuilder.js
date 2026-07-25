@@ -11,7 +11,7 @@ const router = Router();
 
 router.use(
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "superadmin"])
+  dashboardRoleMiddleware(["admin", "superadmin", "restaurant"])
 );
 
 router.get("/", asyncHandler(controller.getMealBuilder));
