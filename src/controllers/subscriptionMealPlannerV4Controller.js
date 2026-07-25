@@ -2,9 +2,6 @@ const menuController = require("./menuController");
 const errorResponse = require("../utils/errorResponse");
 const {
   PLANNER_CATALOG_V3_VERSION,
-  hasFlutterPrimaryMealPickerContent,
-  hasSelectablePlannerContent,
-  summarizeFlutterPrimaryMealPickerContent,
 } = require("../services/catalog/plannerCatalogContentValidator");
 
 const FLUTTER_CONTRACT_VERSION = PLANNER_CATALOG_V3_VERSION;
@@ -62,25 +59,12 @@ function sanitizePublicData(source = {}) {
     };
     throw err;
   }
-  if (!hasSelectablePlannerContent(plannerCatalog)) {
-    const err = new Error("Meal Planner catalog contains no selectable content");
-    err.code = "MEAL_PLANNER_CATALOG_EMPTY";
-    err.status = 503;
-    err.details = {
-      expectedContractVersion: FLUTTER_CONTRACT_VERSION,
-      receivedContractVersion: plannerCatalog.contractVersion || null,
-      sectionCount: Array.isArray(plannerCatalog.sections) ? plannerCatalog.sections.length : 0,
-    };
-    throw err;
-  }
-  if (!hasFlutterPrimaryMealPickerContent(plannerCatalog)) {
-    const err = new Error("Meal Planner catalog contains no Flutter primary picker content");
-    err.code = "MEAL_PLANNER_PRIMARY_CONTENT_EMPTY";
-    err.status = 503;
-    err.details = summarizeFlutterPrimaryMealPickerContent(plannerCatalog);
-    throw err;
-  }
 
+  // An empty but structurally valid catalog is an intentional authoring state.
+  // It occurs after an administrator removes all ordinary cards and before a new
+  // card is published. Returning 200 with empty sections lets the Dashboard and
+  // Flutter reflect that state instead of reviving the retired fixed sandwich
+  // fallback or converting a valid configuration choice into a 503 outage.
   const rawBuilderCatalogV2 = source.builderCatalogV2 || null;
   if (!rawBuilderCatalogV2 || rawBuilderCatalogV2.catalogVersion !== BUILDER_CATALOG_V2_VERSION) {
     const err = new Error("Meal Planner V2 compatibility catalog is unavailable");
