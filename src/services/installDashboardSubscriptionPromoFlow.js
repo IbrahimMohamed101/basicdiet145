@@ -4,6 +4,7 @@ const PromoCode = require("../models/PromoCode");
 const PromoUsage = require("../models/PromoUsage");
 const subscriptionQuoteService = require("./subscription/subscriptionQuoteService");
 const subscriptionActivationService = require("./subscription/subscriptionActivationService");
+const subscriptionController = require("../controllers/subscriptionController");
 const {
   createPromoError,
   validatePromoEligibilityOrThrow,
@@ -129,7 +130,7 @@ function install() {
   globalThis[INSTALL_FLAG] = true;
 
   const originalResolveQuote = subscriptionQuoteService.resolveCheckoutQuoteOrThrow;
-  subscriptionQuoteService.resolveCheckoutQuoteOrThrow = function resolveDashboardPromoQuote(
+  const resolveDashboardPromoQuote = function resolveDashboardPromoQuote(
     payload,
     options = {}
   ) {
@@ -139,6 +140,10 @@ function install() {
       userId: resolvedUserId,
     });
   };
+  subscriptionQuoteService.resolveCheckoutQuoteOrThrow = resolveDashboardPromoQuote;
+  // The public subscription controller is loaded before dashboard routes. Replace
+  // its already-captured export so adminController receives the promo-aware quote.
+  subscriptionController.resolveCheckoutQuoteOrThrow = resolveDashboardPromoQuote;
 
   const originalActivate = subscriptionActivationService.activateSubscriptionFromCanonicalContract;
   subscriptionActivationService.activateSubscriptionFromCanonicalContract = async function activateWithDashboardPromo(
