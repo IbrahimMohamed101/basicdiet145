@@ -33,6 +33,10 @@ function run() {
   const menuIdentity = read("src/routes/dashboardMenuIdentity.js");
   const courier = read("src/routes/courier.js");
   const boards = read("src/routes/dashboardBoards.js");
+  const dashboardSubscriptions = read("src/routes/dashboardSubscriptions.js");
+  const manualDeductionError = read(
+    "src/services/dashboard/manualDeduction/ManualDeductionError.js"
+  );
 
   assertIncludes(
     capabilities,
@@ -127,6 +131,22 @@ function run() {
     boards,
     'dashboardRoleMiddleware(["admin", "courier", "restaurant"])',
     "delivery schedule restaurant read access"
+  );
+
+  assertIncludes(
+    dashboardSubscriptions,
+    'dashboardRoleMiddleware(["admin", "cashier", "restaurant"])',
+    "restaurant subscription and manual deduction route access"
+  );
+  assertIncludes(
+    dashboardSubscriptions,
+    '"/:subscriptionId/manual-deduction"',
+    "manual deduction endpoint must remain mounted"
+  );
+  assertIncludes(
+    manualDeductionError,
+    '["admin", "superadmin", "cashier", "restaurant"]',
+    "manual deduction service must explicitly authorize restaurant"
   );
 
   console.log("dashboard restaurant expanded capability policy checks passed");
