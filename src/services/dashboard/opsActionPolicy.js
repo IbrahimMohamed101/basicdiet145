@@ -1,5 +1,6 @@
 "use strict";
 
+const { dashboardRoleHasPermission } = require("../../constants/dashboardRoles");
 const {
   canTransitionStatus,
   normalizeOperationalStatus,
@@ -182,11 +183,12 @@ function normalizeActionId(actionId) {
 }
 
 function roleAllowedForActionMode(actionId, role, mode) {
+  const operationalRole = role === "restaurant" ? "kitchen" : role;
   if (actionId === "fulfill") {
-    if (role === "kitchen" && mode !== "pickup") return false;
-    if (role === "courier" && mode === "pickup") return false;
+    if (operationalRole === "kitchen" && mode !== "pickup") return false;
+    if (operationalRole === "courier" && mode === "pickup") return false;
   }
-  if (actionId === "cancel" && role === "courier" && mode !== "delivery") {
+  if (actionId === "cancel" && operationalRole === "courier" && mode !== "delivery") {
     return false;
   }
   return true;
@@ -211,8 +213,8 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
       const config = ACTION_REGISTRY[actionId];
       if (!config) return null;
 
-      // Role check
-      if (config.roles && !config.roles.includes(role)) return null;
+      // Role check. The restaurant role inherits kitchen and cashier capabilities.
+      if (config.roles && !dashboardRoleHasPermission(role, config.roles)) return null;
       if (!roleAllowedForActionMode(actionId, role, mode)) return null;
 
       // Mode check (delivery/pickup)
@@ -245,7 +247,7 @@ function validateAction({ entityType, status, mode, role, actionId }) {
   }
 
   // Role check
-  if (config.roles && !config.roles.includes(role)) {
+  if (config.roles && !dashboardRoleHasPermission(role, config.roles)) {
     return { allowed: false, reason: "INSUFFICIENT_PERMISSIONS" };
   }
 

@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { DASHBOARD_JWT_SECRET } = require("../services/dashboardTokenService");
 const DashboardUser = require("../models/DashboardUser");
+const { dashboardRoleHasPermission } = require("../constants/dashboardRoles");
 const errorResponse = require("../utils/errorResponse");
 
 /**
@@ -123,7 +124,7 @@ function dashboardRoleMiddleware(allowedRoles) {
     if (role === "superadmin") {
       return next();
     }
-    if (!allowedRoles.includes(role)) {
+    if (!dashboardRoleHasPermission(role, allowedRoles)) {
       return errorResponse(res, 403, "FORBIDDEN", { messageKey: "errors.dashboardAuth.insufficientPermissions" });
     }
     return next();

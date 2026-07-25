@@ -88,6 +88,7 @@ async function run() {
   const app = createApp();
   const api = request(app);
   const { headers: adminHeaders } = await dashboardAuth("admin", TEST_TAG);
+  const { headers: restaurantHeaders } = await dashboardAuth("restaurant", TEST_TAG);
   const { headers: kitchenHeaders } = await dashboardAuth("kitchen", TEST_TAG);
   const { headers: cashierHeaders } = await dashboardAuth("cashier", TEST_TAG);
   const rows = await seedCatalogRows();
@@ -144,13 +145,27 @@ async function run() {
     res = await api.delete(`/api/dashboard/addon-prices/${rows.addonPrice._id}`).set(kitchenHeaders);
     expectStatus(res, 403, "kitchen cannot delete add-on price");
 
+    res = await api.get("/api/dashboard/plans?view=picker").set(restaurantHeaders);
+    expectStatus(res, 200, "restaurant inherits kitchen catalog read");
+
+    res = await api.get("/api/dashboard/users?limit=1").set(restaurantHeaders);
+    expectStatus(res, 200, "restaurant inherits cashier app-user read");
+
+    res = await api.post("/api/dashboard/addons").set(restaurantHeaders).send({
+      name: { en: `${TEST_TAG} Restaurant Mutate` },
+      category: "juice",
+      kind: "plan",
+      priceHalala: 100,
+    });
+    expectStatus(res, 403, "restaurant does not inherit admin catalog mutation");
+
     res = await api.get("/api/dashboard/plans?view=picker").set(cashierHeaders);
     expectStatus(res, 403, "cashier cannot use kitchen plan picker");
 
     res = await api.patch(`/api/dashboard/addon-plans/${rows.addonPlan._id}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "admin can still mutate add-on plan");
 
-    console.log("kitchen read-only permission tests passed");
+    console.log("kitchen and restaurant read-only permission tests passed");
   } finally {
     await cleanup();
     await mongoose.disconnect();
