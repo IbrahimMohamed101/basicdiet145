@@ -105,7 +105,7 @@ function buildDto(lang) {
     null,
     subscription,
     customer,
-    "kitchen",
+    "superadmin",
     lang,
     maps
   );
@@ -157,7 +157,7 @@ function responseSummary(response, label) {
     async lean() {
       return {
         _id: IDS.dashboardUser,
-        role: "kitchen",
+        role: "superadmin",
         isActive: true,
         passwordChangedAt: null,
       };
@@ -167,7 +167,7 @@ function responseSummary(response, label) {
 
   const token = jwt.sign({
     userId: IDS.dashboardUser,
-    role: "kitchen",
+    role: "superadmin",
     tokenType: "dashboard_access",
   }, DASHBOARD_JWT_SECRET, { expiresIn: "1h" });
 

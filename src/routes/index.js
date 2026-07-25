@@ -43,6 +43,9 @@ require("../services/dashboard/installKitchenCatalogNameResolution");
 // products, proteins, carbs, options, salads, and add-ons from the live bilingual
 // catalog before DTO builders capture the payload service.
 require("../services/dashboard/installKitchenArabicCatalogAuthority");
+// Keep full Arabic and English product names authoritative and recover historical
+// protein/carb snapshots through one resolver for pickup and home delivery.
+require("../services/dashboard/installKitchenBilingualCatalogCompleteness");
 // An add-on plan describes allowance and pricing; it is never the selected food
 // product. Keep a missing product explicit instead of displaying the plan as food.
 require("../services/dashboard/installKitchenAddonProductIdentityGuard");
@@ -52,6 +55,10 @@ require("../services/dashboard/installKitchenPreparationContract");
 // The preparation layer may inherit malformed legacy snapshot display strings.
 // Re-resolve final protein/carb names from the catalog and rebuild meal titles.
 require("../services/dashboard/installKitchenFinalNameRepair");
+// Apply the final historical weight/name cleanup, then enforce that every direct
+// product has a preparation line and incomplete Builder cards are explicit.
+require("../services/dashboard/installKitchenFinalResponsePolish");
+require("../services/dashboard/installKitchenOperationalCompletenessGuard");
 require("../services/orders/installWeightPricingAuthority");
 // The published product/group relations are the one-time carb source of truth.
 // Install this before the gram decorator so every database-authorized carb gets
@@ -61,6 +68,9 @@ require("../services/installOneTimeCarbCatalogAuthority");
 // this after menu deduplication/weight pricing and before order routes capture
 // menu and pricing service exports.
 require("../services/installOneTimeCarbGramContract");
+// Quote and checkout share the same final pricing export. Reject a Basic Meal
+// before storage when either the protein or carb selection is missing.
+require("../services/orders/installOneTimeBuilderSelectionContract");
 require("../services/installDashboardCatalogCompatibility");
 // Add-on administration must see the complete catalog even when an older
 // dashboard build sends customer-visibility filters with picker requests.
