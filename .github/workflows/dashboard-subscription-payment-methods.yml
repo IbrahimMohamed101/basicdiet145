@@ -11,6 +11,7 @@ on:
       - "src/models/Payment.js"
       - "tests/dashboardSubscriptionPaymentMethods.test.js"
       - "tests/dashboardSubscriptionPaymentDailyReport.test.js"
+      - "tests/subscriptionPaymentReportPresentation.test.js"
       - "tests/dashboardSubscriptionCreationContract.test.js"
       - "tests/dashboardAccountingDailyReport.test.js"
       - ".github/workflows/dashboard-subscription-payment-methods.yml"
@@ -49,8 +50,11 @@ jobs:
           node --check src/models/Payment.js
           node --check tests/dashboardSubscriptionPaymentMethods.test.js
           node --check tests/dashboardSubscriptionPaymentDailyReport.test.js
+          node --check tests/subscriptionPaymentReportPresentation.test.js
       - name: Verify cash and visa contract
         run: node tests/dashboardSubscriptionPaymentMethods.test.js 2>&1 | tee payment-methods.log
+      - name: Verify Arabic presentation and monthly helpers
+        run: node tests/subscriptionPaymentReportPresentation.test.js 2>&1 | tee payment-presentation.log
       - name: Verify daily report integration
         run: node tests/dashboardSubscriptionPaymentDailyReport.test.js 2>&1 | tee payment-report.log
       - name: Verify existing subscription creation contract
@@ -64,6 +68,7 @@ jobs:
           name: dashboard-subscription-payment-method-logs
           path: |
             payment-methods.log
+            payment-presentation.log
             payment-report.log
             subscription-create.log
             accounting.log
