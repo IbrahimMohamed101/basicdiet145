@@ -9,25 +9,31 @@ const asyncHandler = require("../middleware/asyncHandler");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 
 const router = Router();
+const subscriptionStaffAccess = dashboardRoleMiddleware([
+  "admin",
+  "cashier",
+  "restaurant",
+  "kitchen",
+]);
 
 router.get(
   "/search",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(controller.searchByPhone)
 );
 
 router.post(
   "/quote",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(subscriptionPaymentController.quoteSubscriptionAdmin)
 );
 
 router.post(
   "/",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(subscriptionPaymentController.createSubscriptionAdmin)
 );
 
@@ -48,28 +54,28 @@ router.get(
 router.get(
   "/:id/addon-entitlements",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(adminController.getSubscriptionAddonEntitlementsAdmin)
 );
 
 router.get(
   "/:id/balances",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(adminController.getSubscriptionBalancesAdmin)
 );
 
 router.post(
   "/:subscriptionId/manual-deduction",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(controller.manualDeduction)
 );
 
 router.get(
   "/:subscriptionId/manual-deductions",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "cashier", "restaurant"]),
+  subscriptionStaffAccess,
   asyncHandler(controller.listManualDeductions)
 );
 
