@@ -37,4 +37,16 @@ jobs:
         run: npm ci --silent
 
       - name: Verify Flutter catalog, grams, and membership parity
-        run: node tests/flutterMealPlannerCatalogExpansion.test.js
+        shell: bash
+        run: |
+          set -o pipefail
+          node tests/flutterMealPlannerCatalogExpansion.test.js 2>&1 | tee flutter-catalog-test.log
+
+      - name: Upload Flutter catalog failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-catalog-failure-log
+          path: flutter-catalog-test.log
+          if-no-files-found: error
+          retention-days: 1
