@@ -35,6 +35,10 @@ require("../services/installSubscriptionAddonPlanAvailabilityPolicy");
 // Normalize only known values before subscription controllers capture the service;
 // preserve the endpoint keys and response shape exactly as published.
 require("../services/installCurrentSubscriptionOverviewFlutterCompatibility");
+// Pickup availability is a separate mobile response from kitchen Operations.
+// Repair its bilingual meal titles before the subscription controller captures
+// buildAvailabilityFromDay, without adding or removing response fields.
+require("../services/subscription/installPickupAvailabilityDisplayNameRepair");
 // Protein/carb ids may belong to the live MenuOption catalog rather than the
 // legacy Builder collections. Resolve both sources before ops readers capture
 // the kitchen catalog service so every returned component has its real name.
