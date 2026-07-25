@@ -19,11 +19,17 @@ function run() {
   assert(
     paymentController.indexOf('require("../../services/installDashboardSubscriptionPromoFlow")')
       < paymentController.indexOf('require("./subscriptionCreationController")'),
-    "promo flow must be installed before the subscription controller captures service exports"
+    "promo flow must be installed before the dashboard subscription controller captures services"
   );
   assert(
     installer.includes("options.userId || (payload && payload.userId)"),
     "dashboard create quote must use the customer userId for promo eligibility"
+  );
+  assert(
+    installer.includes(
+      "subscriptionController.resolveCheckoutQuoteOrThrow = resolveDashboardPromoQuote"
+    ),
+    "already-loaded public subscription controller must expose the promo-aware quote resolver"
   );
   assert(
     installer.includes('contract.contractSource === "admin_create"'),
