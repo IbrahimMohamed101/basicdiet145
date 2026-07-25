@@ -246,17 +246,17 @@ async function assertOneTimeBuilderValidation() {
   DashboardUser.findById = () => ({
     select() { return this; },
     async lean() {
-      return { _id: IDS.dashboardUser, role: "kitchen", isActive: true, passwordChangedAt: null };
+      return { _id: IDS.dashboardUser, role: "superadmin", isActive: true, passwordChangedAt: null };
     },
   });
   opsReadServiceV2.listOperations = async () => [
-    buildOperation(IDS.pickupDay, IDS.pickupSubscription, "pickup"),
-    buildOperation(IDS.deliveryDay, IDS.deliverySubscription, "delivery"),
+    buildOperation(IDS.pickupDay, IDS.pickupSubscription, "pickup", "superadmin"),
+    buildOperation(IDS.deliveryDay, IDS.deliverySubscription, "delivery", "superadmin"),
   ];
 
   const token = jwt.sign({
     userId: IDS.dashboardUser,
-    role: "kitchen",
+    role: "superadmin",
     tokenType: "dashboard_access",
   }, DASHBOARD_JWT_SECRET, { expiresIn: "1h" });
   const app = createApp();
