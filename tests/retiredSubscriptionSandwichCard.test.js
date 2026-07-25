@@ -53,8 +53,15 @@ assert(
   ),
   "Flutter planner output must remain constrained to published dashboard selections"
 );
+assert(
+  routesSource.includes(
+    'require("../services/installFlutterPremiumLargeSaladOptionGroups")'
+  ),
+  "Flutter premium large salad must expose its configured option groups"
+);
 
 require("./dashboardPremiumCardHydration.test");
 require("./flutterPublishedSelectionAuthority.test");
+require("./flutterPremiumLargeSaladOptionGroups.test");
 
 console.log("app-only subscription sandwich card injector is retired");
