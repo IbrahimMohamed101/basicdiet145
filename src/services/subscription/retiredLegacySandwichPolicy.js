@@ -16,17 +16,22 @@ function token(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function sectionKey(section = {}) {
   return token(section.key || section.sectionKey);
 }
 
 function metadataOf(section = {}) {
-  const source =
-    section.metadata && typeof section.metadata === "object" && !Array.isArray(section.metadata)
-      ? section.metadata
-      : section.ui && typeof section.ui === "object" && !Array.isArray(section.ui)
-        ? section.ui
-        : {};
+  const source = isPlainObject(section.metadata)
+    ? section.metadata
+    : isPlainObject(section.ui)
+      ? section.ui
+      : {};
   return source;
 }
 
@@ -105,10 +110,7 @@ function inferredEditableCardType(section = {}) {
 }
 
 function normalizeEditableSection(section = {}) {
-  if (!section || typeof section !== "object" || Array.isArray(section)) {
-    return section;
-  }
-  if (isPremiumSection(section)) {
+  if (!isPlainObject(section) || isPremiumSection(section)) {
     return section;
   }
 
@@ -132,7 +134,7 @@ function normalizeEditableSection(section = {}) {
     normalized.completeByItself = false;
   }
 
-  if (section.ui && section.ui !== section.metadata) {
+  if (isPlainObject(section.ui) && section.ui !== section.metadata) {
     const ui = { ...section.ui };
     delete ui.systemManaged;
     if (cardType) ui.cardType = cardType;
@@ -150,9 +152,7 @@ function sanitizeSections(sections = []) {
 }
 
 function sanitizeConfig(config) {
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    return config;
-  }
+  if (!isPlainObject(config)) return config;
   return {
     ...config,
     sections: sanitizeSections(config.sections || []),
@@ -161,7 +161,7 @@ function sanitizeConfig(config) {
 
 function sanitizePayload(value) {
   if (Array.isArray(value)) return value.map(sanitizePayload);
-  if (!value || typeof value !== "object") return value;
+  if (!isPlainObject(value)) return value;
 
   const output = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -190,6 +190,7 @@ module.exports = {
   LEGACY_SANDWICH_KEY,
   inferredEditableCardType,
   isDashboardAuthored,
+  isPlainObject,
   isPremiumSection,
   isRetiredLegacySandwichSection,
   normalizeEditableSection,
