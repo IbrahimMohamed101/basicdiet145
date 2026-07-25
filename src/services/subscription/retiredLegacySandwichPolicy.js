@@ -114,10 +114,16 @@ function normalizeEditableSection(section = {}) {
     return section;
   }
 
+  const originalMetadata = metadataOf(section);
   const cardType = inferredEditableCardType(section);
-  const metadata = { ...metadataOf(section) };
+  const metadata = { ...originalMetadata };
+  const hadCardType =
+    Boolean(token(section.cardType)) || Boolean(token(originalMetadata.cardType));
   delete metadata.systemManaged;
-  if (cardType) metadata.cardType = cardType;
+  // Do not add strict v2 card metadata to old option sections that never had it.
+  // That metadata activates companion-card topology rules and would break valid
+  // legacy drafts. Existing explicit card metadata is repaired in place.
+  if (cardType && hadCardType) metadata.cardType = cardType;
 
   const normalized = {
     ...section,
@@ -136,8 +142,9 @@ function normalizeEditableSection(section = {}) {
 
   if (isPlainObject(section.ui) && section.ui !== section.metadata) {
     const ui = { ...section.ui };
+    const uiHadCardType = Boolean(token(ui.cardType));
     delete ui.systemManaged;
-    if (cardType) ui.cardType = cardType;
+    if (cardType && uiHadCardType) ui.cardType = cardType;
     normalized.ui = ui;
   }
 
