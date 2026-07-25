@@ -1,0 +1,30 @@
+name: Dashboard subscription promo flow
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
+      - "src/services/installDashboardSubscriptionPromoFlow.js"
+      - "src/routes/dashboardSubscriptions.js"
+      - "src/routes/dashboardRestaurantCapabilities.js"
+      - "tests/dashboardSubscriptionPromoFlow.test.js"
+      - ".github/workflows/dashboard-subscription-promo-flow.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
+      - "src/services/installDashboardSubscriptionPromoFlow.js"
+      - "src/routes/dashboardSubscriptions.js"
+      - "src/routes/dashboardRestaurantCapabilities.js"
+      - "tests/dashboardSubscriptionPromoFlow.test.js"
+      - ".github/workflows/dashboard-subscription-promo-flow.yml"
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tests/dashboardSubscriptionPromoFlow.test.js
