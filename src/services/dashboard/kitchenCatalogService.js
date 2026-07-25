@@ -39,10 +39,40 @@ function collectCatalogRefsFromDays(days) {
       set.add(String(value).trim());
     }
   };
+  const addProteinRef = (id, key) => {
+    addIdRef(refs.proteinIds, id);
+    addKeyRef(refs.proteinKeys, key);
+    // Subscription Meal Builder stores MenuOption ids for proteins. Always query
+    // the canonical option collection as well as the legacy BuilderProtein model.
+    addIdRef(refs.optionIds, id);
+    addKeyRef(refs.optionKeys, key);
+  };
+  const addCarbRef = (id, key) => {
+    addIdRef(refs.carbIds, id);
+    addKeyRef(refs.carbKeys, key);
+    // carbId is an option identity in the current Flutter contract. Mirroring the
+    // reference into optionIds/optionKeys prevents valid carbs from disappearing
+    // merely because no BuilderCarb document owns the same ObjectId.
+    addIdRef(refs.optionIds, id);
+    addKeyRef(refs.optionKeys, key);
+  };
   const collectOption = (option) => {
     if (!option || typeof option !== "object") return;
-    addIdRef(refs.optionIds, option.optionId || option.id || option._id);
-    addKeyRef(refs.optionKeys, option.optionKey || option.key);
+    const optionId = option.optionId || option.id || option._id || option.catalogItemId;
+    const optionKey = option.optionKey || option.key;
+    addIdRef(refs.optionIds, optionId);
+    addKeyRef(refs.optionKeys, optionKey);
+    const group = String(
+      option.canonicalGroupKey
+        || option.groupKey
+        || option.groupName
+        || option.groupLabel
+        || ""
+    ).trim().toLowerCase();
+    if (["protein", "proteins"].includes(group)) addProteinRef(optionId, optionKey || option.proteinFamilyKey);
+    if (["carb", "carbs", "carbohydrate", "carbohydrates", "starch", "starches", "نشويات", "كارب"].includes(group)) {
+      addCarbRef(option.carbId || optionId, option.carbKey || optionKey);
+    }
   };
   const collectSalad = (salad) => {
     const groups = salad && typeof salad === "object" && salad.groups && typeof salad.groups === "object"
@@ -55,8 +85,10 @@ function collectCatalogRefsFromDays(days) {
           addKeyRef(refs.saladItemKeys, item.key || item.optionKey || item.ingredientKey);
           addIdRef(refs.optionIds, item.id || item._id || item.optionId || item.ingredientId);
           addKeyRef(refs.optionKeys, item.key || item.optionKey || item.ingredientKey);
-          addIdRef(refs.proteinIds, item.id || item._id || item.optionId || item.ingredientId);
-          addKeyRef(refs.proteinKeys, item.key || item.optionKey || item.ingredientKey);
+          addProteinRef(
+            item.id || item._id || item.optionId || item.ingredientId,
+            item.key || item.optionKey || item.ingredientKey
+          );
         } else {
           addIdRef(refs.saladItemIds, item);
           addIdRef(refs.optionIds, item);
@@ -73,13 +105,44 @@ function collectCatalogRefsFromDays(days) {
     addKeyRef(refs.productKeys, addon.productKey || addon.key || addon.addonKey);
     addIdRef(refs.addonPlanIds, addon.addonPlanId);
   };
+  const collectCarb = (carb) => {
+    if (!carb || typeof carb !== "object") return;
+    addCarbRef(
+      carb.carbId || carb.optionId || carb.id || carb._id || carb.catalogItemId,
+      carb.carbKey || carb.optionKey || carb.key
+    );
+  };
+
   for (const day of Array.isArray(days) ? days : []) {
-    const slots = []
-      .concat(Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
-      .concat(day && day.snapshot && Array.isArray(day.snapshot.mealSlots) ? day.snapshot.mealSlots : []);
+    const snapshotContainers = [
+      day,
+      day && day.snapshot,
+      day && day.lockedSnapshot,
+      day && day.fulfilledSnapshot,
+    ].filter((value) => value && typeof value === "object");
+    const slots = snapshotContainers.flatMap((container) => (
+      Array.isArray(container.mealSlots) ? container.mealSlots : []
+    ));
+
     for (const slot of slots) {
-      addIdRef(refs.proteinIds, slot.proteinId);
-      addKeyRef(refs.proteinKeys, slot.proteinFamilyKey);
+      if (!slot || typeof slot !== "object") continue;
+      const selections = slot.selections && typeof slot.selections === "object" ? slot.selections : {};
+      const confirmation = slot.confirmationSnapshot || {};
+      const display = slot.displaySnapshot || {};
+      const fulfillment = slot.fulfillmentSnapshot || {};
+
+      addProteinRef(
+        slot.proteinId
+          || (slot.protein && (slot.protein.id || slot.protein._id))
+          || selections.proteinId
+          || fulfillment.proteinId,
+        slot.proteinKey
+          || slot.proteinFamilyKey
+          || (slot.protein && (slot.protein.key || slot.protein.proteinFamilyKey))
+          || selections.proteinKey
+          || confirmation.proteinKey
+          || fulfillment.proteinKey
+      );
       addIdRef(refs.productIds, slot.productId);
       addKeyRef(refs.productKeys, slot.productKey);
       addIdRef(refs.sandwichIds, slot.sandwichId);
@@ -87,35 +150,48 @@ function collectCatalogRefsFromDays(days) {
       if (slot.selectionType === "premium_large_salad") {
         addKeyRef(refs.productKeys, "premium_large_salad");
       }
-      collectSalad(slot.salad || slot.customSalad);
-      for (const option of Array.isArray(slot.selectedOptions) ? slot.selectedOptions : []) collectOption(option);
-      const confirmation = slot.confirmationSnapshot || {};
-      const display = slot.displaySnapshot || {};
-      const fulfillment = slot.fulfillmentSnapshot || {};
-      addIdRef(refs.proteinIds, fulfillment.proteinId);
-      addKeyRef(refs.proteinKeys, confirmation.proteinKey);
-      addKeyRef(refs.proteinKeys, fulfillment.proteinKey);
+      collectSalad(slot.salad || slot.customSalad || selections.salad);
+
+      for (const option of []
+        .concat(Array.isArray(slot.selectedOptions) ? slot.selectedOptions : [])
+        .concat(Array.isArray(selections.selectedOptions) ? selections.selectedOptions : [])
+        .concat(Array.isArray(display.groups) ? display.groups : [])
+        .concat(Array.isArray(display.selectedOptions) ? display.selectedOptions : [])
+        .concat(Array.isArray(confirmation.selectedOptions) ? confirmation.selectedOptions : [])
+        .concat(Array.isArray(fulfillment.selectedOptions) ? fulfillment.selectedOptions : [])) {
+        collectOption(option);
+      }
+
       for (const product of [confirmation.product, display.product, fulfillment.product]) {
         if (!product) continue;
         addIdRef(refs.productIds, product.id || product._id);
         addKeyRef(refs.productKeys, product.key);
       }
+
       for (const carb of []
         .concat(Array.isArray(slot.carbSelections) ? slot.carbSelections : [])
         .concat(Array.isArray(slot.carbs) ? slot.carbs : [])
-        .concat(slot.carbId ? [{ carbId: slot.carbId }] : [])) {
-        if (carb && carb.carbId) addIdRef(refs.carbIds, carb.carbId);
-        if (carb && carb.key) addKeyRef(refs.carbKeys, carb.key);
+        .concat(Array.isArray(selections.carbs) ? selections.carbs : [])
+        .concat(Array.isArray(display.carbs) ? display.carbs : [])
+        .concat(Array.isArray(confirmation.carbs) ? confirmation.carbs : [])
+        .concat(Array.isArray(fulfillment.carbs) ? fulfillment.carbs : [])
+        .concat(slot.carbId ? [{ carbId: slot.carbId, carbKey: slot.carbKey }] : [])) {
+        collectCarb(carb);
       }
     }
+
     for (const premiumSelection of Array.isArray(day && day.premiumUpgradeSelections) ? day.premiumUpgradeSelections : []) {
       addIdRef(refs.productIds, premiumSelection.sourceProductId || premiumSelection.sourceId);
       addKeyRef(refs.productKeys, premiumSelection.sourceKey);
     }
     for (const meal of Array.isArray(day && day.materializedMeals) ? day.materializedMeals : []) {
-      addIdRef(refs.proteinIds, meal.proteinId);
-      addKeyRef(refs.proteinKeys, meal.proteinFamilyKey);
-      addIdRef(refs.carbIds, meal.carbId);
+      addProteinRef(meal.proteinId, meal.proteinKey || meal.proteinFamilyKey);
+      collectCarb({
+        carbId: meal.carbId,
+        carbKey: meal.carbKey,
+        key: meal.key,
+      });
+      for (const carb of Array.isArray(meal.carbSelections) ? meal.carbSelections : []) collectCarb(carb);
       addIdRef(refs.productIds, meal.productId);
       addKeyRef(refs.productKeys, meal.productKey);
       addIdRef(refs.sandwichIds, meal.sandwichId);
@@ -137,16 +213,13 @@ function collectCatalogRefsFromDays(days) {
       }
       addIdRef(refs.productIds, item.productId || item.mealId || (item.catalogRef && item.catalogRef.id));
       addKeyRef(refs.productKeys, item.productKey || (item.productSnapshot && item.productSnapshot.key));
-      addIdRef(refs.proteinIds, selections.proteinId);
-      addKeyRef(refs.proteinKeys, selections.proteinKey);
+      addProteinRef(selections.proteinId || item.proteinId, selections.proteinKey || item.proteinKey);
       collectSalad(selections.salad);
       for (const option of []
         .concat(Array.isArray(item.selectedOptions) ? item.selectedOptions : [])
         .concat(Array.isArray(selections.selectedOptions) ? selections.selectedOptions : [])) collectOption(option);
-      for (const carb of Array.isArray(selections.carbs) ? selections.carbs : []) {
-        addIdRef(refs.carbIds, carb && carb.carbId);
-        addKeyRef(refs.carbKeys, carb && carb.key);
-      }
+      for (const carb of Array.isArray(selections.carbs) ? selections.carbs : []) collectCarb(carb);
+      for (const carb of Array.isArray(item.carbSelections) ? item.carbSelections : []) collectCarb(carb);
     }
     const selectedPickupItems = []
       .concat(Array.isArray(day && day.selectedPickupItems) ? day.selectedPickupItems : [])
@@ -161,11 +234,7 @@ function collectCatalogRefsFromDays(days) {
       } else {
         addIdRef(refs.addonIds, realId);
       }
-      for (const comp of Array.isArray(item.components) ? item.components : []) {
-        if (!comp) continue;
-        addIdRef(refs.optionIds, comp.id);
-        addKeyRef(refs.optionKeys, comp.key);
-      }
+      for (const comp of Array.isArray(item.components) ? item.components : []) collectOption(comp);
     }
   }
   return refs;
@@ -177,8 +246,46 @@ function mapBy(rows, field) {
     .filter(Boolean));
 }
 
+function rowIds(row = {}) {
+  return [...new Set([row._id, row.id, row.catalogItemId].filter(Boolean).map(String))];
+}
+
+function rowMatchesRefs(row, ids, keys) {
+  if (!row || typeof row !== "object") return false;
+  const rowKey = row.key ? String(row.key) : null;
+  const familyKey = row.proteinFamilyKey ? String(row.proteinFamilyKey) : null;
+  return rowIds(row).some((id) => ids.has(id))
+    || Boolean(rowKey && keys.has(rowKey))
+    || Boolean(familyKey && keys.has(familyKey));
+}
+
+function mergeRowsByKey(primary = [], authoritative = []) {
+  const rows = [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(authoritative) ? authoritative : [])];
+  const byId = mapBy(rows, "_id");
+  const byKey = new Map();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    if (row.key) byKey.set(String(row.key), row);
+    if (row.proteinFamilyKey) byKey.set(String(row.proteinFamilyKey), row);
+  }
+  return { byId, byKey };
+}
+
 async function buildKitchenCatalogMaps(days) {
   const refs = collectCatalogRefsFromDays(days);
+  const optionIds = [...new Set([
+    ...refs.optionIds,
+    ...refs.saladItemIds,
+    ...refs.proteinIds,
+    ...refs.carbIds,
+  ])];
+  const optionKeys = [...new Set([
+    ...refs.optionKeys,
+    ...refs.saladItemKeys,
+    ...refs.proteinKeys,
+    ...refs.carbKeys,
+  ])];
+
   const [proteins, carbs, products, meals, sandwiches, menuOptions, saladIngredients, addons, addonProducts, addonPlans] = await Promise.all([
     (refs.proteinIds.size || refs.proteinKeys.size)
       ? BuilderProtein.find({
@@ -213,13 +320,14 @@ async function buildKitchenCatalogMaps(days) {
     refs.sandwichIds.size
       ? Sandwich.find({ _id: { $in: [...refs.sandwichIds] } }).select("_id name").lean()
       : Promise.resolve([]),
-    (refs.optionIds.size || refs.optionKeys.size || refs.saladItemIds.size || refs.saladItemKeys.size)
+    (optionIds.length || optionKeys.length)
       ? MenuOption.find({
         $or: [
-          (refs.optionIds.size || refs.saladItemIds.size) ? { _id: { $in: [...refs.optionIds, ...refs.saladItemIds] } } : null,
-          (refs.optionKeys.size || refs.saladItemKeys.size) ? { key: { $in: [...refs.optionKeys, ...refs.saladItemKeys] } } : null,
+          optionIds.length ? { _id: { $in: optionIds } } : null,
+          optionKeys.length ? { key: { $in: optionKeys } } : null,
+          optionKeys.length ? { proteinFamilyKey: { $in: optionKeys } } : null,
         ].filter(Boolean),
-      }).select("_id key name proteinFamilyKey displayCategoryKey selectionType").lean()
+      }).select("_id catalogItemId key name proteinFamilyKey displayCategoryKey selectionType").lean()
       : Promise.resolve([]),
     refs.saladItemIds.size
       ? SaladIngredient.find({ _id: { $in: [...refs.saladItemIds] } }).select("_id name groupKey").lean()
@@ -241,6 +349,11 @@ async function buildKitchenCatalogMaps(days) {
         .lean()
       : Promise.resolve([]),
   ]);
+
+  const optionProteins = menuOptions.filter((row) => rowMatchesRefs(row, refs.proteinIds, refs.proteinKeys));
+  const optionCarbs = menuOptions.filter((row) => rowMatchesRefs(row, refs.carbIds, refs.carbKeys));
+  const proteinMaps = mergeRowsByKey(proteins, optionProteins);
+  const carbMaps = mergeRowsByKey(carbs, optionCarbs);
   const sandwichRows = [...products, ...meals, ...sandwiches];
   const optionById = mapBy(menuOptions, "_id");
   const optionByKey = mapBy(menuOptions, "key");
@@ -260,14 +373,12 @@ async function buildKitchenCatalogMaps(days) {
     }),
     ...addonProducts,
   ];
+
   return {
-    proteinById: mapBy(proteins, "_id"),
-    proteinByKey: new Map(proteins.flatMap((protein) => [
-      protein.key ? [String(protein.key), protein] : null,
-      protein.proteinFamilyKey ? [String(protein.proteinFamilyKey), protein] : null,
-    ].filter(Boolean))),
-    carbById: mapBy(carbs, "_id"),
-    carbByKey: mapBy(carbs, "key"),
+    proteinById: proteinMaps.byId,
+    proteinByKey: proteinMaps.byKey,
+    carbById: carbMaps.byId,
+    carbByKey: carbMaps.byKey,
     productById: mapBy(products, "_id"),
     productByKey: mapBy(products, "key"),
     sandwichById: mapBy(sandwichRows, "_id"),
@@ -283,5 +394,7 @@ async function buildKitchenCatalogMaps(days) {
 }
 
 module.exports = {
-  buildKitchenCatalogMaps
+  buildKitchenCatalogMaps,
+  collectCatalogRefsFromDays,
+  rowMatchesRefs,
 };
