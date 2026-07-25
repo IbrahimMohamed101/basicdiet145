@@ -14,6 +14,7 @@ on:
       - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/kitchenProductionResponseRegression.test.js"
       - "tests/kitchenPickupDeliveryApplicationContract.test.js"
+      - "tests/kitchenMenuOptionCarbAuthority.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -29,6 +30,7 @@ on:
       - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/kitchenProductionResponseRegression.test.js"
       - "tests/kitchenPickupDeliveryApplicationContract.test.js"
+      - "tests/kitchenMenuOptionCarbAuthority.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -70,6 +72,27 @@ jobs:
         run: node tests/kitchenCompleteWeightResponse.test.js
       - name: Verify uploaded production response regressions
         run: node tests/kitchenProductionResponseRegression.test.js
+      - name: Verify MenuOption carb authority for pickup and delivery
+        id: menu_option_carb
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          node tests/kitchenMenuOptionCarbAuthority.test.js > menu-option-carb.log 2>&1
+          status=$?
+          cat menu-option-carb.log
+          echo "$status" > menu-option-carb.exit
+          exit "$status"
+      - name: Upload MenuOption carb diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: menu-option-carb-${{ github.run_id }}
+          path: |
+            menu-option-carb.log
+            menu-option-carb.exit
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify pickup, delivery, add-on, and Builder application contracts
         id: application_contract
         continue-on-error: true
@@ -143,6 +166,9 @@ jobs:
         run: node tests/flutterMobileStrictScalarContract.test.js
       - name: Verify application startup
         run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('staging app startup passed')"
+      - name: Enforce MenuOption carb result
+        if: steps.menu_option_carb.outcome == 'failure'
+        run: exit 1
       - name: Enforce application contract result
         if: steps.application_contract.outcome == 'failure'
         run: exit 1
