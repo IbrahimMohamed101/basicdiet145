@@ -115,6 +115,10 @@ function installFullMealProductMembershipCompatibility() {
 }
 
 installFullMealProductMembershipCompatibility();
+// Retire the old fixed sandwich card after legacy product membership support is
+// installed. Existing historical selections remain valid, but the card itself is
+// no longer exposed or treated as a system-managed Premium card.
+require("./installRetiredLegacySandwichCard");
 
 module.exports = {
   STATE_KEY,
