@@ -9,7 +9,7 @@ router.use(dashboardAuthMiddleware);
 
 router.get(
   "/delivery-schedule",
-  dashboardRoleMiddleware(["admin", "courier"]),
+  dashboardRoleMiddleware(["admin", "courier", "restaurant"]),
   asyncHandler(controller.deliverySchedule)
 );
 
