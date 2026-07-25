@@ -47,7 +47,14 @@ assert(
   ),
   "dashboard system Premium cards must mirror active PremiumUpgradeConfig rows"
 );
+assert(
+  routesSource.includes(
+    'require("../services/installFlutterPublishedSelectionAuthority")'
+  ),
+  "Flutter planner output must remain constrained to published dashboard selections"
+);
 
 require("./dashboardPremiumCardHydration.test");
+require("./flutterPublishedSelectionAuthority.test");
 
 console.log("app-only subscription sandwich card injector is retired");
