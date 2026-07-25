@@ -2,7 +2,10 @@
 
 const MealBuilderConfig = require("../models/MealBuilderConfig");
 const baseService = require("./subscription/mealBuilderConfigService");
-const mealBuilderService = require("./subscription/dashboardMealPlannerCompatibilityService");
+const compatibilityService = require("./subscription/dashboardMealPlannerCompatibilityService");
+const canonicalService = require("./subscription/dashboardMealPlannerCanonicalService");
+const dashboardService = require("./subscription/dashboardMealPlannerDashboardService");
+const dashboardCatalogService = require("./subscription/dashboardMealBuilderAuthoringContractService");
 const CatalogService = require("./catalog/CatalogService");
 const {
   isPremiumSection,
@@ -14,6 +17,7 @@ const {
 } = require("./subscription/retiredLegacySandwichPolicy");
 
 const ACTION_VERSION = "dashboard_meal_builder_card_action.v2";
+const WRAPPER_MARK = "__retiredLegacySandwichCard";
 let installed = false;
 
 function selectedProductCount(sections = []) {
@@ -47,7 +51,10 @@ function normalizedForWrite(sections = []) {
 }
 
 function sameSections(left = [], right = []) {
-  return JSON.stringify(baseService.normalizeSections(left || [])) === JSON.stringify(right || []);
+  return (
+    JSON.stringify(baseService.normalizeSections(left || [])) ===
+    JSON.stringify(right || [])
+  );
 }
 
 async function currentDraft() {
@@ -78,6 +85,28 @@ async function persistSanitizedCurrentDraft({ actor = {}, createIfMissing = fals
   );
 }
 
+function deleteResponse({ draft, validation, targetKey }) {
+  const sections = draft?.sections || [];
+  return {
+    contractVersion: ACTION_VERSION,
+    action: "deleted",
+    sectionKey: null,
+    previousSectionKey: targetKey,
+    itemId: null,
+    section: null,
+    draft,
+    validation,
+    summary: {
+      sectionCount: sections.length,
+      selectedProductCount: selectedProductCount(sections),
+      selectedOptionCount: selectedOptionCount(sections),
+      ready: validation.ready === true,
+      errorCount: (validation.errors || []).length,
+      warningCount: (validation.warnings || []).length,
+    },
+  };
+}
+
 async function deleteEditableCard({
   sectionKey: requestedSectionKey,
   actor = {},
@@ -101,30 +130,14 @@ async function deleteEditableCard({
   const target = sourceSections.find((section) => sectionKey(section) === targetKey);
 
   if (!target) {
-    // The retired card is intentionally idempotent: repeated delete requests after
-    // cleanup should still return the current draft instead of reviving the card.
     if (targetKey === "sandwich") {
-      const cleanedDraft = await persistSanitizedCurrentDraft({ actor });
-      const sections = cleanedDraft?.sections || [];
-      const validation = await originalValidate({ sections });
-      return {
-        contractVersion: ACTION_VERSION,
-        action: "deleted",
-        sectionKey: null,
-        previousSectionKey: targetKey,
-        itemId: null,
-        section: null,
-        draft: cleanedDraft,
-        validation,
-        summary: {
-          sectionCount: sections.length,
-          selectedProductCount: selectedProductCount(sections),
-          selectedOptionCount: selectedOptionCount(sections),
-          ready: validation.ready === true,
-          errorCount: (validation.errors || []).length,
-          warningCount: (validation.warnings || []).length,
-        },
-      };
+      const cleanedDraft =
+        (await persistSanitizedCurrentDraft({ actor })) ||
+        sanitizeConfig(baseService.serializeConfig(draft));
+      const validation = await originalValidate({
+        sections: cleanedDraft.sections || [],
+      });
+      return deleteResponse({ draft: cleanedDraft, validation, targetKey });
     }
     return sanitizePayload(
       await originalDelete({ sectionKey: requestedSectionKey, actor })
@@ -159,100 +172,177 @@ async function deleteEditableCard({
       actor,
     })
   );
-  const validation = await originalValidate({ sections: updated.sections || [] });
-  const sections = updated.sections || [];
+  const validation = await originalValidate({
+    sections: updated.sections || [],
+  });
+  return deleteResponse({ draft: updated, validation, targetKey });
+}
 
-  return {
-    contractVersion: ACTION_VERSION,
-    action: "deleted",
-    sectionKey: null,
-    previousSectionKey: targetKey,
-    itemId: null,
-    section: null,
-    draft: updated,
-    validation,
-    summary: {
-      sectionCount: sections.length,
-      selectedProductCount: selectedProductCount(sections),
-      selectedOptionCount: selectedOptionCount(sections),
-      ready: validation.ready === true,
-      errorCount: (validation.errors || []).length,
-      warningCount: (validation.warnings || []).length,
-    },
-  };
+function mark(wrapped, original) {
+  Object.defineProperty(wrapped, WRAPPER_MARK, { value: true });
+  Object.defineProperty(wrapped, "__original", { value: original });
+  return wrapped;
 }
 
 function wrapAsyncOutput(target, methodName) {
   const original = target[methodName];
-  if (typeof original !== "function" || original.__retiredLegacySandwich === true) {
-    return;
-  }
-  const wrapped = async function retiredLegacySandwichOutput(...args) {
-    return sanitizePayload(await original.apply(target, args));
-  };
-  wrapped.__retiredLegacySandwich = true;
-  wrapped.__original = original;
-  target[methodName] = wrapped;
+  if (typeof original !== "function" || original[WRAPPER_MARK] === true) return;
+  target[methodName] = mark(
+    async function retiredLegacySandwichOutput(...args) {
+      return sanitizePayload(await original.apply(target, args));
+    },
+    original
+  );
 }
 
-function installRetiredLegacySandwichCard() {
-  if (installed) return;
-  installed = true;
+function wrapPreWriteOutput(target, methodName) {
+  const original = target[methodName];
+  if (typeof original !== "function" || original[WRAPPER_MARK] === true) return;
+  target[methodName] = mark(
+    async function retiredLegacySandwichWrite(args = {}) {
+      await persistSanitizedCurrentDraft({ actor: args.actor || {} });
+      return sanitizePayload(await original.call(target, args));
+    },
+    original
+  );
+}
 
-  const originalCreateDraft = mealBuilderService.createDraft.bind(mealBuilderService);
-  const originalOpenWorkingDraft = mealBuilderService.openWorkingDraft.bind(mealBuilderService);
-  const originalUpdateDraft = mealBuilderService.updateDraft.bind(mealBuilderService);
-  const originalPublishDraft = mealBuilderService.publishDraft.bind(mealBuilderService);
-  const originalDelete = mealBuilderService.deleteProductSection.bind(mealBuilderService);
-  const originalValidate = mealBuilderService.validatePayload.bind(mealBuilderService);
-  const originalSerialize = mealBuilderService.serializeConfig.bind(mealBuilderService);
-  const originalPublicCatalog =
-    CatalogService.getSubscriptionBuilderCatalogWithV2.bind(CatalogService);
+function installBoundary(target) {
+  if (!target || typeof target !== "object") return;
 
-  mealBuilderService.createDraft = async function createWithoutLegacySandwich(args = {}) {
-    const nextArgs = Array.isArray(args.sections)
-      ? { ...args, sections: normalizedForWrite(args.sections) }
-      : args;
-    const result = await originalCreateDraft(nextArgs);
-    const persisted = await persistSanitizedCurrentDraft({ actor: args.actor || {} });
-    return sanitizePayload(persisted || result);
-  };
-
-  mealBuilderService.openWorkingDraft = async function openWithoutLegacySandwich(args = {}) {
-    const result = await originalOpenWorkingDraft(args);
-    const persisted = await persistSanitizedCurrentDraft({ actor: args.actor || {} });
-    return sanitizePayload(persisted || result);
-  };
-
-  mealBuilderService.updateDraft = async function updateWithoutLegacySandwich(args = {}) {
-    const nextArgs = Array.isArray(args.sections)
-      ? { ...args, sections: normalizedForWrite(args.sections) }
-      : args;
-    return sanitizePayload(await originalUpdateDraft(nextArgs));
-  };
-
-  mealBuilderService.publishDraft = async function publishWithoutLegacySandwich(args = {}) {
-    await persistSanitizedCurrentDraft({ actor: args.actor || {} });
-    return sanitizePayload(await originalPublishDraft(args));
-  };
-
-  mealBuilderService.deleteProductSection = async function deleteAnyEditableCard(args = {}) {
-    return deleteEditableCard({
-      ...args,
-      originalDelete,
-      originalValidate,
-    });
-  };
-
-  mealBuilderService.serializeConfig = function serializeWithoutLegacySandwich(config) {
-    return sanitizeConfig(originalSerialize(config));
-  };
-
-  CatalogService.getSubscriptionBuilderCatalogWithV2 = async function publicCatalogWithoutLegacySandwich(
-    options = {}
+  const originalCreateDraft = target.createDraft;
+  if (
+    typeof originalCreateDraft === "function" &&
+    originalCreateDraft[WRAPPER_MARK] !== true
   ) {
-    return sanitizePayload(await originalPublicCatalog(options));
-  };
+    target.createDraft = mark(
+      async function createWithoutLegacySandwich(args = {}) {
+        const nextArgs = Array.isArray(args.sections)
+          ? { ...args, sections: normalizedForWrite(args.sections) }
+          : args;
+        const result = await originalCreateDraft.call(target, nextArgs);
+        const persisted = await persistSanitizedCurrentDraft({
+          actor: args.actor || {},
+        });
+        return sanitizePayload(persisted || result);
+      },
+      originalCreateDraft
+    );
+  }
+
+  const originalOpenWorkingDraft = target.openWorkingDraft;
+  if (
+    typeof originalOpenWorkingDraft === "function" &&
+    originalOpenWorkingDraft[WRAPPER_MARK] !== true
+  ) {
+    target.openWorkingDraft = mark(
+      async function openWithoutLegacySandwich(args = {}) {
+        const result = await originalOpenWorkingDraft.call(target, args);
+        const persisted = await persistSanitizedCurrentDraft({
+          actor: args.actor || {},
+        });
+        return sanitizePayload(persisted || result);
+      },
+      originalOpenWorkingDraft
+    );
+  }
+
+  const originalResetDraft = target.resetDraftToPublished;
+  if (
+    typeof originalResetDraft === "function" &&
+    originalResetDraft[WRAPPER_MARK] !== true
+  ) {
+    target.resetDraftToPublished = mark(
+      async function resetWithoutLegacySandwich(args = {}) {
+        const result = await originalResetDraft.call(target, args);
+        const persisted = await persistSanitizedCurrentDraft({
+          actor: args.actor || {},
+        });
+        return sanitizePayload(persisted || result);
+      },
+      originalResetDraft
+    );
+  }
+
+  const originalUpdateDraft = target.updateDraft;
+  if (
+    typeof originalUpdateDraft === "function" &&
+    originalUpdateDraft[WRAPPER_MARK] !== true
+  ) {
+    target.updateDraft = mark(
+      async function updateWithoutLegacySandwich(args = {}) {
+        const nextArgs = Array.isArray(args.sections)
+          ? { ...args, sections: normalizedForWrite(args.sections) }
+          : args;
+        return sanitizePayload(await originalUpdateDraft.call(target, nextArgs));
+      },
+      originalUpdateDraft
+    );
+  }
+
+  const originalValidate = target.validatePayload;
+  if (
+    typeof originalValidate === "function" &&
+    originalValidate[WRAPPER_MARK] !== true
+  ) {
+    target.validatePayload = mark(
+      async function validateWithoutLegacySandwich(args = {}) {
+        const nextArgs = Array.isArray(args.sections)
+          ? { ...args, sections: normalizedForWrite(args.sections) }
+          : args;
+        return sanitizePayload(await originalValidate.call(target, nextArgs));
+      },
+      originalValidate
+    );
+  }
+
+  const originalPublishDraft = target.publishDraft;
+  if (
+    typeof originalPublishDraft === "function" &&
+    originalPublishDraft[WRAPPER_MARK] !== true
+  ) {
+    target.publishDraft = mark(
+      async function publishWithoutLegacySandwich(args = {}) {
+        await persistSanitizedCurrentDraft({ actor: args.actor || {} });
+        return sanitizePayload(await originalPublishDraft.call(target, args));
+      },
+      originalPublishDraft
+    );
+  }
+
+  const originalDelete = target.deleteProductSection;
+  if (
+    typeof originalDelete === "function" &&
+    originalDelete[WRAPPER_MARK] !== true
+  ) {
+    const validationMethod =
+      typeof target.validatePayload === "function"
+        ? target.validatePayload.bind(target)
+        : baseService.validatePayload.bind(baseService);
+    target.deleteProductSection = mark(
+      async function deleteAnyEditableCard(args = {}) {
+        return deleteEditableCard({
+          ...args,
+          originalDelete: originalDelete.bind(target),
+          originalValidate: validationMethod,
+        });
+      },
+      originalDelete
+    );
+  }
+
+  const originalSerialize = target.serializeConfig;
+  if (
+    typeof originalSerialize === "function" &&
+    originalSerialize[WRAPPER_MARK] !== true
+  ) {
+    target.serializeConfig = mark(
+      function serializeWithoutLegacySandwich(config) {
+        return sanitizeConfig(originalSerialize.call(target, config));
+      },
+      originalSerialize
+    );
+  }
 
   for (const methodName of [
     "getDashboardState",
@@ -262,7 +352,11 @@ function installRetiredLegacySandwichCard() {
     "getDirectProductPicker",
     "buildPlannerCatalogFromPublishedBuilder",
     "buildPublishedContract",
-    "createProductSection",
+  ]) {
+    wrapAsyncOutput(target, methodName);
+  }
+
+  for (const methodName of [
     "updateProductSection",
     "addProductsToSection",
     "removeProductFromSection",
@@ -270,7 +364,37 @@ function installRetiredLegacySandwichCard() {
     "addOptionsToSection",
     "removeOptionFromSection",
   ]) {
-    wrapAsyncOutput(mealBuilderService, methodName);
+    wrapPreWriteOutput(target, methodName);
+  }
+
+  wrapAsyncOutput(target, "createProductSection");
+}
+
+function installRetiredLegacySandwichCard() {
+  if (installed) return;
+  installed = true;
+
+  // The dashboard controller imports dashboardService, while older endpoints and
+  // internal helpers still call canonical/compatibility services directly. Apply
+  // the same retirement invariant at every final boundary.
+  installBoundary(compatibilityService);
+  installBoundary(canonicalService);
+  installBoundary(dashboardService);
+  wrapAsyncOutput(dashboardCatalogService, "getCompleteCatalog");
+
+  const originalPublicCatalog = CatalogService.getSubscriptionBuilderCatalogWithV2;
+  if (
+    typeof originalPublicCatalog === "function" &&
+    originalPublicCatalog[WRAPPER_MARK] !== true
+  ) {
+    CatalogService.getSubscriptionBuilderCatalogWithV2 = mark(
+      async function publicCatalogWithoutLegacySandwich(options = {}) {
+        return sanitizePayload(
+          await originalPublicCatalog.call(CatalogService, options)
+        );
+      },
+      originalPublicCatalog
+    );
   }
 }
 
@@ -278,6 +402,7 @@ installRetiredLegacySandwichCard();
 
 module.exports = {
   deleteEditableCard,
+  installBoundary,
   installRetiredLegacySandwichCard,
   persistSanitizedCurrentDraft,
 };
