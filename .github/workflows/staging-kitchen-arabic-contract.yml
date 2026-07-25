@@ -14,6 +14,7 @@ on:
       - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/kitchenProductionResponseRegression.test.js"
       - "tests/kitchenPickupDeliveryApplicationContract.test.js"
+      - "tests/kitchenMenuOptionCarbAuthority.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -29,6 +30,7 @@ on:
       - "tests/kitchenCompleteWeightResponse.test.js"
       - "tests/kitchenProductionResponseRegression.test.js"
       - "tests/kitchenPickupDeliveryApplicationContract.test.js"
+      - "tests/kitchenMenuOptionCarbAuthority.test.js"
       - "tests/stagingKitchenArabicApiRequests.test.js"
       - "tests/dashboardKitchenPreparationContract.test.js"
       - "tests/flutterMobileStrictScalarContract.test.js"
@@ -70,6 +72,8 @@ jobs:
         run: node tests/kitchenCompleteWeightResponse.test.js
       - name: Verify uploaded production response regressions
         run: node tests/kitchenProductionResponseRegression.test.js
+      - name: Verify MenuOption carb authority for pickup and delivery
+        run: node tests/kitchenMenuOptionCarbAuthority.test.js
       - name: Verify pickup, delivery, add-on, and Builder application contracts
         id: application_contract
         continue-on-error: true
