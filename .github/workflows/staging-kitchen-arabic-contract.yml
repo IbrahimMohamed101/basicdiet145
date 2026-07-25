@@ -117,7 +117,26 @@ jobs:
       - name: Verify Arabic fallback identities
         run: node tests/kitchenArabicFallbackKeys.test.js
       - name: Send multiple staging API requests
-        run: node tests/stagingKitchenArabicApiRequests.test.js
+        id: staging_http_contract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          node tests/stagingKitchenArabicApiRequests.test.js > staging-http-contract.log 2>&1
+          status=$?
+          cat staging-http-contract.log
+          echo "$status" > staging-http-contract.exit
+          exit "$status"
+      - name: Upload staging HTTP diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-http-contract-${{ github.run_id }}
+          path: |
+            staging-http-contract.log
+            staging-http-contract.exit
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify kitchen preparation contract
         run: npm run test:kitchen-preparation-contract
       - name: Verify Flutter strict scalar contract
@@ -126,6 +145,9 @@ jobs:
         run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('staging app startup passed')"
       - name: Enforce application contract result
         if: steps.application_contract.outcome == 'failure'
+        run: exit 1
+      - name: Enforce staging HTTP contract result
+        if: steps.staging_http_contract.outcome == 'failure'
         run: exit 1
       - name: Enforce backend validation result
         if: steps.backend_validation.outcome == 'failure'
