@@ -40,8 +40,8 @@ function run() {
 
   assertIncludes(
     capabilities,
-    'dashboardRoleMiddleware(["admin", "restaurant"])',
-    "restaurant customer creation authorization"
+    'dashboardRoleMiddleware(["admin", "restaurant", "kitchen"])',
+    "restaurant and kitchen customer creation authorization"
   );
   assertIncludes(
     capabilities,
@@ -53,6 +53,19 @@ function run() {
     "asyncHandler(adminController.createAppUserAdmin)",
     "restaurant customer creation handler"
   );
+  assertIncludes(
+    capabilities,
+    '"cashier",\n  "restaurant",\n  "kitchen",',
+    "subscription staff read roles"
+  );
+  for (const [pathFragment, label] of [
+    ['"/settings"', "subscription settings read"],
+    ['"/zones"', "subscription zones read"],
+    ['"/builder-premium-meals"', "subscription premium meals read"],
+    ['"/users/:id"', "subscription customer detail read"],
+  ]) {
+    assertIncludes(capabilities, pathFragment, label);
+  }
   assertNotIncludes(
     capabilities,
     "router.use(\n  dashboardAuthMiddleware",
@@ -107,11 +120,7 @@ function run() {
     "function restaurantCourierReadOnlyResponse",
     "restaurant courier response sanitizer"
   );
-  assertIncludes(
-    courier,
-    "allowedActions: []",
-    "restaurant courier actions must be hidden"
-  );
+  assertIncludes(courier, "allowedActions: []", "restaurant courier actions must be hidden");
   assertIncludes(
     courier,
     "allowedActionIds: []",
@@ -135,8 +144,13 @@ function run() {
 
   assertIncludes(
     dashboardSubscriptions,
-    'dashboardRoleMiddleware(["admin", "cashier", "restaurant"])',
-    "restaurant subscription and manual deduction route access"
+    'const subscriptionStaffAccess = dashboardRoleMiddleware([',
+    "shared subscription staff authorization"
+  );
+  assertIncludes(
+    dashboardSubscriptions,
+    '"restaurant",\n  "kitchen",',
+    "restaurant and legacy kitchen subscription access"
   );
   assertIncludes(
     dashboardSubscriptions,
@@ -145,8 +159,8 @@ function run() {
   );
   assertIncludes(
     manualDeductionError,
-    '["admin", "superadmin", "cashier", "restaurant"]',
-    "manual deduction service must explicitly authorize restaurant"
+    '["admin", "superadmin", "cashier", "restaurant", "kitchen"]',
+    "manual deduction service must authorize restaurant and kitchen"
   );
 
   console.log("dashboard restaurant expanded capability policy checks passed");
