@@ -71,7 +71,26 @@ jobs:
       - name: Verify uploaded production response regressions
         run: node tests/kitchenProductionResponseRegression.test.js
       - name: Verify pickup, delivery, add-on, and Builder application contracts
-        run: node tests/kitchenPickupDeliveryApplicationContract.test.js
+        id: application_contract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          node tests/kitchenPickupDeliveryApplicationContract.test.js > application-contract.log 2>&1
+          status=$?
+          cat application-contract.log
+          echo "$status" > application-contract.exit
+          exit "$status"
+      - name: Upload application contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-application-contract-${{ github.run_id }}
+          path: |
+            application-contract.log
+            application-contract.exit
+          if-no-files-found: error
+          retention-days: 3
       - name: Validate backend composition
         id: backend_validation
         continue-on-error: true
@@ -105,6 +124,9 @@ jobs:
         run: node tests/flutterMobileStrictScalarContract.test.js
       - name: Verify application startup
         run: node -e "const { createApp } = require('./src/app'); const app = createApp(); if (!app) process.exit(1); console.log('staging app startup passed')"
+      - name: Enforce application contract result
+        if: steps.application_contract.outcome == 'failure'
+        run: exit 1
       - name: Enforce backend validation result
         if: steps.backend_validation.outcome == 'failure'
         run: exit 1
