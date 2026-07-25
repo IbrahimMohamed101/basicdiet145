@@ -9,6 +9,9 @@ const {
 const {
   normalizeCurrentSubscriptionOverviewResponse,
 } = require("../src/services/installCurrentSubscriptionOverviewFlutterCompatibility");
+const {
+  repairAvailability,
+} = require("../src/services/installPickupAvailabilityNameRepair");
 
 function payloadWithSlot(overrides = {}) {
   return {
@@ -166,5 +169,45 @@ assert.strictEqual(normalizedOverview.data.fulfillmentSummary.planningReady, tru
 assert.strictEqual(normalizedOverview.data.mealBalance.totalMeals, 52);
 assert.strictEqual(normalizedOverview.data.mealBalance.canConsumeNow, true);
 assert.strictEqual(normalizedOverview.data.mealBalance.dailyMealLimitEnforced, false);
+
+const pickupCatalogMaps = {
+  optionByKey: new Map([
+    ["white_rice", { key: "white_rice", name: { ar: "رز أبيض", en: "White Rice" } }],
+    ["yellow_rice", { key: "yellow_rice", name: { ar: "رز أصفر", en: "Yellow Rice" } }],
+  ]),
+  proteinByKey: new Map([
+    ["chicken", { key: "chicken", name: { ar: "دجاج", en: "Chicken" } }],
+    ["beef", { key: "beef", name: { ar: "لحم بقري", en: "Beef" } }],
+    ["fish", { key: "fish", name: { ar: "سمك", en: "Fish" } }],
+  ]),
+};
+const brokenPickupRows = ["chicken", "beef", "fish"].map((proteinKey, index) => ({
+  itemId: `slot_${index + 1}`,
+  itemType: "meal",
+  selectionType: "standard_meal",
+  title: { ar: `${proteinKey} + [object Object]`, en: `${proteinKey} + [object Object]` },
+  product: { name: { ar: `${proteinKey} + [object Object]`, en: `${proteinKey} + [object Object]` } },
+  meal: { title: { ar: `${proteinKey} + [object Object]`, en: `${proteinKey} + [object Object]` } },
+  components: [
+    { type: "protein", key: proteinKey, name: { value: { ar: proteinKey, en: proteinKey } } },
+    { type: "carb", key: index === 1 ? "yellow_rice" : "white_rice", name: { ar: { value: {} }, en: { value: {} } } },
+  ],
+  display: { titleAr: `${proteinKey} + [object Object]`, titleEn: `${proteinKey} + [object Object]` },
+}));
+const repairedPickupAvailability = repairAvailability({ pickupItems: brokenPickupRows }, pickupCatalogMaps);
+assert.deepStrictEqual(repairedPickupAvailability.pickupItems[0].title, {
+  ar: "دجاج + رز أبيض",
+  en: "Chicken + White Rice",
+});
+assert.deepStrictEqual(repairedPickupAvailability.pickupItems[1].title, {
+  ar: "لحم بقري + رز أصفر",
+  en: "Beef + Yellow Rice",
+});
+assert.deepStrictEqual(repairedPickupAvailability.pickupItems[2].title, {
+  ar: "سمك + رز أبيض",
+  en: "Fish + White Rice",
+});
+assert.strictEqual(repairedPickupAvailability.pickupItems[0].display.titleAr, "دجاج + رز أبيض");
+assert(!JSON.stringify(repairedPickupAvailability).includes("[object Object]"));
 
 console.log("Flutter strict scalar contract checks passed");
