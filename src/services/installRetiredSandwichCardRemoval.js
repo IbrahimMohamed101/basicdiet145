@@ -24,7 +24,9 @@ function sectionKey(section = {}) {
 }
 
 function metadataOf(section = {}) {
-  return isPlainObject(section.metadata) ? section.metadata : {};
+  if (isPlainObject(section.metadata)) return section.metadata;
+  if (isPlainObject(section.ui)) return section.ui;
+  return {};
 }
 
 function isExplicitDashboardCard(section = {}) {
