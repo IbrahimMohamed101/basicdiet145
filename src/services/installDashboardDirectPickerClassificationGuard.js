@@ -51,26 +51,14 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-function isIntrinsicPremiumSection(section = {}) {
-  const selectionType = token(section.selectionType);
-  return (
-    sectionKey(section) === "premium" ||
-    token(section.sourceKind) === "premium_visual" ||
-    token(section.metadata?.visualRole) === "premium" ||
-    token(section.cardType || section.metadata?.cardType) ===
-      CARD_TYPES.SYSTEM_PREMIUM ||
-    PREMIUM_SELECTION_TYPES.has(selectionType)
-  );
-}
-
-function isExplicitDirectSection(section = {}) {
-  const explicit = token(section.cardType || section.metadata?.cardType);
-  if (explicit === CARD_TYPES.DIRECT_PRODUCT) return true;
-  if (isIntrinsicPremiumSection(section)) return false;
-
+function hasDirectCardEvidence(section = {}) {
+  const topLevelType = token(section.cardType);
+  const metadataType = token(section.metadata?.cardType);
   const sectionType = token(section.sectionType || section.type);
   const selectionType = token(section.selectionType);
   return (
+    topLevelType === CARD_TYPES.DIRECT_PRODUCT ||
+    metadataType === CARD_TYPES.DIRECT_PRODUCT ||
     sectionType === "product_list" ||
     selectionType === FULL_MEAL_SELECTION_TYPE ||
     selectionType === LEGACY_SANDWICH_SELECTION_TYPE ||
@@ -79,31 +67,50 @@ function isExplicitDirectSection(section = {}) {
   );
 }
 
+function hasOptionCardEvidence(section = {}) {
+  const topLevelType = token(section.cardType);
+  const metadataType = token(section.metadata?.cardType);
+  const sectionType = token(section.sectionType || section.type);
+  return (
+    topLevelType === CARD_TYPES.OPTION_FAMILY ||
+    metadataType === CARD_TYPES.OPTION_FAMILY ||
+    sectionType === "option_group" ||
+    sectionType === "option_family" ||
+    Array.isArray(section.selectedOptionIds) ||
+    Boolean(section.productContextId || section.sourceGroupId)
+  );
+}
+
+function isIntrinsicPremiumSection(section = {}) {
+  const selectionType = token(section.selectionType);
+  return (
+    sectionKey(section) === "premium" ||
+    token(section.sourceKind) === "premium_visual" ||
+    token(section.metadata?.visualRole) === "premium" ||
+    PREMIUM_SELECTION_TYPES.has(selectionType)
+  );
+}
+
+function isExplicitDirectSection(section = {}) {
+  return !isIntrinsicPremiumSection(section) && hasDirectCardEvidence(section);
+}
+
 function resolvedCardType(section = {}) {
   if (isIntrinsicPremiumSection(section)) return CARD_TYPES.SYSTEM_PREMIUM;
-  if (isExplicitDirectSection(section)) return CARD_TYPES.DIRECT_PRODUCT;
+  if (hasDirectCardEvidence(section)) return CARD_TYPES.DIRECT_PRODUCT;
+  if (hasOptionCardEvidence(section)) return CARD_TYPES.OPTION_FAMILY;
 
-  const explicit = token(section.cardType || section.metadata?.cardType);
-  if (explicit === CARD_TYPES.OPTION_FAMILY) return CARD_TYPES.OPTION_FAMILY;
-
-  const sectionType = token(section.sectionType || section.type);
-  if (sectionType === "option_group" || sectionType === "option_family") {
-    return CARD_TYPES.OPTION_FAMILY;
-  }
+  const topLevelType = token(section.cardType);
+  const metadataType = token(section.metadata?.cardType);
   if (
-    Array.isArray(section.selectedOptionIds) ||
-    section.productContextId ||
-    section.sourceGroupId
+    topLevelType === CARD_TYPES.SYSTEM_PREMIUM ||
+    metadataType === CARD_TYPES.SYSTEM_PREMIUM ||
+    section.systemManaged === true ||
+    section.metadata?.systemManaged === true
   ) {
-    return CARD_TYPES.OPTION_FAMILY;
-  }
-
-  // Backward compatibility for genuinely old Premium cards that only carried
-  // the system-managed flag. Explicit product/option structure always wins.
-  if (section.systemManaged === true || section.metadata?.systemManaged === true) {
     return CARD_TYPES.SYSTEM_PREMIUM;
   }
-  return explicit;
+  return metadataType || topLevelType;
 }
 
 function canonicalDirectSelectionType(value) {
