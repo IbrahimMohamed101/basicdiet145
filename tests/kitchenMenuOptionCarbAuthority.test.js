@@ -14,7 +14,8 @@ const Meal = require("../src/models/Meal");
 const Sandwich = require("../src/models/Sandwich");
 const kitchenCatalogService = require("../src/services/dashboard/kitchenCatalogService");
 const dashboardDtoService = require("../src/services/dashboard/dashboardDtoService");
-const { completeOperation } = require("../src/services/dashboard/installKitchenOperationalCompletenessGuard");
+const kitchenContractService = require("../src/services/dashboard/kitchenOperationsContractService");
+require("../src/services/dashboard/installKitchenOperationalCompletenessGuard");
 
 const IDS = Object.freeze({
   protein: "6a62197479ee075a57f7010e",
@@ -180,7 +181,8 @@ function assertResolvedOperation(operation, mode) {
         "ar",
         maps
       );
-      assertResolvedOperation(completeOperation(dto), mode);
+      const serialized = kitchenContractService.serializeKitchenOperation(dto);
+      assertResolvedOperation(serialized, mode);
     }
 
     console.log("MenuOption carb authority resolves pickup and delivery names");
