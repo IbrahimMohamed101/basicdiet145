@@ -6,6 +6,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 require("./services/installSubscriptionDayFullMealCompatibility");
 require("./services/installMealBuilderSourceKindCompatibility");
+require("./services/installExplicitSubscriptionAddonSelectionPolicy");
 const swaggerUi = require("swagger-ui-express");
 const routes = require("./routes");
 const paymentRoutes = require("./routes/payments");
