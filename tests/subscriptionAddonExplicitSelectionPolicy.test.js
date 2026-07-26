@@ -7,6 +7,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionDailyAddonOperation = require("../src/models/SubscriptionDailyAddonOperation");
+require("../src/services/installExplicitSubscriptionAddonSelectionPolicy");
 const {
   ensureDailyAddonDefaultsForDay,
   reconcileDayDailyAddonState,
