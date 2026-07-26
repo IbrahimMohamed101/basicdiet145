@@ -50,6 +50,7 @@ async function run() {
   assert.strictEqual(assertUniqueTargets(PURGE_TARGETS), true);
   const targetCollections = PURGE_TARGETS.map(targetCollectionName);
   assert.strictEqual(new Set(targetCollections).size, targetCollections.length);
+  assert.strictEqual(PURGE_TARGETS.length, 22);
   for (const expectedKey of [
     "users",
     "appUsers",
@@ -57,12 +58,25 @@ async function run() {
     "subscriptions",
     "subscriptionDays",
     "subscriptionPickupRequests",
+    "subscriptionDailyAddonOperations",
+    "subscriptionDayAppendOperations",
+    "subscriptionDayMutationLocks",
+    "subscriptionMealReservationLocks",
     "orders",
     "payments",
     "refreshSessions",
     "otps",
   ]) {
     assert(PURGE_TARGETS.some((target) => target.key === expectedKey), `missing purge target ${expectedKey}`);
+  }
+
+  for (const linkedCollection of [
+    "subscriptiondailyaddonoperations",
+    "subscriptiondayappendoperations",
+    "subscriptiondaymutationlocks",
+    "subscriptionmealreservationlocks",
+  ]) {
+    assert(targetCollections.includes(linkedCollection), `linked subscription collection must be purged: ${linkedCollection}`);
   }
 
   assert.doesNotThrow(() => assertExecutionConfirmed({

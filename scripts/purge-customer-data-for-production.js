@@ -21,7 +21,11 @@ const PromoUsage = require("../src/models/PromoUsage");
 const RefreshSession = require("../src/models/RefreshSession");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
+const SubscriptionDailyAddonOperation = require("../src/models/SubscriptionDailyAddonOperation");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const SubscriptionDayAppendOperation = require("../src/models/SubscriptionDayAppendOperation");
+const SubscriptionDayMutationLock = require("../src/models/SubscriptionDayMutationLock");
+const SubscriptionMealReservationLock = require("../src/models/SubscriptionMealReservationLock");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const User = require("../src/models/User");
 const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
@@ -55,7 +59,8 @@ const BLOCKED_TEST_PASSWORDS = new Set([
 ]);
 
 // Keep catalog/configuration collections intact. Only customer, transaction,
-// authentication and account-linked audit data belongs in this allowlist.
+// authentication, durable subscription-operation and account-linked audit data
+// belongs in this allowlist.
 const PURGE_TARGETS = Object.freeze([
   { key: "refreshSessions", label: "refresh sessions", Model: RefreshSession },
   { key: "otps", label: "OTP records", Model: Otp },
@@ -63,6 +68,10 @@ const PURGE_TARGETS = Object.freeze([
   { key: "notificationLogs", label: "notification logs", Model: NotificationLog },
   { key: "promoUsages", label: "promo-code usages", Model: PromoUsage },
   { key: "checkoutDrafts", label: "checkout drafts", Model: CheckoutDraft },
+  { key: "subscriptionDayMutationLocks", label: "subscription day mutation locks", Model: SubscriptionDayMutationLock },
+  { key: "subscriptionMealReservationLocks", label: "subscription meal reservation locks", Model: SubscriptionMealReservationLock },
+  { key: "subscriptionDayAppendOperations", label: "subscription day append operations", Model: SubscriptionDayAppendOperation },
+  { key: "subscriptionDailyAddonOperations", label: "subscription daily add-on operations", Model: SubscriptionDailyAddonOperation },
   { key: "subscriptionPickupRequests", label: "subscription pickup requests", Model: SubscriptionPickupRequest },
   { key: "subscriptionAuditLogs", label: "subscription audit logs", Model: SubscriptionAuditLog },
   { key: "subscriptionDays", label: "subscription days", Model: SubscriptionDay },
@@ -82,9 +91,7 @@ function isTruthy(value) {
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
-  return {
-    execute: argv.includes("--execute"),
-  };
+  return { execute: argv.includes("--execute") };
 }
 
 function assertDatabaseNameSafe(databaseName) {
@@ -209,9 +216,7 @@ function printPlan({ databaseName, host, targets, preserved, execute }, log = co
   log.log(`- database: ${databaseName}`);
   log.log(`- target collections: ${targets.length}`);
   log.log(`- estimated target documents: ${totalDocuments}`);
-  for (const row of targets) {
-    log.log(`  - ${row.collection}: ${row.count} (${row.label})`);
-  }
+  for (const row of targets) log.log(`  - ${row.collection}: ${row.count} (${row.label})`);
   log.log(`- preserved collections: ${preserved.length}`);
   for (const row of preserved) log.log(`  - keep ${row.name}: ${row.count}`);
   log.log(`- mode: ${execute ? "EXECUTE" : "DRY RUN"}`);
@@ -226,11 +231,7 @@ async function deleteTargets(targets = PURGE_TARGETS, log = console) {
   for (const target of targets) {
     const result = await target.Model.deleteMany({});
     const deletedCount = Number(result?.deletedCount || 0);
-    results.push({
-      key: target.key,
-      collection: targetCollectionName(target),
-      deletedCount,
-    });
+    results.push({ key: target.key, collection: targetCollectionName(target), deletedCount });
     log.log(`[purge] ${targetCollectionName(target)}: deleted ${deletedCount}`);
   }
   return results;
@@ -254,9 +255,7 @@ async function verifyPurge({ targets = PURGE_TARGETS, superadminEmail, preserved
 
   for (const row of targetSummary) {
     const expected = row.key === "dashboardUsers" ? 1 : 0;
-    if (row.count !== expected) {
-      failures.push(`${row.collection}: expected ${expected}, found ${row.count}`);
-    }
+    if (row.count !== expected) failures.push(`${row.collection}: expected ${expected}, found ${row.count}`);
   }
 
   const superadmin = await DashboardUser.findOne({ email: superadminEmail }).lean();
@@ -291,13 +290,7 @@ async function run(options = {}) {
     const targetSummary = await loadTargetSummary(targets);
     const preservedBefore = await loadPreservedCollectionSummary(mongoose.connection.db, targets);
 
-    printPlan({
-      databaseName,
-      host,
-      targets: targetSummary,
-      preserved: preservedBefore,
-      execute: args.execute,
-    }, log);
+    printPlan({ databaseName, host, targets: targetSummary, preserved: preservedBefore, execute: args.execute }, log);
 
     const superadminCredentials = assertExecutionConfirmed({
       execute: args.execute,
@@ -306,13 +299,7 @@ async function run(options = {}) {
     });
 
     if (!args.execute) {
-      return {
-        executed: false,
-        databaseName,
-        host,
-        targets: targetSummary,
-        preserved: preservedBefore,
-      };
+      return { executed: false, databaseName, host, targets: targetSummary, preserved: preservedBefore };
     }
 
     // Hash before the first deletion so invalid hashing configuration cannot
