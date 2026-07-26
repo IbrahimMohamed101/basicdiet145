@@ -179,6 +179,7 @@ function installExplicitSubscriptionAddonSelectionPolicy() {
 }
 
 installExplicitSubscriptionAddonSelectionPolicy();
+require("./installExplicitKitchenAddonVisibilityPolicy");
 
 module.exports = {
   implicitDefaultsEnabled,
