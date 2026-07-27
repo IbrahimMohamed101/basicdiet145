@@ -5,6 +5,7 @@ const adminController = require("../controllers/adminController");
 const builderPremiumMealController = require("../controllers/builderPremiumMealController");
 const zoneController = require("../controllers/zoneController");
 const asyncHandler = require("../middleware/asyncHandler");
+const ignoreDashboardCustomerEmail = require("../middleware/ignoreDashboardCustomerEmail");
 const {
   dashboardAuthMiddleware,
   dashboardRoleMiddleware,
@@ -65,13 +66,13 @@ router.get(
   asyncHandler(builderPremiumMealController.getBuilderPremiumMealAdmin)
 );
 
-// Restaurant and legacy kitchen staff may create a customer account before
-// creating that customer's subscription. Authorization stays on this exact
-// endpoint so the scoped router cannot open unrelated admin mutations.
+// Dashboard-created customers are phone-authenticated. Email is intentionally
+// ignored here so stale/default dashboard values cannot block a new phone.
 router.post(
   "/users",
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin", "restaurant", "kitchen"]),
+  ignoreDashboardCustomerEmail,
   asyncHandler(adminController.createAppUserAdmin)
 );
 
