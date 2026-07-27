@@ -128,6 +128,11 @@ const {
   menuMutationCacheInvalidationMiddleware,
 } = require("../services/installMenuDeliveryOptimization");
 
+// Payment history exposes exactly two commercial channels. Install before the
+// admin route captures controller methods so Moyasar/manual-card records cannot
+// be misclassified as cash by dashboard clients.
+require("../services/dashboard/installPaymentChannelContract");
+
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
 const dashboardStaffUserRoutes = require("./dashboardStaffUsers");
