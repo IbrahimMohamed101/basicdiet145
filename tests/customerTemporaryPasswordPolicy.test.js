@@ -2,7 +2,10 @@
 
 const assert = require("assert");
 const User = require("../src/models/User");
+const { validateAppPassword } = require("../src/services/appPasswordService");
 const {
+  generateTemporaryPassword,
+  validateTemporaryPassword,
   getTemporaryPasswordExpiresAt,
   resolveTemporaryPasswordTtlHours,
 } = require("../src/services/customerTemporaryPasswordService");
@@ -18,6 +21,38 @@ function restoreEnv() {
 }
 
 try {
+  assert.deepStrictEqual(
+    validateTemporaryPassword("12345678"),
+    { ok: true },
+    "an eight-digit admin-issued temporary PIN must be accepted"
+  );
+  assert.strictEqual(
+    validateTemporaryPassword("1234567").ok,
+    false,
+    "temporary passwords shorter than eight characters must be rejected"
+  );
+  assert.strictEqual(
+    validateTemporaryPassword("1234 5678").ok,
+    false,
+    "temporary passwords containing whitespace must be rejected"
+  );
+  assert.strictEqual(
+    validateTemporaryPassword("a".repeat(73)).ok,
+    false,
+    "temporary passwords beyond bcrypt's safe byte limit must be rejected"
+  );
+  assert.strictEqual(
+    validateAppPassword("12345678").ok,
+    false,
+    "numeric-only passwords must remain forbidden for permanent customer credentials"
+  );
+
+  const generated = generateTemporaryPassword();
+  assert(generated.length >= 8, "generated temporary passwords must be at least eight characters");
+  assert(/[A-Z]/.test(generated), "generated temporary passwords must include uppercase");
+  assert(/[a-z]/.test(generated), "generated temporary passwords must include lowercase");
+  assert(/\d/.test(generated), "generated temporary passwords must include a digit");
+
   delete process.env.ADMIN_TEMP_PASSWORD_TTL_HOURS;
   assert.strictEqual(resolveTemporaryPasswordTtlHours(), 720, "default TTL must be 30 days");
 
