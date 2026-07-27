@@ -1,11 +1,13 @@
 const crypto = require("crypto");
-const { validateAppPassword, hashAppPassword } = require("./appPasswordService");
+const { hashAppPassword } = require("./appPasswordService");
 const { revokeAllUserSessions } = require("./refreshSessionService");
 const { writeLog } = require("../utils/log");
 
 const DEFAULT_TEMP_PASSWORD_TTL_HOURS = 24 * 30;
 const MIN_TEMP_PASSWORD_TTL_HOURS = 24 * 30;
 const MAX_TEMP_PASSWORD_TTL_HOURS = 24 * 365;
+const MIN_TEMP_PASSWORD_LENGTH = 8;
+const MAX_BCRYPT_PASSWORD_BYTES = 72;
 const TEMP_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const LOWER = "abcdefghijkmnopqrstuvwxyz";
@@ -39,7 +41,7 @@ function randomChar(alphabet) {
 }
 
 function generateTemporaryPassword(length = 10) {
-  const size = Math.max(8, Number(length) || 10);
+  const size = Math.max(MIN_TEMP_PASSWORD_LENGTH, Number(length) || 10);
   const chars = [
     randomChar(UPPER),
     randomChar(LOWER),
@@ -51,16 +53,31 @@ function generateTemporaryPassword(length = 10) {
   return shuffleSecure(chars);
 }
 
+/**
+ * Admin-issued credentials are deliberately validated separately from the
+ * customer's permanent password. A temporary PIN may be numeric because it
+ * never receives normal app tokens: successful login returns only a short-lived
+ * password-change token, and the permanent replacement still uses the stronger
+ * app-password policy.
+ */
 function validateTemporaryPassword(password) {
   const value = String(password || "");
-  const appValidation = validateAppPassword(value);
-  if (!appValidation.ok) {
-    return appValidation;
-  }
-  if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
+  if (value.length < MIN_TEMP_PASSWORD_LENGTH) {
     return {
       ok: false,
-      message: "Temporary password must include uppercase, lowercase, and a digit",
+      message: `Temporary password must be at least ${MIN_TEMP_PASSWORD_LENGTH} characters`,
+    };
+  }
+  if (Buffer.byteLength(value, "utf8") > MAX_BCRYPT_PASSWORD_BYTES) {
+    return {
+      ok: false,
+      message: `Temporary password must be at most ${MAX_BCRYPT_PASSWORD_BYTES} bytes`,
+    };
+  }
+  if (/\s/.test(value)) {
+    return {
+      ok: false,
+      message: "Temporary password must not contain whitespace",
     };
   }
   return { ok: true };
