@@ -3,6 +3,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const ignoreDashboardCustomerEmail = require("../src/middleware/ignoreDashboardCustomerEmail");
 
 function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", relativePath), "utf8");
@@ -50,6 +51,16 @@ function run() {
   );
   assertIncludes(
     capabilities,
+    'const ignoreDashboardCustomerEmail = require("../middleware/ignoreDashboardCustomerEmail")',
+    "dashboard customer email optionality middleware import"
+  );
+  assertIncludes(
+    capabilities,
+    "ignoreDashboardCustomerEmail,\n  asyncHandler(adminController.createAppUserAdmin)",
+    "dashboard customer email must be ignored before creation"
+  );
+  assertIncludes(
+    capabilities,
     "asyncHandler(adminController.createAppUserAdmin)",
     "restaurant customer creation handler"
   );
@@ -70,6 +81,42 @@ function run() {
     capabilities,
     "router.use(\n  dashboardAuthMiddleware",
     "scoped capability router must not block unrelated dashboard routes"
+  );
+
+  const originalCreateBody = {
+    fullName: "Mohamed Mahmoud",
+    phone: "+966501234533",
+    email: "test@gmail.com",
+    emailAddress: "default@example.com",
+    temporaryPassword: "Test12345",
+    isActive: true,
+  };
+  const request = { body: originalCreateBody };
+  let nextCalled = false;
+  ignoreDashboardCustomerEmail(request, {}, () => {
+    nextCalled = true;
+  });
+  assert.strictEqual(nextCalled, true, "customer email middleware must continue the request");
+  assert.strictEqual(request.body.phone, originalCreateBody.phone, "phone must remain authoritative");
+  assert.strictEqual(
+    request.body.temporaryPassword,
+    originalCreateBody.temporaryPassword,
+    "temporary password must be preserved"
+  );
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(request.body, "email"),
+    false,
+    "email must not reach the create-user controller"
+  );
+  assert.strictEqual(
+    Object.prototype.hasOwnProperty.call(request.body, "emailAddress"),
+    false,
+    "email aliases must not reach the create-user controller"
+  );
+  assert.strictEqual(
+    originalCreateBody.email,
+    "test@gmail.com",
+    "middleware must not mutate the caller's original object"
   );
 
   const scopedMount = routeIndex.indexOf('router.use("/dashboard", dashboardRestaurantCapabilitiesRoutes)');
