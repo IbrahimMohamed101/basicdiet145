@@ -203,8 +203,6 @@ async function run() {
       date: businessDate,
       status: "ready_for_pickup",
       pickupRequested: true,
-      plannerState: "confirmed",
-      planningState: "confirmed",
       lockedSnapshot: {
         mealsPerDay: 2,
         requiredMealCount: 2,
