@@ -124,6 +124,18 @@ function run() {
     assert.strictEqual(projected.balanceProjection, undefined);
   });
 
+  test("null, empty, or missing counters never become manufactured zeroes", () => {
+    for (const reservedMeals of [null, "", undefined]) {
+      const source = activeSubscription({
+        reservedMeals,
+        baseMealAllocations: undefined,
+      });
+      const projected = projectDashboardSubscriptionBalance(source);
+      assert.strictEqual(projected, source);
+      assert.strictEqual(projected.remainingMeals, 36);
+    }
+  });
+
   test("legacy subscriptions without explicit lifecycle counters stay unchanged", () => {
     const source = {
       _id: "507f191e810c19729de86002",
