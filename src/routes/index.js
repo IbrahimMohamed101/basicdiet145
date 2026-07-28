@@ -132,10 +132,6 @@ const {
 // admin route captures controller methods so Moyasar/manual-card records cannot
 // be misclassified as cash by dashboard clients.
 require("../services/dashboard/installPaymentChannelContract");
-// Dashboard subscription reads may display reserved meals as unconsumed while
-// keeping the stored available balance untouched. Install after all service
-// composition and before route modules capture the admin controller exports.
-require("../services/installDashboardSubscriptionMealBalanceProjection");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
@@ -177,6 +173,9 @@ const accountDeletionRoutes = require("./accountDeletion");
 const { getSettings } = require("../controllers/settingsController");
 const { listCategoriesWithMeals } = require("../controllers/mealController");
 const asyncHandler = require("../middleware/asyncHandler");
+const {
+  dashboardSubscriptionMealBalanceProjection,
+} = require("../middleware/dashboardSubscriptionMealBalanceProjection");
 
 const webhookRoutes = require("./webhooks");
 
@@ -216,6 +215,12 @@ router.use("/dashboard/catalog-items", dashboardCatalogItemRoutes);
 router.use("/dashboard/premium-upgrades", dashboardPremiumUpgradesRoutes);
 router.use("/dashboard/ops", dashboardOpsRoutes);
 router.use("/dashboard/operations", dashboardOpsRoutes);
+// Read-only compatibility projection. It is a no-op unless the explicit feature
+// flag is enabled, and it never runs for quote/create/manual-deduction writes.
+router.use(
+  "/dashboard/subscriptions",
+  dashboardSubscriptionMealBalanceProjection
+);
 router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
