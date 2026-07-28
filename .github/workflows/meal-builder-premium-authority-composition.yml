@@ -7,10 +7,10 @@ on:
   pull_request:
     paths:
       - "src/routes/index.js"
-      - "src/services/installMealBuilderPremiumAuthorityComposition.js"
-      - "tests/mealBuilderPremiumAuthorityComposition.test.js"
+      - "src/services/installFlutterPublishedSelectionAuthority.js"
       - "tests/mealBuilderPublishedPremiumComposition.test.js"
       - "tests/builderCatalogV2Contract.test.js"
+      - "tests/flutterMealPlannerCatalogExpansion.test.js"
       - ".github/workflows/meal-builder-premium-authority-composition.yml"
 
 permissions:
@@ -41,12 +41,8 @@ jobs:
       - name: Validate syntax
         run: |
           node -c src/routes/index.js
-          node -c src/services/installMealBuilderPremiumAuthorityComposition.js
-          node -c tests/mealBuilderPremiumAuthorityComposition.test.js
+          node -c src/services/installFlutterPublishedSelectionAuthority.js
           node -c tests/mealBuilderPublishedPremiumComposition.test.js
-
-      - name: Verify preload and normal startup composition
-        run: node tests/mealBuilderPremiumAuthorityComposition.test.js
 
       - name: Verify published Premium composition stages
         run: |
@@ -66,7 +62,18 @@ jobs:
         run: npm run test:builder-catalog-v2-contract
 
       - name: Verify Flutter Meal Planner catalog expansion
-        run: npm run test:flutter-meal-planner-catalog-expansion
+        run: |
+          set -o pipefail
+          npm run test:flutter-meal-planner-catalog-expansion 2>&1 | tee flutter-meal-planner-expansion.log
+
+      - name: Upload Flutter expansion diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-meal-planner-expansion-diagnostics
+          path: flutter-meal-planner-expansion.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Verify dynamic direct meal catalog
         run: npm run test:dynamic-direct-meal-catalog
