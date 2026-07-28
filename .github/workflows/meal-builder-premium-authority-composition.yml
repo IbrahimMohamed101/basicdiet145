@@ -76,4 +76,4 @@ jobs:
           retention-days: 3
 
       - name: Verify dynamic direct meal catalog
-        run: NODE_ENV=test node tests/dynamicDirectMealCatalog.test.js
+        run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
