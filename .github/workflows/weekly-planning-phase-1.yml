@@ -1,4 +1,4 @@
-name: Weekly Planning Phase 1
+name: Weekly Planning and Balance Safety
 
 on:
   push:
@@ -7,12 +7,13 @@ on:
   pull_request:
     paths:
       - "src/services/subscription/subscriptionPlanningWindowService.js"
-      - "tests/subscriptionPlanningWindowService.test.js"
       - "src/services/subscription/subscriptionDayModificationPolicyService.js"
-      - "src/services/subscription/subscriptionTimelineService.js"
-      - "src/services/subscription/subscriptionClientSupportService.js"
+      - "src/services/installSubscriptionWeeklyPlanningWindow.js"
       - "src/services/subscription/subscriptionDashboardMealBalanceProjectionService.js"
       - "src/middleware/dashboardSubscriptionMealBalanceProjection.js"
+      - "tests/subscriptionPlanningWindowService.test.js"
+      - "tests/subscriptionWeeklyPlanningWindowTimeline.test.js"
+      - "tests/subscriptionDayModificationPolicy.test.js"
       - "tests/subscriptionDashboardMealBalanceProjection.test.js"
       - "tests/dashboardSubscriptionMealBalanceMiddleware.test.js"
       - "tests/dashboardSubscriptionMealBalanceProjection.integration.test.js"
@@ -25,7 +26,13 @@ permissions:
 jobs:
   weekly-planning-policy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      JWT_SECRET: weekly-planning-test-secret
+      DASHBOARD_JWT_SECRET: weekly-planning-dashboard-test-secret
+      SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false"
+      DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED: "false"
 
     steps:
       - name: Checkout
@@ -40,20 +47,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate changed backend syntax
+        run: |
+          node -c src/services/subscription/subscriptionPlanningWindowService.js
+          node -c src/services/subscription/subscriptionDayModificationPolicyService.js
+          node -c src/services/installSubscriptionWeeklyPlanningWindow.js
+          node -c src/services/subscription/subscriptionDashboardMealBalanceProjectionService.js
+          node -c src/middleware/dashboardSubscriptionMealBalanceProjection.js
+          node -c tests/subscriptionPlanningWindowService.test.js
+          node -c tests/subscriptionWeeklyPlanningWindowTimeline.test.js
+          node -c tests/subscriptionDayModificationPolicy.test.js
+
       - name: Test isolated weekly planning window policy
-        run: NODE_ENV=test node tests/subscriptionPlanningWindowService.test.js
+        run: node tests/subscriptionPlanningWindowService.test.js
+
+      - name: Test central write policy with explicit off/on cases
+        run: node tests/subscriptionDayModificationPolicy.test.js
+
+      - name: Test weekly planning timeline projection
+        run: node tests/subscriptionWeeklyPlanningWindowTimeline.test.js
+
+      - name: Preserve delivery cutoff contract
+        run: node tests/deliverySelectionCutoffContract.test.js
+
+      - name: Preserve timeline planning contract
+        run: node tests/subscriptionTimelinePlanningContract.test.js
 
       - name: Test dashboard reserved-versus-consumed balance projection
-        run: NODE_ENV=test node tests/subscriptionDashboardMealBalanceProjection.test.js
+        run: node tests/subscriptionDashboardMealBalanceProjection.test.js
 
       - name: Test dashboard response-boundary middleware
-        run: NODE_ENV=test node tests/dashboardSubscriptionMealBalanceMiddleware.test.js
+        run: node tests/dashboardSubscriptionMealBalanceMiddleware.test.js
 
       - name: Test dashboard projection database and authorization boundaries
-        run: NODE_ENV=test node tests/dashboardSubscriptionMealBalanceProjection.integration.test.js
+        run: node tests/dashboardSubscriptionMealBalanceProjection.integration.test.js
 
-      - name: Test current subscription modification policy
-        run: NODE_ENV=test node tests/subscriptionDayModificationPolicy.test.js
-
-      - name: Test current subscription balance and fulfillment lifecycle
+      - name: Verify default-off current subscription lifecycle
         run: npm run test:subscriptions
