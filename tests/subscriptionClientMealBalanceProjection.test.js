@@ -462,6 +462,22 @@ function run() {
     );
   });
 
+  test("missing validity-window boundaries fail closed", () => {
+    const balance = baseMealBalance();
+    for (const missingWindow of [
+      { startDate: null },
+      { endDate: null, validityEndDate: null },
+    ]) {
+      assert.strictEqual(
+        enabledProjection(
+          balance,
+          modernSubscription(missingWindow)
+        ),
+        balance
+      );
+    }
+  });
+
   console.log(
     `subscriptionClientMealBalanceProjection.test.js: ${passed}/${passed} checks passed`
   );

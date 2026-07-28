@@ -1,7 +1,7 @@
 "use strict";
 
 const {
-  isWithinSubscriptionDateWindow,
+  explainSubscriptionCurrentState,
 } = require("./subscriptionCurrentResolverService");
 
 const CLIENT_MEAL_BALANCE_FLAG =
@@ -33,10 +33,13 @@ function isClientMealBalanceProjectionEnabled(env = process.env) {
 }
 
 function isProjectionEligible(subscription, businessDate) {
-  return String(subscription.status || "").trim().toLowerCase() === "active"
-    && typeof businessDate === "string"
-    && businessDate.length > 0
-    && isWithinSubscriptionDateWindow(subscription, businessDate);
+  if (typeof businessDate !== "string" || businessDate.length === 0) {
+    return false;
+  }
+  return explainSubscriptionCurrentState(
+    subscription,
+    businessDate
+  ).eligible === true;
 }
 
 function readLifecycleCounters(subscription) {
