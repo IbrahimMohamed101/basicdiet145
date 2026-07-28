@@ -1,0 +1,56 @@
+name: Meal Builder Premium authority composition
+
+on:
+  push:
+    branches:
+      - agent/fix-meal-builder-premium-authority-composition
+  pull_request:
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installMealBuilderPremiumAuthorityComposition.js"
+      - "tests/mealBuilderPremiumAuthorityComposition.test.js"
+      - "tests/builderCatalogV2Contract.test.js"
+      - ".github/workflows/meal-builder-premium-authority-composition.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  premium-authority-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      JWT_SECRET: meal-builder-premium-composition-test-secret
+      DASHBOARD_JWT_SECRET: meal-builder-premium-composition-dashboard-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installMealBuilderPremiumAuthorityComposition.js
+          node -c tests/mealBuilderPremiumAuthorityComposition.test.js
+
+      - name: Verify preload and normal startup composition
+        run: node tests/mealBuilderPremiumAuthorityComposition.test.js
+
+      - name: Verify Builder Catalog v2 premium parity
+        run: npm run test:builder-catalog-v2-contract
+
+      - name: Verify Flutter Meal Planner catalog expansion
+        run: npm run test:flutter-meal-planner-catalog-expansion
+
+      - name: Verify dynamic direct meal catalog
+        run: npm run test:dynamic-direct-meal-catalog
