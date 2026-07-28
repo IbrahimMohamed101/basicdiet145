@@ -101,6 +101,92 @@ function testCommittedMealsAreAddedBackForSameDayDisplay() {
   assert.strictEqual(balance.maxConsumableMealsNow, 5);
 }
 
+function withClientProjectionEnabled(callback) {
+  const previousValue = process.env.CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED;
+  process.env.CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED = "true";
+  try {
+    callback();
+  } finally {
+    if (previousValue === undefined) {
+      delete process.env.CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED;
+    } else {
+      process.env.CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED = previousValue;
+    }
+  }
+}
+
+function reservedAllocations(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    allocationKey: `reserved-${index + 1}`,
+    quantity: 1,
+    state: "reserved",
+  }));
+}
+
+function testProjectedDisplayNeverInflatesPooledPlanningCapacity() {
+  withClientProjectionEnabled(() => {
+    const subscription = activeSubscription({
+      contractMode: "canonical",
+      totalMeals: 52,
+      remainingMeals: 36,
+      reservedMeals: 16,
+      consumedMeals: 0,
+      forfeitedMeals: 0,
+      entitlementVersion: 2,
+      baseMealAllocations: reservedAllocations(16),
+    });
+    const day = {
+      date: "2026-08-11",
+      status: "open",
+      mealSlots: [],
+    };
+    const balance = policy.buildDayPooledMealBalance({
+      subscription,
+      day,
+      buildMealBalance: support.buildMealBalance,
+    });
+
+    assert.strictEqual(balance.remainingMeals, 52);
+    assert.strictEqual(balance.availableMeals, 36);
+    assert.strictEqual(balance.maxConsumableMealsNow, 36);
+    assert.strictEqual(balance.maximumAdditionalMealsNow, 36);
+    assert.strictEqual(policy.resolvePooledPlannerMax({
+      subscription,
+      maxSlotCount: balance.maxConsumableMealsNow,
+    }), 36);
+  });
+}
+
+function testReservedOnlyBalanceCannotCreatePlanningCapacity() {
+  withClientProjectionEnabled(() => {
+    const subscription = activeSubscription({
+      contractMode: "canonical",
+      totalMeals: 5,
+      remainingMeals: 0,
+      reservedMeals: 5,
+      consumedMeals: 0,
+      forfeitedMeals: 0,
+      entitlementVersion: 2,
+      baseMealAllocations: reservedAllocations(5),
+    });
+    const balance = policy.buildDayPooledMealBalance({
+      subscription,
+      day: { date: "2026-08-11", status: "open", mealSlots: [] },
+      buildMealBalance: support.buildMealBalance,
+    });
+
+    assert.strictEqual(balance.remainingMeals, 5);
+    assert.strictEqual(balance.availableMeals, 0);
+    assert.strictEqual(balance.canConsumeNow, false);
+    assert.strictEqual(balance.maxConsumableMealsNow, 0);
+    assert.strictEqual(balance.maximumAdditionalMealsNow, 0);
+    assert.strictEqual(policy.resolvePooledPlannerMax({
+      subscription,
+      maxSlotCount: balance.maxConsumableMealsNow,
+    }), 0);
+  });
+}
+
 function testCustomSubscriptionUsesTotalWalletAsPlanningUpperBound() {
   const max = policy.resolvePooledPlannerMax({
     subscription: activeSubscription({
@@ -218,6 +304,8 @@ function run() {
 
   testFutureDayUsesRequestedDate();
   testCommittedMealsAreAddedBackForSameDayDisplay();
+  testProjectedDisplayNeverInflatesPooledPlanningCapacity();
+  testReservedOnlyBalanceCannotCreatePlanningCapacity();
   testCustomSubscriptionUsesTotalWalletAsPlanningUpperBound();
   testCountErrorsUseFlutterLifecycleCode();
   testAppendRecomputeDoesNotReapplyDailyDefaultCap();

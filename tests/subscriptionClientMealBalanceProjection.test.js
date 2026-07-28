@@ -11,6 +11,7 @@ const {
 } = require("../src/services/subscription/subscriptionClientMealBalanceProjectionService");
 
 let passed = 0;
+const BUSINESS_DATE = "2026-07-28";
 
 function test(name, fn) {
   try {
@@ -24,7 +25,7 @@ function test(name, fn) {
 }
 
 function modernSubscription(overrides = {}) {
-  return {
+  const subscription = {
     status: "active",
     entitlementVersion: 2,
     totalMeals: 52,
@@ -32,8 +33,25 @@ function modernSubscription(overrides = {}) {
     reservedMeals: 16,
     consumedMeals: 0,
     forfeitedMeals: 0,
+    startDate: new Date("2026-07-01T00:00:00.000Z"),
+    endDate: new Date("2026-08-31T23:59:59.999Z"),
+    validityEndDate: new Date("2026-08-31T23:59:59.999Z"),
     ...overrides,
   };
+  if (!Object.prototype.hasOwnProperty.call(overrides, "baseMealAllocations")) {
+    const reservedCount = Number.isSafeInteger(subscription.reservedMeals)
+      ? subscription.reservedMeals
+      : 0;
+    subscription.baseMealAllocations = Array.from(
+      { length: reservedCount },
+      (_, index) => ({
+        allocationKey: `reserved-${index + 1}`,
+        quantity: 1,
+        state: "reserved",
+      })
+    );
+  }
+  return subscription;
 }
 
 function baseMealBalance(overrides = {}) {
@@ -50,6 +68,13 @@ function baseMealBalance(overrides = {}) {
     dailyMealsDefault: 2,
     ...overrides,
   };
+}
+
+function enabledProjection(balance, subscription, businessDate = BUSINESS_DATE) {
+  return projectClientMealBalance(balance, subscription, {
+    enabled: true,
+    businessDate,
+  });
 }
 
 function run() {
@@ -77,19 +102,21 @@ function run() {
 
   test("disabled projection preserves exact object identity", () => {
     const balance = baseMealBalance();
-    assert.strictEqual(
-      projectClientMealBalance(balance, modernSubscription(), {
-        enabled: false,
-      }),
-      balance
+    const unchanged = projectClientMealBalance(
+      balance,
+      modernSubscription(),
+      { enabled: false, businessDate: BUSINESS_DATE }
     );
+    assert.strictEqual(unchanged, balance);
+    assert.strictEqual(unchanged.balanceProjection, undefined);
+    assert.strictEqual(unchanged.displayRemainingMeals, undefined);
+    assert.strictEqual(unchanged.maxConsumableMealsNow, 36);
   });
 
   test("reserved meals remain visible as unconsumed while available capacity stays exact", () => {
-    const projected = projectClientMealBalance(
+    const projected = enabledProjection(
       baseMealBalance(),
-      modernSubscription(),
-      { enabled: true }
+      modernSubscription()
     );
 
     assert.deepStrictEqual(
@@ -140,9 +167,7 @@ function run() {
       canConsumeNow: false,
       maxConsumableMealsNow: 0,
     });
-    const projected = projectClientMealBalance(balance, subscription, {
-      enabled: true,
-    });
+    const projected = enabledProjection(balance, subscription);
 
     assert.strictEqual(projected.remainingMeals, 2);
     assert.strictEqual(projected.displayRemainingMeals, 2);
@@ -152,7 +177,7 @@ function run() {
   });
 
   test("fulfillment moves one reserved meal to consumed and lowers display by one", () => {
-    const before = projectClientMealBalance(
+    const before = enabledProjection(
       baseMealBalance({
         totalMeals: 10,
         remainingMeals: 7,
@@ -166,10 +191,9 @@ function run() {
         remainingMeals: 7,
         reservedMeals: 3,
         consumedMeals: 0,
-      }),
-      { enabled: true }
+      })
     );
-    const after = projectClientMealBalance(
+    const after = enabledProjection(
       baseMealBalance({
         totalMeals: 10,
         remainingMeals: 7,
@@ -183,8 +207,7 @@ function run() {
         remainingMeals: 7,
         reservedMeals: 2,
         consumedMeals: 1,
-      }),
-      { enabled: true }
+      })
     );
 
     assert.strictEqual(before.remainingMeals, 10);
@@ -195,10 +218,9 @@ function run() {
   });
 
   test("projection never increases max consumable capacity above the existing read policy", () => {
-    const projected = projectClientMealBalance(
+    const projected = enabledProjection(
       baseMealBalance({ maxConsumableMealsNow: 4 }),
-      modernSubscription(),
-      { enabled: true }
+      modernSubscription()
     );
     assert.strictEqual(projected.remainingMeals, 52);
     assert.strictEqual(projected.availableMeals, 36);
@@ -208,10 +230,9 @@ function run() {
   test("inactive subscriptions fail closed", () => {
     const balance = baseMealBalance();
     assert.strictEqual(
-      projectClientMealBalance(
+      enabledProjection(
         balance,
-        modernSubscription({ status: "expired" }),
-        { enabled: true }
+        modernSubscription({ status: "expired" })
       ),
       balance
     );
@@ -220,10 +241,9 @@ function run() {
   test("legacy entitlement records fail closed", () => {
     const balance = baseMealBalance();
     assert.strictEqual(
-      projectClientMealBalance(
+      enabledProjection(
         balance,
-        modernSubscription({ entitlementVersion: 1 }),
-        { enabled: true }
+        modernSubscription({ entitlementVersion: 1 })
       ),
       balance
     );
@@ -232,10 +252,9 @@ function run() {
   test("missing lifecycle counters fail closed", () => {
     const balance = baseMealBalance();
     assert.strictEqual(
-      projectClientMealBalance(
+      enabledProjection(
         balance,
-        modernSubscription({ reservedMeals: undefined }),
-        { enabled: true }
+        modernSubscription({ reservedMeals: undefined })
       ),
       balance
     );
@@ -245,11 +264,13 @@ function run() {
     const balance = baseMealBalance();
     const subscription = modernSubscription({ reservedMeals: 15 });
     assert.strictEqual(
-      resolveClientMealBalanceProjection(subscription),
+      resolveClientMealBalanceProjection(subscription, {
+        businessDate: BUSINESS_DATE,
+      }),
       null
     );
     assert.strictEqual(
-      projectClientMealBalance(balance, subscription, { enabled: true }),
+      enabledProjection(balance, subscription),
       balance
     );
   });
@@ -257,15 +278,187 @@ function run() {
   test("negative or fractional counters fail closed", () => {
     assert.strictEqual(
       resolveClientMealBalanceProjection(
-        modernSubscription({ remainingMeals: -1 })
+        modernSubscription({ remainingMeals: -1 }),
+        { businessDate: BUSINESS_DATE }
       ),
       null
     );
     assert.strictEqual(
       resolveClientMealBalanceProjection(
-        modernSubscription({ reservedMeals: 1.5 })
+        modernSubscription({ reservedMeals: 1.5 }),
+        { businessDate: BUSINESS_DATE }
       ),
       null
+    );
+  });
+
+  test("persisted lifecycle counters reject coercible and non-finite values", () => {
+    for (const invalidValue of [
+      "36",
+      true,
+      false,
+      null,
+      undefined,
+      "",
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      assert.strictEqual(
+        resolveClientMealBalanceProjection(
+          modernSubscription({ remainingMeals: invalidValue }),
+          { businessDate: BUSINESS_DATE }
+        ),
+        null,
+        String(invalidValue)
+      );
+    }
+  });
+
+  test("released allocations do not enter the displayed balance", () => {
+    const subscription = modernSubscription({
+      remainingMeals: 38,
+      reservedMeals: 14,
+      baseMealAllocations: [
+        ...Array.from({ length: 14 }, (_, index) => ({
+          allocationKey: `reserved-${index + 1}`,
+          quantity: 1,
+          state: "reserved",
+        })),
+        {
+          allocationKey: "released-1",
+          quantity: 1,
+          state: "released",
+        },
+        {
+          allocationKey: "released-2",
+          quantity: 1,
+          state: "released",
+        },
+      ],
+    });
+    const projected = enabledProjection(baseMealBalance(), subscription);
+    assert.strictEqual(projected.remainingMeals, 52);
+    assert.strictEqual(projected.availableMeals, 38);
+    assert.strictEqual(projected.reservedMeals, 14);
+  });
+
+  test("forfeited meals are excluded from the displayed balance", () => {
+    const subscription = modernSubscription({
+      remainingMeals: 36,
+      reservedMeals: 10,
+      consumedMeals: 0,
+      forfeitedMeals: 6,
+    });
+    const projected = enabledProjection(baseMealBalance(), subscription);
+    assert.strictEqual(projected.remainingMeals, 46);
+    assert.strictEqual(projected.forfeitedMeals, 6);
+  });
+
+  test("allocation ledger contradictions fail closed", () => {
+    const invalidLedgers = [
+      modernSubscription({ baseMealAllocations: [] }),
+      modernSubscription({
+        baseMealAllocations: [
+          { allocationKey: "duplicate", quantity: 1, state: "reserved" },
+          { allocationKey: "duplicate", quantity: 1, state: "reserved" },
+          ...Array.from({ length: 14 }, (_, index) => ({
+            allocationKey: `reserved-${index + 1}`,
+            quantity: 1,
+            state: "reserved",
+          })),
+        ],
+      }),
+      modernSubscription({
+        baseMealAllocations: [
+          ...Array.from({ length: 15 }, (_, index) => ({
+            allocationKey: `reserved-${index + 1}`,
+            quantity: 1,
+            state: "reserved",
+          })),
+          { allocationKey: "invalid-state", quantity: 1, state: "unknown" },
+        ],
+      }),
+      modernSubscription({
+        baseMealAllocations: [
+          ...Array.from({ length: 15 }, (_, index) => ({
+            allocationKey: `reserved-${index + 1}`,
+            quantity: 1,
+            state: "reserved",
+          })),
+          { allocationKey: "invalid-quantity", quantity: 2, state: "reserved" },
+        ],
+      }),
+      modernSubscription({
+        reservedMeals: 0,
+        remainingMeals: 52,
+        baseMealAllocations: [{
+          allocationKey: "consumed-without-aggregate",
+          quantity: 1,
+          state: "consumed",
+        }],
+      }),
+    ];
+    for (const subscription of invalidLedgers) {
+      assert.strictEqual(
+        resolveClientMealBalanceProjection(subscription, {
+          businessDate: BUSINESS_DATE,
+        }),
+        null
+      );
+    }
+  });
+
+  test("manual and legacy aggregate consumption may exceed allocation history", () => {
+    const subscription = modernSubscription({
+      remainingMeals: 36,
+      reservedMeals: 10,
+      consumedMeals: 6,
+      baseMealAllocations: Array.from({ length: 10 }, (_, index) => ({
+        allocationKey: `reserved-${index + 1}`,
+        quantity: 1,
+        state: "reserved",
+      })),
+    });
+    assert.notStrictEqual(
+      resolveClientMealBalanceProjection(subscription, {
+        businessDate: BUSINESS_DATE,
+      }),
+      null
+    );
+  });
+
+  test("effective read eligibility is identical across inactive and out-of-window states", () => {
+    const balance = baseMealBalance();
+    const inactiveStatuses = [
+      "canceled",
+      "completed",
+      "expired",
+      "pending_payment",
+    ];
+    for (const status of inactiveStatuses) {
+      assert.strictEqual(
+        enabledProjection(balance, modernSubscription({ status })),
+        balance,
+        status
+      );
+    }
+    assert.strictEqual(
+      enabledProjection(
+        balance,
+        modernSubscription({
+          startDate: new Date("2026-08-01T00:00:00.000Z"),
+        })
+      ),
+      balance
+    );
+    assert.strictEqual(
+      enabledProjection(
+        balance,
+        modernSubscription({
+          validityEndDate: new Date("2026-07-27T23:59:59.999Z"),
+        })
+      ),
+      balance
     );
   });
 
