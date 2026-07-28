@@ -1,7 +1,10 @@
 "use strict";
 
-const timelineService = require("./subscription/subscriptionTimelineService");
+const subscriptionController = require("../controllers/subscriptionController");
+const { getRequestLang } = require("../utils/i18n");
 const { getRestaurantBusinessDate } = require("./restaurantHoursService");
+const subscriptionService = require("./subscription/subscriptionService");
+const timelineService = require("./subscription/subscriptionTimelineService");
 const {
   INVALID_PLANNING_WINDOW_DATE_CODE,
   PLANNING_WINDOW_REASONS,
@@ -14,6 +17,9 @@ const STATE_KEY = Symbol.for(
   "basicdiet.subscriptionWeeklyPlanningWindow.state"
 );
 const WRAPPER_MARKER = "__subscriptionWeeklyPlanningWindow";
+const CONTROLLER_WRAPPER_MARKER = Symbol.for(
+  "basicdiet.subscriptionWeeklyPlanningWindow.controllerWrapped"
+);
 const TIMELINE_PLANNING_WINDOW_VERSION =
   "subscription_weekly_planning_window.v1";
 
@@ -72,6 +78,13 @@ function projectTimelineToWeeklyPlanningWindow(timeline, {
     return timeline;
   }
   if (!Array.isArray(timeline.days)) {
+    return timeline;
+  }
+  if (
+    timeline.planningWindow
+    && timeline.planningWindow.version === TIMELINE_PLANNING_WINDOW_VERSION
+    && timeline.planningWindow.businessDate === businessDate
+  ) {
     return timeline;
   }
 
@@ -176,6 +189,102 @@ function projectTimelineToWeeklyPlanningWindow(timeline, {
   };
 }
 
+function buildWeeklyTimelineBuilder(original) {
+  if (typeof original !== "function") {
+    throw new Error("Missing subscription timeline builder");
+  }
+  if (original[WRAPPER_MARKER]) return original;
+
+  const wrapped = async function weeklyPlanningTimeline(
+    subscriptionId,
+    options = {}
+  ) {
+    if (!isWeeklyPlanningWindowEnabled()) {
+      return original.call(timelineService, subscriptionId, options);
+    }
+
+    const businessDate = options.businessDate
+      || await getRestaurantBusinessDate();
+    const timeline = await original.call(timelineService, subscriptionId, {
+      ...options,
+      businessDate,
+    });
+    return projectTimelineToWeeklyPlanningWindow(timeline, {
+      businessDate,
+      lang: options.lang || "ar",
+      enabled: true,
+    });
+  };
+
+  Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
+  Object.defineProperty(wrapped, "__original", { value: original });
+  return wrapped;
+}
+
+function projectTimelineResponsePayload(payload, {
+  businessDate,
+  lang,
+} = {}) {
+  if (
+    !payload
+    || typeof payload !== "object"
+    || !payload.data
+    || typeof payload.data !== "object"
+  ) {
+    return payload;
+  }
+
+  const projected = projectTimelineToWeeklyPlanningWindow(payload.data, {
+    businessDate,
+    lang,
+    enabled: true,
+  });
+  if (projected === payload.data) return payload;
+  return {
+    ...payload,
+    data: projected,
+  };
+}
+
+function wrapTimelineControllerHandler() {
+  const original = subscriptionController.getSubscriptionTimeline;
+  if (typeof original !== "function") {
+    throw new Error("subscriptionController.getSubscriptionTimeline is unavailable");
+  }
+  if (original[CONTROLLER_WRAPPER_MARKER]) return original;
+
+  const wrapped = async function weeklyPlanningTimelineController(
+    req,
+    res,
+    ...rest
+  ) {
+    if (!isWeeklyPlanningWindowEnabled()) {
+      return original.call(this, req, res, ...rest);
+    }
+
+    const businessDate = await getRestaurantBusinessDate();
+    const lang = getRequestLang(req);
+    const originalJson = res.json;
+    res.json = function weeklyPlanningTimelineJson(payload) {
+      return originalJson.call(
+        this,
+        projectTimelineResponsePayload(payload, { businessDate, lang })
+      );
+    };
+
+    try {
+      return await original.call(this, req, res, ...rest);
+    } finally {
+      res.json = originalJson;
+    }
+  };
+
+  Object.defineProperty(wrapped, CONTROLLER_WRAPPER_MARKER, { value: true });
+  Object.defineProperty(wrapped, "__original", { value: original });
+  subscriptionController.getSubscriptionTimeline = wrapped;
+  return wrapped;
+}
+
 function installSubscriptionWeeklyPlanningWindow() {
   const current = globalThis[STATE_KEY];
   if (current && current.status === "installed") return current;
@@ -187,36 +296,20 @@ function installSubscriptionWeeklyPlanningWindow() {
   globalThis[STATE_KEY] = state;
 
   try {
-    const original = timelineService.buildSubscriptionTimeline;
-    if (typeof original !== "function") {
-      throw new Error("Missing subscription timeline builder");
-    }
+    const wrappedTimelineBuilder = buildWeeklyTimelineBuilder(
+      timelineService.buildSubscriptionTimeline
+    );
+    timelineService.buildSubscriptionTimeline = wrappedTimelineBuilder;
 
-    if (!original[WRAPPER_MARKER]) {
-      const wrapped = async function weeklyPlanningTimeline(
-        subscriptionId,
-        options = {}
-      ) {
-        if (!isWeeklyPlanningWindowEnabled()) {
-          return original.call(timelineService, subscriptionId, options);
-        }
+    // subscriptionService may already be cached by another installer and may
+    // still expose the pre-decoration function. Rebind the public facade before
+    // route modules capture it.
+    subscriptionService.buildSubscriptionTimeline = wrappedTimelineBuilder;
 
-        const businessDate = options.businessDate
-          || await getRestaurantBusinessDate();
-        const timeline = await original.call(timelineService, subscriptionId, {
-          ...options,
-          businessDate,
-        });
-        return projectTimelineToWeeklyPlanningWindow(timeline, {
-          businessDate,
-          lang: options.lang || "ar",
-          enabled: true,
-        });
-      };
-      Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
-      Object.defineProperty(wrapped, "__original", { value: original });
-      timelineService.buildSubscriptionTimeline = wrapped;
-    }
+    // Some controller-composition installers intentionally preload the public
+    // controller. Protect that case at the final JSON boundary without changing
+    // its ownership checks, localization, or error handling.
+    const timelineController = wrapTimelineControllerHandler();
 
     Object.assign(state, {
       status: "installed",
@@ -224,6 +317,9 @@ function installSubscriptionWeeklyPlanningWindow() {
       flag: "SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED",
       defaultEnabled: false,
       timelineProjection: true,
+      serviceFacadeRebound: true,
+      controllerResponseBoundary: true,
+      timelineController,
     });
     return state;
   } catch (error) {
@@ -242,10 +338,14 @@ function installSubscriptionWeeklyPlanningWindow() {
 installSubscriptionWeeklyPlanningWindow();
 
 module.exports = {
+  CONTROLLER_WRAPPER_MARKER,
   LOCKED_MESSAGES,
   STATE_KEY,
   TIMELINE_PLANNING_WINDOW_VERSION,
+  buildWeeklyTimelineBuilder,
   installSubscriptionWeeklyPlanningWindow,
   lockEditableTimelineDay,
+  projectTimelineResponsePayload,
   projectTimelineToWeeklyPlanningWindow,
+  wrapTimelineControllerHandler,
 };
