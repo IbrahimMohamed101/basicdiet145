@@ -4,7 +4,10 @@ const assert = require("assert");
 const {
   INVALID_PLANNING_WINDOW_DATE_CODE,
   PLANNING_WINDOW_REASONS,
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG,
   evaluatePlanningDate,
+  evaluateSubscriptionPlanningDate,
+  isWeeklyPlanningWindowEnabled,
   resolveCurrentMenuWeek,
   resolveSubscriptionPlanningWindow,
 } = require("../src/services/subscription/subscriptionPlanningWindowService");
@@ -29,6 +32,28 @@ function assertWindow(actual, expected) {
 }
 
 function run() {
+  test("weekly planning feature flag is disabled by default", () => {
+    assert.strictEqual(isWeeklyPlanningWindowEnabled({}), false);
+    for (const enabledValue of ["1", "true", "yes", "on", "TRUE"]) {
+      assert.strictEqual(
+        isWeeklyPlanningWindowEnabled({
+          [SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG]: enabledValue,
+        }),
+        true,
+        enabledValue
+      );
+    }
+    for (const disabledValue of ["", "0", "false", "off", "no"] ) {
+      assert.strictEqual(
+        isWeeklyPlanningWindowEnabled({
+          [SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG]: disabledValue,
+        }),
+        false,
+        disabledValue
+      );
+    }
+  });
+
   test("Saturday opens the full Saturday-to-Friday menu week", () => {
     const result = resolveCurrentMenuWeek({ businessDate: "2026-08-01" });
     assertWindow(result, {
@@ -126,6 +151,21 @@ function run() {
     });
     assert.strictEqual(result.allowed, true);
     assert.strictEqual(result.reason, null);
+  });
+
+  test("Subscription documents use startDate and validityEndDate as planning bounds", () => {
+    const result = evaluateSubscriptionPlanningDate({
+      subscription: {
+        startDate: new Date("2026-07-27T21:00:00.000Z"),
+        endDate: new Date("2026-08-20T20:59:59.999Z"),
+        validityEndDate: new Date("2026-08-30T20:59:59.999Z"),
+      },
+      requestedDate: "2026-07-30",
+      businessDate: "2026-07-28",
+    });
+    assert.strictEqual(result.allowed, true);
+    assert.strictEqual(result.subscriptionStartDate, "2026-07-28");
+    assert.strictEqual(result.subscriptionValidityEndDate, "2026-08-30");
   });
 
   test("The next Saturday is rejected until the new menu week begins", () => {
