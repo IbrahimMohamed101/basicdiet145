@@ -11,13 +11,18 @@ const PLANNING_WINDOW_REASONS = Object.freeze({
 
 const INVALID_PLANNING_WINDOW_DATE_CODE = "INVALID_PLANNING_WINDOW_DATE";
 
+function serializeDateErrorValue(value) {
+  if (!(value instanceof Date)) return value;
+  return Number.isNaN(value.getTime()) ? String(value) : value.toISOString();
+}
+
 function buildDateError(fieldName, value) {
   const err = new Error(`${fieldName} must be a valid KSA date in YYYY-MM-DD format`);
   err.code = INVALID_PLANNING_WINDOW_DATE_CODE;
   err.status = 400;
   err.details = {
     field: fieldName,
-    value: value instanceof Date ? value.toISOString() : value,
+    value: serializeDateErrorValue(value),
   };
   return err;
 }
