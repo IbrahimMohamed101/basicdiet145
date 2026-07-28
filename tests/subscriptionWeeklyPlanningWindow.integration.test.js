@@ -14,6 +14,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
+const Setting = require("../src/models/Setting");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
@@ -81,6 +82,20 @@ async function run() {
     const nextSaturday = dateUtils.addDaysToKSADateString(week.menuWeekEnd, 1);
     const subscriptionStartDate = dateUtils.addDaysToKSADateString(businessDate, -7);
     const subscriptionEndDate = dateUtils.addDaysToKSADateString(nextSaturday, 14);
+
+    await Setting.create({
+      key: "pickup_locations",
+      value: [{
+        id: "main",
+        locationId: "main",
+        name: { ar: "الفرع الرئيسي", en: "Main Branch" },
+        label: { ar: "الفرع الرئيسي", en: "Main Branch" },
+        address: {
+          line1: { ar: "الفرع الرئيسي", en: "Main Branch" },
+          city: { ar: "الرياض", en: "Riyadh" },
+        },
+      }],
+    });
 
     const user = await User.create({
       phone: `+9665${String(Date.now()).slice(-8)}`,
