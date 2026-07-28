@@ -132,6 +132,10 @@ const {
 // admin route captures controller methods so Moyasar/manual-card records cannot
 // be misclassified as cash by dashboard clients.
 require("../services/dashboard/installPaymentChannelContract");
+// Dashboard subscription reads may display reserved meals as unconsumed while
+// keeping the stored available balance untouched. Install after all service
+// composition and before route modules capture the admin controller exports.
+require("../services/installDashboardSubscriptionMealBalanceProjection");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
