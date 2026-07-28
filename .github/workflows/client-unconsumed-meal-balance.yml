@@ -19,7 +19,7 @@ permissions:
 jobs:
   client-meal-balance:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       NODE_ENV: test
       JWT_SECRET: client-meal-balance-test-secret
@@ -44,7 +44,20 @@ jobs:
       - name: Validate syntax
         run: |
           node -c src/services/subscription/subscriptionClientMealBalanceProjectionService.js
+          node -c src/services/subscription/subscriptionClientSupportService.js
           node -c tests/subscriptionClientMealBalanceProjection.test.js
+          node -c tests/subscriptionClientMealBalance.integration.test.js
 
       - name: Test pure client meal-balance projection
         run: node tests/subscriptionClientMealBalanceProjection.test.js
+
+      - name: Test real reservation-to-fulfillment client responses
+        env:
+          CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED: "true"
+        run: node tests/subscriptionClientMealBalance.integration.test.js
+
+      - name: Preserve mobile response contracts with flag disabled
+        run: npm run test:mobile-contracts
+
+      - name: Preserve subscription lifecycle with flag disabled
+        run: npm run test:subscriptions
