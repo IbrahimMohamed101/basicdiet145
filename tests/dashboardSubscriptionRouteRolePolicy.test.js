@@ -30,32 +30,36 @@ function routeUses(method, route, middlewareName) {
   );
 }
 
-const readRoles = rolesFor("subscriptionReadAccess");
-const writeRoles = rolesFor("subscriptionWriteAccess");
+const staffRoles = rolesFor("subscriptionStaffAccess");
+const deductionRoles = rolesFor("manualDeductionWriteAccess");
 
 assert.deepStrictEqual(
-  readRoles,
+  staffRoles,
   ["admin", "cashier", "restaurant", "kitchen"],
-  "read access must preserve kitchen visibility and restaurant/cashier access"
+  "legacy kitchen must retain subscription search, quote, create, and read access"
 );
 assert.deepStrictEqual(
-  writeRoles,
+  deductionRoles,
   ["admin", "cashier", "restaurant"],
-  "write access must exclude the read-only kitchen role"
+  "manual deduction writes must exclude kitchen"
 );
-assert(!writeRoles.includes("kitchen"));
+assert(!deductionRoles.includes("kitchen"));
 
-routeUses("get", "/search", "subscriptionReadAccess");
-routeUses("get", "/:id/addon-entitlements", "subscriptionReadAccess");
-routeUses("get", "/:id/balances", "subscriptionReadAccess");
-routeUses("get", "/:subscriptionId/manual-deductions", "subscriptionReadAccess");
+routeUses("get", "/search", "subscriptionStaffAccess");
+routeUses("post", "/quote", "subscriptionStaffAccess");
+routeUses("post", "/", "subscriptionStaffAccess");
+routeUses("get", "/:id/addon-entitlements", "subscriptionStaffAccess");
+routeUses("get", "/:id/balances", "subscriptionStaffAccess");
+routeUses(
+  "get",
+  "/:subscriptionId/manual-deductions",
+  "subscriptionStaffAccess"
+);
 
-routeUses("post", "/quote", "subscriptionWriteAccess");
-routeUses("post", "/", "subscriptionWriteAccess");
 routeUses(
   "post",
   "/:subscriptionId/manual-deduction",
-  "subscriptionWriteAccess"
+  "manualDeductionWriteAccess"
 );
 
 console.log("dashboard subscription route role policy passed");
