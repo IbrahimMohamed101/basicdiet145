@@ -6,6 +6,7 @@ const DASHBOARD_MEAL_BALANCE_FLAG =
   "DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED";
 
 function nonNegativeIntegerOrNull(value) {
+  if (value === undefined || value === null || value === "") return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
