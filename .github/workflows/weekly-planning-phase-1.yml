@@ -11,6 +11,10 @@ on:
       - "src/services/subscription/subscriptionDayModificationPolicyService.js"
       - "src/services/subscription/subscriptionTimelineService.js"
       - "src/services/subscription/subscriptionClientSupportService.js"
+      - "src/services/subscription/subscriptionDashboardMealBalanceProjectionService.js"
+      - "src/services/installDashboardSubscriptionMealBalanceProjection.js"
+      - "tests/subscriptionDashboardMealBalanceProjection.test.js"
+      - "src/routes/index.js"
       - ".github/workflows/weekly-planning-phase-1.yml"
 
 permissions:
@@ -36,6 +40,9 @@ jobs:
 
       - name: Test isolated weekly planning window policy
         run: NODE_ENV=test node tests/subscriptionPlanningWindowService.test.js
+
+      - name: Test dashboard reserved-versus-consumed balance projection
+        run: NODE_ENV=test node tests/subscriptionDashboardMealBalanceProjection.test.js
 
       - name: Test current subscription modification policy
         run: NODE_ENV=test node tests/subscriptionDayModificationPolicy.test.js
