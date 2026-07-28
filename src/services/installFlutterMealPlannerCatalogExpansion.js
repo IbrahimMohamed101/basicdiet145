@@ -453,10 +453,16 @@ async function expandCatalog(catalog, config, lang = "en") {
     });
 
     if (DIRECT_SECTION_TYPES.has(token(descriptor.sectionType || descriptor.type))) {
+      const sectionProductIds = new Set(
+        products
+          .map((product) => String(product.id || product.productId || ""))
+          .filter(Boolean)
+      );
       for (const product of directProductsFor(descriptor, context)) {
         const id = String(product._id);
-        if (usedDirectIds.has(id)) continue;
+        if (sectionProductIds.has(id) || usedDirectIds.has(id)) continue;
         products.push(directProductPayload(product, descriptor, lang));
+        sectionProductIds.add(id);
         usedDirectIds.add(id);
       }
       products = products.sort((left, right) =>
