@@ -207,7 +207,20 @@ async function run() {
         mealsPerDay: 2,
         requiredMealCount: 2,
       },
-      mealSlots: [],
+      mealSlots: [
+        {
+          slotIndex: 1,
+          slotKey: "slot_1",
+          status: "complete",
+          selectionType: "standard_meal",
+        },
+        {
+          slotIndex: 2,
+          slotKey: "slot_2",
+          status: "complete",
+          selectionType: "standard_meal",
+        },
+      ],
       addonSelections: [],
     });
     const pickupRequest = await SubscriptionPickupRequest.create({
