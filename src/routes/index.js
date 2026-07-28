@@ -128,6 +128,10 @@ const {
   menuMutationCacheInvalidationMiddleware,
 } = require("../services/installMenuDeliveryOptimization");
 
+// The weekly planning policy is default-off. Install its read-only timeline
+// decorator before subscription route modules capture buildSubscriptionTimeline.
+require("../services/installSubscriptionWeeklyPlanningWindow");
+
 // Payment history exposes exactly two commercial channels. Install before the
 // admin route captures controller methods so Moyasar/manual-card records cannot
 // be misclassified as cash by dashboard clients.
