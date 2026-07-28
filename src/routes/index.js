@@ -128,6 +128,10 @@ const {
   menuMutationCacheInvalidationMiddleware,
 } = require("../services/installMenuDeliveryOptimization");
 
+// The weekly planning policy is default-off. Install its read-only timeline
+// decorator before subscription route modules capture buildSubscriptionTimeline.
+require("../services/installSubscriptionWeeklyPlanningWindow");
+
 // Payment history exposes exactly two commercial channels. Install before the
 // admin route captures controller methods so Moyasar/manual-card records cannot
 // be misclassified as cash by dashboard clients.
@@ -177,6 +181,9 @@ const accountDeletionRoutes = require("./accountDeletion");
 const { getSettings } = require("../controllers/settingsController");
 const { listCategoriesWithMeals } = require("../controllers/mealController");
 const asyncHandler = require("../middleware/asyncHandler");
+const {
+  dashboardSubscriptionMealBalanceProjection,
+} = require("../middleware/dashboardSubscriptionMealBalanceProjection");
 
 const webhookRoutes = require("./webhooks");
 
@@ -216,6 +223,12 @@ router.use("/dashboard/catalog-items", dashboardCatalogItemRoutes);
 router.use("/dashboard/premium-upgrades", dashboardPremiumUpgradesRoutes);
 router.use("/dashboard/ops", dashboardOpsRoutes);
 router.use("/dashboard/operations", dashboardOpsRoutes);
+// Read-only compatibility projection. It is a no-op unless the explicit feature
+// flag is enabled, and it never runs for quote/create/manual-deduction writes.
+router.use(
+  "/dashboard/subscriptions",
+  dashboardSubscriptionMealBalanceProjection
+);
 router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
