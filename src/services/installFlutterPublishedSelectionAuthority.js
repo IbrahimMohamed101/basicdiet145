@@ -6,9 +6,6 @@ const {
   buildProteinOptionSections,
 } = require("../config/mealPlannerContract");
 const mealBuilderConfigService = require("./subscription/mealBuilderConfigService");
-const premiumUpgradeConfigService = require(
-  "./subscription/premiumUpgradeConfigService"
-);
 
 const STATE_KEY = Symbol.for(
   "basicdiet.flutterPublishedSelectionAuthority.state"
@@ -226,6 +223,11 @@ async function resolveAutomaticPremiumMembershipOptions(config = {}) {
 
   let readyRows;
   try {
+    // Load this authority only when a real system Premium descriptor exists.
+    // Standard-only and no-config flows keep the historical module-load order.
+    const premiumUpgradeConfigService = require(
+      "./subscription/premiumUpgradeConfigService"
+    );
     readyRows = await premiumUpgradeConfigService
       .listActiveReadyPremiumUpgradeConfigs();
   } catch (_error) {
