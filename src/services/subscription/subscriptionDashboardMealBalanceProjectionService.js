@@ -18,37 +18,6 @@ function isProjectionEnabled(env = process.env) {
   return ["1", "true", "yes", "on"].includes(value);
 }
 
-function allocationQuantity(row) {
-  const quantity = nonNegativeIntegerOrNull(row && row.quantity);
-  return quantity === null ? 1 : quantity;
-}
-
-function sumAllocationsByState(allocations, state) {
-  return (Array.isArray(allocations) ? allocations : []).reduce(
-    (total, row) => (
-      row && row.state === state ? total + allocationQuantity(row) : total
-    ),
-    0
-  );
-}
-
-function resolveLifecycleCounter(subscription, field, allocationState) {
-  const explicit = nonNegativeIntegerOrNull(subscription && subscription[field]);
-  if (explicit !== null) return explicit;
-
-  if (
-    Number(subscription && subscription.entitlementVersion) >= 2
-    && Array.isArray(subscription && subscription.baseMealAllocations)
-  ) {
-    return sumAllocationsByState(
-      subscription.baseMealAllocations,
-      allocationState
-    );
-  }
-
-  return null;
-}
-
 function resolveDashboardMealBalanceProjection(subscription = {}) {
   if (!subscription || typeof subscription !== "object" || Array.isArray(subscription)) {
     return null;
@@ -61,36 +30,31 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
     return null;
   }
 
+  const entitlementVersion = nonNegativeIntegerOrNull(
+    subscription.entitlementVersion
+  );
+  if (entitlementVersion === null || entitlementVersion < 2) {
+    return null;
+  }
+
   const totalMeals = nonNegativeIntegerOrNull(subscription.totalMeals);
   const availableMeals = nonNegativeIntegerOrNull(subscription.remainingMeals);
-  const reservedMeals = resolveLifecycleCounter(
-    subscription,
-    "reservedMeals",
-    "reserved"
-  );
-  const consumedMeals = resolveLifecycleCounter(
-    subscription,
-    "consumedMeals",
-    "consumed"
-  );
-  const forfeitedMeals = resolveLifecycleCounter(
-    subscription,
-    "forfeitedMeals",
-    "forfeited"
-  );
+  const reservedMeals = nonNegativeIntegerOrNull(subscription.reservedMeals);
+  const consumedMeals = nonNegativeIntegerOrNull(subscription.consumedMeals);
+  const forfeitedMeals = nonNegativeIntegerOrNull(subscription.forfeitedMeals);
 
   if (
     totalMeals === null
     || availableMeals === null
     || reservedMeals === null
     || consumedMeals === null
+    || forfeitedMeals === null
   ) {
     return null;
   }
 
-  const safeForfeitedMeals = forfeitedMeals === null ? 0 : forfeitedMeals;
   const accountedMeals =
-    availableMeals + reservedMeals + consumedMeals + safeForfeitedMeals;
+    availableMeals + reservedMeals + consumedMeals + forfeitedMeals;
 
   // Fail closed on incomplete/corrupt aggregates. Never manufacture customer
   // credit when the persisted lifecycle counters do not reconcile exactly.
@@ -103,7 +67,7 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
     availableMeals,
     reservedMeals,
     consumedMeals,
-    forfeitedMeals: safeForfeitedMeals,
+    forfeitedMeals,
     displayRemainingMeals: availableMeals + reservedMeals,
   };
 }
@@ -217,5 +181,4 @@ module.exports = {
   projectDashboardSubscriptionBalance,
   projectDashboardSubscriptionResponse,
   resolveDashboardMealBalanceProjection,
-  sumAllocationsByState,
 };

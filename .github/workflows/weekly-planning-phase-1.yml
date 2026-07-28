@@ -15,6 +15,7 @@ on:
       - "src/middleware/dashboardSubscriptionMealBalanceProjection.js"
       - "tests/subscriptionDashboardMealBalanceProjection.test.js"
       - "tests/dashboardSubscriptionMealBalanceMiddleware.test.js"
+      - "tests/dashboardSubscriptionMealBalanceProjection.integration.test.js"
       - "src/routes/index.js"
       - ".github/workflows/weekly-planning-phase-1.yml"
 
@@ -47,6 +48,9 @@ jobs:
 
       - name: Test dashboard response-boundary middleware
         run: NODE_ENV=test node tests/dashboardSubscriptionMealBalanceMiddleware.test.js
+
+      - name: Test dashboard projection database and authorization boundaries
+        run: NODE_ENV=test node tests/dashboardSubscriptionMealBalanceProjection.integration.test.js
 
       - name: Test current subscription modification policy
         run: NODE_ENV=test node tests/subscriptionDayModificationPolicy.test.js

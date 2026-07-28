@@ -102,23 +102,6 @@ function run() {
     assert.strictEqual(projected.reservedMeals, 14);
   });
 
-  test("modern allocations can supply missing lifecycle counters", () => {
-    const projected = projectDashboardSubscriptionBalance(activeSubscription({
-      reservedMeals: undefined,
-      consumedMeals: undefined,
-      forfeitedMeals: undefined,
-      baseMealAllocations: Array.from({ length: 16 }, (_, index) => ({
-        allocationKey: `reserved-${index}`,
-        quantity: 1,
-        state: "reserved",
-      })),
-    }));
-    assert.strictEqual(projected.remainingMeals, 52);
-    assert.strictEqual(projected.availableMeals, 36);
-    assert.strictEqual(projected.reservedMeals, 16);
-    assert.strictEqual(projected.consumedMeals, 0);
-  });
-
   test("inconsistent lifecycle counters fail closed", () => {
     const source = activeSubscription({ reservedMeals: 17 });
     const projected = projectDashboardSubscriptionBalance(source);
@@ -127,26 +110,36 @@ function run() {
     assert.strictEqual(projected.balanceProjection, undefined);
   });
 
-  test("null, empty, or missing counters never become manufactured zeroes", () => {
-    for (const reservedMeals of [null, "", undefined]) {
-      const source = activeSubscription({
-        reservedMeals,
-        baseMealAllocations: undefined,
-      });
-      const projected = projectDashboardSubscriptionBalance(source);
-      assert.strictEqual(projected, source);
-      assert.strictEqual(projected.remainingMeals, 36);
+  test("missing, null, empty, or invalid lifecycle counters fail closed", () => {
+    const fields = [
+      "totalMeals",
+      "remainingMeals",
+      "reservedMeals",
+      "consumedMeals",
+      "forfeitedMeals",
+    ];
+    const invalidValues = [null, "", undefined, -1, 1.5, "invalid"];
+
+    for (const field of fields) {
+      for (const value of invalidValues) {
+        const source = activeSubscription({ [field]: value });
+        const projected = projectDashboardSubscriptionBalance(source);
+        assert.strictEqual(projected, source, `${field}=${String(value)}`);
+        assert.strictEqual(projected.remainingMeals, source.remainingMeals);
+        assert.strictEqual(projected.balanceProjection, undefined);
+      }
     }
   });
 
-  test("legacy subscriptions without explicit lifecycle counters stay unchanged", () => {
-    const source = {
-      _id: "507f191e810c19729de86002",
-      status: "active",
-      totalMeals: 7,
-      remainingMeals: 6,
-    };
-    assert.strictEqual(projectDashboardSubscriptionBalance(source), source);
+  test("missing, invalid, or legacy entitlement versions stay unchanged", () => {
+    for (const entitlementVersion of [undefined, null, "", 1, 1.5, "invalid"]) {
+      const source = activeSubscription({ entitlementVersion });
+      assert.strictEqual(
+        projectDashboardSubscriptionBalance(source),
+        source,
+        `entitlementVersion=${String(entitlementVersion)}`
+      );
+    }
   });
 
   test("non-active subscriptions stay unchanged", () => {
@@ -223,7 +216,27 @@ function run() {
       },
       {
         method: "GET",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/manual-deductions",
+      },
+      {
+        method: "GET",
         originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/days",
+      },
+      {
+        method: "GET",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/audit",
+      },
+      {
+        method: "GET",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/lifecycle",
+      },
+      {
+        method: "GET",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/balances",
+      },
+      {
+        method: "PATCH",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001",
       },
       { method: "GET", originalUrl: "/api/subscriptions/current/overview" },
     ];
