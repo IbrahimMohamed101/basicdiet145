@@ -208,6 +208,42 @@ function pruneCatalogToPublishedSelections(catalog, config, lang = "en") {
   });
 }
 
+function automaticPremiumMembershipOptionsFromCatalog(catalog, config) {
+  const optionsByType = new Map();
+  if (!catalog || !config || !Array.isArray(catalog.sections)) {
+    return optionsByType;
+  }
+
+  for (const descriptor of (config.sections || []).filter(isSystemPremiumDescriptor)) {
+    const catalogSection = catalog.sections.find(
+      (section) => sectionKey(section) === sectionKey(descriptor)
+    );
+    if (!catalogSection) continue;
+
+    const productId = String(descriptor.productContextId || "").trim();
+    const groupId = String(descriptor.sourceGroupId || "").trim();
+    const type = token(descriptor.selectionType);
+    if (!productId || !groupId || !type) continue;
+
+    const product = (catalogSection.products || []).find(
+      (candidate) => itemId(candidate) === productId
+    );
+    const group = (product?.optionGroups || []).find(
+      (candidate) => String(candidate.id || candidate.groupId || "") === groupId
+    );
+    if (!group) continue;
+
+    const allowed = new Set();
+    for (const option of group.options || []) {
+      if (!isAutomaticPremiumOption(option, descriptor)) continue;
+      allowed.add(`${productId}:${groupId}:${itemId(option)}`);
+    }
+    if (allowed.size) optionsByType.set(type, allowed);
+  }
+
+  return optionsByType;
+}
+
 function canonicalDirectSelectionType(section = {}) {
   const configured = token(section.selectionType);
   return configured === MEAL_SELECTION_TYPES.SANDWICH
@@ -215,7 +251,9 @@ function canonicalDirectSelectionType(section = {}) {
     : configured || MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT;
 }
 
-function configuredMembership(config = {}) {
+function configuredMembership(config = {}, {
+  automaticPremiumOptionsByType = new Map(),
+} = {}) {
   const directProductsByType = new Map();
   const optionsByType = new Map();
 
@@ -229,10 +267,6 @@ function configuredMembership(config = {}) {
       continue;
     }
     if (isOptionSection(section)) {
-      // The system Premium card is authored by PremiumUpgradeConfig, not by the
-      // dashboard selectedOptionIds array. Its contract/membership builder has
-      // already applied active, visible, relation-ready, and config-allowlist
-      // checks. Preserve that authoritative result instead of pruning it again.
       if (isSystemPremiumDescriptor(section)) continue;
 
       const type = token(section.selectionType);
@@ -245,6 +279,13 @@ function configuredMembership(config = {}) {
         target.add(`${productId}:${groupId}:${optionId}`);
       }
     }
+  }
+
+  for (const [type, optionKeys] of automaticPremiumOptionsByType.entries()) {
+    if (!(optionKeys instanceof Set) || !optionKeys.size) continue;
+    if (!optionsByType.has(type)) optionsByType.set(type, new Set());
+    const target = optionsByType.get(type);
+    for (const optionKey of optionKeys) target.add(String(optionKey));
   }
 
   return { directProductsByType, optionsByType };
@@ -268,12 +309,16 @@ function rebuildGlobalMembership(membership = {}) {
   return { ...membership, products, groups, options };
 }
 
-function pruneMembershipToPublishedSelections(result, config) {
+function pruneMembershipToPublishedSelections(result, config, {
+  automaticPremiumOptionsByType = new Map(),
+} = {}) {
   if (!result?.membership || !config) return result;
   const membership = result.membership;
   if (!(membership.bySelectionType instanceof Map)) return result;
 
-  const { directProductsByType, optionsByType } = configuredMembership(config);
+  const { directProductsByType, optionsByType } = configuredMembership(config, {
+    automaticPremiumOptionsByType,
+  });
   const bySelectionType = new Map(membership.bySelectionType);
 
   for (const [type, allowed] of directProductsByType.entries()) {
@@ -327,8 +372,29 @@ function wrapMembershipBuilder() {
 
   const wrapped = async function publishedSelectionMembership(...args) {
     const result = await original.apply(mealBuilderConfigService, args);
+
+    // Preserve the historical no-config fallback exactly. This path is used by
+    // isolated add-on and legacy tests before any dashboard Meal Builder publish.
+    if (!result?.hasPublishedConfig) return result;
+
     const config = await mealBuilderConfigService.getCurrentPublishedConfig();
-    return pruneMembershipToPublishedSelections(result, config);
+    if (!config || config.source === "system") return result;
+
+    let automaticPremiumOptionsByType = new Map();
+    try {
+      const catalog = await mealBuilderConfigService
+        .buildPlannerCatalogFromPublishedBuilder({ config, lang: "en" });
+      automaticPremiumOptionsByType =
+        automaticPremiumMembershipOptionsFromCatalog(catalog, config);
+    } catch (_error) {
+      // The original contract membership has already applied Premium config and
+      // relation readiness. Keep it untouched rather than failing a read path.
+      return pruneMembershipToPublishedSelections(result, config);
+    }
+
+    return pruneMembershipToPublishedSelections(result, config, {
+      automaticPremiumOptionsByType,
+    });
   };
   Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
   Object.defineProperty(wrapped, "__original", { value: original });
@@ -367,6 +433,7 @@ installFlutterPublishedSelectionAuthority();
 
 module.exports = {
   STATE_KEY,
+  automaticPremiumMembershipOptionsFromCatalog,
   configuredMembership,
   installFlutterPublishedSelectionAuthority,
   isAutomaticPremiumOption,
