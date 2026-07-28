@@ -1,0 +1,50 @@
+name: Client Unconsumed Meal Balance
+
+on:
+  push:
+    branches:
+      - agent/client-unconsumed-meal-balance-default-off
+  pull_request:
+    paths:
+      - "src/services/subscription/subscriptionClientMealBalanceProjectionService.js"
+      - "src/services/subscription/subscriptionClientSupportService.js"
+      - "src/services/subscription/subscriptionClientSerializationService.js"
+      - "tests/subscriptionClientMealBalanceProjection.test.js"
+      - "tests/subscriptionClientMealBalance.integration.test.js"
+      - ".github/workflows/client-unconsumed-meal-balance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  client-meal-balance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      NODE_ENV: test
+      JWT_SECRET: client-meal-balance-test-secret
+      DASHBOARD_JWT_SECRET: client-meal-balance-dashboard-secret
+      CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED: "false"
+      SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false"
+      DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate syntax
+        run: |
+          node -c src/services/subscription/subscriptionClientMealBalanceProjectionService.js
+          node -c tests/subscriptionClientMealBalanceProjection.test.js
+
+      - name: Test pure client meal-balance projection
+        run: node tests/subscriptionClientMealBalanceProjection.test.js
