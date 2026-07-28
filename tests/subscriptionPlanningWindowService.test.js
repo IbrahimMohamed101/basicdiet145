@@ -198,6 +198,18 @@ function run() {
     );
   });
 
+  test("Invalid Date objects fail with the same safe validation code", () => {
+    assert.throws(
+      () => resolveCurrentMenuWeek({ businessDate: new Date("invalid") }),
+      (err) => (
+        err
+        && err.code === INVALID_PLANNING_WINDOW_DATE_CODE
+        && err.details
+        && err.details.value === "Invalid Date"
+      )
+    );
+  });
+
   console.log(`subscriptionPlanningWindowService.test.js: ${passed}/${passed} checks passed`);
 }
 
