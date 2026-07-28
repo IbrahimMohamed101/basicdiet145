@@ -12,7 +12,7 @@ on:
       - "src/services/subscription/subscriptionTimelineService.js"
       - "src/services/subscription/subscriptionClientSupportService.js"
       - "src/services/subscription/subscriptionDashboardMealBalanceProjectionService.js"
-      - "src/services/installDashboardSubscriptionMealBalanceProjection.js"
+      - "src/middleware/dashboardSubscriptionMealBalanceProjection.js"
       - "tests/subscriptionDashboardMealBalanceProjection.test.js"
       - "src/routes/index.js"
       - ".github/workflows/weekly-planning-phase-1.yml"
