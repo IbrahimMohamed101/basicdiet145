@@ -51,10 +51,28 @@ jobs:
       - name: Test pure client meal-balance projection
         run: node tests/subscriptionClientMealBalanceProjection.test.js
 
-      - name: Test real reservation-to-fulfillment client responses
+      - id: client_balance_integration
+        name: Test real reservation-to-fulfillment client responses
+        continue-on-error: true
         env:
           CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED: "true"
-        run: node tests/subscriptionClientMealBalance.integration.test.js
+        shell: bash
+        run: |
+          set -o pipefail
+          node tests/subscriptionClientMealBalance.integration.test.js 2>&1 | tee client-meal-balance-integration.log
+
+      - name: Upload client balance integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-meal-balance-integration-diagnostics
+          path: client-meal-balance-integration.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Enforce client balance integration
+        if: always() && steps.client_balance_integration.outcome == 'failure'
+        run: exit 1
 
       - name: Preserve mobile response contracts with flag disabled
         run: npm run test:mobile-contracts
