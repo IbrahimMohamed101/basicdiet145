@@ -192,6 +192,7 @@ async function run() {
       consumedMeals: 0,
       forfeitedMeals: 0,
       entitlementVersion: 2,
+      baseMealAllocations: [],
       selectedGrams: 200,
       selectedMealsPerDay: 2,
       deliveryMode: "pickup",
@@ -225,9 +226,12 @@ async function run() {
     });
     const pickupRequest = await SubscriptionPickupRequest.create({
       subscriptionId: subscription._id,
+      subscriptionDayId: day._id,
       userId: user._id,
       date: businessDate,
       mealCount: 2,
+      selectedMealSlotIds: ["slot_1", "slot_2"],
+      selectionMode: "slot_ids",
       status: "ready_for_pickup",
     });
 
