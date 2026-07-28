@@ -8,6 +8,11 @@ const {
   getRestaurantBusinessDate,
 } = require("../restaurantHoursService");
 const { resolveEffectiveFulfillmentMode } = require("./subscriptionFulfillmentPolicyService");
+const {
+  PLANNING_WINDOW_REASONS,
+  evaluateSubscriptionPlanningDate,
+  isWeeklyPlanningWindowEnabled,
+} = require("./subscriptionPlanningWindowService");
 
 const DELIVERY_SELECTION_CUTOFF_HOURS = 2;
 const DELIVERY_SELECTION_CUTOFF_PASSED_CODE = "DELIVERY_SELECTION_CUTOFF_PASSED";
@@ -16,6 +21,25 @@ const DAY_LOCKED_BEFORE_DELIVERY_CODE = DELIVERY_SELECTION_CUTOFF_PASSED_CODE;
 const DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_EN = "Meal selection is closed. The cutoff is 2 hours before the delivery window starts";
 const DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_AR = "انتهى وقت اختيار وجبات هذا اليوم. يُغلق الاختيار قبل بدء نافذة التوصيل بساعتين";
 const DELIVERY_TIME_UNAVAILABLE_CODE = "DELIVERY_TIME_UNAVAILABLE";
+
+const WEEKLY_PLANNING_MESSAGES = Object.freeze({
+  [PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK]: {
+    en: "Meal planning is available only for the current menu week, from Saturday through Friday",
+    ar: "يمكن اختيار الوجبات لأسبوع المنيو الحالي فقط من السبت إلى الجمعة",
+  },
+  [PLANNING_WINDOW_REASONS.BEFORE_SUBSCRIPTION_START]: {
+    en: "The selected date is before the subscription start date",
+    ar: "التاريخ المحدد يسبق تاريخ بداية الاشتراك",
+  },
+  [PLANNING_WINDOW_REASONS.AFTER_SUBSCRIPTION_VALIDITY]: {
+    en: "The selected date is after the subscription validity end date",
+    ar: "التاريخ المحدد بعد نهاية صلاحية الاشتراك",
+  },
+  [PLANNING_WINDOW_REASONS.DATE_IN_PAST]: {
+    en: "Date cannot be in the past",
+    ar: "لا يمكن اختيار تاريخ سابق",
+  },
+});
 
 function buildPolicyError({
   code,
@@ -160,6 +184,53 @@ function resolveScheduledDeliveryDateTime({ subscription, day, date }) {
   };
 }
 
+function serializePlanningWindowEvaluation(evaluation) {
+  if (!evaluation || typeof evaluation !== "object") return null;
+  return {
+    requestedDate: evaluation.requestedDate,
+    businessDate: evaluation.businessDate,
+    menuWeekStart: evaluation.menuWeekStart,
+    menuWeekEnd: evaluation.menuWeekEnd,
+    planningWindowStart: evaluation.planningWindowStart,
+    planningWindowEnd: evaluation.planningWindowEnd,
+    subscriptionStartDate: evaluation.subscriptionStartDate,
+    subscriptionValidityEndDate: evaluation.subscriptionValidityEndDate,
+    hasSelectableDates: evaluation.hasSelectableDates,
+  };
+}
+
+function assertWeeklyPlanningWindow({
+  subscription,
+  date,
+  businessDate,
+  enabled,
+  evaluateSubscriptionPlanningDateFn = evaluateSubscriptionPlanningDate,
+}) {
+  if (!enabled) return null;
+
+  const evaluation = evaluateSubscriptionPlanningDateFn({
+    subscription,
+    requestedDate: date,
+    businessDate,
+  });
+  if (evaluation.allowed) return evaluation;
+
+  const reason = evaluation.reason || PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK;
+  const messages = WEEKLY_PLANNING_MESSAGES[reason]
+    || WEEKLY_PLANNING_MESSAGES[PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK];
+
+  throw buildPolicyError({
+    code: reason,
+    message: messages.en,
+    messageAr: messages.ar,
+    status: 400,
+    details: {
+      reason,
+      ...serializePlanningWindowEvaluation(evaluation),
+    },
+  });
+}
+
 async function assertSubscriptionDayModifiable({
   subscription,
   day = null,
@@ -167,6 +238,8 @@ async function assertSubscriptionDayModifiable({
   now = new Date(),
   getBusinessDateFn = getRestaurantBusinessDate,
   assertRestaurantOpenForOrderingFn = assertRestaurantOpenForOrdering,
+  weeklyPlanningWindowEnabled = isWeeklyPlanningWindowEnabled(),
+  evaluateSubscriptionPlanningDateFn = evaluateSubscriptionPlanningDate,
 } = {}) {
   if (!dateUtils.isValidKSADateString(date)) {
     throw buildPolicyError({
@@ -183,6 +256,15 @@ async function assertSubscriptionDayModifiable({
     });
   }
 
+  const planningWindowEvaluation = assertWeeklyPlanningWindow({
+    subscription,
+    date,
+    businessDate,
+    enabled: weeklyPlanningWindowEnabled,
+    evaluateSubscriptionPlanningDateFn,
+  });
+  const planningWindow = serializePlanningWindowEvaluation(planningWindowEvaluation);
+
   if (dateUtils.isAfterKSADate(date, businessDate)) {
     return {
       allowed: true,
@@ -190,6 +272,7 @@ async function assertSubscriptionDayModifiable({
       businessDate,
       fulfillmentMethod: resolveSameDayFulfillmentMethod({ subscription, day }),
       sameDay: false,
+      ...(planningWindow ? { planningWindow } : {}),
     };
   }
 
@@ -208,6 +291,7 @@ async function assertSubscriptionDayModifiable({
       sameDay: true,
       pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,
       restaurantStatus,
+      ...(planningWindow ? { planningWindow } : {}),
     };
   }
 
@@ -278,6 +362,7 @@ async function assertSubscriptionDayModifiable({
     deliveryTime: deliverySchedule.deliveryTime,
     deliveryDateTime: deliverySchedule.deliveryDateTime,
     lockDateTime: deliverySchedule.lockDateTime,
+    ...(planningWindow ? { planningWindow } : {}),
   };
 }
 
@@ -289,10 +374,13 @@ module.exports = {
   DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_AR,
   DAY_LOCKED_BEFORE_DELIVERY_MESSAGE_EN,
   DELIVERY_TIME_UNAVAILABLE_CODE,
+  WEEKLY_PLANNING_MESSAGES,
   assertSubscriptionDayModifiable,
+  assertWeeklyPlanningWindow,
   localizePolicyErrorMessage,
   resolveEffectiveDeliveryWindow,
   resolveEffectivePickupLocationId,
   resolveSameDayFulfillmentMethod,
   resolveScheduledDeliveryDateTime,
+  serializePlanningWindowEvaluation,
 };
