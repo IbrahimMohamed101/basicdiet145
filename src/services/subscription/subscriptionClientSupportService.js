@@ -32,6 +32,9 @@ const {
 const {
   isWithinSubscriptionDateWindow,
 } = require("./subscriptionCurrentResolverService");
+const {
+  projectClientMealBalance,
+} = require("./subscriptionClientMealBalanceProjectionService");
 const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
@@ -337,7 +340,7 @@ function buildMealBalance(subscription, businessDate) {
   // maxConsumableMealsNow is remainingMeals if active and in validity, else 0
   const maxConsumableMealsNow = (isSubscriptionActive && isInsideValidity) ? remainingMeals : 0;
 
-  return {
+  const baseMealBalance = {
     totalMeals,
     remainingMeals,
     availableMeals: remainingMeals,
@@ -349,6 +352,10 @@ function buildMealBalance(subscription, businessDate) {
     dailyMealLimitEnforced: false,
     dailyMealsDefault: Number(subscription.selectedMealsPerDay || subscription.mealsPerDay || 0),
   };
+
+  return projectClientMealBalance(baseMealBalance, subscription, {
+    businessDate,
+  });
 }
 
 module.exports = {

@@ -215,4 +215,45 @@ test("localized timeline payload exposes additive planning fields", () => {
   assert.strictEqual(day.paymentStateReason, "PREMIUM_PAYMENT_REQUIRED");
 });
 
+test("localized timeline payload preserves an applied client meal balance projection", () => {
+  const mealBalance = {
+    totalMeals: 10,
+    remainingMeals: 10,
+    availableMeals: 8,
+    reservedMeals: 2,
+    consumedMeals: 0,
+    forfeitedMeals: 0,
+    maxConsumableMealsNow: 8,
+    canConsumeNow: true,
+    balanceProjection: {
+      applied: true,
+      source: "available_plus_reserved",
+    },
+  };
+
+  const payload = localizeTimelineReadPayload({
+    subscriptionId: "subscription-id",
+    mealBalance,
+    days: [],
+  }, "en");
+
+  assert.strictEqual(payload.mealBalance, mealBalance);
+});
+
+test("localized timeline payload leaves the legacy contract unchanged without an applied projection", () => {
+  const payload = localizeTimelineReadPayload({
+    subscriptionId: "subscription-id",
+    mealBalance: {
+      totalMeals: 10,
+      remainingMeals: 8,
+      balanceProjection: {
+        applied: false,
+      },
+    },
+    days: [],
+  }, "en");
+
+  assert.strictEqual(Object.hasOwn(payload, "mealBalance"), false);
+});
+
 console.log("subscriptionTimelinePlanningContract tests passed");

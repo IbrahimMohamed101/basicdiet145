@@ -225,6 +225,9 @@ function localizeTimelineReadPayload(timeline, lang) {
 
   return {
     subscriptionId: timeline.subscriptionId,
+    ...(timeline.mealBalance?.balanceProjection?.applied === true
+      ? { mealBalance: timeline.mealBalance }
+      : {}),
     dailyMealsRequired: timeline.dailyMealsConfig?.required || 3,
     premiumMealsRemaining: timeline.premiumMealsRemaining || 0,
     premiumMealsSelected: Number(timeline.premiumMealsSelected || 0),

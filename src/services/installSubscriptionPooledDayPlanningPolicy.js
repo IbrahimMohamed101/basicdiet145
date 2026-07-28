@@ -1,5 +1,9 @@
 "use strict";
 
+const {
+  isClientMealBalanceProjectionEnabled,
+} = require("./subscription/subscriptionClientMealBalanceProjectionService");
+
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionPooledDayPlanningPolicy.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionPooledDayPlanningPolicy.wrapped");
 const COUNT_LIMIT_CODES = new Set([
@@ -101,25 +105,36 @@ function buildDayPooledMealBalance({ subscription, day, businessDate = null, bui
   if (!base || typeof base !== "object") return base;
 
   const committedMealsForDay = committedDayMealCount(subscription, day);
-  const remainingMeals = nonNegativeInteger(base.remainingMeals, 0);
-  const totalMeals = nonNegativeInteger(base.totalMeals, remainingMeals + committedMealsForDay);
-  const maximumTotalMealsForDay = Math.min(
-    totalMeals || remainingMeals + committedMealsForDay,
-    remainingMeals + committedMealsForDay
+  const projectionApplied = base.balanceProjection?.applied === true;
+  const availableMeals = nonNegativeInteger(
+    projectionApplied ? base.availableMeals : base.remainingMeals,
+    0
   );
+  const totalMeals = nonNegativeInteger(
+    base.totalMeals,
+    availableMeals + committedMealsForDay
+  );
+  const maximumTotalMealsForDay = projectionApplied
+    ? availableMeals
+    : Math.min(
+      totalMeals || availableMeals + committedMealsForDay,
+      availableMeals + committedMealsForDay
+    );
 
   return {
     ...base,
     maxConsumableMealsNow: Math.max(0, maximumTotalMealsForDay),
     dailyMealLimitEnforced: false,
     existingCommittedMealsForDay: committedMealsForDay,
-    maximumAdditionalMealsNow: remainingMeals,
+    maximumAdditionalMealsNow: availableMeals,
   };
 }
 
 function resolvePooledPlannerMax({ subscription, maxSlotCount = null } = {}) {
   const supplied = Number(maxSlotCount);
   const suppliedMax = Number.isFinite(supplied) ? Math.max(0, Math.floor(supplied)) : 0;
+  if (isClientMealBalanceProjectionEnabled()) return suppliedMax;
+
   const readableSubscription = plainSubscriptionView(subscription);
   const totalMeals = nonNegativeInteger(readableSubscription.totalMeals, 0);
   const remainingMeals = nonNegativeInteger(readableSubscription.remainingMeals, 0);
