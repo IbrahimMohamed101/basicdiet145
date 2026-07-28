@@ -64,7 +64,7 @@ jobs:
       - name: Verify Flutter Meal Planner catalog expansion
         run: |
           set -o pipefail
-          npm run test:flutter-meal-planner-catalog-expansion 2>&1 | tee flutter-meal-planner-expansion.log
+          NODE_ENV=test node tests/flutterMealPlannerCatalogExpansion.test.js 2>&1 | tee flutter-meal-planner-expansion.log
 
       - name: Upload Flutter expansion diagnostics
         if: always()
@@ -76,4 +76,4 @@ jobs:
           retention-days: 3
 
       - name: Verify dynamic direct meal catalog
-        run: npm run test:dynamic-direct-meal-catalog
+        run: NODE_ENV=test node tests/dynamicDirectMealCatalog.test.js
