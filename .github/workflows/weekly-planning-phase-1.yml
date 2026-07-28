@@ -13,6 +13,7 @@ on:
       - "src/middleware/dashboardSubscriptionMealBalanceProjection.js"
       - "tests/subscriptionPlanningWindowService.test.js"
       - "tests/subscriptionWeeklyPlanningWindowTimeline.test.js"
+      - "tests/subscriptionWeeklyPlanningWindow.integration.test.js"
       - "tests/subscriptionDayModificationPolicy.test.js"
       - "tests/subscriptionDashboardMealBalanceProjection.test.js"
       - "tests/dashboardSubscriptionMealBalanceMiddleware.test.js"
@@ -26,7 +27,7 @@ permissions:
 jobs:
   weekly-planning-policy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       NODE_ENV: test
       JWT_SECRET: weekly-planning-test-secret
@@ -56,6 +57,7 @@ jobs:
           node -c src/middleware/dashboardSubscriptionMealBalanceProjection.js
           node -c tests/subscriptionPlanningWindowService.test.js
           node -c tests/subscriptionWeeklyPlanningWindowTimeline.test.js
+          node -c tests/subscriptionWeeklyPlanningWindow.integration.test.js
           node -c tests/subscriptionDayModificationPolicy.test.js
 
       - name: Test isolated weekly planning window policy
@@ -66,6 +68,11 @@ jobs:
 
       - name: Test weekly planning timeline projection
         run: node tests/subscriptionWeeklyPlanningWindowTimeline.test.js
+
+      - name: Test enabled weekly planning API and Mongo lifecycle
+        env:
+          SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "true"
+        run: node tests/subscriptionWeeklyPlanningWindow.integration.test.js
 
       - name: Preserve delivery cutoff contract
         run: node tests/deliverySelectionCutoffContract.test.js
