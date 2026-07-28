@@ -1,0 +1,44 @@
+name: Weekly Planning Phase 1
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-balance-phase-1
+  pull_request:
+    paths:
+      - "src/services/subscription/subscriptionPlanningWindowService.js"
+      - "tests/subscriptionPlanningWindowService.test.js"
+      - "src/services/subscription/subscriptionDayModificationPolicyService.js"
+      - "src/services/subscription/subscriptionTimelineService.js"
+      - "src/services/subscription/subscriptionClientSupportService.js"
+      - ".github/workflows/weekly-planning-phase-1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  weekly-planning-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test isolated weekly planning window policy
+        run: NODE_ENV=test node tests/subscriptionPlanningWindowService.test.js
+
+      - name: Test current subscription modification policy
+        run: NODE_ENV=test node tests/subscriptionDayModificationPolicy.test.js
+
+      - name: Test current subscription balance and fulfillment lifecycle
+        run: npm run test:subscriptions
