@@ -6,6 +6,9 @@ const {
   buildProteinOptionSections,
 } = require("../config/mealPlannerContract");
 const mealBuilderConfigService = require("./subscription/mealBuilderConfigService");
+const premiumUpgradeConfigService = require(
+  "./subscription/premiumUpgradeConfigService"
+);
 
 const STATE_KEY = Symbol.for(
   "basicdiet.flutterPublishedSelectionAuthority.state"
@@ -65,6 +68,53 @@ function usesPublishedSelection(section = {}) {
   );
 }
 
+function isSystemPremiumDescriptor(section = {}) {
+  if (!isOptionSection(section)) return false;
+  if (token(section.selectionType) !== MEAL_SELECTION_TYPES.PREMIUM_MEAL) {
+    return false;
+  }
+
+  const productId = String(section.productContextId || "").trim();
+  const groupId = String(section.sourceGroupId || "").trim();
+  if (!productId || !groupId) return false;
+
+  const metadata = section.metadata || {};
+  const cardType = token(section.cardType || metadata.cardType);
+  const sourceKind = token(section.sourceKind || section.source?.kind);
+  const visualRole = token(metadata.visualRole);
+  return (
+    sectionKey(section) === "premium" ||
+    cardType === "system_premium" ||
+    sourceKind === "premium_visual" ||
+    sourceKind === "premium_mixed" ||
+    visualRole === "premium"
+  );
+}
+
+function isAutomaticPremiumOption(option = {}, descriptor = {}) {
+  if (!isSystemPremiumDescriptor(descriptor)) return false;
+
+  const id = itemId(option);
+  const sourceId = String(option.sourceId || "").trim();
+  const sourceProductId = String(option.sourceProductId || "").trim();
+  const sourceGroupId = String(option.sourceGroupId || "").trim();
+  const descriptorProductId = String(descriptor.productContextId || "").trim();
+  const descriptorGroupId = String(descriptor.sourceGroupId || "").trim();
+
+  return Boolean(
+    option.isPremium === true &&
+    token(option.selectionType) === MEAL_SELECTION_TYPES.PREMIUM_MEAL &&
+    token(option.sourceType) === "menu_option" &&
+    String(option.configId || "").trim() &&
+    String(option.premiumKey || "").trim() &&
+    id &&
+    sourceId &&
+    id === sourceId &&
+    sourceProductId === descriptorProductId &&
+    sourceGroupId === descriptorGroupId
+  );
+}
+
 function descriptorMap(config = {}) {
   return new Map(
     (Array.isArray(config.sections) ? config.sections : [])
@@ -81,7 +131,10 @@ function filterOptionGroup(group = {}, descriptor = {}, lang = "en") {
 
   const allowed = new Set(selectedOptionIds(descriptor));
   const options = (Array.isArray(group.options) ? group.options : []).filter(
-    (option) => allowed.has(itemId(option))
+    (option) => (
+      allowed.has(itemId(option)) ||
+      isAutomaticPremiumOption(option, descriptor)
+    )
   );
   const next = { ...group, options };
 
@@ -165,7 +218,58 @@ function canonicalDirectSelectionType(section = {}) {
     : configured || MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT;
 }
 
-function configuredMembership(config = {}) {
+async function resolveAutomaticPremiumMembershipOptions(config = {}) {
+  const optionsByType = new Map();
+  const descriptors = (Array.isArray(config.sections) ? config.sections : [])
+    .filter(isSystemPremiumDescriptor);
+  if (!descriptors.length) return optionsByType;
+
+  let readyRows;
+  try {
+    readyRows = await premiumUpgradeConfigService
+      .listActiveReadyPremiumUpgradeConfigs();
+  } catch (_error) {
+    // Fail closed to the explicitly published selections. A read failure must
+    // never broaden membership or make an unverified Premium source selectable.
+    return optionsByType;
+  }
+
+  for (const descriptor of descriptors) {
+    const type = token(descriptor.selectionType);
+    const productId = String(descriptor.productContextId || "").trim();
+    const groupId = String(descriptor.sourceGroupId || "").trim();
+    if (!type || !productId || !groupId) continue;
+
+    if (!optionsByType.has(type)) optionsByType.set(type, new Set());
+    const target = optionsByType.get(type);
+    for (const row of Array.isArray(readyRows) ? readyRows : []) {
+      const premiumConfig = row && row.config;
+      if (!premiumConfig) continue;
+      if (token(premiumConfig.selectionType) !== MEAL_SELECTION_TYPES.PREMIUM_MEAL) {
+        continue;
+      }
+      if (token(premiumConfig.sourceType) !== "menu_option") continue;
+
+      const sourceId = String(premiumConfig.sourceId || "").trim();
+      const sourceProductId = String(premiumConfig.sourceProductId || "").trim();
+      const sourceGroupId = String(premiumConfig.sourceGroupId || "").trim();
+      if (
+        !sourceId ||
+        sourceProductId !== productId ||
+        sourceGroupId !== groupId
+      ) {
+        continue;
+      }
+      target.add(`${productId}:${groupId}:${sourceId}`);
+    }
+  }
+
+  return optionsByType;
+}
+
+function configuredMembership(config = {}, {
+  automaticPremiumOptionsByType = new Map(),
+} = {}) {
   const directProductsByType = new Map();
   const optionsByType = new Map();
 
@@ -191,6 +295,15 @@ function configuredMembership(config = {}) {
     }
   }
 
+  if (automaticPremiumOptionsByType instanceof Map) {
+    for (const [type, automaticOptions] of automaticPremiumOptionsByType.entries()) {
+      if (!(automaticOptions instanceof Set) || !automaticOptions.size) continue;
+      if (!optionsByType.has(type)) optionsByType.set(type, new Set());
+      const target = optionsByType.get(type);
+      for (const optionKey of automaticOptions) target.add(String(optionKey));
+    }
+  }
+
   return { directProductsByType, optionsByType };
 }
 
@@ -212,12 +325,16 @@ function rebuildGlobalMembership(membership = {}) {
   return { ...membership, products, groups, options };
 }
 
-function pruneMembershipToPublishedSelections(result, config) {
+function pruneMembershipToPublishedSelections(result, config, {
+  automaticPremiumOptionsByType = new Map(),
+} = {}) {
   if (!result?.membership || !config) return result;
   const membership = result.membership;
   if (!(membership.bySelectionType instanceof Map)) return result;
 
-  const { directProductsByType, optionsByType } = configuredMembership(config);
+  const { directProductsByType, optionsByType } = configuredMembership(config, {
+    automaticPremiumOptionsByType,
+  });
   const bySelectionType = new Map(membership.bySelectionType);
 
   for (const [type, allowed] of directProductsByType.entries()) {
@@ -272,7 +389,11 @@ function wrapMembershipBuilder() {
   const wrapped = async function publishedSelectionMembership(...args) {
     const result = await original.apply(mealBuilderConfigService, args);
     const config = await mealBuilderConfigService.getCurrentPublishedConfig();
-    return pruneMembershipToPublishedSelections(result, config);
+    const automaticPremiumOptionsByType =
+      await resolveAutomaticPremiumMembershipOptions(config);
+    return pruneMembershipToPublishedSelections(result, config, {
+      automaticPremiumOptionsByType,
+    });
   };
   Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
   Object.defineProperty(wrapped, "__original", { value: original });
@@ -294,6 +415,7 @@ function installFlutterPublishedSelectionAuthority() {
       selectionAuthority: "published_meal_builder_selected_ids",
       directProductsSelectedOnly: true,
       optionsSelectedOnly: true,
+      automaticPremiumUpgradeAuthorityPreserved: true,
       membershipSelectedOnly: true,
     });
     return state;
@@ -312,7 +434,10 @@ module.exports = {
   STATE_KEY,
   configuredMembership,
   installFlutterPublishedSelectionAuthority,
+  isAutomaticPremiumOption,
+  isSystemPremiumDescriptor,
   pruneCatalogToPublishedSelections,
   pruneMembershipToPublishedSelections,
+  resolveAutomaticPremiumMembershipOptions,
   usesPublishedSelection,
 };
