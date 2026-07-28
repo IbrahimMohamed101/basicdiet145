@@ -9,8 +9,13 @@ on:
       - "src/services/subscription/subscriptionClientMealBalanceProjectionService.js"
       - "src/services/subscription/subscriptionClientSupportService.js"
       - "src/services/subscription/subscriptionClientSerializationService.js"
+      - "src/services/installSubscriptionPooledDayPlanningPolicy.js"
+      - "src/utils/subscription/subscriptionReadLocalization.js"
       - "tests/subscriptionClientMealBalanceProjection.test.js"
       - "tests/subscriptionClientMealBalance.integration.test.js"
+      - "tests/subscriptionClientMealBalanceConcurrency.integration.test.js"
+      - "tests/subscriptionPooledDayPlanningPolicy.test.js"
+      - "tests/subscriptionTimelinePlanningContract.test.js"
       - ".github/workflows/client-unconsumed-meal-balance.yml"
 
 permissions:
@@ -47,6 +52,7 @@ jobs:
           node -c src/services/subscription/subscriptionClientSupportService.js
           node -c tests/subscriptionClientMealBalanceProjection.test.js
           node -c tests/subscriptionClientMealBalance.integration.test.js
+          node -c tests/subscriptionClientMealBalanceConcurrency.integration.test.js
 
       - name: Test pure client meal-balance projection
         run: node tests/subscriptionClientMealBalanceProjection.test.js
@@ -73,6 +79,11 @@ jobs:
       - name: Enforce client balance integration
         if: always() && steps.client_balance_integration.outcome == 'failure'
         run: exit 1
+
+      - name: Test concurrent client meal-balance transitions
+        env:
+          CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED: "true"
+        run: node tests/subscriptionClientMealBalanceConcurrency.integration.test.js
 
       - name: Preserve mobile response contracts with flag disabled
         run: npm run test:mobile-contracts
