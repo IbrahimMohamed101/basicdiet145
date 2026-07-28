@@ -3,6 +3,10 @@ const { Router } = require("express");
 // Premium upgrades are authored directly from the current menu catalog. Install
 // this authority before subscription and route modules capture service methods.
 require("../services/installIndependentPremiumAuthority");
+// Tests and circular dependencies may preload Meal Builder before the Premium
+// authority above is installed. Recompose only that cached service boundary so
+// every existing reference uses the final Premium authority closures.
+require("../services/installMealBuilderPremiumAuthorityComposition");
 // A Premium meal upgrades one configurable base meal. Keep all base groups
 // authored for standard_meal (carbs and any future side groups) available while
 // the Premium section remains authoritative for the upgraded source option.
