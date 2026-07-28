@@ -1,0 +1,48 @@
+name: Weekly planning call-site audit
+
+on:
+  push:
+    branches:
+      - agent/weekly-planning-balance-phase-1
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/weekly-planning-callsite-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Collect modification and timeline call sites
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            echo "## assertSubscriptionDayModifiable"
+            grep -R -n --exclude-dir=node_modules "assertSubscriptionDayModifiable" src tests || true
+            echo
+            echo "## deriveTimelineCanEdit / canEdit"
+            grep -R -n -E --exclude-dir=node_modules "deriveTimelineCanEdit|canEdit" src/services src/controllers src/routes tests | head -400 || true
+            echo
+            echo "## subscription day selection mutations"
+            grep -R -n -E --exclude-dir=node_modules "selection/(save|confirm|validate)|save.*Selection|confirm.*Selection|release.*Selection" src/routes src/controllers src/services tests | head -500 || true
+            echo
+            echo "## start/end/validity fields"
+            grep -R -n -E --exclude-dir=node_modules "validityEndDate|endDate|startDate" src/services/subscription src/controllers tests/subscription* tests/mealPlanner* | head -500 || true
+          } | tee weekly-planning-callsites.log
+
+      - name: Upload audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-callsites
+          path: weekly-planning-callsites.log
+          if-no-files-found: error
+          retention-days: 3
