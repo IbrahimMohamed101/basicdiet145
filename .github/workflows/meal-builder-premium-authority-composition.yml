@@ -9,6 +9,7 @@ on:
       - "src/routes/index.js"
       - "src/services/installMealBuilderPremiumAuthorityComposition.js"
       - "tests/mealBuilderPremiumAuthorityComposition.test.js"
+      - "tests/mealBuilderPublishedPremiumComposition.test.js"
       - "tests/builderCatalogV2Contract.test.js"
       - ".github/workflows/meal-builder-premium-authority-composition.yml"
 
@@ -42,9 +43,13 @@ jobs:
           node -c src/routes/index.js
           node -c src/services/installMealBuilderPremiumAuthorityComposition.js
           node -c tests/mealBuilderPremiumAuthorityComposition.test.js
+          node -c tests/mealBuilderPublishedPremiumComposition.test.js
 
       - name: Verify preload and normal startup composition
         run: node tests/mealBuilderPremiumAuthorityComposition.test.js
+
+      - name: Verify published Premium composition stages
+        run: node tests/mealBuilderPublishedPremiumComposition.test.js
 
       - name: Verify Builder Catalog v2 premium parity
         run: npm run test:builder-catalog-v2-contract
