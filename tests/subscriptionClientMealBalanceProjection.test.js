@@ -455,7 +455,7 @@ function run() {
       enabledProjection(
         balance,
         modernSubscription({
-          validityEndDate: new Date("2026-07-27T23:59:59.999Z"),
+          validityEndDate: new Date("2026-07-27T20:59:59.999Z"),
         })
       ),
       balance

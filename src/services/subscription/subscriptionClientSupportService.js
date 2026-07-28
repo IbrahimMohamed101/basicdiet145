@@ -353,7 +353,9 @@ function buildMealBalance(subscription, businessDate) {
     dailyMealsDefault: Number(subscription.selectedMealsPerDay || subscription.mealsPerDay || 0),
   };
 
-  return projectClientMealBalance(baseMealBalance, subscription);
+  return projectClientMealBalance(baseMealBalance, subscription, {
+    businessDate,
+  });
 }
 
 module.exports = {
