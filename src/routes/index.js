@@ -132,6 +132,10 @@ const {
 // admin route captures controller methods so Moyasar/manual-card records cannot
 // be misclassified as cash by dashboard clients.
 require("../services/dashboard/installPaymentChannelContract");
+// Controllers can be loaded by circular dependencies before quote decorators are
+// complete. Rebind quote and checkout handlers to the final service export before
+// any route module captures those handlers.
+require("../services/installSubscriptionQuoteControllerComposition");
 
 const authRoutes = require("./auth");
 const dashboardAuthRoutes = require("./dashboardAuth");
