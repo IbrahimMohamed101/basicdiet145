@@ -214,7 +214,6 @@ async function run() {
     });
     const pickupRequest = await SubscriptionPickupRequest.create({
       subscriptionId: subscription._id,
-      subscriptionDayId: day._id,
       userId: user._id,
       date: businessDate,
       mealCount: 2,
