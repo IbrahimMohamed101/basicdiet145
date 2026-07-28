@@ -105,6 +105,7 @@ async function run() {
       entitlementVersion: 2,
       selectedMealsPerDay: 1,
       deliveryMode: "pickup",
+      pickupLocationId: "main",
       premiumBalance: [],
     });
     const futureDay = await SubscriptionDay.create({
