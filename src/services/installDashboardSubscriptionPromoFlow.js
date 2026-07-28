@@ -12,6 +12,16 @@ const {
 
 const INSTALL_FLAG = Symbol.for("basicdiet.dashboardSubscriptionPromoFlow.installed");
 
+function inheritFunctionCompositionMarkers(original, wrapped) {
+  for (const propertyName of Object.getOwnPropertyNames(original || {})) {
+    if (!propertyName.startsWith("__")) continue;
+    if (Object.prototype.hasOwnProperty.call(wrapped, propertyName)) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(original, propertyName);
+    if (descriptor) Object.defineProperty(wrapped, propertyName, descriptor);
+  }
+  return wrapped;
+}
+
 function withSession(query, session) {
   return session ? query.session(session) : query;
 }
@@ -140,6 +150,7 @@ function install() {
       userId: resolvedUserId,
     });
   };
+  inheritFunctionCompositionMarkers(originalResolveQuote, resolveDashboardPromoQuote);
   subscriptionQuoteService.resolveCheckoutQuoteOrThrow = resolveDashboardPromoQuote;
   // The public subscription controller is loaded before dashboard routes. Replace
   // its already-captured export so adminController receives the promo-aware quote.
@@ -186,6 +197,7 @@ install();
 module.exports = {
   buildEligibilityQuote,
   claimPromoUsage,
+  inheritFunctionCompositionMarkers,
   install,
   isDashboardDirectContract,
   loadAndValidatePromo,

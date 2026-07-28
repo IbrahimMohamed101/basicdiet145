@@ -15,6 +15,11 @@ const subscriptionStaffAccess = dashboardRoleMiddleware([
   "restaurant",
   "kitchen",
 ]);
+const manualDeductionWriteAccess = dashboardRoleMiddleware([
+  "admin",
+  "cashier",
+  "restaurant",
+]);
 
 router.get(
   "/search",
@@ -68,7 +73,7 @@ router.get(
 router.post(
   "/:subscriptionId/manual-deduction",
   dashboardAuthMiddleware,
-  subscriptionStaffAccess,
+  manualDeductionWriteAccess,
   asyncHandler(controller.manualDeduction)
 );
 

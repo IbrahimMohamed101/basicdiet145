@@ -65,6 +65,53 @@ function usesPublishedSelection(section = {}) {
   );
 }
 
+function isSystemPremiumDescriptor(section = {}) {
+  if (!isOptionSection(section)) return false;
+  if (token(section.selectionType) !== MEAL_SELECTION_TYPES.PREMIUM_MEAL) {
+    return false;
+  }
+
+  const productId = String(section.productContextId || "").trim();
+  const groupId = String(section.sourceGroupId || "").trim();
+  if (!productId || !groupId) return false;
+
+  const metadata = section.metadata || {};
+  const cardType = token(section.cardType || metadata.cardType);
+  const sourceKind = token(section.sourceKind || section.source?.kind);
+  const visualRole = token(metadata.visualRole);
+  return (
+    sectionKey(section) === "premium" ||
+    cardType === "system_premium" ||
+    sourceKind === "premium_visual" ||
+    sourceKind === "premium_mixed" ||
+    visualRole === "premium"
+  );
+}
+
+function isAutomaticPremiumOption(option = {}, descriptor = {}) {
+  if (!isSystemPremiumDescriptor(descriptor)) return false;
+
+  const id = itemId(option);
+  const sourceId = String(option.sourceId || "").trim();
+  const sourceProductId = String(option.sourceProductId || "").trim();
+  const sourceGroupId = String(option.sourceGroupId || "").trim();
+  const descriptorProductId = String(descriptor.productContextId || "").trim();
+  const descriptorGroupId = String(descriptor.sourceGroupId || "").trim();
+
+  return Boolean(
+    option.isPremium === true &&
+    token(option.selectionType) === MEAL_SELECTION_TYPES.PREMIUM_MEAL &&
+    token(option.sourceType) === "menu_option" &&
+    String(option.configId || "").trim() &&
+    String(option.premiumKey || "").trim() &&
+    id &&
+    sourceId &&
+    id === sourceId &&
+    sourceProductId === descriptorProductId &&
+    sourceGroupId === descriptorGroupId
+  );
+}
+
 function descriptorMap(config = {}) {
   return new Map(
     (Array.isArray(config.sections) ? config.sections : [])
@@ -81,7 +128,10 @@ function filterOptionGroup(group = {}, descriptor = {}, lang = "en") {
 
   const allowed = new Set(selectedOptionIds(descriptor));
   const options = (Array.isArray(group.options) ? group.options : []).filter(
-    (option) => allowed.has(itemId(option))
+    (option) => (
+      allowed.has(itemId(option)) ||
+      isAutomaticPremiumOption(option, descriptor)
+    )
   );
   const next = { ...group, options };
 
@@ -158,6 +208,42 @@ function pruneCatalogToPublishedSelections(catalog, config, lang = "en") {
   });
 }
 
+function automaticPremiumMembershipOptionsFromCatalog(catalog, config) {
+  const optionsByType = new Map();
+  if (!catalog || !config || !Array.isArray(catalog.sections)) {
+    return optionsByType;
+  }
+
+  for (const descriptor of (config.sections || []).filter(isSystemPremiumDescriptor)) {
+    const catalogSection = catalog.sections.find(
+      (section) => sectionKey(section) === sectionKey(descriptor)
+    );
+    if (!catalogSection) continue;
+
+    const productId = String(descriptor.productContextId || "").trim();
+    const groupId = String(descriptor.sourceGroupId || "").trim();
+    const type = token(descriptor.selectionType);
+    if (!productId || !groupId || !type) continue;
+
+    const product = (catalogSection.products || []).find(
+      (candidate) => itemId(candidate) === productId
+    );
+    const group = (product?.optionGroups || []).find(
+      (candidate) => String(candidate.id || candidate.groupId || "") === groupId
+    );
+    if (!group) continue;
+
+    const allowed = new Set();
+    for (const option of group.options || []) {
+      if (!isAutomaticPremiumOption(option, descriptor)) continue;
+      allowed.add(`${productId}:${groupId}:${itemId(option)}`);
+    }
+    if (allowed.size) optionsByType.set(type, allowed);
+  }
+
+  return optionsByType;
+}
+
 function canonicalDirectSelectionType(section = {}) {
   const configured = token(section.selectionType);
   return configured === MEAL_SELECTION_TYPES.SANDWICH
@@ -165,7 +251,9 @@ function canonicalDirectSelectionType(section = {}) {
     : configured || MEAL_SELECTION_TYPES.FULL_MEAL_PRODUCT;
 }
 
-function configuredMembership(config = {}) {
+function configuredMembership(config = {}, {
+  automaticPremiumOptionsByType = new Map(),
+} = {}) {
   const directProductsByType = new Map();
   const optionsByType = new Map();
 
@@ -191,6 +279,13 @@ function configuredMembership(config = {}) {
     }
   }
 
+  for (const [type, optionKeys] of automaticPremiumOptionsByType.entries()) {
+    if (!(optionKeys instanceof Set) || !optionKeys.size) continue;
+    if (!optionsByType.has(type)) optionsByType.set(type, new Set());
+    const target = optionsByType.get(type);
+    for (const optionKey of optionKeys) target.add(String(optionKey));
+  }
+
   return { directProductsByType, optionsByType };
 }
 
@@ -212,12 +307,16 @@ function rebuildGlobalMembership(membership = {}) {
   return { ...membership, products, groups, options };
 }
 
-function pruneMembershipToPublishedSelections(result, config) {
+function pruneMembershipToPublishedSelections(result, config, {
+  automaticPremiumOptionsByType = new Map(),
+} = {}) {
   if (!result?.membership || !config) return result;
   const membership = result.membership;
   if (!(membership.bySelectionType instanceof Map)) return result;
 
-  const { directProductsByType, optionsByType } = configuredMembership(config);
+  const { directProductsByType, optionsByType } = configuredMembership(config, {
+    automaticPremiumOptionsByType,
+  });
   const bySelectionType = new Map(membership.bySelectionType);
 
   for (const [type, allowed] of directProductsByType.entries()) {
@@ -271,8 +370,27 @@ function wrapMembershipBuilder() {
 
   const wrapped = async function publishedSelectionMembership(...args) {
     const result = await original.apply(mealBuilderConfigService, args);
+
+    // Preserve the historical no-config fallback exactly. This path is used by
+    // isolated add-on and legacy tests before any dashboard Meal Builder publish.
+    if (!result?.hasPublishedConfig) return result;
+
     const config = await mealBuilderConfigService.getCurrentPublishedConfig();
-    return pruneMembershipToPublishedSelections(result, config);
+    if (!config || config.source === "system") return result;
+
+    let automaticPremiumOptionsByType = new Map();
+    try {
+      const catalog = await mealBuilderConfigService
+        .buildPlannerCatalogFromPublishedBuilder({ config, lang: "en" });
+      automaticPremiumOptionsByType =
+        automaticPremiumMembershipOptionsFromCatalog(catalog, config);
+    } catch (_error) {
+      return pruneMembershipToPublishedSelections(result, config);
+    }
+
+    return pruneMembershipToPublishedSelections(result, config, {
+      automaticPremiumOptionsByType,
+    });
   };
   Object.defineProperty(wrapped, WRAPPER_MARKER, { value: true });
   Object.defineProperty(wrapped, "__original", { value: original });
@@ -294,6 +412,7 @@ function installFlutterPublishedSelectionAuthority() {
       selectionAuthority: "published_meal_builder_selected_ids",
       directProductsSelectedOnly: true,
       optionsSelectedOnly: true,
+      automaticPremiumUpgradeAuthorityPreserved: true,
       membershipSelectedOnly: true,
     });
     return state;
@@ -310,8 +429,11 @@ installFlutterPublishedSelectionAuthority();
 
 module.exports = {
   STATE_KEY,
+  automaticPremiumMembershipOptionsFromCatalog,
   configuredMembership,
   installFlutterPublishedSelectionAuthority,
+  isAutomaticPremiumOption,
+  isSystemPremiumDescriptor,
   pruneCatalogToPublishedSelections,
   pruneMembershipToPublishedSelections,
   usesPublishedSelection,

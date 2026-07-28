@@ -1,0 +1,60 @@
+name: Dashboard subscription route role policy
+
+on:
+  push:
+    branches:
+      - agent/fix-dashboard-subscription-write-permissions
+  pull_request:
+    paths:
+      - "src/routes/dashboardSubscriptions.js"
+      - "tests/dashboardSubscriptionRouteRolePolicy.test.js"
+      - "tests/dashboardManualDeductionAndOrderPickup.test.js"
+      - "tests/kitchenReadOnlyPermissions.test.js"
+      - ".github/workflows/dashboard-subscription-route-role-policy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  subscription-role-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      USE_MONGODB_MEMORY_REPLSET: "true"
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_subscription_role_policy_test?replicaSet=rs0
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_subscription_role_policy_test?replicaSet=rs0
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_subscription_role_policy_test?replicaSet=rs0
+      JWT_SECRET: dashboard-subscription-role-policy-test-secret
+      DASHBOARD_JWT_SECRET: dashboard-subscription-role-policy-dashboard-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Start MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh basicdiet-subscription-role-policy-mongo
+
+      - name: Validate syntax and route matrix
+        run: |
+          node -c src/routes/dashboardSubscriptions.js
+          node -c tests/dashboardSubscriptionRouteRolePolicy.test.js
+          node tests/dashboardSubscriptionRouteRolePolicy.test.js
+
+      - name: Verify manual deduction permissions and lifecycle
+        run: npm run test:dashboard-manual-deduction
+
+      - name: Verify kitchen and restaurant read-only inheritance
+        run: NODE_ENV=test node tests/kitchenReadOnlyPermissions.test.js
+
+      - name: Verify dashboard subscription creation contract
+        run: npm run test:dashboard-subscription-create
