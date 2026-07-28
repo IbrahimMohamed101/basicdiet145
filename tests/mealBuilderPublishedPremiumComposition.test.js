@@ -14,6 +14,7 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 
 const { createApp } = require("../src/app");
+const MealBuilderConfig = require("../src/models/MealBuilderConfig");
 const MenuOption = require("../src/models/MenuOption");
 const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
@@ -177,6 +178,24 @@ async function configureChickenFajitaPremium() {
   };
 }
 
+async function publishConfig(config) {
+  await MealBuilderConfig.updateMany(
+    { isCurrent: true },
+    { $set: { isCurrent: false } }
+  );
+  return MealBuilderConfig.create({
+    status: "published",
+    isCurrent: true,
+    contractVersion: "subscription_meal_builder.v1",
+    versionNumber: 1,
+    revisionHash: config.revisionHash,
+    source: "dashboard",
+    createdBySystem: false,
+    publishedAt: config.publishedAt,
+    sections: config.sections,
+  });
+}
+
 async function run() {
   // Ensure route installers are evaluated exactly as they are in the application.
   assert.strictEqual(typeof createApp, "function");
@@ -221,6 +240,17 @@ async function run() {
       "Chicken Fajita must exercise automatic Premium authority, not selected IDs"
     );
 
+    await MealBuilderConfig.deleteMany({});
+    const noConfigMembership = await mealBuilderConfigService
+      .buildPublishedMembership();
+    assert.strictEqual(
+      noConfigMembership.hasPublishedConfig,
+      false,
+      "no-config membership must keep the historical fallback"
+    );
+
+    await publishConfig(config);
+
     const contract = await mealBuilderConfigService.buildPublishedContract({
       config,
       lang: "ar",
@@ -234,29 +264,6 @@ async function run() {
     );
     assert.strictEqual(contractChicken.extraFeeHalala, 2500);
     assert.strictEqual(String(contractChicken.configId), identity.premiumConfigId);
-
-    const premiumMembershipKey = [
-      identity.basicMealId,
-      identity.proteinsGroupId,
-      identity.chickenFajitaId,
-    ].join(":");
-    const contractPremiumMembership = contract.membership
-      .bySelectionType.get("premium_meal");
-    assert(
-      contractPremiumMembership?.options.has(premiumMembershipKey),
-      "the contract must authorize Chicken Fajita as a Premium option"
-    );
-
-    const prunedContractMembership = pruneMembershipToPublishedSelections(
-      { membership: contract.membership },
-      config
-    );
-    assert(
-      prunedContractMembership.membership
-        .bySelectionType.get("premium_meal")
-        ?.options.has(premiumMembershipKey),
-      "published selected-id pruning must preserve contract-authorized Premium membership"
-    );
 
     const planner = await mealBuilderConfigService
       .buildPlannerCatalogFromPublishedBuilder({ config, lang: "ar" });
@@ -279,6 +286,21 @@ async function run() {
     assert.strictEqual(String(plannerChicken.sourceId), identity.chickenFajitaId);
     assert.strictEqual(String(plannerChicken.sourceProductId), identity.basicMealId);
     assert.strictEqual(String(plannerChicken.sourceGroupId), identity.proteinsGroupId);
+
+    const publishedMembership = await mealBuilderConfigService
+      .buildPublishedMembership();
+    assert.strictEqual(publishedMembership.hasPublishedConfig, true);
+    const premiumMembershipKey = [
+      identity.basicMealId,
+      identity.proteinsGroupId,
+      identity.chickenFajitaId,
+    ].join(":");
+    assert(
+      publishedMembership.membership
+        .bySelectionType.get("premium_meal")
+        ?.options.has(premiumMembershipKey),
+      "final published membership must authorize Chicken Fajita as Premium"
+    );
 
     const standard = standardDescriptor(config);
     assert(standard, "published config must contain a selected Standard option section");
