@@ -267,8 +267,6 @@ function configuredMembership(config = {}, {
       continue;
     }
     if (isOptionSection(section)) {
-      if (isSystemPremiumDescriptor(section)) continue;
-
       const type = token(section.selectionType);
       const productId = String(section.productContextId || "");
       const groupId = String(section.sourceGroupId || "");
@@ -387,8 +385,6 @@ function wrapMembershipBuilder() {
       automaticPremiumOptionsByType =
         automaticPremiumMembershipOptionsFromCatalog(catalog, config);
     } catch (_error) {
-      // The original contract membership has already applied Premium config and
-      // relation readiness. Keep it untouched rather than failing a read path.
       return pruneMembershipToPublishedSelections(result, config);
     }
 
