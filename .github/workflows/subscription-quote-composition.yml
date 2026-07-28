@@ -49,7 +49,18 @@ jobs:
           node -c tests/subscriptionQuoteControllerComposition.test.js
 
       - name: Verify preloaded controller composition
-        run: node tests/subscriptionQuoteControllerComposition.test.js
+        run: |
+          set -o pipefail
+          node tests/subscriptionQuoteControllerComposition.test.js 2>&1 | tee composition-test.log
+
+      - name: Upload composition diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-quote-composition-diagnostics
+          path: composition-test.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Verify delivery slot compatibility
         run: node tests/dashboardDeliverySlotCompatibility.test.js
