@@ -69,10 +69,28 @@ jobs:
       - name: Test weekly planning timeline projection
         run: node tests/subscriptionWeeklyPlanningWindowTimeline.test.js
 
-      - name: Test enabled weekly planning API and Mongo lifecycle
+      - id: weekly_integration
+        name: Test enabled weekly planning API and Mongo lifecycle
+        continue-on-error: true
         env:
           SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "true"
-        run: node tests/subscriptionWeeklyPlanningWindow.integration.test.js
+        shell: bash
+        run: |
+          set -o pipefail
+          node tests/subscriptionWeeklyPlanningWindow.integration.test.js 2>&1 | tee weekly-planning-integration.log
+
+      - name: Upload weekly planning integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-planning-integration-diagnostics
+          path: weekly-planning-integration.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Enforce weekly planning integration
+        if: always() && steps.weekly_integration.outcome == 'failure'
+        run: exit 1
 
       - name: Preserve delivery cutoff contract
         run: node tests/deliverySelectionCutoffContract.test.js
