@@ -49,7 +49,18 @@ jobs:
         run: node tests/mealBuilderPremiumAuthorityComposition.test.js
 
       - name: Verify published Premium composition stages
-        run: node tests/mealBuilderPublishedPremiumComposition.test.js
+        run: |
+          set -o pipefail
+          node tests/mealBuilderPublishedPremiumComposition.test.js 2>&1 | tee published-premium-composition.log
+
+      - name: Upload published Premium diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meal-builder-published-premium-diagnostics
+          path: published-premium-composition.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Verify Builder Catalog v2 premium parity
         run: npm run test:builder-catalog-v2-contract
