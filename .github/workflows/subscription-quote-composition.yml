@@ -1,0 +1,61 @@
+name: Subscription quote composition
+
+on:
+  push:
+    branches:
+      - agent/fix-subscription-quote-composition
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installSubscriptionQuoteControllerComposition.js"
+      - "tests/subscriptionQuoteControllerComposition.test.js"
+      - "src/services/installDashboardDeliverySlotCompatibility.js"
+      - "src/services/installSubscriptionAddonPlanAvailabilityPolicy.js"
+      - "tests/dashboardDeliverySlotCompatibility.test.js"
+      - "tests/subscriptionAddonPlanAvailabilityPolicy.test.js"
+      - ".github/workflows/subscription-quote-composition.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      JWT_SECRET: subscription-quote-composition-test-secret
+      DASHBOARD_JWT_SECRET: subscription-quote-composition-dashboard-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installSubscriptionQuoteControllerComposition.js
+          node -c tests/subscriptionQuoteControllerComposition.test.js
+
+      - name: Verify preloaded controller composition
+        run: node tests/subscriptionQuoteControllerComposition.test.js
+
+      - name: Verify delivery slot compatibility
+        run: node tests/dashboardDeliverySlotCompatibility.test.js
+
+      - name: Verify add-on plan availability
+        run: npm run test:dashboard-subscription-addon-plan-availability
+
+      - name: Verify dashboard subscription creation contract
+        run: npm run test:dashboard-subscription-create
