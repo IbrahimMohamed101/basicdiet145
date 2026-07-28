@@ -2,6 +2,9 @@
 
 const dateUtils = require("../../utils/date");
 
+const SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG =
+  "SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED";
+
 const PLANNING_WINDOW_REASONS = Object.freeze({
   DATE_IN_PAST: "DATE_IN_PAST",
   BEFORE_SUBSCRIPTION_START: "BEFORE_SUBSCRIPTION_START",
@@ -45,6 +48,13 @@ function normalizeDateInput(value, fieldName, { required = true } = {}) {
     throw buildDateError(fieldName, value);
   }
   return normalized;
+}
+
+function isWeeklyPlanningWindowEnabled(env = process.env) {
+  const value = String(env[SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG] || "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "on"].includes(value);
 }
 
 function minDate(...values) {
@@ -157,11 +167,43 @@ function evaluatePlanningDate({
   };
 }
 
+function resolveSubscriptionPlanningBounds(subscription = {}) {
+  if (!subscription || typeof subscription !== "object" || Array.isArray(subscription)) {
+    return {
+      subscriptionStartDate: null,
+      subscriptionValidityEndDate: null,
+    };
+  }
+
+  return {
+    subscriptionStartDate: subscription.startDate || null,
+    subscriptionValidityEndDate:
+      subscription.validityEndDate || subscription.endDate || null,
+  };
+}
+
+function evaluateSubscriptionPlanningDate({
+  subscription,
+  requestedDate,
+  businessDate,
+} = {}) {
+  const bounds = resolveSubscriptionPlanningBounds(subscription);
+  return evaluatePlanningDate({
+    requestedDate,
+    businessDate,
+    ...bounds,
+  });
+}
+
 module.exports = {
   INVALID_PLANNING_WINDOW_DATE_CODE,
   PLANNING_WINDOW_REASONS,
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG,
   evaluatePlanningDate,
+  evaluateSubscriptionPlanningDate,
+  isWeeklyPlanningWindowEnabled,
   normalizeDateInput,
   resolveCurrentMenuWeek,
+  resolveSubscriptionPlanningBounds,
   resolveSubscriptionPlanningWindow,
 };
