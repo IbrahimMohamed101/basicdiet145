@@ -72,7 +72,9 @@ function installSubscriptionQuoteControllerComposition() {
 
   // A controller may be loaded by a circular dependency before the quote
   // decorators finish. Keep its public resolver view bound to the final service
-  // export instead of the function captured during module evaluation.
+  // export instead of the function captured during module evaluation. The setter
+  // keeps later, legitimate decorators (for example dashboard promo support)
+  // compatible with the same live service boundary.
   Object.defineProperty(
     subscriptionController,
     "resolveCheckoutQuoteOrThrow",
@@ -81,6 +83,14 @@ function installSubscriptionQuoteControllerComposition() {
       enumerable: true,
       get() {
         return subscriptionQuoteService.resolveCheckoutQuoteOrThrow;
+      },
+      set(nextResolver) {
+        if (typeof nextResolver !== "function") {
+          throw new TypeError(
+            "subscriptionController.resolveCheckoutQuoteOrThrow must be a function"
+          );
+        }
+        subscriptionQuoteService.resolveCheckoutQuoteOrThrow = nextResolver;
       },
     }
   );
