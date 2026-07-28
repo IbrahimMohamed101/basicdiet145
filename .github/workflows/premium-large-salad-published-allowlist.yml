@@ -9,7 +9,6 @@ on:
       - "src/services/installFlutterMealPlannerCatalogExpansion.js"
       - "src/services/installFlutterPremiumLargeSaladOptionGroups.js"
       - "src/services/installFlutterPublishedSelectionAuthority.js"
-      - "tests/premiumLargeSaladPublishedCatalogDiagnostics.test.js"
       - "tests/premiumLargeSaladV3Allowlist.test.js"
       - ".github/workflows/premium-large-salad-published-allowlist.yml"
 
@@ -19,7 +18,7 @@ permissions:
 jobs:
   published-allowlist:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       NODE_ENV: test
       JWT_SECRET: premium-large-salad-allowlist-test-secret
@@ -41,22 +40,7 @@ jobs:
       - name: Validate syntax
         run: |
           node -c src/services/installFlutterMealPlannerCatalogExpansion.js
-          node -c tests/premiumLargeSaladPublishedCatalogDiagnostics.test.js
           node -c tests/premiumLargeSaladV3Allowlist.test.js
-
-      - name: Trace published catalog wrapper stages
-        run: |
-          set -o pipefail
-          node tests/premiumLargeSaladPublishedCatalogDiagnostics.test.js 2>&1 | tee premium-large-salad-diagnostics.log
-
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: premium-large-salad-published-catalog-diagnostics
-          path: premium-large-salad-diagnostics.log
-          if-no-files-found: error
-          retention-days: 3
 
       - name: Verify Premium Large Salad allowlist
         run: NODE_ENV=test node tests/premiumLargeSaladV3Allowlist.test.js
@@ -66,3 +50,12 @@ jobs:
 
       - name: Verify Premium Large Salad hydration contract
         run: NODE_ENV=test node tests/flutterPremiumLargeSaladOptionGroups.test.js
+
+      - name: Verify Builder Catalog v2 Premium parity
+        run: NODE_ENV=test node tests/builderCatalogV2Contract.test.js
+
+      - name: Verify Premium authority composition
+        run: NODE_ENV=test node tests/mealBuilderPublishedPremiumComposition.test.js
+
+      - name: Verify dynamic direct catalog policy
+        run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js
