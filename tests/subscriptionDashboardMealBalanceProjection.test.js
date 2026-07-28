@@ -10,6 +10,9 @@ const {
   projectDashboardSubscriptionResponse,
   resolveDashboardMealBalanceProjection,
 } = require("../src/services/subscription/subscriptionDashboardMealBalanceProjectionService");
+const {
+  isEligibleDashboardSubscriptionRead,
+} = require("../src/middleware/dashboardSubscriptionMealBalanceProjection");
 
 let passed = 0;
 
@@ -192,46 +195,67 @@ function run() {
     assert.strictEqual(projected.data.items[0].remainingMeals, 52);
   });
 
-  test("installer is limited to dashboard read controllers", () => {
-    const installerPath = path.join(
-      __dirname,
-      "../src/services/installDashboardSubscriptionMealBalanceProjection.js"
-    );
-    const source = fs.readFileSync(installerPath, "utf8");
-    for (const method of [
-      "listSubscriptionsAdmin",
-      "getSubscriptionAdmin",
-      "listAppUserSubscriptions",
-      "exportSubscriptionsAdmin",
+  test("middleware accepts only dashboard list, detail, and export GET reads", () => {
+    for (const originalUrl of [
+      "/api/dashboard/subscriptions",
+      "/api/dashboard/subscriptions/",
+      "/api/dashboard/subscriptions/export",
+      "/api/dashboard/subscriptions/507f191e810c19729de86001",
+      "/api/dashboard/subscriptions?page=1",
     ]) {
-      assert(source.includes(`\"${method}\"`), `${method} must be wrapped`);
-    }
-    for (const forbidden of [
-      "manualDeduction",
-      "searchByPhone",
-      "createSubscriptionAdmin",
-      "confirm",
-      "fulfill",
-    ]) {
-      assert(
-        !source.includes(`\"${forbidden}\"`),
-        `${forbidden} must not be wrapped`
+      assert.strictEqual(
+        isEligibleDashboardSubscriptionRead({ method: "GET", originalUrl }),
+        true,
+        originalUrl
       );
     }
   });
 
-  test("route composition installs projection after service composition", () => {
+  test("middleware rejects writes and non-display subscription endpoints", () => {
+    const rejected = [
+      { method: "POST", originalUrl: "/api/dashboard/subscriptions" },
+      { method: "POST", originalUrl: "/api/dashboard/subscriptions/quote" },
+      { method: "GET", originalUrl: "/api/dashboard/subscriptions/summary" },
+      { method: "GET", originalUrl: "/api/dashboard/subscriptions/search" },
+      {
+        method: "POST",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/manual-deduction",
+      },
+      {
+        method: "GET",
+        originalUrl: "/api/dashboard/subscriptions/507f191e810c19729de86001/days",
+      },
+      { method: "GET", originalUrl: "/api/subscriptions/current/overview" },
+    ];
+
+    for (const request of rejected) {
+      assert.strictEqual(
+        isEligibleDashboardSubscriptionRead(request),
+        false,
+        `${request.method} ${request.originalUrl}`
+      );
+    }
+  });
+
+  test("route composition mounts middleware before dashboard subscription routes", () => {
     const routesPath = path.join(__dirname, "../src/routes/index.js");
     const source = fs.readFileSync(routesPath, "utf8");
-    const installer = source.indexOf(
-      'require("../services/installDashboardSubscriptionMealBalanceProjection")'
+    const middlewareImport = source.indexOf(
+      'require("../middleware/dashboardSubscriptionMealBalanceProjection")'
     );
-    const paymentComposition = source.indexOf(
-      'require("../services/dashboard/installPaymentChannelContract")'
+    const middlewareMount = source.indexOf(
+      'dashboardSubscriptionMealBalanceProjection\n);'
     );
-    const routeImports = source.indexOf('const authRoutes = require("./auth")');
-    assert(installer > paymentComposition);
-    assert(installer < routeImports);
+    const subscriptionMount = source.indexOf(
+      'router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes)'
+    );
+    const clientMount = source.indexOf('router.use("/client", clientRoutes)');
+
+    assert(middlewareImport >= 0);
+    assert(middlewareMount >= 0);
+    assert(middlewareMount < subscriptionMount);
+    assert(clientMount > subscriptionMount);
+    assert(!source.includes("installDashboardSubscriptionMealBalanceProjection"));
   });
 
   console.log(
