@@ -27,7 +27,6 @@ const premiumUpgradeConfigService = require(
 );
 const {
   pruneMembershipToPublishedSelections,
-  resolveAutomaticPremiumMembershipOptions,
 } = require("../src/services/installFlutterPublishedSelectionAuthority");
 
 const TEST_DB_NAME = `meal_builder_published_premium_${Date.now()}`;
@@ -70,6 +69,48 @@ function premiumItemsFromContract(contract) {
     || row?.metadata?.visualRole === "premium"
   ));
   return section?.items || [];
+}
+
+function standardDescriptor(config = {}) {
+  return (config.sections || []).find((section) => (
+    (section.sectionType === "option_group" || section.type === "option_family")
+    && section.selectionType === "standard_meal"
+    && section.productContextId
+    && section.sourceGroupId
+    && Array.isArray(section.selectedOptionIds)
+    && section.selectedOptionIds.length > 0
+  ));
+}
+
+function membershipWithSelectedAndUnselectedStandardOption(descriptor) {
+  const type = "standard_meal";
+  const productId = String(descriptor.productContextId);
+  const groupId = String(descriptor.sourceGroupId);
+  const selectedOptionId = String(descriptor.selectedOptionIds[0]);
+  const unselectedOptionId = new mongoose.Types.ObjectId().toString();
+  const selectedKey = `${productId}:${groupId}:${selectedOptionId}`;
+  const unselectedKey = `${productId}:${groupId}:${unselectedOptionId}`;
+  return {
+    selectedKey,
+    unselectedKey,
+    result: {
+      membership: {
+        products: new Set([productId]),
+        groups: new Set([`${productId}:${groupId}`]),
+        options: new Set([selectedKey, unselectedKey]),
+        bySelectionType: new Map([
+          [
+            type,
+            {
+              products: new Set([productId]),
+              groups: new Set([`${productId}:${groupId}`]),
+              options: new Set([selectedKey, unselectedKey]),
+            },
+          ],
+        ]),
+      },
+    },
+  };
 }
 
 async function connect() {
@@ -136,32 +177,6 @@ async function configureChickenFajitaPremium() {
   };
 }
 
-function membershipFixture({ basicMealId, proteinsGroupId, chickenFajitaId }) {
-  const chickenKey = `${basicMealId}:${proteinsGroupId}:${chickenFajitaId}`;
-  const unrelatedKey = `${basicMealId}:${proteinsGroupId}:507f191e810c19729de86099`;
-  return {
-    chickenKey,
-    unrelatedKey,
-    result: {
-      membership: {
-        products: new Set([basicMealId]),
-        groups: new Set([`${basicMealId}:${proteinsGroupId}`]),
-        options: new Set([chickenKey, unrelatedKey]),
-        bySelectionType: new Map([
-          [
-            "premium_meal",
-            {
-              products: new Set([basicMealId]),
-              groups: new Set([`${basicMealId}:${proteinsGroupId}`]),
-              options: new Set([chickenKey, unrelatedKey]),
-            },
-          ],
-        ]),
-      },
-    },
-  };
-}
-
 async function run() {
   // Ensure route installers are evaluated exactly as they are in the application.
   assert.strictEqual(typeof createApp, "function");
@@ -220,6 +235,29 @@ async function run() {
     assert.strictEqual(contractChicken.extraFeeHalala, 2500);
     assert.strictEqual(String(contractChicken.configId), identity.premiumConfigId);
 
+    const premiumMembershipKey = [
+      identity.basicMealId,
+      identity.proteinsGroupId,
+      identity.chickenFajitaId,
+    ].join(":");
+    const contractPremiumMembership = contract.membership
+      .bySelectionType.get("premium_meal");
+    assert(
+      contractPremiumMembership?.options.has(premiumMembershipKey),
+      "the contract must authorize Chicken Fajita as a Premium option"
+    );
+
+    const prunedContractMembership = pruneMembershipToPublishedSelections(
+      { membership: contract.membership },
+      config
+    );
+    assert(
+      prunedContractMembership.membership
+        .bySelectionType.get("premium_meal")
+        ?.options.has(premiumMembershipKey),
+      "published selected-id pruning must preserve contract-authorized Premium membership"
+    );
+
     const planner = await mealBuilderConfigService
       .buildPlannerCatalogFromPublishedBuilder({ config, lang: "ar" });
     const premiumOptions = premiumOptionsFromPlanner(planner, descriptor);
@@ -242,23 +280,24 @@ async function run() {
     assert.strictEqual(String(plannerChicken.sourceProductId), identity.basicMealId);
     assert.strictEqual(String(plannerChicken.sourceGroupId), identity.proteinsGroupId);
 
-    const automaticPremiumOptionsByType =
-      await resolveAutomaticPremiumMembershipOptions(config);
-    const fixture = membershipFixture(identity);
-    const prunedMembership = pruneMembershipToPublishedSelections(
-      fixture.result,
-      config,
-      { automaticPremiumOptionsByType }
+    const standard = standardDescriptor(config);
+    assert(standard, "published config must contain a selected Standard option section");
+    const standardFixture = membershipWithSelectedAndUnselectedStandardOption(
+      standard
     );
-    const premiumMembership = prunedMembership.membership
-      .bySelectionType.get("premium_meal");
+    const prunedStandard = pruneMembershipToPublishedSelections(
+      standardFixture.result,
+      config
+    );
+    const standardMembership = prunedStandard.membership
+      .bySelectionType.get("standard_meal");
     assert(
-      premiumMembership.options.has(fixture.chickenKey),
-      "automatic Premium Chicken Fajita must remain in published membership"
+      standardMembership.options.has(standardFixture.selectedKey),
+      "selected Standard membership must remain allowed"
     );
     assert(
-      !premiumMembership.options.has(fixture.unrelatedKey),
-      "an unrelated unselected option must remain pruned"
+      !standardMembership.options.has(standardFixture.unselectedKey),
+      "unselected Standard membership must remain pruned"
     );
 
     console.log("mealBuilderPublishedPremiumComposition.test.js passed");
