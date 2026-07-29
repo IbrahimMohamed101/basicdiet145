@@ -19,7 +19,8 @@ const PAYMENT_AUDIT_ACTIONS = [
 const AR_LABELS = Object.freeze({
   paymentMethod: {
     cash: "نقدي",
-    visa: "بطاقة بنكية",
+    visa: "بوابة دفع إلكتروني",
+    moyasar: "ميسر",
     unknown: "غير محدد",
   },
   provider: {
@@ -206,6 +207,9 @@ function normalizeMethodToken(value) {
   if (["cash", "cod", "cash_on_delivery", "cash-on-delivery", "نقدي", "كاش"].includes(raw)) {
     return "cash";
   }
+  if (["moyasar", "ميسر"].includes(raw)) {
+    return "moyasar";
+  }
   if ([
     "visa",
     "card",
@@ -254,15 +258,8 @@ function resolvePaymentMethodClassification(payment = {}, audit = null) {
   if (provider === "cash") {
     return { method: "cash", source: "payment.provider", recoveredFromLegacyAudit: false };
   }
-  if (
-    provider === "moyasar"
-    && (
-      metadata.gatewayUsed === true
-      || safeString(payment.providerPaymentId)
-      || safeString(payment.providerInvoiceId)
-    )
-  ) {
-    return { method: "visa", source: "moyasar_gateway_reference", recoveredFromLegacyAudit: false };
+  if (provider === "moyasar") {
+    return { method: "moyasar", source: "payment.provider", recoveredFromLegacyAudit: false };
   }
 
   return { method: "unknown", source: "unresolved", recoveredFromLegacyAudit: false };
@@ -531,6 +528,7 @@ function buildPaymentMethodSummary(items = []) {
   const empty = { count: 0, uniqueCustomersCount: 0, totalHalala: 0, totalSar: 0, totalFormattedAr: moneyValue(0).formattedAr };
   const cash = byMethod.get("cash") || empty;
   const visa = byMethod.get("visa") || empty;
+  const moyasar = byMethod.get("moyasar") || empty;
   const unknown = byMethod.get("unknown") || empty;
   const customerIds = new Set(items.map((item) => safeString(item.customerId)).filter(Boolean));
   const totalHalala = items.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
@@ -583,6 +581,11 @@ function buildPaymentMethodSummary(items = []) {
     visaTotalHalala: visa.totalHalala,
     visaTotalSar: visa.totalSar,
     visaTotalFormattedAr: visa.totalFormattedAr,
+    moyasarCount: moyasar.count,
+    moyasarCustomersCount: moyasar.uniqueCustomersCount,
+    moyasarTotalHalala: moyasar.totalHalala,
+    moyasarTotalSar: moyasar.totalSar,
+    moyasarTotalFormattedAr: moyasar.totalFormattedAr,
     unknownCount: unknown.count,
     unknownCustomersCount: unknown.uniqueCustomersCount,
     unknownTotalHalala: unknown.totalHalala,
@@ -696,11 +699,20 @@ function buildDashboardCards(summary) {
     },
     {
       key: "cards",
-      titleAr: "تحصيل البطاقات",
+      titleAr: "بوابة دفع إلكتروني",
       valueHalala: summary.visaTotalHalala,
       valueSar: summary.visaTotalSar,
       valueFormattedAr: summary.visaTotalFormattedAr,
       subtitleAr: `${summary.visaCount} عملية`,
+      severity: "normal",
+    },
+    {
+      key: "moyasar",
+      titleAr: "ميسر",
+      valueHalala: summary.moyasarTotalHalala,
+      valueSar: summary.moyasarTotalSar,
+      valueFormattedAr: summary.moyasarTotalFormattedAr,
+      subtitleAr: `${summary.moyasarCount} عملية`,
       severity: "normal",
     },
     {
@@ -725,7 +737,11 @@ function buildDashboardCards(summary) {
 }
 
 function buildReconciliation(summary, warnings) {
-  const allocatedHalala = summary.cashTotalHalala + summary.visaTotalHalala + summary.unknownTotalHalala;
+  const allocatedHalala =
+    summary.cashTotalHalala
+    + summary.visaTotalHalala
+    + summary.moyasarTotalHalala
+    + summary.unknownTotalHalala;
   const differenceHalala = summary.totalHalala - allocatedHalala;
   const needsReview = warnings.length > 0 || differenceHalala !== 0;
   return {
@@ -922,6 +938,8 @@ function compactDailySummary(period, items) {
     cashTotalFormattedAr: summary.cashTotalFormattedAr,
     visaTotalHalala: summary.visaTotalHalala,
     visaTotalFormattedAr: summary.visaTotalFormattedAr,
+    moyasarTotalHalala: summary.moyasarTotalHalala,
+    moyasarTotalFormattedAr: summary.moyasarTotalFormattedAr,
     unknownTotalHalala: summary.unknownTotalHalala,
     unknownTotalFormattedAr: summary.unknownTotalFormattedAr,
     canceledSubscriptionsTotalHalala: summary.canceledSubscriptionsTotalHalala,

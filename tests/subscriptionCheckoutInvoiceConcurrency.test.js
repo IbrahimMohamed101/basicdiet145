@@ -19,6 +19,9 @@ const {
 const {
   ensureSubscriptionCheckoutPayment,
 } = require("../src/services/subscription/subscriptionCheckoutHelpers");
+const {
+  ensureDraftPaymentRecovered,
+} = require("../src/services/reconciliationService");
 
 let mongoServer;
 
@@ -124,6 +127,31 @@ async function testConcurrentInvoiceAndPaymentReuse() {
   assert.strictEqual(new Set(payments.map((payment) => String(payment._id))).size, 1, "all callers must reuse one Payment row");
   assert.strictEqual(await CheckoutDraft.countDocuments({ idempotencyKey: draft.idempotencyKey }), 1, "one CheckoutDraft must exist");
   assert.strictEqual(await Payment.countDocuments({ providerInvoiceId: "inv_concurrency_1" }), 1, "one Payment must exist");
+  const persistedPayment = await Payment.findOne({ providerInvoiceId: "inv_concurrency_1" }).lean();
+  assert.strictEqual(persistedPayment.method, "moyasar");
+  assert.strictEqual(persistedPayment.source, "mobile_app_subscription");
+  assert.strictEqual(persistedPayment.metadata.paymentMethod, "moyasar");
+  assert.strictEqual(persistedPayment.metadata.paymentOrigin, "mobile_app");
+  assert.strictEqual(persistedPayment.metadata.recordingMode, "moyasar_gateway");
+  assert.strictEqual(persistedPayment.metadata.gatewayUsed, true);
+}
+
+async function testRecoveredMobileSubscriptionPaymentIdentity() {
+  const draft = await createDraft({
+    status: "pending_payment",
+    providerInvoiceId: "inv_recovered_mobile_subscription",
+    paymentUrl: "https://payments.example.test/invoices/recovered-mobile",
+  });
+
+  const payment = await ensureDraftPaymentRecovered(draft);
+  assert.ok(payment, "a missing persisted checkout payment must be recovered");
+
+  const persistedPayment = await Payment.findById(payment._id).lean();
+  assert.strictEqual(persistedPayment.provider, "moyasar");
+  assert.strictEqual(persistedPayment.method, "moyasar");
+  assert.strictEqual(persistedPayment.source, "mobile_app_subscription");
+  assert.strictEqual(persistedPayment.metadata.paymentMethod, "moyasar");
+  assert.strictEqual(persistedPayment.metadata.paymentOrigin, "mobile_app");
 }
 
 async function testStaleClaimRecovery() {
@@ -222,13 +250,16 @@ async function testProviderFailureReleasesClaim() {
     await testConcurrentInvoiceAndPaymentReuse();
     console.log("  OK  20 concurrent callers create one draft, invoice, and payment");
 
+    await testRecoveredMobileSubscriptionPaymentIdentity();
+    console.log("  OK  recovered mobile subscription payments keep Moyasar identity");
+
     await testStaleClaimRecovery();
     console.log("  OK  stale invoice initialization claim is recovered");
 
     await testProviderFailureReleasesClaim();
     console.log("  OK  provider failure releases the claim for retry");
 
-    console.log("\nSubscription checkout invoice concurrency: 3 passed, 0 failed");
+    console.log("\nSubscription checkout invoice concurrency: 4 passed, 0 failed");
   } finally {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();

@@ -2,9 +2,25 @@ const assert = require("node:assert/strict");
 
 const {
   PAYMENT_CHANNELS,
+  buildMobileAppSubscriptionPaymentRecord,
   resolveDashboardPaymentChannel,
   normalizeDashboardPaymentResponse,
 } = require("../src/utils/paymentChannel");
+
+const mobileSubscriptionPayment = buildMobileAppSubscriptionPaymentRecord({
+  type: "subscription_activation",
+  amount: 10000,
+  metadata: { draftId: "draft-1" },
+});
+assert.equal(mobileSubscriptionPayment.provider, "moyasar");
+assert.equal(mobileSubscriptionPayment.method, "moyasar");
+assert.equal(mobileSubscriptionPayment.source, "mobile_app_subscription");
+assert.equal(mobileSubscriptionPayment.metadata.paymentMethod, "moyasar");
+assert.equal(mobileSubscriptionPayment.metadata.paymentChannel, "moyasar");
+assert.equal(mobileSubscriptionPayment.metadata.paymentOrigin, "mobile_app");
+assert.equal(mobileSubscriptionPayment.metadata.recordingMode, "moyasar_gateway");
+assert.equal(mobileSubscriptionPayment.metadata.gatewayUsed, true);
+assert.equal(mobileSubscriptionPayment.metadata.draftId, "draft-1");
 
 assert.equal(
   resolveDashboardPaymentChannel({
@@ -12,8 +28,8 @@ assert.equal(
     status: "initiated",
     metadata: {},
   }),
-  PAYMENT_CHANNELS.ELECTRONIC_GATEWAY,
-  "Moyasar app payments must be electronic gateway payments"
+  PAYMENT_CHANNELS.MOYASAR,
+  "Moyasar app payments must stay identifiable as Moyasar"
 );
 
 assert.equal(
@@ -29,12 +45,22 @@ assert.equal(
 
 assert.equal(
   resolveDashboardPaymentChannel({
-    provider: "cash",
-    method: "cash",
+    provider: "moyasar",
+    method: "moyasar",
+    source: "dashboard_subscription_visa",
+  }),
+  PAYMENT_CHANNELS.ELECTRONIC_GATEWAY,
+  "Explicit dashboard Visa origin must win over a stale Moyasar provider value"
+);
+
+assert.equal(
+  resolveDashboardPaymentChannel({
+    provider: "moyasar",
+    method: "moyasar",
     source: "dashboard_subscription_cash",
   }),
   PAYMENT_CHANNELS.CASH,
-  "Explicit cash payments must stay cash"
+  "Explicit dashboard cash origin must win over stale provider values"
 );
 
 assert.equal(
@@ -54,12 +80,12 @@ const normalizedList = normalizeDashboardPaymentResponse({
   ],
 });
 
-assert.equal(normalizedList.data[0].paymentMethod, PAYMENT_CHANNELS.ELECTRONIC_GATEWAY);
-assert.equal(normalizedList.data[0].method, PAYMENT_CHANNELS.ELECTRONIC_GATEWAY);
-assert.equal(normalizedList.data[0].paymentChannel, PAYMENT_CHANNELS.ELECTRONIC_GATEWAY);
+assert.equal(normalizedList.data[0].paymentMethod, PAYMENT_CHANNELS.MOYASAR);
+assert.equal(normalizedList.data[0].method, PAYMENT_CHANNELS.MOYASAR);
+assert.equal(normalizedList.data[0].paymentChannel, PAYMENT_CHANNELS.MOYASAR);
 assert.deepEqual(normalizedList.data[0].paymentMethodLabel, {
-  ar: "بوابة دفع إلكتروني",
-  en: "Electronic payment gateway",
+  ar: "ميسر",
+  en: "Moyasar",
 });
 assert.equal(normalizedList.data[0].provider, "moyasar", "Provider traceability must be preserved");
 
