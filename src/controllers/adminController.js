@@ -69,6 +69,11 @@ const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/opt
 const { DASHBOARD_ROLES, DASHBOARD_ROLE_LABEL } = require("../constants/dashboardRoles");
 const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
 const { resolveSinglePickupLocations } = require("../utils/singlePickupLocation");
+const {
+  MAX_TIMELINE_EXTRA_DAYS,
+  resolvePlanTimelineExtraDays,
+  resolveSubscriptionTimelineExtraDays,
+} = require("../services/subscription/subscriptionTimelineDurationService");
 
 const MAX_PREMIUM_PRICE = 10000;
 const MAX_VAT_PERCENTAGE = 100;
@@ -251,6 +256,22 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
   if (!isPositiveInteger(durationDays)) {
     throw createControlledError(400, "INVALID", "durationDays must be a positive integer");
   }
+  const timelineExtraDays = payload.timelineExtraDays === undefined
+    ? undefined
+    : Number(payload.timelineExtraDays);
+  if (
+    timelineExtraDays !== undefined
+    && (
+      !isNonNegativeInteger(timelineExtraDays)
+      || timelineExtraDays > MAX_TIMELINE_EXTRA_DAYS
+    )
+  ) {
+    throw createControlledError(
+      400,
+      "INVALID",
+      `timelineExtraDays must be an integer between 0 and ${MAX_TIMELINE_EXTRA_DAYS}`
+    );
+  }
 
   const category = payload.category === undefined ? "standard" : String(payload.category).trim();
   if (!category) {
@@ -402,6 +423,7 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
   const result = {
     name,
     daysCount,
+    ...(timelineExtraDays === undefined ? {} : { timelineExtraDays }),
     durationDays,
     category,
     currency,
@@ -666,6 +688,7 @@ function serializeAdminPlan(plan) {
   return {
     id,
     ...rest,
+    timelineExtraDays: resolvePlanTimelineExtraDays(planObj),
     currency,
     skipPolicy: {
       enabled: planObj.skipPolicy && planObj.skipPolicy.enabled !== undefined
@@ -2445,6 +2468,8 @@ function serializeDashboardPickerPlan(plan, lang) {
     id: String(plan._id),
     name: pickLang(plan.name, lang) || { ar: "", en: "" },
     daysCount,
+    timelineExtraDays: resolvePlanTimelineExtraDays(plan),
+    timelineDays: daysCount + resolvePlanTimelineExtraDays(plan),
     mealsCount,
     isActive: plan.isActive !== false,
   };
@@ -2654,6 +2679,7 @@ async function clonePlan(req, res) {
       {
         name: existing.name,
         daysCount: existing.daysCount,
+        timelineExtraDays: resolvePlanTimelineExtraDays(existing),
         currency: existing.currency,
         gramsOptions: existing.gramsOptions,
         skipPolicy: existing.skipPolicy,
@@ -5195,10 +5221,14 @@ async function extendSubscriptionAdmin(req, res) {
       subscriptionId: subscription._id,
       status: "frozen",
     }).session(session);
+    const timelineExtraDays = resolveSubscriptionTimelineExtraDays(subscription);
 
     const oldBaseEndStr = dateUtils.toKSADateString(baseEndDate);
     const newBaseEndDate = addDays(baseEndDate, days);
-    const newValidityEndDate = addDays(newBaseEndDate, frozenDaysCount);
+    const newValidityEndDate = addDays(
+      newBaseEndDate,
+      timelineExtraDays + frozenDaysCount
+    );
     const newValidityEndStr = dateUtils.toKSADateString(newValidityEndDate);
     const datesToEnsure = buildDateRangeInclusive(dateUtils.addDaysToKSADateString(oldBaseEndStr, 1), newValidityEndStr);
 
@@ -5403,9 +5433,13 @@ async function applyAdminPaymentSideEffects({ payment, session }) {
     const plan = await Plan.findById(subscription.planId).lean();
     const start = subscription.startDate ? new Date(subscription.startDate) : new Date();
     const end = plan ? addDays(start, plan.daysCount - 1) : subscription.endDate || start;
+    const timelineExtraDays = plan
+      ? resolvePlanTimelineExtraDays(plan)
+      : resolveSubscriptionTimelineExtraDays(subscription);
     subscription.status = "active";
     subscription.endDate = end;
-    subscription.validityEndDate = end;
+    subscription.timelineExtraDays = timelineExtraDays;
+    subscription.validityEndDate = addDays(end, timelineExtraDays);
     await subscription.save({ session });
 
     const existingDays = await SubscriptionDay.countDocuments({ subscriptionId: subscription._id }).session(session);

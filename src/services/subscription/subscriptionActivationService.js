@@ -33,6 +33,9 @@ const {
 const {
   findActiveSubscriptionsForUser,
 } = require("./subscriptionCurrentResolverService");
+const {
+  normalizeTimelineExtraDays,
+} = require("./subscriptionTimelineDurationService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -403,6 +406,10 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
 
   // Robust field selection for non-canonical drafts.
   const daysCount = Number(plan.daysCount || legacyRuntimeData.daysCount || 0);
+  const normalizedTimelineExtraDays = normalizeTimelineExtraDays(
+    plan.timelineExtraDays ?? legacyRuntimeData.timelineExtraDays
+  );
+  const timelineExtraDays = normalizedTimelineExtraDays === null ? 0 : normalizedTimelineExtraDays;
   const mealsPerDay = Number(plan.mealsPerDay || legacyRuntimeData.mealsPerDay || 0);
   const totalMeals = daysCount * mealsPerDay;
 
@@ -424,6 +431,7 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
     ? legacyRuntimeData.addonBalance
     : buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount });
   const end = addDays(start, daysCount - 1);
+  const validityEnd = addDays(end, timelineExtraDays);
 
   const subscriptionPayload = {
     _id: new mongoose.Types.ObjectId(),
@@ -432,7 +440,8 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
     status: "active",
     startDate: start,
     endDate: end,
-    validityEndDate: end,
+    validityEndDate: validityEnd,
+    timelineExtraDays,
     totalMeals,
     remainingMeals: totalMeals,
     selectedGrams: Number(plan.selectedGrams || 0),
@@ -560,6 +569,9 @@ async function buildCanonicalSubscriptionActivationPayload({ draft }) {
       addonSubscriptions: Array.isArray(draft.addonSubscriptions) ? draft.addonSubscriptions : [],
       startDate: draft.startDate,
       daysCount: draft.daysCount,
+      timelineExtraDays: draft.contractSnapshot
+        && draft.contractSnapshot.plan
+        && draft.contractSnapshot.plan.timelineExtraDays,
       mealsPerDay: draft.mealsPerDay,
       delivery: draft.delivery,
       resolvedPickupLocationId,

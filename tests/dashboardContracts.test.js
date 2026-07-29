@@ -372,6 +372,7 @@ async function runTests() {
     const createPayload = {
       name: { ar: "الباقة التجريبية", en: "Test Package" },
       daysCount: 26,
+      timelineExtraDays: 4,
       category: "weight_loss",
       gramsOptions: [{
         grams: 150,
@@ -395,6 +396,7 @@ async function runTests() {
     assert.strictEqual(getRes.body.data.id, planId, "plan id must match");
     assert.strictEqual(getRes.body.data.category, "weight_loss", "category must match");
     assert.strictEqual(getRes.body.data.durationDays, 26, "durationDays must default to daysCount");
+    assert.strictEqual(getRes.body.data.timelineExtraDays, 4, "timeline extra days must round-trip independently");
     assert(Array.isArray(getRes.body.data.grams), "should return grams array for compatibility");
     assert(Array.isArray(getRes.body.data.gramsOptions), "should return gramsOptions array");
 
@@ -402,6 +404,7 @@ async function runTests() {
     const updatePayload = {
       name: { ar: "الباقة التجريبية المعدلة", en: "Updated Test Package" },
       daysCount: 26,
+      timelineExtraDays: 9,
       category: "weight_gain",
       gramsOptions: [{
         grams: 150,
@@ -421,6 +424,7 @@ async function runTests() {
       .set(auth("admin"));
     expectStatus(getUpdatedRes, 200, "get updated plan");
     assert.strictEqual(getUpdatedRes.body.data.category, "weight_gain", "category must be updated");
+    assert.strictEqual(getUpdatedRes.body.data.timelineExtraDays, 9, "timeline extra days must be editable");
 
     // 6d. List Packages (should include the created plan)
     const listRes = await request(app)

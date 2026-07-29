@@ -290,6 +290,7 @@ const SubscriptionSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     validityEndDate: { type: Date },
+    timelineExtraDays: { type: Number, min: 0, max: 365, default: 0 },
     canceledAt: { type: Date, default: null },
     cancellationReason: { type: String, trim: true, default: "" },
     replacedBySubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },

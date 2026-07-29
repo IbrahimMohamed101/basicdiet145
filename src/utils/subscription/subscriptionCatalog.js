@@ -1,6 +1,9 @@
 const { pickLang } = require("../i18n");
 const { withDefaultMealNutrition } = require("../mealNutrition");
 const { resolveSinglePickupLocations } = require("../singlePickupLocation");
+const {
+  resolvePlanTimelineExtraDays,
+} = require("../../services/subscription/subscriptionTimelineDurationService");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
@@ -273,12 +276,15 @@ function resolvePlanCatalogEntry(plan, lang) {
   const compareAtStartsFromHalala = defaultMealsOption ? defaultMealsOption.compareAtHalala : 0;
   const savingsStartsFromHalala = resolveSavings(compareAtStartsFromHalala, startsFromHalala);
   const skipPolicy = plan && plan.skipPolicy && typeof plan.skipPolicy === "object" ? plan.skipPolicy : {};
+  const timelineExtraDays = resolvePlanTimelineExtraDays(plan);
 
   return {
     id: String(plan._id),
     key: plan.key || null,
     name: pickLang(plan.name, lang),
     daysCount: Number(plan.daysCount || 0),
+    timelineExtraDays,
+    timelineDays: Number(plan.daysCount || 0) + timelineExtraDays,
     durationDays: Number(plan.durationDays || plan.daysCount || 0),
     daysLabel: formatDaysLabel(plan.daysCount, lang),
     currency: plan.currency || SYSTEM_CURRENCY,

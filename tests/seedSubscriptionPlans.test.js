@@ -39,6 +39,11 @@ assert.strictEqual(shape.planCount, subscriptionPlanRows.length);
 assert.strictEqual(shape.nestedPricePoints, countNestedPricePoints());
 assert.strictEqual(new Set(subscriptionPlanKeys).size, subscriptionPlanKeys.length);
 assert.ok(subscriptionPlanRows.length > 0, "initial plan data is not empty");
+assert.deepStrictEqual(
+  subscriptionPlanRows.map((row) => [row.daysCount, row.timelineExtraDays]),
+  [[7, 1], [26, 4], [30, 5]],
+  "canonical plans must declare timeline-only extra days"
+);
 
 for (const plan of subscriptionPlanRows) {
   assert.ok(Array.isArray(plan.gramsOptions) && plan.gramsOptions.length > 0, `${plan.key} has initial gram options`);

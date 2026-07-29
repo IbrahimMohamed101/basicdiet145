@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
+const {
+  resolveSubscriptionTimelineExtraDays,
+} = require("./subscriptionTimelineDurationService");
 const Payment = require("../../models/Payment");
 const BuilderProtein = require("../../models/BuilderProtein");
 const { resolvePremiumKeyFromName } = require("../../utils/subscription/premiumIdentity");
@@ -560,6 +563,11 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
   const startDateStr = toKSADateString(subscription.startDate);
   const endDateStr = toKSADateString(subscription.endDate);
   const validityEndDateStr = toKSADateString(subscription.validityEndDate || subscription.endDate);
+  const timelineExtraDays = resolveSubscriptionTimelineExtraDays(subscription);
+  const timelineExtraEndDateStr = addDaysToKSADateString(
+    endDateStr,
+    timelineExtraDays
+  );
 
   const [days, compensation, pickupLocations, dayPayments] = await Promise.all([
     SubscriptionDay.find({ subscriptionId }).lean(),
@@ -706,7 +714,14 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       settlementReason: dbDay && dbDay.settlementReason ? dbDay.settlementReason : null,
       consumedByPolicy: Boolean(dbDay && dbDay.autoSettled && dbDay.creditsDeducted),
       deliveryMode: subscription.deliveryMode || null,
-      source: isExtension ? (extensionSourceMap.get(currentDate) || "freeze_compensation") : "base",
+      source: isExtension
+        ? (
+          extensionSourceMap.get(currentDate)
+          || (currentDate <= timelineExtraEndDateStr
+            ? "timeline_extra"
+            : "freeze_compensation")
+        )
+        : "base",
       locked: Boolean(dbDay && (dbDay.lockedSnapshot || status === "locked")),
       isExtension,
       calendar,
@@ -742,6 +757,7 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       endDate: endDateStr,
       validityEndDate: validityEndDateStr,
       compensationDays: compensation.totalCount,
+      timelineExtraDays,
       freezeCompensationDays: compensation.freezeCount,
       skipCompensationDays: compensation.skipCount,
     },

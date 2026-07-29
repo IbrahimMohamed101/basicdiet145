@@ -33,6 +33,7 @@ const PlanSchema = new mongoose.Schema(
       en: { type: String, default: "" },
     },
     daysCount: { type: Number, required: true },
+    timelineExtraDays: { type: Number, min: 0, max: 365 },
     durationDays: { type: Number, min: 1 },
     currency: { type: String, default: "SAR" },
     gramsOptions: { type: [GramsOptionSchema], default: [] },

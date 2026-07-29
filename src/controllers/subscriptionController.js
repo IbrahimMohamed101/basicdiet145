@@ -2,6 +2,9 @@ const crypto = require("crypto");
 const { startSafeSession } = require("../utils/mongoTransactionSupport");
 const mongoose = require("mongoose");
 const { addDays } = require("date-fns");
+const {
+  resolvePlanTimelineExtraDays,
+} = require("../services/subscription/subscriptionTimelineDurationService");
 const Plan = require("../models/Plan");
 const Addon = require("../models/Addon");
 const CheckoutDraft = require("../models/CheckoutDraft");
@@ -1496,7 +1499,8 @@ async function activateSubscription(req, res) {
     const start = new Date(sub.startDate);
     if (sub.planId && sub.planId.daysCount) {
       sub.endDate = addDays(start, sub.planId.daysCount - 1);
-      sub.validityEndDate = sub.endDate;
+      sub.timelineExtraDays = resolvePlanTimelineExtraDays(sub.planId);
+      sub.validityEndDate = addDays(sub.endDate, sub.timelineExtraDays);
     }
     await sub.save();
     return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(sub, lang) });
