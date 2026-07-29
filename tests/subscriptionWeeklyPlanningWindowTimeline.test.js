@@ -1,5 +1,9 @@
 "use strict";
 
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "true",
+});
+
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");

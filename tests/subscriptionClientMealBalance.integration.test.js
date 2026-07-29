@@ -1,11 +1,18 @@
 "use strict";
 
+const {
+  setTemporaryEnvironment,
+} = require("./helpers/temporaryEnvironment");
+
+const restoreEnvironment = setTemporaryEnvironment({
+  CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED: "true",
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "client-meal-balance-integration-secret";
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET
   || "client-meal-balance-integration-dashboard-secret";
-process.env.CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED = "true";
-process.env.SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED = "false";
 process.env.SUBSCRIPTION_AUTO_SETTLEMENT_ENABLED = "false";
 
 const assert = require("assert");
@@ -979,6 +986,7 @@ async function run() {
     console.log("subscriptionClientMealBalance.integration.test.js passed");
   } finally {
     await disconnect();
+    restoreEnvironment();
   }
 }
 

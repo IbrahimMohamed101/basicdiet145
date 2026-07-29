@@ -1,5 +1,15 @@
 "use strict";
 
+const { installFixedKsaClock } = require("./helpers/fixedClock");
+const {
+  setTemporaryEnvironment,
+} = require("./helpers/temporaryEnvironment");
+
+const restoreEnvironment = setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+const restoreClock = installFixedKsaClock("2026-07-29");
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "subscription-entitlement-test-secret";
 process.env.SUBSCRIPTION_AUTO_SETTLEMENT_ENABLED = "false";
@@ -885,4 +895,6 @@ run()
   .finally(async () => {
     await resetDatabase().catch(() => {});
     await disconnect();
+    restoreEnvironment();
+    restoreClock();
   });

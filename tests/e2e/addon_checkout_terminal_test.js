@@ -12,6 +12,10 @@
  * No mocks, no service calls, real Express routes + MongoDB
  */
 
+require("../helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+
 const mongoose = require('mongoose');
 const supertest = require('supertest');
 require('dotenv').config();

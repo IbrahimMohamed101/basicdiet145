@@ -5,6 +5,10 @@
  * HTTPS boundary. It must not silently pass if initiation or verification fails.
  */
 
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+
 require("dotenv").config();
 
 process.env.MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://localhost:27017/basicdiet_test";
