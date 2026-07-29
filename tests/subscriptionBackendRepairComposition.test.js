@@ -1,5 +1,8 @@
 "use strict";
 
+const { setTemporaryEnvironment } = require("./helpers/temporaryEnvironment");
+setTemporaryEnvironment({ SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false" });
+
 process.env.NODE_ENV = "test";
 
 const assert = require("assert");

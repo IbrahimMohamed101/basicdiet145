@@ -1,5 +1,8 @@
 "use strict";
 
+const { setTemporaryEnvironment } = require("./helpers/temporaryEnvironment");
+setTemporaryEnvironment({ SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false" });
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";

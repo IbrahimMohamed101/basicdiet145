@@ -7,6 +7,17 @@
  * Run with: node tests/mealPlanner.integration.test.js
  */
 
+const dateUtils = require('../src/utils/date');
+const { installFixedKsaClock } = require('./helpers/fixedClock');
+const {
+  setTemporaryEnvironment,
+} = require('./helpers/temporaryEnvironment');
+
+const restoreEnvironment = setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: 'false',
+});
+const restoreClock = installFixedKsaClock('2026-07-29');
+
 require('dotenv').config();
 
 const mongoose = require('mongoose');
@@ -119,9 +130,7 @@ function wait(ms) {
 }
 
 function buildDateOffset(daysOffset) {
-  const d = new Date();
-  d.setDate(d.getDate() + daysOffset);
-  return d.toISOString().split('T')[0];
+  return dateUtils.addDaysToKSADateString('2026-07-29', daysOffset);
 }
 
 async function makeRequest(method, path, body = null) {
@@ -852,10 +861,8 @@ async function createTestSubscription() {
     await testPlan.save();
   }
   
-  const startDate = new Date();
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 28);
+  const startDate = new Date('2026-07-29T00:00:00+03:00');
+  const endDate = new Date('2026-08-26T23:59:59+03:00');
   
   const mealsPerDay = testPlan.mealsPerDay || 2;
   const daysCount = testPlan.daysCount || 28;
@@ -953,6 +960,8 @@ async function disconnectDatabase() {
     await mongoReplSet.stop();
     mongoReplSet = null;
   }
+  restoreEnvironment();
+  restoreClock();
 }
 
 async function runTests() {

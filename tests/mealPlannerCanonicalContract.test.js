@@ -4,6 +4,10 @@
  * Verifies that the backend emits the exact canonical JSON structures expected by the Flutter frontend.
  */
 
+require('./helpers/temporaryEnvironment').setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: 'false',
+});
+
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { connectDB, resetDB } = require('./helpers/dbHelper');

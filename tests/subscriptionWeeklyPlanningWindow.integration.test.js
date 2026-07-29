@@ -1,10 +1,21 @@
 "use strict";
 
+const { installFixedKsaClock } = require("./helpers/fixedClock");
+const {
+  setTemporaryEnvironment,
+} = require("./helpers/temporaryEnvironment");
+
+const restoreEnvironment = setTemporaryEnvironment({
+  DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED: "true",
+  CLIENT_UNCONSUMED_MEAL_BALANCE_ENABLED: "true",
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "true",
+});
+const restoreClock = installFixedKsaClock("2026-07-29");
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "weekly-planning-integration-secret";
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET
   || "weekly-planning-integration-dashboard-secret";
-process.env.SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED = "true";
 process.env.SUBSCRIPTION_AUTO_SETTLEMENT_ENABLED = "false";
 
 const assert = require("assert");
@@ -232,6 +243,8 @@ async function run() {
     );
   } finally {
     await disconnect();
+    restoreEnvironment();
+    restoreClock();
   }
 }
 
