@@ -1,5 +1,6 @@
 const Setting = require("../models/Setting");
 const { VAT_PERCENTAGE } = require("../config/vat");
+const { resolveSinglePickupLocations } = require("../utils/singlePickupLocation");
 
 function localizedPair(value, fallback = "") {
     if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -95,7 +96,9 @@ async function getSettings(_req, res) {
     data.restaurant_open_time = data.restaurant_open_time ?? "00:00";
     data.restaurant_close_time = data.restaurant_close_time ?? "23:59";
     data.delivery_windows = data.delivery_windows ?? ["08:00-11:00", "12:00-15:00"];
-    data.pickup_locations = normalizePickupLocations(data.pickup_locations);
+    data.pickup_locations = resolveSinglePickupLocations(
+        normalizePickupLocations(data.pickup_locations)
+    );
     data.skip_allowance = data.skip_allowance ?? data.skipAllowance;
     data.skip_allowance = data.skip_allowance ?? 3;
     data.premium_price = data.premium_price ?? 20;
@@ -159,7 +162,9 @@ async function getAppConfig(_req, res) {
                 callbackMode: "backend_redirect_or_client_url",
             },
             fulfillment: {
-                pickupLocations: normalizePickupLocations(data.pickup_locations),
+                pickupLocations: resolveSinglePickupLocations(
+                    normalizePickupLocations(data.pickup_locations)
+                ),
                 deliveryWindows: Array.isArray(data.delivery_windows) ? data.delivery_windows : [],
                 restaurantOpenTime: pickSetting(data, "restaurant_open_time", "00:00"),
                 restaurantCloseTime: pickSetting(data, "restaurant_close_time", "23:59"),

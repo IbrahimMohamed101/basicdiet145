@@ -67,6 +67,8 @@ const { normalizeStoredVatBreakdown, buildMoneySummary } = require("../utils/pri
 const { resolveSubscriptionAddonBillingMode } = require("../utils/subscription/subscriptionCatalog");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
 const { DASHBOARD_ROLES, DASHBOARD_ROLE_LABEL } = require("../constants/dashboardRoles");
+const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
+const { resolveSinglePickupLocations } = require("../utils/singlePickupLocation");
 
 const MAX_PREMIUM_PRICE = 10000;
 const MAX_VAT_PERCENTAGE = 100;
@@ -3493,12 +3495,20 @@ function normalizePickupLocationsOrThrow(value, options = {}) {
   if (!Array.isArray(value)) {
     throw createControlledError(400, "INVALID", "pickup_locations must be an array");
   }
+  if (value.length > 1) {
+    throw createControlledError(
+      422,
+      "SINGLE_PICKUP_BRANCH_ONLY",
+      "Only one pickup branch is supported"
+    );
+  }
 
   const ids = new Set();
   const arNames = new Set();
   const enNames = new Set();
+  const sourceLocations = value.length ? value : [buildDefaultPickupLocation()];
 
-  return value.map((loc, index) => {
+  return sourceLocations.map((loc, index) => {
     if (!loc || typeof loc !== "object" || Array.isArray(loc)) {
       throw createControlledError(400, "INVALID", `Pickup location at index ${index} must be an object`);
     }
@@ -4032,7 +4042,9 @@ async function getDashboardSettings(req, res) {
   data.restaurant_close_time = data.restaurant_close_time ?? "23:59";
   data.delivery_windows = data.delivery_windows ?? ["08:00-11:00", "12:00-15:00"];
   data.pickup_locations = normalizePickupLocationsOrThrow(
-    Array.isArray(data.pickup_locations) ? data.pickup_locations : [],
+    resolveSinglePickupLocations(
+      Array.isArray(data.pickup_locations) ? data.pickup_locations : []
+    ),
     { requireAddress: false }
   );
   data.skip_allowance = data.skip_allowance ?? data.skipAllowance;

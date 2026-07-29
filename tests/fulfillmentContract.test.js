@@ -83,8 +83,9 @@ function run() {
     pickupLocations,
     lang: "ar",
   });
-  assert.strictEqual(missingPickup.pickupLocation, null);
-  assert.strictEqual(missingPickup.fulfillmentSummary.lockedMessage, "تفاصيل الفرع غير متاحة حاليًا");
+  assert(missingPickup.pickupLocation, "legacy branch IDs resolve to the only branch");
+  assert.strictEqual(missingPickup.pickupLocation.name, "فرع الرياض الشمالي");
+  assert.strictEqual(missingPickup.fulfillmentSummary.lockedMessage, null);
   assertNoRawCodes(missingPickup.fulfillmentSummary, "missing pickup");
 
   const deliveryOverview = buildFulfillmentReadFields({
@@ -141,8 +142,40 @@ function run() {
     windows: [],
     pickupLocations: [defaultLocation],
   });
+  assert.strictEqual(defaultCatalog.pickupLocations.length, 1);
   assert.strictEqual(defaultCatalog.pickupLocations[0].name, "Main Branch");
   assert.strictEqual(defaultCatalog.pickupLocations[0].address.line1, "H4GX+JF7, As Salamah, Jeddah 23436, Saudi Arabia");
+  assert.strictEqual(defaultCatalog.defaults.pickupLocationId, "main");
+
+  const emptySettingsCatalog = resolveDeliveryCatalog({
+    lang: "ar",
+    windows: [],
+    pickupLocations: [],
+  });
+  assert.strictEqual(emptySettingsCatalog.pickupLocations.length, 1);
+  assert.strictEqual(emptySettingsCatalog.pickupLocations[0].id, "main");
+  assert.strictEqual(emptySettingsCatalog.pickupLocations[0].name, "الفرع الرئيسي");
+
+  const singleBranchCatalog = resolveDeliveryCatalog({
+    lang: "en",
+    windows: [],
+    pickupLocations: [
+      {
+        id: "secondary",
+        name: "Secondary",
+        address: "Secondary address",
+      },
+      {
+        id: "preferred",
+        name: "Preferred",
+        address: "Preferred address",
+        isDefault: true,
+      },
+    ],
+  });
+  assert.strictEqual(singleBranchCatalog.pickupLocations.length, 1);
+  assert.strictEqual(singleBranchCatalog.pickupLocations[0].id, "preferred");
+  assert.strictEqual(singleBranchCatalog.defaults.pickupLocationId, "preferred");
 
   const legacyDefaultLocation = {
     ...defaultLocation,

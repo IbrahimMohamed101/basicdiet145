@@ -34,6 +34,7 @@ const {
   buildAddonEntitlementsReadModel,
 } = require("../services/subscription/subscriptionAddonEntitlementReadService");
 const opsTransitionService = require("../services/dashboard/opsTransitionService");
+const { resolveSinglePickupLocations } = require("../utils/singlePickupLocation");
 
 async function executeCanonicalDayAction(req, res, action, extra = {}) {
   const { id, date } = req.params;
@@ -57,7 +58,7 @@ async function executeCanonicalDayAction(req, res, action, extra = {}) {
 
 async function getPickupLocationsSetting() {
   const setting = await Setting.findOne({ key: "pickup_locations" }).lean();
-  return Array.isArray(setting && setting.value) ? setting.value : [];
+  return resolveSinglePickupLocations(setting && setting.value);
 }
 
 function generateSixDigitPickupCode() {

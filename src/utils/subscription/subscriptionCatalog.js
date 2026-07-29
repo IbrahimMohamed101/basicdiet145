@@ -1,5 +1,6 @@
 const { pickLang } = require("../i18n");
 const { withDefaultMealNutrition } = require("../mealNutrition");
+const { resolveSinglePickupLocations } = require("../singlePickupLocation");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
@@ -537,7 +538,16 @@ function resolvePickupLocationEntry(rawLocation, index, lang, fallbackSlots) {
     };
 
   return {
-    id: String(rawLocation.id || rawLocation.locationId || `pickup_location_${index + 1}`),
+    id: String(
+      rawLocation.id
+      || rawLocation.locationId
+      || rawLocation.key
+      || rawLocation.code
+      || rawLocation.slug
+      || rawLocation.branchId
+      || rawLocation.pickupLocationId
+      || `pickup_location_${index + 1}`
+    ),
     name: plainName,
     label: plainName,
     address,
@@ -582,11 +592,9 @@ function resolveDeliveryCatalog({
       .filter(Boolean)
     : [];
   const hasAreaPricing = resolvedAreas.length > 0;
-  const resolvedPickupLocations = Array.isArray(pickupLocations)
-    ? pickupLocations
+  const resolvedPickupLocations = resolveSinglePickupLocations(pickupLocations)
       .map((location, index) => resolvePickupLocationEntry(location, index, lang, []))
-      .filter(Boolean)
-    : [];
+      .filter(Boolean);
 
   return {
     methods: [
@@ -650,7 +658,8 @@ function resolvePickupLocationSelection(pickupLocations, locationId, lang, windo
       .filter(Boolean)
     : [];
 
-  return resolvedLocations.find((location) => location.id === normalizedId) || null;
+  return resolvedLocations.find((location) => location.id === normalizedId)
+    || (resolvedLocations.length === 1 ? resolvedLocations[0] : null);
 }
 
 function resolveCheckoutLineItem(kind, label, amountHalala) {

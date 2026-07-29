@@ -38,6 +38,10 @@ const {
 const {
   normalizeSubscriptionAddonCategory,
 } = require("./subscriptionAddonPolicyService");
+const {
+  getPickupLocationId,
+  resolveSinglePickupLocations,
+} = require("../../utils/singlePickupLocation");
 
 async function findMenuPremiumOptionsByIds(ids) {
   if (!ids.length) return [];
@@ -728,24 +732,6 @@ function toKsaMidnightDate(dateStr) {
   return new Date(`${dateStr}T00:00:00+03:00`);
 }
 
-function isActivePickupLocation(location) {
-  return Boolean(location)
-    && typeof location === "object"
-    && !Array.isArray(location)
-    && location.isActive !== false
-    && location.active !== false
-    && location.enabled !== false
-    && location.isEnabled !== false
-    && location.isAvailable !== false
-    && location.available !== false
-    && location.pickupEnabled !== false
-    && location.isPickupEnabled !== false
-    && location.supportsPickup !== false
-    && location.pickupAvailable !== false
-    && location.availableForPickup !== false
-    && location.acceptsPickup !== false;
-}
-
 function normalizeFirstDayOverride(override) {
   if (!override) return null;
   const type = typeof override === "object" ? override.type : override;
@@ -768,20 +754,18 @@ function normalizeFirstDayOverrideOrThrow(override) {
     err.code = "VALIDATION_ERROR";
     throw err;
   }
-  if (!pickupLocationId) {
-    const err = new Error("firstDayFulfillmentOverride.pickupLocationId is required");
-    err.code = "VALIDATION_ERROR";
-    throw err;
-  }
-  return { type: "pickup", pickupLocationId };
+  return { type: "pickup", pickupLocationId: pickupLocationId || null };
 }
 
 function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations, lang }) {
   const normalized = normalizeFirstDayOverrideOrThrow(override);
   if (!normalized) return null;
+  const singlePickupLocations = resolveSinglePickupLocations(activePickupLocations);
+  const pickupLocationId = normalized.pickupLocationId
+    || getPickupLocationId(singlePickupLocations[0]);
   const resolvedPickupLocation = resolvePickupLocationSelection(
-    activePickupLocations,
-    normalized.pickupLocationId,
+    singlePickupLocations,
+    pickupLocationId,
     lang,
     []
   );
@@ -790,7 +774,7 @@ function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations
     err.code = "VALIDATION_ERROR";
     throw err;
   }
-  return normalized;
+  return { type: "pickup", pickupLocationId: resolvedPickupLocation.id };
 }
 
 async function applySameDayDeliveryPickupOverride({ delivery, lang }) {
@@ -805,9 +789,7 @@ async function applySameDayDeliveryPickupOverride({ delivery, lang }) {
   }
 
   const pickupLocations = await getSettingValue("pickup_locations", []);
-  const activePickupLocations = Array.isArray(pickupLocations)
-    ? pickupLocations.filter(isActivePickupLocation)
-    : [];
+  const activePickupLocations = resolveSinglePickupLocations(pickupLocations);
   const existingOverride = validateFirstDayPickupOverrideOrThrow({
     override: delivery.firstDayFulfillmentOverride,
     activePickupLocations,
@@ -1182,18 +1164,13 @@ async function resolveCheckoutQuoteOrThrow(
   if (delivery.type === "pickup") {
     delivery.firstDayFulfillmentOverride = null;
     const pickupLocations = await getSettingValue("pickup_locations", []);
-    const activePickupLocations = Array.isArray(pickupLocations)
-      ? pickupLocations.filter((location) => location && location.isActive !== false)
-      : [];
+    const activePickupLocations = resolveSinglePickupLocations(pickupLocations);
 
     if (!delivery.pickupLocationId) {
       if (activePickupLocations.length >= 1) {
         const defaultLocation = activePickupLocations[0];
-        delivery.pickupLocationId = String(
-          defaultLocation.id
-          || defaultLocation.locationId
-          || "pickup_location_1"
-        );
+        delivery.pickupLocationId = getPickupLocationId(defaultLocation)
+          || "main";
       } else {
         const err = new Error("No active pickup location is configured");
         err.code = "VALIDATION_ERROR";
@@ -1219,9 +1196,7 @@ async function resolveCheckoutQuoteOrThrow(
   if (delivery.type === "delivery") {
     if (delivery.firstDayFulfillmentOverride) {
       const pickupLocations = await getSettingValue("pickup_locations", []);
-      const activePickupLocations = Array.isArray(pickupLocations)
-        ? pickupLocations.filter(isActivePickupLocation)
-        : [];
+      const activePickupLocations = resolveSinglePickupLocations(pickupLocations);
       delivery.firstDayFulfillmentOverride = validateFirstDayPickupOverrideOrThrow({
         override: delivery.firstDayFulfillmentOverride,
         activePickupLocations,
