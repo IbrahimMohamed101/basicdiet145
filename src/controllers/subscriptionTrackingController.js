@@ -9,8 +9,8 @@ const {
   buildSubscriptionTimeline,
 } = require("../services/subscription/subscriptionService");
 const {
-  buildSubscriptionDashboardTracking,
-} = require("../services/subscription/subscriptionDashboardTrackingService");
+  buildSubscriptionDashboardTrackingReadModel,
+} = require("../services/subscription/subscriptionDashboardTrackingReadService");
 
 async function getSubscriptionTrackingAdmin(req, res) {
   const { id } = req.params;
@@ -30,13 +30,14 @@ async function getSubscriptionTrackingAdmin(req, res) {
     buildSubscriptionTimeline(id, { lang }),
     getRestaurantBusinessDate(),
   ]);
-  const tracking = await buildSubscriptionDashboardTracking({
+  const tracking = await buildSubscriptionDashboardTrackingReadModel({
     subscription,
     timeline,
     lang,
     businessDate,
   });
 
+  res.set("Cache-Control", "no-store");
   return res.status(200).json({
     status: true,
     data: tracking,
