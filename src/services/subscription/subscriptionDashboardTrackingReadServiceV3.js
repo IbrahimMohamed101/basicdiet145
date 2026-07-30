@@ -6,6 +6,9 @@ const {
 const {
   buildSubscriptionMealMovementProvenance,
 } = require("./subscriptionMealMovementProvenanceService");
+const {
+  enrichSubscriptionMealMovementProvenance,
+} = require("./subscriptionMealMovementProvenanceEnrichmentService");
 
 async function buildSubscriptionDashboardTrackingReadModelV3({
   subscription,
@@ -20,11 +23,12 @@ async function buildSubscriptionDashboardTrackingReadModelV3({
     businessDate,
   });
 
-  const provenance = await buildSubscriptionMealMovementProvenance({
+  const rawProvenance = await buildSubscriptionMealMovementProvenance({
     subscription,
     tracking: base,
     manualDeductions: base.adjustments && base.adjustments.manualDeductions,
   });
+  const provenance = await enrichSubscriptionMealMovementProvenance(rawProvenance);
 
   return {
     ...base,
