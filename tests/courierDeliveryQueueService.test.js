@@ -6,9 +6,11 @@ process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboar
 const assert = require("assert");
 const {
   buildOneTimeOrderQuery,
+  canonicalPersistedDeliveryStatus,
   deliveryStatusFromOrder,
   deliveryStatusFromSubscriptionDay,
   isVisibleDeliveryDayStatus,
+  makeQueueRowReadOnly,
   resolveBusinessDate,
   resolveDayZoneName,
   resolveOrderDeliveryStatus,
@@ -51,6 +53,10 @@ const {
     assert.strictEqual(isVisibleDeliveryDayStatus(status), false, `${status} is not a delivery queue row`);
   }
 
+  assert.strictEqual(canonicalPersistedDeliveryStatus("fulfilled"), "delivered");
+  assert.strictEqual(canonicalPersistedDeliveryStatus("delivery_canceled"), "canceled");
+  assert.strictEqual(canonicalPersistedDeliveryStatus("in_preparation"), "preparing");
+
   assert.strictEqual(deliveryStatusFromSubscriptionDay("open"), "preparing");
   assert.strictEqual(deliveryStatusFromSubscriptionDay("locked"), "preparing");
   assert.strictEqual(deliveryStatusFromSubscriptionDay("in_preparation"), "preparing");
@@ -86,6 +92,11 @@ const {
     "orders without a Delivery row must still expose their real operational status"
   );
   assert.strictEqual(
+    resolveOrderDeliveryStatus({ status: "confirmed" }, { status: "fulfilled" }),
+    "delivered",
+    "legacy persisted fulfilled aliases must remain terminal"
+  );
+  assert.strictEqual(
     resolveOrderDeliveryStatus({ status: "fulfilled" }, { status: "scheduled" }),
     "delivered"
   );
@@ -100,6 +111,22 @@ const {
     "الروضة",
     "district must be available to the dashboard region filter when no zone record exists"
   );
+
+  const historical = makeQueueRowReadOnly({
+    id: "delivery-1",
+    canCourierPickup: true,
+    canMarkArrivingSoon: true,
+    canMarkDelivered: true,
+    canCancel: true,
+    allowedActions: [{ id: "fulfill" }],
+    allowedActionIds: ["fulfill"],
+  });
+  assert.strictEqual(historical.canCourierPickup, false);
+  assert.strictEqual(historical.canMarkArrivingSoon, false);
+  assert.strictEqual(historical.canMarkDelivered, false);
+  assert.strictEqual(historical.canCancel, false);
+  assert.deepStrictEqual(historical.allowedActions, []);
+  assert.deepStrictEqual(historical.allowedActionIds, []);
 
   console.log("Courier delivery queue service checks passed.");
 })();
