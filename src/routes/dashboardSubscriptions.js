@@ -16,6 +16,10 @@ const subscriptionStaffAccess = dashboardRoleMiddleware([
   "restaurant",
   "kitchen",
 ]);
+const subscriptionTrackingReadAccess = dashboardRoleMiddleware([
+  "admin",
+  "cashier",
+]);
 const manualDeductionWriteAccess = dashboardRoleMiddleware([
   "admin",
   "cashier",
@@ -60,7 +64,7 @@ router.get(
 router.get(
   "/:id/tracking",
   dashboardAuthMiddleware,
-  subscriptionStaffAccess,
+  subscriptionTrackingReadAccess,
   asyncHandler(subscriptionTrackingController.getSubscriptionTrackingAdmin)
 );
 
