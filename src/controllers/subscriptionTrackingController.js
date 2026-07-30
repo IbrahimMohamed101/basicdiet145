@@ -6,7 +6,7 @@ const errorResponse = require("../utils/errorResponse");
 const { getRequestLang } = require("../utils/i18n");
 const {
   buildSubscriptionTimeline,
-} = require("../services/subscription/subscriptionTimelineService");
+} = require("../services/subscription/subscriptionService");
 const {
   buildSubscriptionDashboardTracking,
 } = require("../services/subscription/subscriptionDashboardTrackingService");
