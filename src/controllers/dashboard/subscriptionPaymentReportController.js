@@ -2,12 +2,16 @@
 
 const accountingDailyReportService = require("../../services/dashboard/accountingDailyReportService");
 const subscriptionPaymentMethodReportService = require("../../services/dashboard/subscriptionPaymentMethodReportService");
+const subscriptionPaymentRangeReportService = require("../../services/dashboard/subscriptionPaymentRangeReportService");
 
 function handleError(res, err) {
   if (err instanceof accountingDailyReportService.AccountingReportError) {
     const messageArByCode = {
       INVALID_DATE: "صيغة التاريخ غير صحيحة. استخدم YYYY-MM-DD",
       INVALID_MONTH: "صيغة الشهر غير صحيحة. استخدم YYYY-MM",
+      INVALID_DATE_RANGE: "نطاق التاريخ غير صحيح. استخدم YYYY-MM-DD وتأكد أن البداية قبل النهاية",
+      DATE_RANGE_TOO_LARGE: "النطاق أكبر من الحد المسموح وهو سنة واحدة",
+      INVALID_BOOLEAN: "قيمة خيار المقارنة أو التفاصيل غير صحيحة",
       INVALID_FULFILLMENT_METHOD: "طريقة التنفيذ غير صحيحة. استخدم الكل أو الاستلام أو التوصيل",
       INVALID_INCLUDE_DETAILS: "قيمة عرض التفاصيل غير صحيحة. استخدم true أو false",
     };
@@ -63,7 +67,28 @@ async function getMonthlySubscriptionPayments(req, res) {
   }
 }
 
+async function getRangeSubscriptionPayments(req, res) {
+  try {
+    const data = await subscriptionPaymentRangeReportService.buildRangeSubscriptionPaymentReport({
+      from: req.query.from,
+      to: req.query.to,
+      fulfillmentMethod: req.query.fulfillmentMethod,
+      includeDetails: req.query.includeDetails,
+      comparePrevious: req.query.comparePrevious,
+    });
+    return res.status(200).json({
+      status: true,
+      message: "تم إنشاء تحليل النطاق بنجاح",
+      messageAr: "تم إنشاء تحليل النطاق بنجاح",
+      data,
+    });
+  } catch (err) {
+    return handleError(res, err);
+  }
+}
+
 module.exports = {
   getDailySubscriptionPayments,
   getMonthlySubscriptionPayments,
+  getRangeSubscriptionPayments,
 };
