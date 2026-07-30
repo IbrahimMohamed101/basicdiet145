@@ -40,7 +40,7 @@ const ACTION_REGISTRY = {
     icon: "chef-hat",
     endpoint: "/api/dashboard/ops/actions/prepare",
     method: "POST",
-    roles: ["superadmin", "admin", "kitchen"],
+    roles: ["superadmin", "admin", "kitchen", "courier"],
   },
   dispatch: {
     id: "dispatch",
@@ -59,7 +59,7 @@ const ACTION_REGISTRY = {
     icon: "package",
     endpoint: "/api/dashboard/ops/actions/ready_for_delivery",
     method: "POST",
-    roles: ["superadmin", "admin", "kitchen"],
+    roles: ["superadmin", "admin", "kitchen", "courier"],
     modes: ["delivery"],
   },
   pickup: {
@@ -184,6 +184,9 @@ function normalizeActionId(actionId) {
 
 function roleAllowedForActionMode(actionId, role, mode) {
   const operationalRole = role === "restaurant" ? "kitchen" : role;
+  if (actionId === "prepare" && operationalRole === "courier" && mode !== "delivery") {
+    return false;
+  }
   if (actionId === "fulfill") {
     if (operationalRole === "kitchen" && mode !== "pickup") return false;
     if (operationalRole === "courier" && mode === "pickup") return false;
