@@ -7,12 +7,11 @@ const SubscriptionAuditLog = require("../../models/SubscriptionAuditLog");
 const Delivery = require("../../models/Delivery");
 const DashboardUser = require("../../models/DashboardUser");
 
-const CONSUMED_DAY_STATUSES = new Set([
-  "fulfilled",
-  "delivered",
+const FULFILLED_STATUSES = new Set(["fulfilled", "delivered"]);
+const CONSUMED_STATUSES = new Set([
+  ...FULFILLED_STATUSES,
   "consumed_without_preparation",
 ]);
-
 const DASHBOARD_ROLES = new Set([
   "admin",
   "superadmin",
@@ -30,20 +29,19 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function nonNegativeInteger(value) {
+function integer(value) {
   const number = Number(value);
-  if (!Number.isFinite(number)) return 0;
-  return Math.max(0, Math.floor(number));
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0;
 }
 
-function idString(value) {
+function idOf(value) {
   if (!value) return null;
   const candidate = value && typeof value === "object" && value._id ? value._id : value;
-  const result = String(candidate || "").trim();
-  return result || null;
+  const text = String(candidate || "").trim();
+  return text || null;
 }
 
-function normalizeRole(value) {
+function roleOf(value) {
   const role = String(value || "").trim().toLowerCase();
   return role || null;
 }
@@ -52,23 +50,23 @@ function parseEmbeddedActor(value) {
   const text = String(value || "").trim();
   if (!text) return { role: null, id: null };
   const separator = text.indexOf(":");
-  if (separator === -1) {
+  if (separator < 0) {
     return DASHBOARD_ROLES.has(text)
       ? { role: text, id: null }
       : { role: null, id: text };
   }
   return {
-    role: normalizeRole(text.slice(0, separator)),
-    id: idString(text.slice(separator + 1)),
+    role: roleOf(text.slice(0, separator)),
+    id: idOf(text.slice(separator + 1)),
   };
 }
 
-function actorView({ role = null, id = null } = {}, actorMap = new Map()) {
-  const actorId = idString(id);
-  const stored = actorId ? actorMap.get(actorId) : null;
+function actorView(actor = {}, actorMap = new Map()) {
+  const id = idOf(actor.id || actor.actorId);
+  const stored = id ? actorMap.get(id) : null;
   return {
-    id: actorId,
-    role: normalizeRole(role) || normalizeRole(stored && stored.role),
+    id,
+    role: roleOf(actor.role || actor.actorType) || roleOf(stored && stored.role),
     email: stored && stored.email ? String(stored.email) : null,
   };
 }
@@ -78,7 +76,7 @@ function resolvePlanningRole(day = {}) {
   const lockedMeta = asObject(lockedPlanning.meta);
   const plannerMeta = asObject(day.plannerMeta);
   const planningMeta = asObject(day.planningMeta);
-  const direct = normalizeRole(
+  const direct = roleOf(
     plannerMeta.confirmedByRole
       || planningMeta.confirmedByRole
       || lockedMeta.confirmedByRole
@@ -86,11 +84,11 @@ function resolvePlanningRole(day = {}) {
   if (direct) return direct;
 
   const assignmentSources = asArray(day.baseMealSlots)
-    .map((slot) => normalizeRole(slot && slot.assignmentSource))
+    .map((slot) => roleOf(slot && slot.assignmentSource))
     .filter(Boolean);
   if (assignmentSources.includes("client")) return "client";
-  const dashboardSource = assignmentSources.find((source) => DASHBOARD_ROLES.has(source));
-  if (dashboardSource) return dashboardSource;
+  const dashboardRole = assignmentSources.find((role) => DASHBOARD_ROLES.has(role));
+  if (dashboardRole) return dashboardRole;
   if (day.assignedByKitchen) return "kitchen";
   return null;
 }
@@ -98,64 +96,67 @@ function resolvePlanningRole(day = {}) {
 function selectionChannelFor({ day = null, pickupRequest = null } = {}) {
   const snapshot = asObject(pickupRequest && pickupRequest.snapshot);
   if (snapshot.createdFrom === "client_pickup_request") {
-    return { code: "mobile_app", label: "اختيار أو طلب من تطبيق العميل", role: "client" };
+    return {
+      code: "mobile_app",
+      label: "تم الاختيار أو طلب الاستلام من تطبيق العميل",
+      role: "client",
+    };
   }
 
   const role = resolvePlanningRole(day || {});
-  if (role === "client" || role === "user" || role === "app") {
-    return { code: "mobile_app", label: "اختيار من تطبيق العميل", role: "client" };
+  if (["client", "user", "app", "mobile"].includes(role)) {
+    return { code: "mobile_app", label: "تم اختيار الوجبات من تطبيق العميل", role: "client" };
   }
   if (role && DASHBOARD_ROLES.has(role)) {
-    return { code: "dashboard", label: "اختيار أو تعيين من الداشبورد", role };
+    return { code: "dashboard", label: "تم اختيار أو تعيين الوجبات من الداشبورد", role };
   }
-  return { code: "unknown", label: "مصدر الاختيار غير مسجل", role: role || null };
+  return { code: "unknown", label: "مصدر اختيار الوجبات غير مسجل", role: role || null };
 }
 
 function operationLabel(action) {
   const labels = {
-    created: "إنشاء الطلب",
     lock: "تأكيد وقفل اليوم",
     prepare: "بدء التحضير",
     ready_for_delivery: "جاهز للتوصيل",
     dispatch: "خرج للتوصيل",
-    notify_arrival: "تنبيه بالوصول",
+    notify_arrival: "تنبيه العميل بالوصول",
     ready_for_pickup: "جاهز للاستلام",
     fulfill: "تم التسليم أو الاستلام",
     no_show: "لم يحضر العميل",
-    cancel: "إلغاء",
-    reopen: "إعادة فتح",
+    cancel: "إلغاء العملية",
+    reopen: "إعادة فتح اليوم",
   };
   return labels[action] || String(action || "إجراء");
 }
 
-function buildOperationRows({ day = null, pickupRequest = null, audits = [] } = {}, actorMap = new Map()) {
+function buildOperations({ day = null, pickupRequest = null, audits = [] } = {}, actorMap = new Map()) {
   const rows = [];
-  for (const row of asArray(day && day.operationAuditLog)) {
+  const appendEmbedded = (row, evidence) => {
     const parsed = parseEmbeddedActor(row && row.by);
     rows.push({
       action: String(row && row.action || ""),
       label: operationLabel(row && row.action),
       actor: actorView(parsed, actorMap),
       at: row && row.at ? row.at : null,
-      evidence: "embedded_operation_audit",
+      evidence,
     });
+  };
+
+  for (const row of asArray(day && day.operationAuditLog)) {
+    appendEmbedded(row, "subscription_day.operationAuditLog");
   }
   for (const row of asArray(pickupRequest && pickupRequest.operationAuditLog)) {
-    const parsed = parseEmbeddedActor(row && row.by);
-    rows.push({
-      action: String(row && row.action || ""),
-      label: operationLabel(row && row.action),
-      actor: actorView(parsed, actorMap),
-      at: row && row.at ? row.at : null,
-      evidence: "pickup_operation_audit",
-    });
+    appendEmbedded(row, "subscription_pickup_request.operationAuditLog");
   }
   for (const audit of asArray(audits)) {
     const action = String(audit && audit.action || "").replace(/^dashboard_/, "");
     rows.push({
       action,
       label: operationLabel(action),
-      actor: actorView({ role: audit && audit.actorType, id: audit && audit.actorId }, actorMap),
+      actor: actorView({
+        actorType: audit && audit.actorType,
+        actorId: audit && audit.actorId,
+      }, actorMap),
       at: audit && audit.createdAt ? audit.createdAt : null,
       fromStatus: audit && audit.fromStatus ? audit.fromStatus : null,
       toStatus: audit && audit.toStatus ? audit.toStatus : null,
@@ -163,26 +164,31 @@ function buildOperationRows({ day = null, pickupRequest = null, audits = [] } = 
       evidence: "subscription_audit_log",
     });
   }
+
+  const seen = new Set();
   return rows
     .filter((row) => row.action)
-    .sort((left, right) => new Date(left.at || 0).getTime() - new Date(right.at || 0).getTime());
+    .sort((left, right) => new Date(left.at || 0).getTime() - new Date(right.at || 0).getTime())
+    .filter((row) => {
+      const key = [row.action, row.at ? new Date(row.at).toISOString() : "", row.actor.id || "", row.actor.role || ""].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
-function lastFulfillmentActor({ day = null, pickupRequest = null, audits = [] } = {}, actorMap = new Map()) {
-  if (pickupRequest && pickupRequest.fulfilledByDashboardUserId) {
-    const actorId = idString(pickupRequest.fulfilledByDashboardUserId);
-    return actorView({ id: actorId }, actorMap);
+function fulfillmentActor(context = {}, actorMap = new Map()) {
+  if (context.pickupRequest && context.pickupRequest.fulfilledByDashboardUserId) {
+    return actorView({ id: context.pickupRequest.fulfilledByDashboardUserId }, actorMap);
   }
-  if (day && day.pickupVerifiedByDashboardUserId) {
-    const actorId = idString(day.pickupVerifiedByDashboardUserId);
-    return actorView({ id: actorId }, actorMap);
+  if (context.day && context.day.pickupVerifiedByDashboardUserId) {
+    return actorView({ id: context.day.pickupVerifiedByDashboardUserId }, actorMap);
   }
-  const operations = buildOperationRows({ day, pickupRequest, audits }, actorMap)
-    .filter((row) => row.action === "fulfill");
-  return operations.length ? operations[operations.length - 1].actor : actorView({}, actorMap);
+  const fulfill = buildOperations(context, actorMap).filter((row) => row.action === "fulfill");
+  return fulfill.length ? fulfill[fulfill.length - 1].actor : actorView({}, actorMap);
 }
 
-function resolveFulfillmentMode(subscription = {}, day = null, pickupRequest = null) {
+function fulfillmentMode(subscription = {}, day = null, pickupRequest = null) {
   if (pickupRequest) return "pickup";
   return String(
     day && day.fulfillmentModeOverride
@@ -191,125 +197,56 @@ function resolveFulfillmentMode(subscription = {}, day = null, pickupRequest = n
   ).trim().toLowerCase() || null;
 }
 
-function sourceDefinition({ status, fulfillmentMode, pickupRequest, manual = false, unknown = false }) {
+function consumptionSource({ status, mode, pickupRequest, manual = false, unknown = false }) {
   if (manual) {
-    return {
-      code: "dashboard_manual_deduction",
-      label: "خصم يدوي من الداشبورد",
-      completionChannel: "dashboard",
-      completionLabel: "الداشبورد",
-    };
+    return { code: "dashboard_manual_deduction", label: "خصم يدوي من الداشبورد", channel: "dashboard", channelLabel: "الداشبورد" };
   }
   if (unknown) {
-    return {
-      code: "legacy_unattributed_consumption",
-      label: "خصم تاريخي بلا مصدر كافٍ",
-      completionChannel: "unknown",
-      completionLabel: "غير معروف",
-    };
+    return { code: "legacy_unattributed_consumption", label: "خصم تاريخي بلا مصدر موثق", channel: "unknown", channelLabel: "غير معروف" };
   }
   if (status === "consumed_without_preparation") {
-    return {
-      code: "consumed_without_preparation",
-      label: "حسم تشغيلي بدون تحضير أو تسليم",
-      completionChannel: "system",
-      completionLabel: "حسم تشغيلي",
-    };
+    return { code: "consumed_without_preparation", label: "حسم تشغيلي بدون تحضير أو تسليم", channel: "system", channelLabel: "حسم تشغيلي" };
   }
-  if (pickupRequest || fulfillmentMode === "pickup") {
-    return {
-      code: "branch_pickup_fulfillment",
-      label: "استلام فعلي من الفرع",
-      completionChannel: "branch_pickup",
-      completionLabel: "استلام من الفرع",
-    };
+  if (pickupRequest || mode === "pickup") {
+    return { code: "branch_pickup_fulfillment", label: "استلام فعلي من الفرع", channel: "branch_pickup", channelLabel: "استلام من الفرع" };
   }
-  if (fulfillmentMode === "delivery") {
-    return {
-      code: "delivery_fulfillment",
-      label: "تسليم فعلي عن طريق التوصيل",
-      completionChannel: "delivery",
-      completionLabel: "التوصيل",
-    };
+  if (mode === "delivery") {
+    return { code: "delivery_fulfillment", label: "تسليم فعلي عن طريق التوصيل", channel: "delivery", channelLabel: "التوصيل" };
   }
-  return {
-    code: "subscription_fulfillment",
-    label: "تنفيذ اشتراك",
-    completionChannel: "dashboard",
-    completionLabel: "تشغيل الاشتراك",
-  };
+  return { code: "subscription_fulfillment", label: "تنفيذ اشتراك", channel: "operations", channelLabel: "تشغيل الاشتراك" };
 }
 
-function mealItemsForAllocation(trackingDay, allocation, pickupRequest = null) {
+function itemsForAllocation(trackingDay, allocation, pickupRequest = null) {
+  const items = asArray(trackingDay && trackingDay.mealItems);
   const slotKey = String(allocation && allocation.slotKey || "");
-  const dayItems = asArray(trackingDay && trackingDay.mealItems);
-  const exact = dayItems.find((item) => String(item && item.slotKey || "") === slotKey);
+  const exact = items.find((item) => String(item && item.slotKey || "") === slotKey);
   if (exact) return [exact];
 
   const selectedKeys = new Set([
     ...asArray(pickupRequest && pickupRequest.selectedMealSlotIds),
     ...asArray(pickupRequest && pickupRequest.selectedPickupItemIds),
   ].map((value) => String(value || "")));
-  if (selectedKeys.size) {
-    const selected = dayItems.filter((item) => selectedKeys.has(String(item && item.slotKey || "")));
-    if (selected.length) return selected;
-  }
-  return dayItems.length === 1 ? dayItems : [];
+  const selected = items.filter((item) => selectedKeys.has(String(item && item.slotKey || "")));
+  if (selected.length) return selected;
+  return items.length === 1 ? items : [];
 }
 
-function eventKey(event) {
-  return [
-    event.type,
-    event.sourceCode,
-    event.date || "",
-    event.reference && event.reference.type || "",
-    event.reference && event.reference.id || "",
-    event.actor && event.actor.id || "",
-  ].join("|");
-}
-
-function mergeEvents(events) {
-  const grouped = new Map();
-  for (const event of events) {
-    const key = eventKey(event);
-    const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, {
-        ...event,
-        mealItems: [...asArray(event.mealItems)],
-        allocationKeys: [...asArray(event.allocationKeys)],
-      });
-      continue;
-    }
-    existing.quantity += nonNegativeInteger(event.quantity);
-    const itemKeys = new Set(existing.mealItems.map((item) => String(item && (item.id || item.slotKey) || "")));
-    for (const item of asArray(event.mealItems)) {
-      const itemKey = String(item && (item.id || item.slotKey) || "");
-      if (!itemKey || itemKeys.has(itemKey)) continue;
-      itemKeys.add(itemKey);
-      existing.mealItems.push(item);
-    }
-    existing.allocationKeys.push(...asArray(event.allocationKeys));
-  }
-  return [...grouped.values()];
-}
-
-function buildManualEvents(manualDeductions = [], actorMap = new Map()) {
+function manualEvents(manualDeductions = [], actorMap = new Map()) {
   return asArray(manualDeductions)
-    .filter((row) => nonNegativeInteger(row && row.deducted && row.deducted.totalMeals) > 0)
+    .filter((row) => integer(row && row.deducted && row.deducted.totalMeals) > 0)
     .map((row) => {
-      const source = sourceDefinition({ manual: true });
+      const source = consumptionSource({ manual: true });
       return {
         id: `manual:${row.id || row.createdAt || row.businessDate}`,
         type: "manual_deduction",
         balanceEffect: "consumed",
-        quantity: nonNegativeInteger(row.deducted.totalMeals),
+        quantity: integer(row.deducted.totalMeals),
         date: row.businessDate || null,
         occurredAt: row.createdAt || null,
         sourceCode: source.code,
         sourceLabel: source.label,
-        selection: { code: "not_applicable", label: "لا يوجد اختيار يومي", role: null },
-        completion: { code: source.completionChannel, label: source.completionLabel },
+        selection: { code: "not_applicable", label: "لا يوجد اختيار يومي مرتبط بهذه الحركة", role: null },
+        completion: { code: source.channel, label: source.channelLabel },
         fulfillmentMode: row.fulfillmentMethod || null,
         actor: actorView(row.actor || {}, actorMap),
         status: "consumed",
@@ -319,161 +256,142 @@ function buildManualEvents(manualDeductions = [], actorMap = new Map()) {
         operations: [],
         reason: row.reason || null,
         notes: row.notes || null,
-        evidence: ["manual_subscription_meal_deduction activity log"],
+        evidence: ["ActivityLog.action=manual_subscription_meal_deduction"],
         confidence: "exact",
       };
     });
 }
 
-function buildAllocationEvents({
-  subscription,
-  trackingDays,
-  rawDays,
-  pickupRequests,
-  auditsByDay,
-  deliveriesByDay,
-  actorMap,
-}) {
+function allocationEvents({ subscription, trackingDays, rawDays, pickupRequests, auditsByDay, deliveriesByDay, actorMap }) {
   const trackingByDate = new Map(asArray(trackingDays).map((day) => [String(day.date), day]));
-  const rawDayById = new Map(asArray(rawDays).map((day) => [idString(day._id), day]));
-  const pickupById = new Map(asArray(pickupRequests).map((row) => [idString(row._id), row]));
+  const rawDayById = new Map(asArray(rawDays).map((day) => [idOf(day._id), day]));
+  const pickupById = new Map(asArray(pickupRequests).map((request) => [idOf(request._id), request]));
   const events = [];
-  const consumedByDay = new Map();
+  const consumedPerDay = new Map();
 
   for (const allocation of asArray(subscription.baseMealAllocations)) {
     const state = String(allocation && allocation.state || "");
     if (!["reserved", "consumed", "forfeited"].includes(state)) continue;
-    const quantity = Math.max(1, nonNegativeInteger(allocation && allocation.quantity));
-    const dayId = idString(allocation && allocation.dayId);
-    const pickupRequestId = idString(allocation && allocation.pickupRequestId);
-    const rawDay = dayId ? rawDayById.get(dayId) || null : null;
-    const pickupRequest = pickupRequestId ? pickupById.get(pickupRequestId) || null : null;
-    const date = String(allocation && allocation.date || rawDay && rawDay.date || pickupRequest && pickupRequest.date || "") || null;
+
+    const quantity = Math.max(1, integer(allocation && allocation.quantity));
+    const dayId = idOf(allocation && allocation.dayId);
+    const pickupId = idOf(allocation && allocation.pickupRequestId);
+    const day = dayId ? rawDayById.get(dayId) || null : null;
+    const pickupRequest = pickupId ? pickupById.get(pickupId) || null : null;
+    const date = String(allocation && allocation.date || day && day.date || pickupRequest && pickupRequest.date || "") || null;
     const trackingDay = date ? trackingByDate.get(date) || null : null;
-    const status = String(rawDay && rawDay.status || pickupRequest && pickupRequest.status || state);
-    const fulfillmentMode = resolveFulfillmentMode(subscription, rawDay, pickupRequest);
-    const selection = selectionChannelFor({ day: rawDay, pickupRequest });
+    const status = String(day && day.status || pickupRequest && pickupRequest.status || state);
+    const mode = fulfillmentMode(subscription, day, pickupRequest);
+    const selection = selectionChannelFor({ day, pickupRequest });
     const audits = dayId ? auditsByDay.get(dayId) || [] : [];
-    const source = sourceDefinition({ status, fulfillmentMode, pickupRequest });
-    const actor = lastFulfillmentActor({ day: rawDay, pickupRequest, audits }, actorMap);
     const delivery = dayId ? deliveriesByDay.get(dayId) || null : null;
-    const type = state === "reserved" ? "reservation" : state === "forfeited" ? "forfeiture" : "consumption";
+    const operations = buildOperations({ day, pickupRequest, audits }, actorMap);
+    const actor = fulfillmentActor({ day, pickupRequest, audits }, actorMap);
+    const source = consumptionSource({ status, mode, pickupRequest });
+
+    if (state === "consumed" && dayId) {
+      consumedPerDay.set(dayId, integer(consumedPerDay.get(dayId)) + quantity);
+    }
+
     const occurredAt = state === "reserved"
-      ? allocation.reservedAt || pickupRequest && pickupRequest.creditsReservedAt || rawDay && rawDay.updatedAt || null
+      ? allocation.reservedAt || pickupRequest && pickupRequest.creditsReservedAt || day && day.updatedAt || null
       : state === "forfeited"
-        ? allocation.forfeitedAt || rawDay && rawDay.settledAt || null
+        ? allocation.forfeitedAt || day && day.settledAt || null
         : allocation.consumedAt
           || pickupRequest && pickupRequest.creditsConsumedAt
-          || rawDay && rawDay.fulfilledAt
+          || day && day.fulfilledAt
           || delivery && delivery.deliveredAt
           || null;
 
-    if (state === "consumed" && dayId) {
-      consumedByDay.set(dayId, nonNegativeInteger(consumedByDay.get(dayId)) + quantity);
-    }
-
     events.push({
       id: `allocation:${allocation.allocationKey || events.length}`,
-      type,
+      type: state === "reserved" ? "reservation" : state === "forfeited" ? "forfeiture" : "consumption",
       balanceEffect: state,
       quantity,
       date,
       occurredAt,
       sourceCode: state === "reserved" ? `${selection.code}_reservation` : source.code,
-      sourceLabel: state === "reserved" ? selection.label : source.label,
+      sourceLabel: state === "reserved" ? "حجز وجبة ولم يتم استهلاكها بعد" : source.label,
       selection,
       completion: state === "reserved"
         ? { code: "pending", label: "لم يتم التسليم بعد" }
-        : { code: source.completionChannel, label: source.completionLabel },
-      fulfillmentMode,
+        : { code: source.channel, label: source.channelLabel },
+      fulfillmentMode: mode,
       actor: state === "reserved" ? actorView({ role: selection.role }, actorMap) : actor,
       status,
       reference: pickupRequest
-        ? { type: "subscription_pickup_request", id: pickupRequestId }
-        : rawDay
+        ? { type: "subscription_pickup_request", id: pickupId }
+        : day
           ? { type: "subscription_day", id: dayId }
           : { type: "base_meal_allocation", id: null },
-      mealItems: mealItemsForAllocation(trackingDay, allocation, pickupRequest),
+      mealItems: itemsForAllocation(trackingDay, allocation, pickupRequest),
       allocationKeys: allocation.allocationKey ? [String(allocation.allocationKey)] : [],
-      operations: buildOperationRows({ day: rawDay, pickupRequest, audits }, actorMap),
+      operations,
       evidence: [
-        `baseMealAllocation state=${state}`,
-        pickupRequestId ? "allocation.pickupRequestId" : null,
-        dayId ? "allocation.dayId" : null,
-        delivery && delivery.status ? `delivery.status=${delivery.status}` : null,
+        `baseMealAllocation.state=${state}`,
+        pickupId ? "baseMealAllocation.pickupRequestId" : null,
+        dayId ? "baseMealAllocation.dayId" : null,
+        delivery && delivery.status ? `Delivery.status=${delivery.status}` : null,
       ].filter(Boolean),
-      confidence: dayId || pickupRequestId ? "exact" : "derived",
+      confidence: dayId || pickupId ? "exact" : "derived",
     });
   }
 
-  return { events, consumedByDay };
+  return { events, consumedPerDay };
 }
 
-function buildLegacyDayEvents({
-  subscription,
-  trackingDays,
-  rawDays,
-  auditsByDay,
-  deliveriesByDay,
-  actorMap,
-  consumedByDay,
-  maxQuantity,
-}) {
-  let remaining = Math.max(0, nonNegativeInteger(maxQuantity));
+function legacyDayEvents({ subscription, trackingDays, rawDays, auditsByDay, deliveriesByDay, actorMap, consumedPerDay, limit }) {
+  let remaining = Math.max(0, integer(limit));
   if (!remaining) return [];
+
   const trackingByDate = new Map(asArray(trackingDays).map((day) => [String(day.date), day]));
-  const candidates = [];
-
-  for (const day of asArray(rawDays)) {
-    const status = String(day && day.status || "");
-    if (!CONSUMED_DAY_STATUSES.has(status) || !day.creditsDeducted) continue;
-    const dayId = idString(day._id);
-    const alreadyAllocated = nonNegativeInteger(consumedByDay.get(dayId));
-    const trackingDay = trackingByDate.get(String(day.date)) || null;
-    const snapshot = asObject(day.fulfilledSnapshot);
-    const expected = Math.max(
-      nonNegativeInteger(snapshot.deductedCredits),
-      nonNegativeInteger(trackingDay && trackingDay.consumedMeals),
-      nonNegativeInteger(trackingDay && trackingDay.receivedMeals)
-    );
-    const missing = Math.max(0, expected - alreadyAllocated);
-    if (!missing) continue;
-    candidates.push({ day, dayId, trackingDay, status, missing });
-  }
-
-  candidates.sort((left, right) => String(left.day.date).localeCompare(String(right.day.date)));
   const events = [];
-  for (const candidate of candidates) {
+  const candidates = asArray(rawDays)
+    .filter((day) => CONSUMED_STATUSES.has(String(day && day.status || "")) && day.creditsDeducted)
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+
+  for (const day of candidates) {
     if (!remaining) break;
-    const quantity = Math.min(candidate.missing, remaining);
+    const dayId = idOf(day._id);
+    const trackingDay = trackingByDate.get(String(day.date)) || null;
+    const fulfilledSnapshot = asObject(day.fulfilledSnapshot);
+    const expected = Math.max(
+      integer(fulfilledSnapshot.deductedCredits),
+      integer(trackingDay && trackingDay.consumedMeals),
+      integer(trackingDay && trackingDay.receivedMeals)
+    );
+    const missing = Math.max(0, expected - integer(consumedPerDay.get(dayId)));
+    if (!missing) continue;
+
+    const quantity = Math.min(missing, remaining);
     remaining -= quantity;
-    const audits = auditsByDay.get(candidate.dayId) || [];
-    const fulfillmentMode = resolveFulfillmentMode(subscription, candidate.day, null);
-    const source = sourceDefinition({ status: candidate.status, fulfillmentMode, pickupRequest: null });
-    const actor = lastFulfillmentActor({ day: candidate.day, audits }, actorMap);
-    const delivery = deliveriesByDay.get(candidate.dayId) || null;
+    const audits = auditsByDay.get(dayId) || [];
+    const delivery = deliveriesByDay.get(dayId) || null;
+    const mode = fulfillmentMode(subscription, day, null);
+    const source = consumptionSource({ status: String(day.status), mode, pickupRequest: null });
+
     events.push({
-      id: `legacy-day:${candidate.dayId}`,
+      id: `legacy-day:${dayId}`,
       type: "consumption",
       balanceEffect: "consumed",
       quantity,
-      date: candidate.day.date || null,
-      occurredAt: candidate.day.fulfilledAt || candidate.day.settledAt || delivery && delivery.deliveredAt || null,
+      date: day.date || null,
+      occurredAt: day.fulfilledAt || day.settledAt || delivery && delivery.deliveredAt || null,
       sourceCode: source.code,
       sourceLabel: source.label,
-      selection: selectionChannelFor({ day: candidate.day }),
-      completion: { code: source.completionChannel, label: source.completionLabel },
-      fulfillmentMode,
-      actor,
-      status: candidate.status,
-      reference: { type: "subscription_day", id: candidate.dayId },
-      mealItems: asArray(candidate.trackingDay && candidate.trackingDay.mealItems),
+      selection: selectionChannelFor({ day }),
+      completion: { code: source.channel, label: source.channelLabel },
+      fulfillmentMode: mode,
+      actor: fulfillmentActor({ day, audits }, actorMap),
+      status: String(day.status),
+      reference: { type: "subscription_day", id: dayId },
+      mealItems: asArray(trackingDay && trackingDay.mealItems),
       allocationKeys: [],
-      operations: buildOperationRows({ day: candidate.day, audits }, actorMap),
+      operations: buildOperations({ day, audits }, actorMap),
       evidence: [
         "SubscriptionDay.creditsDeducted=true",
-        `SubscriptionDay.status=${candidate.status}`,
-        "fulfilledSnapshot/timeline deducted quantity",
+        `SubscriptionDay.status=${day.status}`,
+        "fulfilledSnapshot/timeline quantity",
       ],
       confidence: "derived",
     });
@@ -481,19 +399,19 @@ function buildLegacyDayEvents({
   return events;
 }
 
-function buildUnknownEvent(quantity) {
-  const source = sourceDefinition({ unknown: true });
+function unknownEvent(quantity) {
+  const source = consumptionSource({ unknown: true });
   return {
     id: "legacy-unattributed",
     type: "consumption",
     balanceEffect: "consumed",
-    quantity: nonNegativeInteger(quantity),
+    quantity: integer(quantity),
     date: null,
     occurredAt: null,
     sourceCode: source.code,
     sourceLabel: source.label,
-    selection: { code: "unknown", label: "غير معروف", role: null },
-    completion: { code: source.completionChannel, label: source.completionLabel },
+    selection: { code: "unknown", label: "مصدر الاختيار غير معروف", role: null },
+    completion: { code: source.channel, label: source.channelLabel },
     fulfillmentMode: null,
     actor: { id: null, role: null, email: null },
     status: "unknown",
@@ -501,27 +419,47 @@ function buildUnknownEvent(quantity) {
     mealItems: [],
     allocationKeys: [],
     operations: [],
-    evidence: ["subscription.consumedMeals has no matching day, pickup request, or manual-deduction log"],
+    evidence: ["لا يوجد سجل يوم أو طلب استلام أو خصم يدوي يطابق عداد الاستهلاك"],
     confidence: "unknown",
   };
 }
 
+function mergeEvents(events) {
+  const merged = new Map();
+  for (const event of events) {
+    const key = [
+      event.type,
+      event.sourceCode,
+      event.date || "",
+      event.reference && event.reference.type || "",
+      event.reference && event.reference.id || "",
+      event.actor && event.actor.id || "",
+    ].join("|");
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...event, mealItems: [...asArray(event.mealItems)], allocationKeys: [...asArray(event.allocationKeys)] });
+      continue;
+    }
+    existing.quantity += integer(event.quantity);
+    existing.allocationKeys.push(...asArray(event.allocationKeys));
+    const itemIds = new Set(existing.mealItems.map((item) => String(item && (item.id || item.slotKey) || "")));
+    for (const item of asArray(event.mealItems)) {
+      const itemId = String(item && (item.id || item.slotKey) || "");
+      if (!itemId || itemIds.has(itemId)) continue;
+      itemIds.add(itemId);
+      existing.mealItems.push(item);
+    }
+  }
+  return [...merged.values()];
+}
+
 function aggregateTotals(events, balanceConsumedMeals) {
-  const consumedEvents = events.filter((event) => event.balanceEffect === "consumed");
-  const reservations = events.filter((event) => event.balanceEffect === "reserved")
-    .reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const attributed = consumedEvents
-    .filter((event) => event.confidence !== "unknown")
-    .reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const unknown = consumedEvents
-    .filter((event) => event.confidence === "unknown")
-    .reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const exact = consumedEvents
-    .filter((event) => event.confidence === "exact")
-    .reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const derived = consumedEvents
-    .filter((event) => event.confidence === "derived")
-    .reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
+  const consumed = events.filter((event) => event.balanceEffect === "consumed");
+  const representedMeals = consumed.reduce((sum, event) => sum + integer(event.quantity), 0);
+  const exactMeals = consumed.filter((event) => event.confidence === "exact").reduce((sum, event) => sum + integer(event.quantity), 0);
+  const derivedMeals = consumed.filter((event) => event.confidence === "derived").reduce((sum, event) => sum + integer(event.quantity), 0);
+  const unknownMeals = consumed.filter((event) => event.confidence === "unknown").reduce((sum, event) => sum + integer(event.quantity), 0);
+  const reservationMeals = events.filter((event) => event.balanceEffect === "reserved").reduce((sum, event) => sum + integer(event.quantity), 0);
 
   const consumption = {
     delivery: 0,
@@ -531,10 +469,10 @@ function aggregateTotals(events, balanceConsumedMeals) {
     other: 0,
     unknown: 0,
   };
-  const selection = { mobileApp: 0, dashboard: 0, unknown: 0 };
+  const selection = { mobileApp: 0, dashboard: 0, unknown: 0, notApplicable: 0 };
 
-  for (const event of consumedEvents) {
-    const quantity = nonNegativeInteger(event.quantity);
+  for (const event of consumed) {
+    const quantity = integer(event.quantity);
     if (event.sourceCode === "delivery_fulfillment") consumption.delivery += quantity;
     else if (event.sourceCode === "branch_pickup_fulfillment") consumption.branchPickup += quantity;
     else if (event.sourceCode === "dashboard_manual_deduction") consumption.dashboardManual += quantity;
@@ -544,20 +482,22 @@ function aggregateTotals(events, balanceConsumedMeals) {
 
     if (event.selection && event.selection.code === "mobile_app") selection.mobileApp += quantity;
     else if (event.selection && event.selection.code === "dashboard") selection.dashboard += quantity;
+    else if (event.selection && event.selection.code === "not_applicable") selection.notApplicable += quantity;
     else selection.unknown += quantity;
   }
 
-  const represented = consumedEvents.reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
+  const authoritative = integer(balanceConsumedMeals);
+  const difference = authoritative - representedMeals;
   return {
-    status: unknown === 0 && represented === nonNegativeInteger(balanceConsumedMeals) ? "complete" : "partial",
-    balanceConsumedMeals: nonNegativeInteger(balanceConsumedMeals),
-    representedMeals: represented,
-    attributedMeals: attributed,
-    exactMeals: exact,
-    derivedMeals: derived,
-    unknownMeals: unknown,
-    reservationMeals: reservations,
-    difference: nonNegativeInteger(balanceConsumedMeals) - represented,
+    status: unknownMeals === 0 && difference === 0 ? "complete" : "partial",
+    balanceConsumedMeals: authoritative,
+    representedMeals,
+    attributedMeals: exactMeals + derivedMeals,
+    exactMeals,
+    derivedMeals,
+    unknownMeals,
+    reservationMeals,
+    difference,
     consumption,
     selection,
   };
@@ -566,7 +506,7 @@ function aggregateTotals(events, balanceConsumedMeals) {
 function collectActorIds({ rawDays, pickupRequests, audits, manualDeductions }) {
   const ids = new Set();
   const add = (value) => {
-    const id = idString(value);
+    const id = idOf(value);
     if (id && mongoose.isValidObjectId(id)) ids.add(id);
   };
   for (const day of asArray(rawDays)) {
@@ -582,7 +522,7 @@ function collectActorIds({ rawDays, pickupRequests, audits, manualDeductions }) 
   return [...ids];
 }
 
-async function loadProvenanceRecords(subscriptionId, manualDeductions = []) {
+async function loadRecords(subscriptionId, manualDeductions = []) {
   const rawDays = await SubscriptionDay.find({ subscriptionId })
     .select([
       "_id", "date", "status", "plannerState", "planningState", "plannerMeta", "planningMeta",
@@ -622,33 +562,22 @@ async function loadProvenanceRecords(subscriptionId, manualDeductions = []) {
   const actors = actorIds.length
     ? await DashboardUser.find({ _id: { $in: actorIds } }).select("_id email role").lean()
     : [];
-
   return { rawDays, pickupRequests, audits, deliveries, actors };
 }
 
-function buildProvenanceReport({
-  subscription,
-  trackingDays,
-  summary,
-  manualDeductions,
-  rawDays,
-  pickupRequests,
-  audits,
-  deliveries,
-  actors,
-}) {
-  const actorMap = new Map(asArray(actors).map((actor) => [idString(actor._id), actor]));
+function buildProvenanceReport({ subscription, trackingDays, summary, manualDeductions, rawDays, pickupRequests, audits, deliveries, actors }) {
+  const actorMap = new Map(asArray(actors).map((actor) => [idOf(actor._id), actor]));
   const auditsByDay = new Map();
   for (const audit of asArray(audits)) {
-    const key = idString(audit.entityId);
-    if (!key) continue;
-    const rows = auditsByDay.get(key) || [];
+    const dayId = idOf(audit.entityId);
+    if (!dayId) continue;
+    const rows = auditsByDay.get(dayId) || [];
     rows.push(audit);
-    auditsByDay.set(key, rows);
+    auditsByDay.set(dayId, rows);
   }
-  const deliveriesByDay = new Map(asArray(deliveries).map((delivery) => [idString(delivery.dayId), delivery]));
-  const manualEvents = buildManualEvents(manualDeductions, actorMap);
-  const allocationResult = buildAllocationEvents({
+  const deliveriesByDay = new Map(asArray(deliveries).map((delivery) => [idOf(delivery.dayId), delivery]));
+  const manual = manualEvents(manualDeductions, actorMap);
+  const allocations = allocationEvents({
     subscription,
     trackingDays,
     rawDays,
@@ -658,36 +587,38 @@ function buildProvenanceReport({
     actorMap,
   });
 
-  const balanceConsumedMeals = nonNegativeInteger(
-    summary && (summary.balanceConsumedMeals ?? summary.consumedMeals)
+  const summaryConsumed = summary
+    ? (summary.balanceConsumedMeals ?? summary.consumedMeals)
+    : undefined;
+  const balanceConsumedMeals = integer(
+    summaryConsumed
       ?? subscription.consumedMeals
       ?? Math.max(0, Number(subscription.totalMeals || 0) - Number(subscription.remainingMeals || 0))
   );
-  const allocationConsumed = allocationResult.events
+  const allocationConsumed = allocations.events
     .filter((event) => event.balanceEffect === "consumed")
-    .reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const manualConsumed = manualEvents.reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const legacyCapacity = Math.max(0, balanceConsumedMeals - allocationConsumed - manualConsumed);
-  const legacyEvents = buildLegacyDayEvents({
+    .reduce((sum, event) => sum + integer(event.quantity), 0);
+  const manualConsumed = manual.reduce((sum, event) => sum + integer(event.quantity), 0);
+  const legacyLimit = Math.max(0, balanceConsumedMeals - allocationConsumed - manualConsumed);
+  const legacy = legacyDayEvents({
     subscription,
     trackingDays,
     rawDays,
     auditsByDay,
     deliveriesByDay,
     actorMap,
-    consumedByDay: allocationResult.consumedByDay,
-    maxQuantity: legacyCapacity,
+    consumedPerDay: allocations.consumedPerDay,
+    limit: legacyLimit,
   });
-  const knownConsumed = allocationConsumed + manualConsumed
-    + legacyEvents.reduce((sum, event) => sum + nonNegativeInteger(event.quantity), 0);
-  const unknownQuantity = Math.max(0, balanceConsumedMeals - knownConsumed);
-  const unknownEvents = unknownQuantity > 0 ? [buildUnknownEvent(unknownQuantity)] : [];
+  const known = allocationConsumed + manualConsumed + legacy.reduce((sum, event) => sum + integer(event.quantity), 0);
+  const unknownQuantity = Math.max(0, balanceConsumedMeals - known);
+  const unknown = unknownQuantity ? [unknownEvent(unknownQuantity)] : [];
 
-  const events = mergeEvents([
-    ...allocationResult.events,
-    ...legacyEvents,
-    ...manualEvents,
-    ...unknownEvents,
+  const movements = mergeEvents([
+    ...allocations.events,
+    ...legacy,
+    ...manual,
+    ...unknown,
   ]).sort((left, right) => {
     const leftTime = new Date(left.occurredAt || `${left.date || "1900-01-01"}T00:00:00Z`).getTime();
     const rightTime = new Date(right.occurredAt || `${right.date || "1900-01-01"}T00:00:00Z`).getTime();
@@ -697,17 +628,13 @@ function buildProvenanceReport({
   return {
     contractVersion: "subscription_meal_movement_provenance.v1",
     readOnly: true,
-    coverage: aggregateTotals(events, balanceConsumedMeals),
-    movements: events,
+    coverage: aggregateTotals(movements, balanceConsumedMeals),
+    movements,
   };
 }
 
-async function buildSubscriptionMealMovementProvenance({
-  subscription,
-  tracking,
-  manualDeductions = [],
-}) {
-  const records = await loadProvenanceRecords(subscription._id, manualDeductions);
+async function buildSubscriptionMealMovementProvenance({ subscription, tracking, manualDeductions = [] }) {
+  const records = await loadRecords(subscription._id, manualDeductions);
   return buildProvenanceReport({
     subscription,
     trackingDays: tracking && tracking.days,
