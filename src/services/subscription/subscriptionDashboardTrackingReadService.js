@@ -8,6 +8,20 @@ const {
 
 const FULFILLED_DAY_STATUSES = new Set(["fulfilled", "delivered"]);
 const CONSUMED_WITHOUT_PREPARATION_STATUS = "consumed_without_preparation";
+const OPERATIONAL_DAY_STATUSES = new Set([
+  "in_preparation",
+  "preparing",
+  "ready_for_delivery",
+  "ready_for_pickup",
+  "out_for_delivery",
+]);
+const EXCEPTION_DAY_STATUSES = new Set([
+  "frozen",
+  "skipped",
+  "delivery_canceled",
+  "canceled_at_branch",
+  "no_show",
+]);
 
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -62,6 +76,45 @@ function resolveDayStatus(day = {}) {
   return String(day.dayStatus || day.status || "").trim().toLowerCase();
 }
 
+function resolveTrackingState({ day, status, receivedMeals, consumedWithoutPreparationMeals }) {
+  const selectedMeals = nonNegativeInteger(day && day.selectedMeals);
+  const isPast = Boolean(day && day.isPast);
+  const isToday = Boolean(day && day.isToday);
+
+  if (receivedMeals > 0) return "received";
+  if (consumedWithoutPreparationMeals > 0) return "consumed_without_preparation";
+  if (EXCEPTION_DAY_STATUSES.has(status) || nonNegativeInteger(day && day.forfeitedMeals) > 0) {
+    return "exception";
+  }
+  if (isPast && status === "locked" && selectedMeals === 0) return "missed_selection";
+  if (OPERATIONAL_DAY_STATUSES.has(status) || (status === "locked" && selectedMeals > 0)) {
+    return "in_progress";
+  }
+  if (selectedMeals > 0) return "planned";
+  if (isToday && status === "open") return "available_today";
+  if (!isPast) return "upcoming";
+  return "historical_empty";
+}
+
+function resolveTrackingStatusLabel(day, trackingState) {
+  switch (trackingState) {
+    case "received":
+      return "تم الاستلام";
+    case "consumed_without_preparation":
+      return "محسوم بدون تحضير";
+    case "missed_selection":
+      return "انتهى بدون اختيار";
+    case "available_today":
+      return "متاح اليوم";
+    case "upcoming":
+      return "غير متاح للاختيار بعد";
+    case "planned":
+      return "تم اختيار الوجبات";
+    default:
+      return String(day && day.statusLabel || day && day.dayStatus || day && day.status || "غير محدد");
+  }
+}
+
 function normalizeTrackingDays(days = []) {
   return (Array.isArray(days) ? days : []).map((day) => {
     const status = resolveDayStatus(day);
@@ -76,6 +129,12 @@ function normalizeTrackingDays(days = []) {
       0,
       timelineConsumedMeals - receivedMeals - consumedWithoutPreparationMeals
     );
+    const trackingState = resolveTrackingState({
+      day,
+      status,
+      receivedMeals,
+      consumedWithoutPreparationMeals,
+    });
 
     return {
       ...day,
@@ -83,6 +142,8 @@ function normalizeTrackingDays(days = []) {
       receivedMeals,
       consumedWithoutPreparationMeals,
       otherDayConsumedMeals,
+      trackingState,
+      statusLabel: resolveTrackingStatusLabel(day, trackingState),
     };
   });
 }
@@ -285,5 +346,6 @@ module.exports = {
   loadManualDeductions,
   normalizeTrackingDays,
   reconcileTrackingSummary,
+  resolveTrackingState,
   serializeManualDeduction,
 };
