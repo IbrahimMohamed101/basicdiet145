@@ -56,16 +56,29 @@ async function loadManualDeductions(subscriptionId) {
 }
 
 function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeductions = [] }) {
-  const totalMeals = nonNegativeInteger(baseSummary.totalMeals ?? subscription.totalMeals);
-  const remainingMeals = nonNegativeInteger(baseSummary.remainingMeals ?? subscription.remainingMeals);
-  const availableMeals = nonNegativeInteger(baseSummary.availableMeals ?? remainingMeals);
-  const reservedMeals = nonNegativeInteger(baseSummary.reservedMeals ?? subscription.reservedMeals);
-  const balanceConsumedMeals = nonNegativeInteger(
-    baseSummary.consumedMeals
-      ?? subscription.consumedMeals
-      ?? Math.max(0, totalMeals - remainingMeals)
+  const totalMeals = nonNegativeInteger(subscription.totalMeals ?? baseSummary.totalMeals);
+
+  // Dashboard tracking must always expose persisted, unreserved capacity as the
+  // available balance. The client timeline may optionally project
+  // remainingMeals = available + reserved for mobile display, which must not be
+  // reused in the accounting equation or labelled as available here.
+  const availableMeals = nonNegativeInteger(
+    subscription.remainingMeals
+      ?? baseSummary.availableMeals
+      ?? baseSummary.remainingMeals
   );
-  const forfeitedMeals = nonNegativeInteger(baseSummary.forfeitedMeals ?? subscription.forfeitedMeals);
+  const remainingMeals = availableMeals;
+  const reservedMeals = nonNegativeInteger(
+    subscription.reservedMeals ?? baseSummary.reservedMeals
+  );
+  const balanceConsumedMeals = nonNegativeInteger(
+    subscription.consumedMeals
+      ?? baseSummary.consumedMeals
+      ?? Math.max(0, totalMeals - availableMeals)
+  );
+  const forfeitedMeals = nonNegativeInteger(
+    subscription.forfeitedMeals ?? baseSummary.forfeitedMeals
+  );
 
   // Only a fulfilled/consumed day (or a consumed base allocation for that day)
   // represents a meal the customer actually received. The aggregate consumed
@@ -83,11 +96,12 @@ function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeduct
   const consumedAttributionDifference = balanceConsumedMeals - attributedConsumedMeals;
   const otherConsumedMeals = Math.max(0, consumedAttributionDifference);
   const overAttributedMeals = Math.max(0, -consumedAttributionDifference);
+  const displayRemainingMeals = availableMeals + reservedMeals;
 
   // Entitlement v2 invariant:
   // total = available + reserved + consumed + forfeited.
   // Legacy subscriptions normally reduce to total = remaining + consumed.
-  const accountedBalanceMeals = remainingMeals + reservedMeals + balanceConsumedMeals + forfeitedMeals;
+  const accountedBalanceMeals = availableMeals + reservedMeals + balanceConsumedMeals + forfeitedMeals;
   const balanceEquationDifference = totalMeals - accountedBalanceMeals;
 
   return {
@@ -103,9 +117,10 @@ function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeduct
     unattributedConsumedMeals: otherConsumedMeals,
     remainingMeals,
     availableMeals,
+    displayRemainingMeals,
     reservedMeals,
     forfeitedMeals,
-    unconsumedMeals: Math.max(0, availableMeals + reservedMeals),
+    unconsumedMeals: Math.max(0, displayRemainingMeals),
     progressPercent: percentage(receivedMeals, totalMeals),
     balanceUsagePercent: percentage(balanceConsumedMeals + forfeitedMeals, totalMeals),
     reconciliation: {
@@ -129,7 +144,7 @@ function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeduct
     balanceIntegrity: {
       status: balanceEquationDifference === 0 ? "balanced" : "difference",
       totalMeals,
-      remainingMeals,
+      remainingMeals: availableMeals,
       reservedMeals,
       consumedMeals: balanceConsumedMeals,
       forfeitedMeals,
