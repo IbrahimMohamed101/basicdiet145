@@ -6,6 +6,9 @@ const {
   buildSubscriptionDashboardTracking,
 } = require("./subscriptionDashboardTrackingService");
 
+const FULFILLED_DAY_STATUSES = new Set(["fulfilled", "delivered"]);
+const CONSUMED_WITHOUT_PREPARATION_STATUS = "consumed_without_preparation";
+
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -55,7 +58,64 @@ async function loadManualDeductions(subscriptionId) {
   return logs.map(serializeManualDeduction);
 }
 
-function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeductions = [] }) {
+function resolveDayStatus(day = {}) {
+  return String(day.dayStatus || day.status || "").trim().toLowerCase();
+}
+
+function normalizeTrackingDays(days = []) {
+  return (Array.isArray(days) ? days : []).map((day) => {
+    const status = resolveDayStatus(day);
+    const timelineConsumedMeals = nonNegativeInteger(day && day.receivedMeals);
+    const receivedMeals = FULFILLED_DAY_STATUSES.has(status)
+      ? timelineConsumedMeals
+      : 0;
+    const consumedWithoutPreparationMeals = status === CONSUMED_WITHOUT_PREPARATION_STATUS
+      ? timelineConsumedMeals
+      : 0;
+    const otherDayConsumedMeals = Math.max(
+      0,
+      timelineConsumedMeals - receivedMeals - consumedWithoutPreparationMeals
+    );
+
+    return {
+      ...day,
+      consumedMeals: timelineConsumedMeals,
+      receivedMeals,
+      consumedWithoutPreparationMeals,
+      otherDayConsumedMeals,
+    };
+  });
+}
+
+function buildDayConsumptionBreakdown(days = []) {
+  return (Array.isArray(days) ? days : []).reduce(
+    (summary, day) => {
+      const receivedMeals = nonNegativeInteger(day && day.receivedMeals);
+      const consumedWithoutPreparationMeals = nonNegativeInteger(
+        day && day.consumedWithoutPreparationMeals
+      );
+      const otherDayConsumedMeals = nonNegativeInteger(day && day.otherDayConsumedMeals);
+      summary.receivedMeals += receivedMeals;
+      summary.consumedWithoutPreparationMeals += consumedWithoutPreparationMeals;
+      summary.otherDayConsumedMeals += otherDayConsumedMeals;
+      if (receivedMeals > 0) summary.deliveredDays += 1;
+      return summary;
+    },
+    {
+      receivedMeals: 0,
+      consumedWithoutPreparationMeals: 0,
+      otherDayConsumedMeals: 0,
+      deliveredDays: 0,
+    }
+  );
+}
+
+function reconcileTrackingSummary({
+  subscription,
+  baseSummary = {},
+  manualDeductions = [],
+  dayConsumption = null,
+}) {
   const totalMeals = nonNegativeInteger(subscription.totalMeals ?? baseSummary.totalMeals);
 
   // Dashboard tracking must always expose persisted, unreserved capacity as the
@@ -80,19 +140,34 @@ function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeduct
     subscription.forfeitedMeals ?? baseSummary.forfeitedMeals
   );
 
-  // Only a fulfilled/consumed day (or a consumed base allocation for that day)
-  // represents a meal the customer actually received. The aggregate consumed
-  // counter also includes manual deductions, so it must not be labelled as
-  // customer receipt.
+  // A customer receipt requires a fulfilled/delivered operational day. A
+  // consumed allocation on a consumed_without_preparation day is a known
+  // operational balance movement, but it is not physical customer receipt.
   const receivedMeals = nonNegativeInteger(
-    baseSummary.timelineReceivedMeals ?? baseSummary.receivedMeals
+    dayConsumption && dayConsumption.receivedMeals !== undefined
+      ? dayConsumption.receivedMeals
+      : baseSummary.timelineReceivedMeals ?? baseSummary.receivedMeals
   );
+  const consumedWithoutPreparationMeals = nonNegativeInteger(
+    dayConsumption && dayConsumption.consumedWithoutPreparationMeals
+  );
+  const otherDayConsumedMeals = nonNegativeInteger(
+    dayConsumption && dayConsumption.otherDayConsumedMeals
+  );
+  const timelineConsumedMeals =
+    receivedMeals + consumedWithoutPreparationMeals + otherDayConsumedMeals;
+  const deliveredDays = nonNegativeInteger(
+    dayConsumption && dayConsumption.deliveredDays !== undefined
+      ? dayConsumption.deliveredDays
+      : baseSummary.deliveredDays
+  );
+
   const manualDeductedMeals = manualDeductions.reduce(
     (sum, row) => sum + nonNegativeInteger(row && row.deducted && row.deducted.totalMeals),
     0
   );
 
-  const attributedConsumedMeals = receivedMeals + manualDeductedMeals;
+  const attributedConsumedMeals = timelineConsumedMeals + manualDeductedMeals;
   const consumedAttributionDifference = balanceConsumedMeals - attributedConsumedMeals;
   const otherConsumedMeals = Math.max(0, consumedAttributionDifference);
   const overAttributedMeals = Math.max(0, -consumedAttributionDifference);
@@ -111,6 +186,10 @@ function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeduct
     balanceConsumedMeals,
     receivedMeals,
     timelineReceivedMeals: receivedMeals,
+    timelineConsumedMeals,
+    consumedWithoutPreparationMeals,
+    otherDayConsumedMeals,
+    deliveredDays,
     manualDeductedMeals,
     otherConsumedMeals,
     overAttributedMeals,
@@ -134,7 +213,10 @@ function reconcileTrackingSummary({ subscription, baseSummary = {}, manualDeduct
       consumedMeals: balanceConsumedMeals,
       balanceConsumedMeals,
       receivedMeals,
-      attributedToTimeline: receivedMeals,
+      timelineConsumedMeals,
+      consumedWithoutPreparationMeals,
+      otherDayConsumedMeals,
+      attributedToTimeline: timelineConsumedMeals,
       manualDeductedMeals,
       attributedKnownTotal: attributedConsumedMeals,
       otherConsumedMeals,
@@ -170,10 +252,13 @@ async function buildSubscriptionDashboardTrackingReadModel({
     loadManualDeductions(subscription._id),
   ]);
 
+  const days = normalizeTrackingDays(baseTracking.days);
+  const dayConsumption = buildDayConsumptionBreakdown(days);
   const summary = reconcileTrackingSummary({
     subscription,
     baseSummary: baseTracking.summary,
     manualDeductions,
+    dayConsumption,
   });
 
   return {
@@ -184,16 +269,21 @@ async function buildSubscriptionDashboardTrackingReadModel({
       manualDeductions,
       totals: {
         manualDeductedMeals: summary.manualDeductedMeals,
+        consumedWithoutPreparationMeals: summary.consumedWithoutPreparationMeals,
+        otherDayConsumedMeals: summary.otherDayConsumedMeals,
         otherConsumedMeals: summary.otherConsumedMeals,
         forfeitedMeals: summary.forfeitedMeals,
       },
     },
+    days,
   };
 }
 
 module.exports = {
+  buildDayConsumptionBreakdown,
   buildSubscriptionDashboardTrackingReadModel,
   loadManualDeductions,
+  normalizeTrackingDays,
   reconcileTrackingSummary,
   serializeManualDeduction,
 };
