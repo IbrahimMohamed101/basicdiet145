@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const controller = require("../controllers/courierController");
+const deliveryListController = require("../controllers/courierDeliveryListController");
 const orderController = require("../controllers/orderCourierController");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -50,7 +51,7 @@ router.get(
   "/deliveries/today",
   courierReadAccess,
   restaurantCourierReadOnlyResponse,
-  asyncHandler(controller.listTodayDeliveries)
+  asyncHandler(deliveryListController.listDeliveries)
 );
 router.put("/deliveries/:id/arriving-soon", courierMutationAccess, asyncHandler(controller.markArrivingSoon));
 /**
