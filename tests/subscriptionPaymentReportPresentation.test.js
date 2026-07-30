@@ -69,6 +69,45 @@ function testArabicMoneyAndSummary() {
   assert.strictEqual(summary.byPaymentMethod.find((row) => row.method === "cash").labelAr, "نقدي");
   assert.strictEqual(summary.byPaymentMethod.find((row) => row.method === "visa").labelAr, "بوابة دفع إلكتروني");
   assert.strictEqual(summary.byPaymentMethod.find((row) => row.method === "moyasar").labelAr, "ميسر");
+
+  const refundSummary = buildPaymentMethodSummary(
+    [
+      item({
+        movementType: "collection",
+        paymentProvider: "none",
+        amountHalala: 11500,
+        vatHalala: 1500,
+        netBeforeVatHalala: 10000,
+      }),
+    ],
+    [
+      item({
+        movementType: "refund",
+        countedInTotals: true,
+        amountHalala: 2300,
+        vatHalala: 300,
+        netBeforeVatHalala: 2000,
+      }),
+      item({
+        movementType: "refund",
+        countedInTotals: false,
+        amountHalala: 1150,
+        vatHalala: 150,
+        netBeforeVatHalala: 1000,
+      }),
+    ]
+  );
+  assert.strictEqual(refundSummary.grossCollectionHalala, 11500);
+  assert.strictEqual(refundSummary.refundsHalala, 2300);
+  assert.strictEqual(refundSummary.netCollectionHalala, 9200);
+  assert.strictEqual(refundSummary.salesVatHalala, 1500);
+  assert.strictEqual(refundSummary.refundVatHalala, 300);
+  assert.strictEqual(refundSummary.netVatHalala, 1200);
+  assert.strictEqual(
+    refundSummary.netCollectionHalala,
+    refundSummary.netBeforeVatHalala + refundSummary.netVatHalala
+  );
+  assert.strictEqual(refundSummary.refundsTrackingStatus, "needs_review");
 }
 
 function testMonthlyValidation() {

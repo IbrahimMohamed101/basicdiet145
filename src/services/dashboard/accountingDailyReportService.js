@@ -95,6 +95,23 @@ async function resolveBusinessPeriod(businessDate) {
   return { businessDate, timezone, start, end, openTime, closeTime };
 }
 
+function resolveFullDayPeriod(businessDate) {
+  assertBusinessDate(businessDate);
+  const timezone = dateUtils.KSA_TIMEZONE;
+  const start = fromZonedTime(`${businessDate}T00:00:00`, timezone);
+  const nextDate = dateUtils.addDaysToKSADateString(businessDate, 1);
+  const end = fromZonedTime(`${nextDate}T00:00:00`, timezone);
+  end.setMilliseconds(end.getMilliseconds() - 1);
+  return {
+    businessDate,
+    timezone,
+    start,
+    end,
+    openTime: "00:00",
+    closeTime: "23:59",
+  };
+}
+
 function orderDisplayId(order) {
   return `ORD-${String(order && order._id ? order._id : "").slice(-6).toUpperCase()}`;
 }
@@ -715,4 +732,5 @@ module.exports = {
   buildDailyReport,
   reportToCsv,
   resolveBusinessPeriod,
+  resolveFullDayPeriod,
 };

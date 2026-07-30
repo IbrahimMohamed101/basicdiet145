@@ -17,6 +17,10 @@ const { applyOrderWebhookInvoice } = require("../services/orders/orderPaymentSer
 const { releasePromoCodeUsageReservation } = require("../services/promoCodeService");
 const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
 const {
+  isMoyasarRefundEvent,
+  recordMoyasarRefundWebhook,
+} = require("../services/paymentRefundService");
+const {
   cleanupTerminalNonPaidDayPayment,
 } = require("../services/subscription/subscriptionDayPaymentLifecycleService");
 const { writeLog } = require("../utils/log");
@@ -68,6 +72,9 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   const supportedSharedPaymentTypes = runtimeOverrides && runtimeOverrides.supportedPaymentTypes
     ? runtimeOverrides.supportedPaymentTypes
     : SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES;
+  const recordMoyasarRefundWebhookFn = runtimeOverrides && runtimeOverrides.recordMoyasarRefundWebhook
+    ? runtimeOverrides.recordMoyasarRefundWebhook
+    : recordMoyasarRefundWebhook;
 
   const payload = req.body || {};
   const eventType = payload.type || payload.event;
@@ -146,6 +153,35 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   }
 
   try {
+    if (isMoyasarRefundEvent(eventType, data)) {
+      try {
+        const refundResult = await recordMoyasarRefundWebhookFn({
+          payload,
+          data,
+          startSession: startSessionFn,
+        });
+        logger.info("Moyasar refund webhook processed", {
+          ...logContext,
+          alreadyProcessed: Boolean(refundResult && refundResult.alreadyProcessed),
+          staleSnapshot: Boolean(refundResult && refundResult.staleSnapshot),
+        });
+        return res.status(200).json({
+          status: true,
+          alreadyProcessed: Boolean(refundResult && refundResult.alreadyProcessed),
+        });
+      } catch (err) {
+        if (err && err.code && err.status) {
+          logger.warn("Moyasar refund webhook rejected", {
+            ...logContext,
+            code: err.code,
+            error: err.message,
+          });
+          return errorResponse(res, err.status, err.code, err.message);
+        }
+        throw err;
+      }
+    }
+
     let orderWebhookResult;
     try {
       orderWebhookResult = await applyOrderWebhookInvoice({ providerInvoice: data, eventType });

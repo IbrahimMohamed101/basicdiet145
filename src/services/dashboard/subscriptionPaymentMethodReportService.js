@@ -3,6 +3,7 @@
 const ActivityLog = require("../../models/ActivityLog");
 const DashboardUser = require("../../models/DashboardUser");
 const Payment = require("../../models/Payment");
+const PaymentRefund = require("../../models/PaymentRefund");
 const Plan = require("../../models/Plan");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
@@ -19,8 +20,21 @@ const PAYMENT_AUDIT_ACTIONS = [
 const AR_LABELS = Object.freeze({
   paymentMethod: {
     cash: "نقدي",
+    card: "بطاقة",
+    bank_transfer: "تحويل بنكي",
     visa: "بوابة دفع إلكتروني",
     moyasar: "ميسر",
+    unknown: "غير محدد",
+  },
+  sourceChannel: {
+    app: "التطبيق",
+    dashboard: "لوحة التحكم",
+    unknown: "غير محدد",
+  },
+  paymentProvider: {
+    moyasar: "ميسر",
+    manual_gateway: "بوابة مسجلة يدويًا",
+    none: "بدون مزود",
     unknown: "غير محدد",
   },
   provider: {
@@ -114,6 +128,18 @@ function normalizeHalala(value) {
 
 function moneyValue(amountHalala) {
   const normalized = normalizeHalala(amountHalala);
+  return {
+    amountHalala: normalized,
+    amountSar: normalized / 100,
+    formattedAr: moneyFormatter.format(normalized / 100),
+    currency: "SAR",
+    currencyLabelAr: "ريال سعودي",
+  };
+}
+
+function signedMoneyValue(amountHalala) {
+  const parsed = Number(amountHalala);
+  const normalized = Number.isFinite(parsed) ? Math.round(parsed) : 0;
   return {
     amountHalala: normalized,
     amountSar: normalized / 100,
@@ -261,12 +287,47 @@ function resolvePaymentMethodClassification(payment = {}, audit = null) {
   if (provider === "moyasar") {
     return { method: "moyasar", source: "payment.provider", recoveredFromLegacyAudit: false };
   }
+  if (provider === "manual") {
+    return { method: "visa", source: "payment.provider", recoveredFromLegacyAudit: false };
+  }
 
   return { method: "unknown", source: "unresolved", recoveredFromLegacyAudit: false };
 }
 
 function normalizeRecordedPaymentMethod(payment = {}, audit = null) {
   return resolvePaymentMethodClassification(payment, audit).method;
+}
+
+function canonicalPaymentMethod(legacyMethod) {
+  if (legacyMethod === "cash") return "cash";
+  if (legacyMethod === "visa" || legacyMethod === "moyasar") return "card";
+  return "unknown";
+}
+
+function resolveSourceChannel(payment = {}) {
+  const metadata = payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const source = safeString(payment.source).toLowerCase();
+  const origin = safeString(metadata.paymentOrigin || metadata.source).toLowerCase();
+  if (source.startsWith("dashboard_") || origin === "dashboard" || metadata.recordingMode === "dashboard_manual") {
+    return "dashboard";
+  }
+  if (
+    source === "mobile_app_subscription"
+    || origin === "mobile_app"
+    || origin === "app"
+    || metadata.recordingMode === "moyasar_gateway"
+  ) {
+    return "app";
+  }
+  return "unknown";
+}
+
+function resolvePaymentProvider(payment = {}, paymentMethod = "unknown") {
+  const provider = safeString(payment.provider).toLowerCase();
+  if (provider === "moyasar") return "moyasar";
+  if (provider === "manual") return "manual_gateway";
+  if (provider === "cash" || paymentMethod === "cash") return "none";
+  return "unknown";
 }
 
 function localizedName(value) {
@@ -364,7 +425,10 @@ function serializePaymentItem({ payment, subscription, user, plan, collector, au
   const customerId = safeString(payment.userId || subscription && subscription.userId);
   const amountHalala = normalizeHalala(payment.amount);
   const methodClassification = resolvePaymentMethodClassification(payment, audit);
-  const paymentMethod = methodClassification.method;
+  const legacyPaymentMethod = methodClassification.method;
+  const paymentMethod = canonicalPaymentMethod(legacyPaymentMethod);
+  const sourceChannel = resolveSourceChannel(payment);
+  const paymentProvider = resolvePaymentProvider(payment, paymentMethod);
   const provider = safeString(payment.provider, "unknown").toLowerCase();
   const status = safeString(payment.status, "unknown").toLowerCase();
   const fulfillmentMethod = safeString(subscription && subscription.deliveryMode, "unknown").toLowerCase();
@@ -401,6 +465,9 @@ function serializePaymentItem({ payment, subscription, user, plan, collector, au
     : "تحصيل اشتراك مدفوع";
 
   return {
+    movementId: String(payment._id),
+    movementType: "collection",
+    movementTypeLabelAr: "تحصيل",
     paymentId: String(payment._id),
     paymentReference,
     subscriptionId: safeString(payment.subscriptionId),
@@ -413,6 +480,8 @@ function serializePaymentItem({ payment, subscription, user, plan, collector, au
     paymentTypeLabelAr: labelAr("paymentType", paymentType),
     paymentMethod,
     paymentMethodLabelAr: labelAr("paymentMethod", paymentMethod),
+    legacyPaymentMethod,
+    legacyPaymentMethodLabelAr: labelAr("paymentMethod", legacyPaymentMethod),
     paymentMethodClassificationSource: methodClassification.source,
     paymentMethodClassificationSourceAr: methodClassification.recoveredFromLegacyAudit
       ? "تم استرجاعها من سجل الحركة القديم"
@@ -421,11 +490,21 @@ function serializePaymentItem({ payment, subscription, user, plan, collector, au
         : "بيانات الدفعة",
     provider,
     providerLabelAr: labelAr("provider", provider),
+    sourceChannel,
+    sourceChannelLabelAr: labelAr("sourceChannel", sourceChannel),
+    paymentProvider,
+    paymentProviderLabelAr: labelAr("paymentProvider", paymentProvider),
     status,
     statusLabelAr: labelAr("paymentStatus", status),
     amountHalala,
     amountSar: amount.amountSar,
     amountFormattedAr: amount.formattedAr,
+    grossCollectionHalala: amountHalala,
+    grossCollectionFormattedAr: amount.formattedAr,
+    refundsHalala: 0,
+    refundsFormattedAr: moneyValue(0).formattedAr,
+    netMovementHalala: amountHalala,
+    netMovementFormattedAr: amount.formattedAr,
     currency: safeString(payment.currency, "SAR").toUpperCase(),
     currencyLabelAr: "ريال سعودي",
     vatIncluded: true,
@@ -522,53 +601,90 @@ function buildBucketRows(items, key, group) {
     .sort((left, right) => right.totalHalala - left.totalHalala);
 }
 
-function buildPaymentMethodSummary(items = []) {
-  const byPaymentMethod = buildBucketRows(items, "paymentMethod", "paymentMethod");
+function buildPaymentMethodSummary(items = [], refundItems = []) {
+  const collectionItems = items.filter((item) => item.movementType !== "refund");
+  const countedRefunds = refundItems.filter((item) => item.countedInTotals !== false);
+  const byPaymentMethod = buildBucketRows(collectionItems, "paymentMethod", "paymentMethod");
   const byMethod = new Map(byPaymentMethod.map((row) => [row.method, row]));
   const empty = { count: 0, uniqueCustomersCount: 0, totalHalala: 0, totalSar: 0, totalFormattedAr: moneyValue(0).formattedAr };
   const cash = byMethod.get("cash") || empty;
-  const visa = byMethod.get("visa") || empty;
-  const moyasar = byMethod.get("moyasar") || empty;
+  const card = byMethod.get("card") || byMethod.get("visa") || empty;
+  const moyasarItems = collectionItems.filter(
+    (item) => item.paymentProvider === "moyasar" || item.paymentMethod === "moyasar"
+  );
+  const moyasarTotalHalala = moyasarItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
   const unknown = byMethod.get("unknown") || empty;
-  const customerIds = new Set(items.map((item) => safeString(item.customerId)).filter(Boolean));
-  const totalHalala = items.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
-  const vatHalala = items.reduce((sum, item) => sum + normalizeHalala(item.vatHalala), 0);
-  const netBeforeVatHalala = items.reduce((sum, item) => sum + normalizeHalala(item.netBeforeVatHalala), 0);
-  const canceledItems = items.filter((item) => item.subscriptionStatus === "canceled");
+  const customerIds = new Set(collectionItems.map((item) => safeString(item.customerId)).filter(Boolean));
+  const grossCollectionHalala = collectionItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const salesVatHalala = collectionItems.reduce((sum, item) => sum + normalizeHalala(item.vatHalala), 0);
+  const salesBeforeVatHalala = collectionItems.reduce((sum, item) => sum + normalizeHalala(item.netBeforeVatHalala), 0);
+  const refundsHalala = countedRefunds.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const refundVatHalala = countedRefunds.reduce((sum, item) => sum + normalizeHalala(item.vatHalala), 0);
+  const refundBeforeVatHalala = refundsHalala - refundVatHalala;
+  const netCollectionHalala = grossCollectionHalala - refundsHalala;
+  const netVatHalala = salesVatHalala - refundVatHalala;
+  const netBeforeVatHalala = salesBeforeVatHalala - refundBeforeVatHalala;
+  const canceledItems = collectionItems.filter((item) => item.subscriptionStatus === "canceled");
   const canceledTotalHalala = canceledItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
-  const reviewItems = items.filter((item) => item.needsReview);
-  const activeItems = items.filter((item) => item.subscriptionStatus === "active");
+  const reviewItems = [...collectionItems, ...refundItems].filter((item) => item.needsReview);
+  const activeItems = collectionItems.filter((item) => item.subscriptionStatus === "active");
   const activeTotalHalala = activeItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
-  const total = moneyValue(totalHalala);
-  const vat = moneyValue(vatHalala);
-  const net = moneyValue(netBeforeVatHalala);
+  const gross = moneyValue(grossCollectionHalala);
+  const refunds = moneyValue(refundsHalala);
+  const netCollection = signedMoneyValue(netCollectionHalala);
+  const salesVat = moneyValue(salesVatHalala);
+  const refundVat = moneyValue(refundVatHalala);
+  const netVat = signedMoneyValue(netVatHalala);
+  const salesBeforeVat = moneyValue(salesBeforeVatHalala);
+  const netBeforeVat = signedMoneyValue(netBeforeVatHalala);
   const canceled = moneyValue(canceledTotalHalala);
-  const average = moneyValue(items.length ? Math.round(totalHalala / items.length) : 0);
+  const average = moneyValue(collectionItems.length ? Math.round(grossCollectionHalala / collectionItems.length) : 0);
 
   return {
-    totalPaymentsCount: items.length,
+    totalPaymentsCount: collectionItems.length,
     uniqueCustomersCount: customerIds.size,
-    totalHalala,
-    totalSar: total.amountSar,
-    totalFormattedAr: total.formattedAr,
-    grossCollectionsHalala: totalHalala,
-    grossCollectionsSar: total.amountSar,
-    grossCollectionsFormattedAr: total.formattedAr,
+    totalHalala: grossCollectionHalala,
+    totalSar: gross.amountSar,
+    totalFormattedAr: gross.formattedAr,
+    grossCollectionHalala,
+    grossCollectionSar: gross.amountSar,
+    grossCollectionFormattedAr: gross.formattedAr,
+    grossCollectionsHalala: grossCollectionHalala,
+    grossCollectionsSar: gross.amountSar,
+    grossCollectionsFormattedAr: gross.formattedAr,
+    refundsCount: countedRefunds.length,
+    refundsHalala,
+    refundsSar: refunds.amountSar,
+    refundsFormattedAr: refunds.formattedAr,
+    refundsTrackingStatus: refundItems.some((item) => item.countedInTotals === false)
+      ? "needs_review"
+      : "available",
+    refundsTrackingStatusAr: refundItems.some((item) => item.countedInTotals === false)
+      ? "توجد مرتجعات بلا تاريخ فعلي وتحتاج مراجعة"
+      : "يتم احتساب المرتجعات حسب تاريخ الاسترداد الفعلي",
+    netCollectionHalala,
+    netCollectionSar: netCollection.amountSar,
+    netCollectionFormattedAr: netCollection.formattedAr,
+    netCashMovementHalala: netCollectionHalala,
+    netCashMovementFormattedAr: netCollection.formattedAr,
     netBeforeVatHalala,
-    netBeforeVatSar: net.amountSar,
-    netBeforeVatFormattedAr: net.formattedAr,
+    netBeforeVatSar: netBeforeVat.amountSar,
+    netBeforeVatFormattedAr: netBeforeVat.formattedAr,
+    salesBeforeVatHalala,
+    salesBeforeVatFormattedAr: salesBeforeVat.formattedAr,
+    refundBeforeVatHalala,
+    refundBeforeVatFormattedAr: moneyValue(refundBeforeVatHalala).formattedAr,
     vatIncluded: true,
     vatPercentage: VAT_PERCENTAGE,
-    vatHalala,
-    vatSar: vat.amountSar,
-    vatFormattedAr: vat.formattedAr,
-    refundsCount: null,
-    refundsHalala: null,
-    refundsFormattedAr: null,
-    refundsTrackingStatus: "not_available",
-    refundsTrackingStatusAr: "لا يوجد تاريخ استرداد مستقل في سجل الدفعة، لذلك لا يتم خصم المرتجعات من هذه الفترة تلقائيًا",
-    netCashMovementHalala: null,
-    netCashMovementFormattedAr: null,
+    vatHalala: salesVatHalala,
+    vatSar: salesVat.amountSar,
+    vatFormattedAr: salesVat.formattedAr,
+    salesVatHalala,
+    salesVatFormattedAr: salesVat.formattedAr,
+    refundVatHalala,
+    refundVatFormattedAr: refundVat.formattedAr,
+    netVatHalala,
+    netVatFormattedAr: netVat.formattedAr,
     averagePaymentHalala: average.amountHalala,
     averagePaymentFormattedAr: average.formattedAr,
     cashCount: cash.count,
@@ -576,22 +692,27 @@ function buildPaymentMethodSummary(items = []) {
     cashTotalHalala: cash.totalHalala,
     cashTotalSar: cash.totalSar,
     cashTotalFormattedAr: cash.totalFormattedAr,
-    visaCount: visa.count,
-    visaCustomersCount: visa.uniqueCustomersCount,
-    visaTotalHalala: visa.totalHalala,
-    visaTotalSar: visa.totalSar,
-    visaTotalFormattedAr: visa.totalFormattedAr,
-    moyasarCount: moyasar.count,
-    moyasarCustomersCount: moyasar.uniqueCustomersCount,
-    moyasarTotalHalala: moyasar.totalHalala,
-    moyasarTotalSar: moyasar.totalSar,
-    moyasarTotalFormattedAr: moyasar.totalFormattedAr,
+    cardCount: card.count,
+    cardCustomersCount: card.uniqueCustomersCount,
+    cardTotalHalala: card.totalHalala,
+    cardTotalSar: card.totalSar,
+    cardTotalFormattedAr: card.totalFormattedAr,
+    visaCount: card.count,
+    visaCustomersCount: card.uniqueCustomersCount,
+    visaTotalHalala: card.totalHalala,
+    visaTotalSar: card.totalSar,
+    visaTotalFormattedAr: card.totalFormattedAr,
+    moyasarCount: moyasarItems.length,
+    moyasarCustomersCount: new Set(moyasarItems.map((item) => item.customerId).filter(Boolean)).size,
+    moyasarTotalHalala,
+    moyasarTotalSar: moyasarTotalHalala / 100,
+    moyasarTotalFormattedAr: moneyValue(moyasarTotalHalala).formattedAr,
     unknownCount: unknown.count,
     unknownCustomersCount: unknown.uniqueCustomersCount,
     unknownTotalHalala: unknown.totalHalala,
     unknownTotalSar: unknown.totalSar,
     unknownTotalFormattedAr: unknown.totalFormattedAr,
-    paymentMethodCoveragePercent: percentage(totalHalala - unknown.totalHalala, totalHalala),
+    paymentMethodCoveragePercent: percentage(grossCollectionHalala - unknown.totalHalala, grossCollectionHalala),
     activeSubscriptionsPaymentsCount: activeItems.length,
     activeSubscriptionsTotalHalala: activeTotalHalala,
     activeSubscriptionsTotalFormattedAr: moneyValue(activeTotalHalala).formattedAr,
@@ -656,11 +777,30 @@ function buildWarnings(items, summary) {
       severity: "critical",
     });
   }
+  const undatedRefunds = items.filter(
+    (item) => item.movementType === "refund" && item.countedInTotals === false
+  );
+  if (undatedRefunds.length) {
+    const undatedTotal = undatedRefunds.reduce(
+      (sum, item) => sum + normalizeHalala(item.amountHalala),
+      0
+    );
+    warnings.push({
+      code: "REFUND_DATE_MISSING",
+      titleAr: "مرتجعات بلا تاريخ فعلي",
+      message: `يوجد ${undatedRefunds.length} مرتجع قديم غير منسوب إلى الفترة ويحتاج مراجعة تاريخ الاسترداد.`,
+      messageAr: `يوجد ${undatedRefunds.length} مرتجع قديم غير منسوب إلى الفترة ويحتاج مراجعة تاريخ الاسترداد.`,
+      count: undatedRefunds.length,
+      totalHalala: undatedTotal,
+      totalFormattedAr: moneyValue(undatedTotal).formattedAr,
+      severity: "critical",
+    });
+  }
   return warnings;
 }
 
 function buildDashboardCards(summary) {
-  return [
+  const cards = [
     {
       key: "gross_collections",
       titleAr: "إجمالي التحصيل",
@@ -671,22 +811,58 @@ function buildDashboardCards(summary) {
       severity: "normal",
     },
     {
+      key: "refunds",
+      titleAr: "المرتجعات",
+      valueHalala: summary.refundsHalala,
+      valueSar: summary.refundsSar,
+      valueFormattedAr: summary.refundsFormattedAr,
+      subtitleAr: `${summary.refundsCount} حركة استرداد`,
+      severity: summary.refundsHalala ? "warning" : "normal",
+    },
+    {
+      key: "net_collection",
+      titleAr: "صافي الحركة",
+      valueHalala: summary.netCollectionHalala,
+      valueSar: summary.netCollectionSar,
+      valueFormattedAr: summary.netCollectionFormattedAr,
+      subtitleAr: "التحصيل ناقص المرتجعات",
+      severity: summary.netCollectionHalala < 0 ? "critical" : "normal",
+    },
+    {
       key: "net_before_vat",
-      titleAr: "صافي المبيعات قبل الضريبة",
+      titleAr: "الصافي قبل الضريبة",
       valueHalala: summary.netBeforeVatHalala,
       valueSar: summary.netBeforeVatSar,
       valueFormattedAr: summary.netBeforeVatFormattedAr,
-      subtitleAr: "قبل ضريبة القيمة المضافة",
+      subtitleAr: "بعد خصم صافي المرتجعات",
       severity: "normal",
     },
     {
-      key: "vat",
-      titleAr: "ضريبة القيمة المضافة",
-      valueHalala: summary.vatHalala,
-      valueSar: summary.vatSar,
-      valueFormattedAr: summary.vatFormattedAr,
+      key: "sales_vat",
+      titleAr: "ضريبة المبيعات",
+      valueHalala: summary.salesVatHalala,
+      valueSar: summary.salesVatHalala / 100,
+      valueFormattedAr: summary.salesVatFormattedAr,
       subtitleAr: `ضريبة شاملة بنسبة ${summary.vatPercentage}%`,
       severity: "normal",
+    },
+    {
+      key: "refund_vat",
+      titleAr: "ضريبة المرتجعات",
+      valueHalala: summary.refundVatHalala,
+      valueSar: summary.refundVatHalala / 100,
+      valueFormattedAr: summary.refundVatFormattedAr,
+      subtitleAr: "الضريبة المعكوسة مع المرتجعات",
+      severity: summary.refundVatHalala ? "warning" : "normal",
+    },
+    {
+      key: "net_vat",
+      titleAr: "صافي الضريبة",
+      valueHalala: summary.netVatHalala,
+      valueSar: summary.netVatHalala / 100,
+      valueFormattedAr: summary.netVatFormattedAr,
+      subtitleAr: "ضريبة المبيعات ناقص ضريبة المرتجعات",
+      severity: summary.netVatHalala < 0 ? "critical" : "normal",
     },
     {
       key: "cash",
@@ -734,16 +910,31 @@ function buildDashboardCards(summary) {
       severity: summary.canceledSubscriptionsPaymentsCount ? "critical" : "normal",
     },
   ];
+  return cards.map((card) => ({
+    ...card,
+    amountHalala: card.valueHalala,
+    amountSar: card.valueSar,
+    amountFormattedAr: card.valueFormattedAr,
+    descriptionAr: card.subtitleAr,
+  }));
 }
 
 function buildReconciliation(summary, warnings) {
-  const allocatedHalala =
-    summary.cashTotalHalala
-    + summary.visaTotalHalala
-    + summary.moyasarTotalHalala
-    + summary.unknownTotalHalala;
+  // Providers are an independent axis: Moyasar is already included in the
+  // card payment-method bucket and must not be allocated a second time.
+  const allocatedHalala = summary.byPaymentMethod.reduce(
+    (sum, bucket) => sum + normalizeHalala(bucket.totalHalala),
+    0
+  );
   const differenceHalala = summary.totalHalala - allocatedHalala;
-  const needsReview = warnings.length > 0 || differenceHalala !== 0;
+  const movementDifferenceHalala = summary.netCollectionHalala
+    - (summary.grossCollectionHalala - summary.refundsHalala);
+  const vatDifferenceHalala = summary.netCollectionHalala
+    - (summary.netBeforeVatHalala + summary.netVatHalala);
+  const needsReview = warnings.length > 0
+    || differenceHalala !== 0
+    || movementDifferenceHalala !== 0
+    || vatDifferenceHalala !== 0;
   return {
     status: needsReview ? "needs_review" : "balanced",
     statusLabelAr: needsReview ? "يحتاج مراجعة" : "متوازن",
@@ -753,6 +944,15 @@ function buildReconciliation(summary, warnings) {
     allocatedByPaymentMethodFormattedAr: moneyValue(allocatedHalala).formattedAr,
     differenceHalala,
     differenceFormattedAr: moneyValue(Math.abs(differenceHalala)).formattedAr,
+    grossCollectionHalala: summary.grossCollectionHalala,
+    refundsHalala: summary.refundsHalala,
+    netCollectionHalala: summary.netCollectionHalala,
+    movementDifferenceHalala,
+    movementDifferenceFormattedAr: moneyValue(Math.abs(movementDifferenceHalala)).formattedAr,
+    netBeforeVatHalala: summary.netBeforeVatHalala,
+    netVatHalala: summary.netVatHalala,
+    vatDifferenceHalala,
+    vatDifferenceFormattedAr: moneyValue(Math.abs(vatDifferenceHalala)).formattedAr,
     unresolvedPaymentsCount: summary.unknownCount,
     reviewItemsCount: summary.reviewItemsCount,
     noteAr: needsReview
@@ -761,21 +961,7 @@ function buildReconciliation(summary, warnings) {
   };
 }
 
-async function loadSubscriptionPaymentItems({ periods, fulfillmentMethod }) {
-  const rangeStart = periods[0].start;
-  const rangeEnd = periods[periods.length - 1].end;
-  const candidatePayments = await Payment.find({
-    type: { $in: PAYMENT_TYPES },
-    status: "paid",
-    $or: [
-      { paidAt: { $gte: rangeStart, $lte: rangeEnd } },
-      { paidAt: null, createdAt: { $gte: rangeStart, $lte: rangeEnd } },
-    ],
-  }).sort({ paidAt: 1, createdAt: 1, _id: 1 }).lean();
-
-  const paymentsWithPeriods = candidatePayments
-    .map((payment) => ({ payment, period: findPeriodForPayment(payment, periods) }))
-    .filter((row) => row.period);
+async function serializePaymentRows({ paymentsWithPeriods, fulfillmentMethod }) {
   const subscriptionIds = Array.from(new Set(
     paymentsWithPeriods.map(({ payment }) => safeString(payment.subscriptionId)).filter(Boolean)
   ));
@@ -844,13 +1030,171 @@ async function loadSubscriptionPaymentItems({ periods, fulfillmentMethod }) {
   });
 }
 
-function buildCommonReportSections(items) {
-  const summary = buildPaymentMethodSummary(items);
-  const warnings = buildWarnings(items, summary);
+async function loadSubscriptionPaymentItems({ periods, fulfillmentMethod }) {
+  const rangeStart = periods[0].start;
+  const rangeEnd = periods[periods.length - 1].end;
+  const candidatePayments = await Payment.find({
+    type: { $in: PAYMENT_TYPES },
+    status: { $in: ["paid", "refunded"] },
+    $or: [
+      { paidAt: { $gte: rangeStart, $lte: rangeEnd } },
+      { paidAt: null, createdAt: { $gte: rangeStart, $lte: rangeEnd } },
+    ],
+  }).sort({ paidAt: 1, createdAt: 1, _id: 1 }).lean();
+  const paymentsWithPeriods = candidatePayments
+    .map((payment) => ({ payment, period: findPeriodForPayment(payment, periods) }))
+    .filter((row) => row.period);
+  return serializePaymentRows({ paymentsWithPeriods, fulfillmentMethod });
+}
+
+function serializeRefundItem({ refund, baseItem, businessDate, legacy = false }) {
+  const amountHalala = normalizeHalala(refund.amountHalala);
+  const vatHalala = normalizeHalala(refund.vatHalala);
+  const refundBeforeVatHalala = amountHalala - vatHalala;
+  const netBeforeVatHalala = -refundBeforeVatHalala;
+  const refundedAt = refund.refundedAt ? new Date(refund.refundedAt).toISOString() : null;
+  const countedInTotals = Boolean(refundedAt) && refund.status === "confirmed";
+  const reviewReasonsAr = [
+    ...(baseItem.reviewReasonsAr || []),
+    ...(!refundedAt ? ["تاريخ الاسترداد الفعلي غير محفوظ؛ لم يُنسب المرتجع إلى إجمالي الفترة"] : []),
+  ];
+  return {
+    ...baseItem,
+    movementId: legacy ? `legacy-refund:${baseItem.paymentId}` : String(refund._id),
+    movementType: "refund",
+    movementTypeLabelAr: countedInTotals ? "مرتجع" : "مرتجع يحتاج مراجعة",
+    refundId: legacy ? null : String(refund._id),
+    providerRefundId: safeString(refund.providerRefundId) || null,
+    refundStatus: safeString(refund.status, "needs_review"),
+    refundStatusLabelAr: countedInTotals ? "مؤكد" : "يحتاج مراجعة",
+    amountHalala,
+    amountSar: amountHalala / 100,
+    amountFormattedAr: moneyValue(amountHalala).formattedAr,
+    grossCollectionHalala: 0,
+    grossCollectionFormattedAr: moneyValue(0).formattedAr,
+    refundsHalala: amountHalala,
+    refundsFormattedAr: moneyValue(amountHalala).formattedAr,
+    netMovementHalala: -amountHalala,
+    netMovementFormattedAr: signedMoneyValue(-amountHalala).formattedAr,
+    vatHalala,
+    vatSar: vatHalala / 100,
+    vatFormattedAr: moneyValue(vatHalala).formattedAr,
+    refundVatHalala: vatHalala,
+    refundVatFormattedAr: moneyValue(vatHalala).formattedAr,
+    netBeforeVatHalala,
+    netBeforeVatSar: netBeforeVatHalala / 100,
+    netBeforeVatFormattedAr: signedMoneyValue(netBeforeVatHalala).formattedAr,
+    status: safeString(refund.status, "needs_review"),
+    statusLabelAr: countedInTotals ? "مرتجع مؤكد" : "مرتجع يحتاج مراجعة",
+    businessDate,
+    businessDateLabelAr: formatBusinessDateAr(businessDate),
+    refundedAt,
+    refundedAtLabelAr: formatDateTimeAr(refundedAt),
+    countedInTotals,
+    accountingTreatmentAr: countedInTotals
+      ? "حركة استرداد مستقلة تُخصم في تاريخ الاسترداد الفعلي"
+      : "مرتجع قديم بلا تاريخ فعلي؛ ظاهر للمراجعة ولا يُخصم تلقائيًا من الفترة",
+    needsReview: reviewReasonsAr.length > 0,
+    reviewReasonsAr,
+  };
+}
+
+async function loadSubscriptionRefundItems({ periods, fulfillmentMethod, collectionItems }) {
+  const rangeStart = periods[0].start;
+  const rangeEnd = periods[periods.length - 1].end;
+  const collectionPaymentIds = collectionItems.map((item) => item.paymentId).filter(Boolean);
+  const [datedRefunds, undatedRefunds, legacyRefundedPayments] = await Promise.all([
+    PaymentRefund.find({
+      status: "confirmed",
+      refundedAt: { $gte: rangeStart, $lte: rangeEnd },
+    }).sort({ refundedAt: 1, _id: 1 }).lean(),
+    collectionPaymentIds.length
+      ? PaymentRefund.find({
+        status: "needs_review",
+        refundedAt: null,
+        paymentId: { $in: collectionPaymentIds },
+      }).sort({ createdAt: 1, _id: 1 }).lean()
+      : [],
+    collectionPaymentIds.length
+      ? Payment.find({
+        _id: { $in: collectionPaymentIds },
+        type: { $in: PAYMENT_TYPES },
+        status: "refunded",
+      }).lean()
+      : [],
+  ]);
+  const refunds = [...datedRefunds, ...undatedRefunds];
+  const paymentIds = Array.from(new Set(refunds.map((refund) => safeString(refund.paymentId))));
+  const payments = paymentIds.length
+    ? await Payment.find({ _id: { $in: paymentIds }, type: { $in: PAYMENT_TYPES } }).lean()
+    : [];
+  const paymentMap = new Map(payments.map((payment) => [String(payment._id), payment]));
+  const collectionMap = new Map(collectionItems.map((item) => [item.paymentId, item]));
+  const refundPeriod = (refund) => {
+    if (refund.refundedAt) {
+      const instant = new Date(refund.refundedAt);
+      return periods.find((period) => instant >= period.start && instant <= period.end) || null;
+    }
+    const collection = collectionMap.get(safeString(refund.paymentId));
+    return collection
+      ? periods.find((period) => period.businessDate === collection.businessDate) || null
+      : null;
+  };
+  const uniquePaymentRows = [];
+  const seenPayments = new Set();
+  for (const refund of refunds) {
+    const payment = paymentMap.get(safeString(refund.paymentId));
+    const period = refundPeriod(refund);
+    if (!payment || !period || seenPayments.has(String(payment._id))) continue;
+    seenPayments.add(String(payment._id));
+    uniquePaymentRows.push({ payment, period });
+  }
+  const hydrated = await serializePaymentRows({
+    paymentsWithPeriods: uniquePaymentRows,
+    fulfillmentMethod,
+  });
+  const hydratedMap = new Map(hydrated.map((item) => [item.paymentId, item]));
+  const rows = refunds.flatMap((refund) => {
+    const baseItem = hydratedMap.get(safeString(refund.paymentId));
+    const period = refundPeriod(refund);
+    return baseItem && period
+      ? [serializeRefundItem({ refund, baseItem, businessDate: period.businessDate })]
+      : [];
+  });
+
+  const refundPaymentIds = new Set(refunds.map((refund) => safeString(refund.paymentId)));
+  for (const payment of legacyRefundedPayments) {
+    if (refundPaymentIds.has(String(payment._id))) continue;
+    const baseItem = collectionMap.get(String(payment._id));
+    if (!baseItem) continue;
+    const vat = resolveStoredVatBreakdown(payment.amount, {});
+    rows.push(serializeRefundItem({
+      refund: {
+        amountHalala: payment.amount,
+        vatHalala: vat.vatHalala,
+        refundedAt: null,
+        status: "needs_review",
+      },
+      baseItem,
+      businessDate: baseItem.businessDate,
+      legacy: true,
+    }));
+  }
+  return rows;
+}
+
+function buildCommonReportSections(collectionItems, refundItems) {
+  const summary = buildPaymentMethodSummary(collectionItems, refundItems);
+  const allItems = [...collectionItems, ...refundItems].sort((left, right) => {
+    const leftAt = left.refundedAt || left.paidAt || left.createdAt || "";
+    const rightAt = right.refundedAt || right.paidAt || right.createdAt || "";
+    return String(leftAt).localeCompare(String(rightAt));
+  });
+  const warnings = buildWarnings(allItems, summary);
   const byPaymentMethod = summary.byPaymentMethod;
-  const byFulfillmentMethod = buildBucketRows(items, "fulfillmentMethod", "fulfillmentMethod");
-  const bySubscriptionStatus = buildBucketRows(items, "subscriptionStatus", "subscriptionStatus");
-  const byPaymentType = buildBucketRows(items, "paymentType", "paymentType");
+  const byFulfillmentMethod = buildBucketRows(collectionItems, "fulfillmentMethod", "fulfillmentMethod");
+  const bySubscriptionStatus = buildBucketRows(collectionItems, "subscriptionStatus", "subscriptionStatus");
+  const byPaymentType = buildBucketRows(collectionItems, "paymentType", "paymentType");
   return {
     summary,
     dashboardCards: buildDashboardCards(summary),
@@ -860,15 +1204,17 @@ function buildCommonReportSections(items) {
     byPaymentType,
     reconciliation: buildReconciliation(summary, warnings),
     warnings,
+    items: allItems,
   };
 }
 
 function buildAccountingPolicyAr() {
   return {
     basis: "أساس نقدي للتحصيل",
-    basisDescription: "يتم إدراج الدفعة في تاريخ التحصيل الفعلي المسجل في paidAt، مع الرجوع إلى createdAt للسجلات القديمة فقط.",
+    basisDescription: "تُدرج الدفعة في paidAt والمرتجع في refundedAt، ضمن اليوم الكامل من 00:00:00 إلى 23:59:59 بتوقيت الرياض.",
     vatTreatment: `المبالغ شاملة ضريبة القيمة المضافة بنسبة ${VAT_PERCENTAGE}%، ويتم فصل الضريبة من الإجمالي لا إضافتها عليه.`,
     cancellationTreatment: "إلغاء الاشتراك لا يُعتبر مرتجعًا ماليًا تلقائيًا. تظل الدفعة ضمن التحصيل حتى يتم تسجيل عملية استرداد مستقلة.",
+    refundTreatment: "كل مرتجع حركة مستقلة. المرتجعات بلا تاريخ فعلي تظهر للمراجعة ولا تُنسب تلقائيًا إلى فترة.",
     paymentMethodTreatment: "طريقة الدفع تعتمد على حقل الدفعة أولًا، ثم بياناتها الوصفية، ثم سجل الحركة القديم لاسترجاع البيانات التاريخية.",
   };
 }
@@ -880,9 +1226,17 @@ async function buildDailySubscriptionPaymentReport({
 } = {}) {
   const selectedFulfillment = normalizeFulfillmentMethod(fulfillmentMethod);
   const details = parseIncludeDetails(includeDetails);
-  const period = await accountingDailyReportService.resolveBusinessPeriod(date);
-  const items = await loadSubscriptionPaymentItems({ periods: [period], fulfillmentMethod: selectedFulfillment });
-  const sections = buildCommonReportSections(items);
+  const period = accountingDailyReportService.resolveFullDayPeriod(date);
+  const collectionItems = await loadSubscriptionPaymentItems({
+    periods: [period],
+    fulfillmentMethod: selectedFulfillment,
+  });
+  const refundItems = await loadSubscriptionRefundItems({
+    periods: [period],
+    fulfillmentMethod: selectedFulfillment,
+    collectionItems,
+  });
+  const sections = buildCommonReportSections(collectionItems, refundItems);
 
   return {
     reportType: "daily",
@@ -913,15 +1267,15 @@ async function buildDailySubscriptionPaymentReport({
       labelAr: `من ${formatDateTimeAr(period.start)} إلى ${formatDateTimeAr(period.end)}`,
     },
     ...sections,
-    items: details ? items : [],
+    items: details ? sections.items : [],
     accountingPolicyAr: buildAccountingPolicyAr(),
     generatedAt: new Date().toISOString(),
     generatedAtLabelAr: formatDateTimeAr(new Date()),
   };
 }
 
-function compactDailySummary(period, items) {
-  const summary = buildPaymentMethodSummary(items);
+function compactDailySummary(period, collectionItems, refundItems) {
+  const summary = buildPaymentMethodSummary(collectionItems, refundItems);
   return {
     businessDate: period.businessDate,
     businessDateLabelAr: formatBusinessDateAr(period.businessDate),
@@ -930,6 +1284,12 @@ function compactDailySummary(period, items) {
     totalHalala: summary.totalHalala,
     totalSar: summary.totalSar,
     totalFormattedAr: summary.totalFormattedAr,
+    grossCollectionHalala: summary.grossCollectionHalala,
+    grossCollectionFormattedAr: summary.grossCollectionFormattedAr,
+    refundsHalala: summary.refundsHalala,
+    refundsFormattedAr: summary.refundsFormattedAr,
+    netCollectionHalala: summary.netCollectionHalala,
+    netCollectionFormattedAr: summary.netCollectionFormattedAr,
     netBeforeVatHalala: summary.netBeforeVatHalala,
     netBeforeVatFormattedAr: summary.netBeforeVatFormattedAr,
     vatHalala: summary.vatHalala,
@@ -980,16 +1340,34 @@ async function buildMonthlySubscriptionPaymentReport({
   const selectedFulfillment = normalizeFulfillmentMethod(fulfillmentMethod);
   const details = parseIncludeDetails(includeDetails);
   const dates = listMonthDates(selectedMonth);
-  const periods = await Promise.all(dates.map((date) => accountingDailyReportService.resolveBusinessPeriod(date)));
-  const items = await loadSubscriptionPaymentItems({ periods, fulfillmentMethod: selectedFulfillment });
-  const sections = buildCommonReportSections(items);
-  const itemsByDate = new Map();
-  for (const item of items) {
-    const rows = itemsByDate.get(item.businessDate) || [];
+  const periods = dates.map((date) => accountingDailyReportService.resolveFullDayPeriod(date));
+  const collectionItems = await loadSubscriptionPaymentItems({
+    periods,
+    fulfillmentMethod: selectedFulfillment,
+  });
+  const refundItems = await loadSubscriptionRefundItems({
+    periods,
+    fulfillmentMethod: selectedFulfillment,
+    collectionItems,
+  });
+  const sections = buildCommonReportSections(collectionItems, refundItems);
+  const collectionsByDate = new Map();
+  const refundsByDate = new Map();
+  for (const item of collectionItems) {
+    const rows = collectionsByDate.get(item.businessDate) || [];
     rows.push(item);
-    itemsByDate.set(item.businessDate, rows);
+    collectionsByDate.set(item.businessDate, rows);
   }
-  const dailyBreakdown = periods.map((period) => compactDailySummary(period, itemsByDate.get(period.businessDate) || []));
+  for (const item of refundItems) {
+    const rows = refundsByDate.get(item.businessDate) || [];
+    rows.push(item);
+    refundsByDate.set(item.businessDate, rows);
+  }
+  const dailyBreakdown = periods.map((period) => compactDailySummary(
+    period,
+    collectionsByDate.get(period.businessDate) || [],
+    refundsByDate.get(period.businessDate) || []
+  ));
 
   return {
     reportType: "monthly",
@@ -1024,7 +1402,7 @@ async function buildMonthlySubscriptionPaymentReport({
     ...sections,
     statistics: buildMonthlyStatistics(dailyBreakdown),
     dailyBreakdown,
-    items: details ? items : [],
+    items: details ? sections.items : [],
     accountingPolicyAr: buildAccountingPolicyAr(),
     generatedAt: new Date().toISOString(),
     generatedAtLabelAr: formatDateTimeAr(new Date()),

@@ -164,7 +164,12 @@ async function run() {
     assert.strictEqual(res.body.data.summary.totalHalala, 30000);
     assert.strictEqual(res.body.data.items.length, 2);
     assert(res.body.data.items.some((row) => row.paymentMethod === "cash" && row.provider === "cash"));
-    assert(res.body.data.items.some((row) => row.paymentMethod === "visa" && row.provider === "manual"));
+    assert(res.body.data.items.some(
+      (row) => row.paymentMethod === "card"
+        && row.legacyPaymentMethod === "visa"
+        && row.paymentProvider === "manual_gateway"
+        && row.provider === "manual"
+    ));
     assert(res.body.data.items.every((row) => row.gatewayUsed === false));
 
     res = await auth(
