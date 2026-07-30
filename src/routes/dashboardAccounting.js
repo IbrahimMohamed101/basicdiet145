@@ -1,5 +1,3 @@
-"use strict";
-
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/accountingReportController");
 const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentReportController");
@@ -34,6 +32,13 @@ router.get(
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin"]),
   asyncHandler(subscriptionPaymentController.getMonthlySubscriptionPayments)
+);
+
+router.get(
+  "/subscription-payments/range",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin"]),
+  asyncHandler(subscriptionPaymentController.getRangeSubscriptionPayments)
 );
 
 module.exports = router;
