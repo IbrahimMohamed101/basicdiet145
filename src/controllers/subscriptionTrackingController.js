@@ -34,13 +34,8 @@ async function getSubscriptionTrackingAdmin(req, res) {
     subscription,
     timeline,
     lang,
+    businessDate,
   });
-
-  tracking.businessDate = businessDate;
-  tracking.days = tracking.days.map((day) => ({
-    ...day,
-    isToday: day.date === businessDate,
-  }));
 
   return res.status(200).json({
     status: true,
