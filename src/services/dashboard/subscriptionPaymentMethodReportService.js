@@ -1260,6 +1260,9 @@ async function buildDailySubscriptionPaymentReport({
       includeDetailsLabelAr: details ? "مع التفاصيل" : "ملخص فقط",
     },
     period: {
+      timezone: period.timezone,
+      openTime: period.openTime,
+      closeTime: period.closeTime,
       start: period.start.toISOString(),
       end: period.end.toISOString(),
       startLabelAr: formatDateTimeAr(period.start),
@@ -1374,6 +1377,7 @@ async function buildMonthlySubscriptionPaymentReport({
     reportTypeLabelAr: "تقرير تحصيل الاشتراكات الشهري",
     titleAr: `تقرير تحصيل الاشتراكات — ${formatBusinessMonthAr(selectedMonth)}`,
     locale: "ar-AE",
+    month: selectedMonth,
     businessMonth: selectedMonth,
     businessMonthLabelAr: formatBusinessMonthAr(selectedMonth),
     timezone: periods[0].timezone,
@@ -1391,6 +1395,9 @@ async function buildMonthlySubscriptionPaymentReport({
       includeDetailsLabelAr: details ? "مع التفاصيل" : "ملخص فقط",
     },
     period: {
+      timezone: periods[0].timezone,
+      openTime: periods[0].openTime,
+      closeTime: periods[0].closeTime,
       startDate: dates[0],
       endDate: dates[dates.length - 1],
       start: periods[0].start.toISOString(),

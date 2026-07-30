@@ -19,6 +19,7 @@ const User = require("../src/models/User");
 const accountingDailyReportService = require("../src/services/dashboard/accountingDailyReportService");
 const {
   buildDailySubscriptionPaymentReport,
+  buildMonthlySubscriptionPaymentReport,
 } = require("../src/services/dashboard/subscriptionPaymentMethodReportService");
 const {
   buildMoyasarRefundIdempotencyKey,
@@ -206,6 +207,9 @@ async function main() {
     assert.equal(refreshedPayment.status, "paid", "gross collection must remain paid");
 
     const report = await buildDailySubscriptionPaymentReport({ date: "2026-08-01" });
+    assert.equal(report.period.timezone, "Asia/Riyadh");
+    assert.equal(report.period.openTime, "00:00");
+    assert.equal(report.period.closeTime, "23:59");
     assert.equal(report.period.start, "2026-07-31T21:00:00.000Z");
     assert.equal(report.period.end, "2026-08-01T20:59:59.999Z");
     assert.equal(report.summary.totalPaymentsCount, 2);
@@ -244,6 +248,13 @@ async function main() {
     assert.equal(julyReport.summary.grossCollectionHalala, 10000);
     assert.equal(julyReport.summary.refundsHalala, 0);
     assert.equal(julyReport.summary.netCollectionHalala, 10000);
+
+    const monthlyReport = await buildMonthlySubscriptionPaymentReport({ month: "2026-08" });
+    assert.equal(monthlyReport.month, "2026-08");
+    assert.equal(monthlyReport.businessMonth, "2026-08");
+    assert.equal(monthlyReport.period.timezone, "Asia/Riyadh");
+    assert.equal(monthlyReport.period.openTime, "00:00");
+    assert.equal(monthlyReport.period.closeTime, "23:59");
   } finally {
     await mongoose.disconnect().catch(() => {});
     await mongo.stop();
