@@ -12,8 +12,8 @@ const {
   normalizeTrackingSubscriptionCounters,
 } = require("../services/subscription/subscriptionDashboardTrackingCompatibilityService");
 const {
-  buildSubscriptionDashboardTrackingReadModel,
-} = require("../services/subscription/subscriptionDashboardTrackingReadService");
+  buildSubscriptionDashboardTrackingReadModelV3,
+} = require("../services/subscription/subscriptionDashboardTrackingReadServiceV3");
 
 async function getSubscriptionTrackingAdmin(req, res) {
   const { id } = req.params;
@@ -33,7 +33,7 @@ async function getSubscriptionTrackingAdmin(req, res) {
     buildSubscriptionTimeline(id, { lang }),
     getRestaurantBusinessDate(),
   ]);
-  const tracking = await buildSubscriptionDashboardTrackingReadModel({
+  const tracking = await buildSubscriptionDashboardTrackingReadModelV3({
     subscription: normalizeTrackingSubscriptionCounters(subscription),
     timeline,
     lang,
