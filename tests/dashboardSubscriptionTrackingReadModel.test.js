@@ -4,6 +4,9 @@ process.env.NODE_ENV = "test";
 
 const assert = require("node:assert/strict");
 const {
+  normalizeTrackingSubscriptionCounters,
+} = require("../src/services/subscription/subscriptionDashboardTrackingCompatibilityService");
+const {
   buildDayConsumptionBreakdown,
   normalizeTrackingDays,
   reconcileTrackingSummary,
@@ -189,6 +192,31 @@ function manualDeduction(totalMeals) {
 
   assert.equal(summary.balanceIntegrity.status, "difference");
   assert.equal(summary.balanceIntegrity.difference, 1);
+}
+
+{
+  const legacy = normalizeTrackingSubscriptionCounters({
+    totalMeals: 7,
+    remainingMeals: 5,
+    consumedMeals: 0,
+    reservedMeals: 4,
+    entitlementVersion: 1,
+  });
+  assert.equal(legacy.consumedMeals, undefined);
+  assert.equal(legacy.reservedMeals, 0);
+
+  const summary = reconcileTrackingSummary({
+    subscription: legacy,
+    baseSummary: {
+      consumedMeals: 2,
+      timelineReceivedMeals: 2,
+      reconciliation: { authoritativeSource: "subscription_balance_legacy" },
+    },
+    manualDeductions: [],
+  });
+  assert.equal(summary.consumedMeals, 2);
+  assert.equal(summary.receivedMeals, 2);
+  assert.equal(summary.balanceIntegrity.status, "balanced");
 }
 
 console.log("dashboard subscription tracking read-model tests passed");
