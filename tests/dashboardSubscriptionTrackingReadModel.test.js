@@ -68,23 +68,49 @@ function manualDeduction(totalMeals) {
   const days = normalizeTrackingDays([
     {
       date: "2026-07-20",
+      isPast: true,
       dayStatus: "fulfilled",
       status: "delivered",
       receivedMeals: 1,
+      selectedMeals: 1,
     },
     {
       date: "2026-07-21",
+      isPast: true,
       dayStatus: "consumed_without_preparation",
       status: "consumed_without_preparation",
       receivedMeals: 1,
+      selectedMeals: 1,
+    },
+    {
+      date: "2026-07-22",
+      isPast: true,
+      dayStatus: "locked",
+      status: "locked",
+      receivedMeals: 0,
+      selectedMeals: 0,
+    },
+    {
+      date: "2026-08-01",
+      isPast: false,
+      dayStatus: "locked",
+      status: "locked",
+      receivedMeals: 0,
+      selectedMeals: 0,
     },
   ]);
   const breakdown = buildDayConsumptionBreakdown(days);
 
   assert.equal(days[0].receivedMeals, 1);
-  assert.equal(days[0].consumedWithoutPreparationMeals, 0);
+  assert.equal(days[0].trackingState, "received");
+  assert.equal(days[0].statusLabel, "تم الاستلام");
   assert.equal(days[1].receivedMeals, 0, "non-prepared consumption is not physical receipt");
   assert.equal(days[1].consumedWithoutPreparationMeals, 1);
+  assert.equal(days[1].trackingState, "consumed_without_preparation");
+  assert.equal(days[2].trackingState, "missed_selection");
+  assert.equal(days[2].statusLabel, "انتهى بدون اختيار");
+  assert.equal(days[3].trackingState, "upcoming");
+  assert.equal(days[3].statusLabel, "غير متاح للاختيار بعد");
   assert.deepEqual(breakdown, {
     receivedMeals: 1,
     consumedWithoutPreparationMeals: 1,
