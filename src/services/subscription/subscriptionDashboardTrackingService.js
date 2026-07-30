@@ -400,7 +400,12 @@ function buildTrackingSummary({ subscription, timeline, dayRows }) {
   };
 }
 
-async function buildSubscriptionDashboardTracking({ subscription, timeline, lang = "ar" }) {
+async function buildSubscriptionDashboardTracking({
+  subscription,
+  timeline,
+  lang = "ar",
+  businessDate: requestedBusinessDate = null,
+}) {
   if (!subscription || !subscription._id) {
     const err = new Error("Subscription is required");
     err.code = "INVALID_SUBSCRIPTION";
@@ -413,7 +418,7 @@ async function buildSubscriptionDashboardTracking({ subscription, timeline, lang
   const rawDayMap = new Map(rawDays.map((day) => [String(day.date), day]));
   const allocationMap = buildAllocationCounts(subscription);
   const catalog = await loadCatalogMaps(rawDays);
-  const businessDate = getRestaurantBusinessDate();
+  const businessDate = requestedBusinessDate || await getRestaurantBusinessDate();
 
   const dayRows = (Array.isArray(timeline && timeline.days) ? timeline.days : []).map((timelineDay) => {
     const date = String(timelineDay && timelineDay.date || "");
