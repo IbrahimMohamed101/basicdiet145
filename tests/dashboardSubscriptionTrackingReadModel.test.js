@@ -4,6 +4,8 @@ process.env.NODE_ENV = "test";
 
 const assert = require("node:assert/strict");
 const {
+  buildDayConsumptionBreakdown,
+  normalizeTrackingDays,
   reconcileTrackingSummary,
 } = require("../src/services/subscription/subscriptionDashboardTrackingReadService");
 
@@ -34,8 +36,10 @@ function manualDeduction(totalMeals) {
   const summary = reconcileTrackingSummary({
     subscription: buildSubscription(),
     baseSummary: {
+      // Simulate an optional mobile projection. Dashboard accounting must still
+      // use the persisted available balance from the Subscription document.
       totalMeals: 7,
-      remainingMeals: 6,
+      remainingMeals: 7,
       availableMeals: 6,
       reservedMeals: 0,
       consumedMeals: 1,
@@ -52,8 +56,63 @@ function manualDeduction(totalMeals) {
   assert.equal(summary.receivedMeals, 0, "manual deduction must not be shown as customer receipt");
   assert.equal(summary.manualDeductedMeals, 1);
   assert.equal(summary.otherConsumedMeals, 0);
+  assert.equal(summary.remainingMeals, 6);
+  assert.equal(summary.availableMeals, 6);
   assert.equal(summary.progressPercent, 0);
   assert.equal(summary.balanceUsagePercent, 14);
+  assert.equal(summary.reconciliation.status, "balanced");
+  assert.equal(summary.balanceIntegrity.status, "balanced");
+}
+
+{
+  const days = normalizeTrackingDays([
+    {
+      date: "2026-07-20",
+      dayStatus: "fulfilled",
+      status: "delivered",
+      receivedMeals: 1,
+    },
+    {
+      date: "2026-07-21",
+      dayStatus: "consumed_without_preparation",
+      status: "consumed_without_preparation",
+      receivedMeals: 1,
+    },
+  ]);
+  const breakdown = buildDayConsumptionBreakdown(days);
+
+  assert.equal(days[0].receivedMeals, 1);
+  assert.equal(days[0].consumedWithoutPreparationMeals, 0);
+  assert.equal(days[1].receivedMeals, 0, "non-prepared consumption is not physical receipt");
+  assert.equal(days[1].consumedWithoutPreparationMeals, 1);
+  assert.deepEqual(breakdown, {
+    receivedMeals: 1,
+    consumedWithoutPreparationMeals: 1,
+    otherDayConsumedMeals: 0,
+    deliveredDays: 1,
+  });
+
+  const summary = reconcileTrackingSummary({
+    subscription: buildSubscription({
+      totalMeals: 7,
+      remainingMeals: 5,
+      consumedMeals: 2,
+    }),
+    baseSummary: {
+      totalMeals: 7,
+      timelineDays: 8,
+      plannedMeals: 2,
+      reconciliation: { authoritativeSource: "base_meal_allocation_ledger" },
+    },
+    manualDeductions: [],
+    dayConsumption: breakdown,
+  });
+
+  assert.equal(summary.receivedMeals, 1);
+  assert.equal(summary.timelineConsumedMeals, 2);
+  assert.equal(summary.consumedWithoutPreparationMeals, 1);
+  assert.equal(summary.otherConsumedMeals, 0);
+  assert.equal(summary.deliveredDays, 1);
   assert.equal(summary.reconciliation.status, "balanced");
   assert.equal(summary.balanceIntegrity.status, "balanced");
 }
@@ -67,15 +126,17 @@ function manualDeduction(totalMeals) {
       reservedMeals: 1,
     }),
     baseSummary: {
-      totalMeals: 7,
-      remainingMeals: 4,
-      availableMeals: 4,
-      reservedMeals: 1,
-      consumedMeals: 2,
-      forfeitedMeals: 0,
-      timelineReceivedMeals: 1,
+      timelineDays: 8,
+      plannedMeals: 1,
+      reconciliation: { authoritativeSource: "base_meal_allocation_ledger" },
     },
     manualDeductions: [],
+    dayConsumption: {
+      receivedMeals: 1,
+      consumedWithoutPreparationMeals: 0,
+      otherDayConsumedMeals: 0,
+      deliveredDays: 1,
+    },
   });
 
   assert.equal(summary.receivedMeals, 1);
@@ -95,12 +156,6 @@ function manualDeduction(totalMeals) {
       reservedMeals: 0,
     }),
     baseSummary: {
-      totalMeals: 7,
-      remainingMeals: 5,
-      availableMeals: 5,
-      reservedMeals: 0,
-      consumedMeals: 1,
-      forfeitedMeals: 0,
       timelineReceivedMeals: 1,
     },
     manualDeductions: [],
