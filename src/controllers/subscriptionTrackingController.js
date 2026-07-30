@@ -4,6 +4,7 @@ const Subscription = require("../models/Subscription");
 const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 const { getRequestLang } = require("../utils/i18n");
+const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
 const {
   buildSubscriptionTimeline,
 } = require("../services/subscription/subscriptionService");
@@ -25,12 +26,21 @@ async function getSubscriptionTrackingAdmin(req, res) {
   }
 
   const lang = getRequestLang(req);
-  const timeline = await buildSubscriptionTimeline(id, { lang });
+  const [timeline, businessDate] = await Promise.all([
+    buildSubscriptionTimeline(id, { lang }),
+    getRestaurantBusinessDate(),
+  ]);
   const tracking = await buildSubscriptionDashboardTracking({
     subscription,
     timeline,
     lang,
   });
+
+  tracking.businessDate = businessDate;
+  tracking.days = tracking.days.map((day) => ({
+    ...day,
+    isToday: day.date === businessDate,
+  }));
 
   return res.status(200).json({
     status: true,
