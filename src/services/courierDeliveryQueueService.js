@@ -57,6 +57,16 @@ function normalizeStatus(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function canonicalPersistedDeliveryStatus(value) {
+  const status = normalizeDeliveryStatus(value);
+  if (["fulfilled", "delivered"].includes(status)) return "delivered";
+  if (["cancelled", "canceled", "delivery_canceled"].includes(status)) return "canceled";
+  if (["open", "locked", "confirmed", "preparing", "in_preparation"].includes(status)) {
+    return "preparing";
+  }
+  return status;
+}
+
 function isVisibleDeliveryDayStatus(status) {
   return VISIBLE_DELIVERY_DAY_STATUSES.has(normalizeStatus(status));
 }
@@ -99,7 +109,7 @@ function deliveryStatusFromOrder(orderStatus) {
 
 function resolveSubscriptionDeliveryStatus(day, delivery) {
   const dayStatus = deliveryStatusFromSubscriptionDay(day && day.status);
-  const persistedStatus = normalizeDeliveryStatus(delivery && delivery.status);
+  const persistedStatus = canonicalPersistedDeliveryStatus(delivery && delivery.status);
 
   if (["delivered", "canceled", "failed"].includes(persistedStatus)) {
     return persistedStatus;
@@ -115,7 +125,7 @@ function resolveSubscriptionDeliveryStatus(day, delivery) {
 }
 
 function resolveOrderDeliveryStatus(order, delivery) {
-  const persistedStatus = normalizeDeliveryStatus(delivery && delivery.status);
+  const persistedStatus = canonicalPersistedDeliveryStatus(delivery && delivery.status);
   if (persistedStatus && persistedStatus !== "scheduled") {
     return persistedStatus;
   }
@@ -201,6 +211,19 @@ function buildOrderDeliverySnapshot(order, delivery) {
   };
 }
 
+function makeQueueRowReadOnly(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  return {
+    ...row,
+    canCourierPickup: false,
+    canMarkArrivingSoon: false,
+    canMarkDelivered: false,
+    canCancel: false,
+    allowedActions: [],
+    allowedActionIds: [],
+  };
+}
+
 async function listCourierDeliveryQueue({ date } = {}) {
   const businessDate = resolveBusinessDate(date);
 
@@ -269,7 +292,7 @@ async function listCourierDeliveryQueue({ date } = {}) {
     return mapOneTimeOrderDelivery(order, user, snapshot);
   });
 
-  const items = [...mappedDays, ...mappedOrders].sort((a, b) => {
+  const sortedItems = [...mappedDays, ...mappedOrders].sort((a, b) => {
     const dateA = a.timestamps && a.timestamps.scheduledAt
       ? new Date(a.timestamps.scheduledAt).getTime()
       : 0;
@@ -279,6 +302,10 @@ async function listCourierDeliveryQueue({ date } = {}) {
     return dateB - dateA;
   });
 
+  const items = businessDate === getTodayKSADate()
+    ? sortedItems
+    : sortedItems.map(makeQueueRowReadOnly);
+
   return { date: businessDate, items };
 }
 
@@ -286,10 +313,12 @@ module.exports = {
   buildOneTimeOrderQuery,
   buildOrderDeliverySnapshot,
   buildSubscriptionDeliverySnapshot,
+  canonicalPersistedDeliveryStatus,
   deliveryStatusFromOrder,
   deliveryStatusFromSubscriptionDay,
   isVisibleDeliveryDayStatus,
   listCourierDeliveryQueue,
+  makeQueueRowReadOnly,
   resolveBusinessDate,
   resolveDayZoneName,
   resolveOrderDeliveryStatus,
