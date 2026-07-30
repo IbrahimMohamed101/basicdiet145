@@ -6,12 +6,14 @@ on:
       - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
       - "src/controllers/dashboard/subscriptionPaymentReportController.js"
       - "src/services/dashboard/subscriptionPaymentMethodReportService.js"
+      - "src/services/dashboard/subscriptionPaymentRangeReportService.js"
       - "src/routes/dashboardSubscriptions.js"
       - "src/routes/dashboardAccounting.js"
       - "src/models/Payment.js"
       - "tests/dashboardSubscriptionPaymentMethods.test.js"
       - "tests/dashboardSubscriptionPaymentDailyReport.test.js"
       - "tests/subscriptionPaymentReportPresentation.test.js"
+      - "tests/accountingRangeReport.test.js"
       - "tests/dashboardSubscriptionCreationContract.test.js"
       - "tests/dashboardAccountingDailyReport.test.js"
       - ".github/workflows/dashboard-subscription-payment-methods.yml"
@@ -45,18 +47,22 @@ jobs:
           node --check src/controllers/dashboard/subscriptionPaymentRecordingController.js
           node --check src/controllers/dashboard/subscriptionPaymentReportController.js
           node --check src/services/dashboard/subscriptionPaymentMethodReportService.js
+          node --check src/services/dashboard/subscriptionPaymentRangeReportService.js
           node --check src/routes/dashboardSubscriptions.js
           node --check src/routes/dashboardAccounting.js
           node --check src/models/Payment.js
           node --check tests/dashboardSubscriptionPaymentMethods.test.js
           node --check tests/dashboardSubscriptionPaymentDailyReport.test.js
           node --check tests/subscriptionPaymentReportPresentation.test.js
+          node --check tests/accountingRangeReport.test.js
       - name: Verify cash and visa contract
         run: node tests/dashboardSubscriptionPaymentMethods.test.js 2>&1 | tee payment-methods.log
       - name: Verify Arabic presentation and monthly helpers
         run: node tests/subscriptionPaymentReportPresentation.test.js 2>&1 | tee payment-presentation.log
       - name: Verify daily report integration
         run: node tests/dashboardSubscriptionPaymentDailyReport.test.js 2>&1 | tee payment-report.log
+      - name: Verify custom range analytics contract
+        run: node tests/accountingRangeReport.test.js 2>&1 | tee accounting-range.log
       - name: Verify existing subscription creation contract
         run: npm run test:dashboard-subscription-create 2>&1 | tee subscription-create.log
       - name: Verify existing accounting contract
@@ -70,6 +76,7 @@ jobs:
             payment-methods.log
             payment-presentation.log
             payment-report.log
+            accounting-range.log
             subscription-create.log
             accounting.log
           if-no-files-found: ignore
