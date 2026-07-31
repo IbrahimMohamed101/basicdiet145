@@ -1,5 +1,6 @@
 "use strict";
 
+const ActivityLog = require("../../models/ActivityLog");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 
 function asArray(value) {
@@ -13,6 +14,12 @@ function asObject(value) {
 function integer(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0;
+}
+
+function optionalInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : null;
 }
 
 function localized(value) {
@@ -97,6 +104,62 @@ function pickupSnapshotItems(request = {}) {
     selectionType: item.itemType,
     slotKey: item.slotKey || item.sourceId || item.itemId,
   }, index));
+}
+
+function reasonLabel(reason) {
+  const code = String(reason || "").trim().toLowerCase();
+  const labels = {
+    cashier_walk_in: "صرف مباشر للعميل من الفرع",
+    customer_walk_in: "صرف مباشر للعميل من الفرع",
+    walk_in: "صرف مباشر للعميل من الفرع",
+    manual_adjustment: "تسوية يدوية للرصيد",
+    balance_correction: "تصحيح رصيد الاشتراك",
+    complimentary_meal: "وجبة مجانية مع خصمها من الرصيد",
+    replacement_meal: "وجبة بديلة",
+    admin_adjustment: "تعديل إداري للرصيد",
+  };
+  return labels[code] || (code ? code.replace(/_/g, " ") : "لم يُسجل سبب واضح");
+}
+
+function manualDeductionDetails(log = {}) {
+  const meta = asObject(log.meta);
+  const before = asObject(meta.before);
+  const after = asObject(meta.after);
+  const reasonCode = String(meta.reason || "").trim();
+  const fulfillmentMethod = String(meta.fulfillmentMethod || "").trim().toLowerCase() || null;
+  return {
+    regularMeals: integer(meta.deductedRegularMeals),
+    premiumMeals: integer(meta.deductedPremiumMeals),
+    totalMeals: integer(meta.deductedTotalMeals),
+    addons: asArray(meta.deductedAddons).map((addon) => ({
+      addonId: addon && addon.addonId ? String(addon.addonId) : null,
+      qty: integer(addon && addon.qty),
+      remainingBefore: optionalInteger(addon && addon.remainingBefore),
+      remainingAfter: optionalInteger(addon && addon.remainingAfter),
+    })),
+    before: {
+      remainingRegularMeals: optionalInteger(before.remainingRegularMeals),
+      remainingPremiumMeals: optionalInteger(before.remainingPremiumMeals),
+      remainingMeals: optionalInteger(before.remainingMeals),
+    },
+    after: {
+      remainingRegularMeals: optionalInteger(after.remainingRegularMeals),
+      remainingPremiumMeals: optionalInteger(after.remainingPremiumMeals),
+      remainingMeals: optionalInteger(after.remainingMeals),
+    },
+    reasonCode,
+    reasonLabel: reasonLabel(reasonCode),
+    notes: String(meta.notes || ""),
+    businessDate: meta.businessDate || null,
+    fulfillmentContext: fulfillmentMethod
+      ? {
+          code: fulfillmentMethod,
+          label: fulfillmentMethod === "pickup"
+            ? "تم تسجيل الخصم أثناء صرف مباشر من الفرع"
+            : "تم تسجيل الخصم ضمن اشتراك توصيل",
+        }
+      : { code: "unspecified", label: "لم يُسجل سياق تنفيذ" },
+  };
 }
 
 function correctedSource(movement) {
@@ -185,12 +248,25 @@ async function enrichSubscriptionMealMovementProvenance(provenance = {}) {
   const pickupIds = [...new Set(movements
     .filter((movement) => movement.reference && movement.reference.type === "subscription_pickup_request" && movement.reference.id)
     .map((movement) => String(movement.reference.id)))];
-  const pickupRequests = pickupIds.length
-    ? await SubscriptionPickupRequest.find({ _id: { $in: pickupIds } })
-      .select("_id snapshot selectedPickupItems selectedMealSlotIds selectedPickupItemIds")
-      .lean()
-    : [];
+  const activityLogIds = [...new Set(movements
+    .filter((movement) => movement.reference && movement.reference.type === "activity_log" && movement.reference.id)
+    .map((movement) => String(movement.reference.id)))];
+
+  const [pickupRequests, activityLogs] = await Promise.all([
+    pickupIds.length
+      ? SubscriptionPickupRequest.find({ _id: { $in: pickupIds } })
+        .select("_id snapshot selectedPickupItems selectedMealSlotIds selectedPickupItemIds")
+        .lean()
+      : [],
+    activityLogIds.length
+      ? ActivityLog.find({ _id: { $in: activityLogIds } })
+        .select("_id meta byUserId byRole createdAt")
+        .lean()
+      : [],
+  ]);
+
   const pickupMap = new Map(pickupRequests.map((request) => [String(request._id), request]));
+  const activityLogMap = new Map(activityLogs.map((log) => [String(log._id), log]));
 
   for (const movement of movements) {
     const correction = correctedSource(movement);
@@ -206,11 +282,53 @@ async function enrichSubscriptionMealMovementProvenance(provenance = {}) {
       const items = pickupSnapshotItems(request || {});
       if (items.length) movement.mealItems = items;
     }
+
+    if (
+      movement.sourceCode === "dashboard_manual_deduction"
+      && movement.reference
+      && movement.reference.type === "activity_log"
+      && movement.reference.id
+    ) {
+      const log = activityLogMap.get(String(movement.reference.id));
+      if (log) {
+        const details = manualDeductionDetails(log);
+        movement.sourceLabel = "خصم مباشر من رصيد الاشتراك عبر الداشبورد";
+        movement.selection = {
+          code: "not_applicable",
+          label: "لا يوجد اختيار وجبات؛ هذه حركة خصم رصيد مباشرة",
+          role: null,
+        };
+        movement.completion = { code: "manual_deduction", label: "تم خصم الرصيد مباشرة" };
+        movement.deductionDetails = details;
+        movement.reasonCode = details.reasonCode;
+        movement.reasonLabel = details.reasonLabel;
+        movement.reason = details.reasonLabel;
+        movement.notes = details.notes || movement.notes || null;
+        movement.fulfillmentContext = details.fulfillmentContext;
+        movement.occurredAt = movement.occurredAt || log.createdAt || null;
+        movement.actor = {
+          id: movement.actor && movement.actor.id
+            ? movement.actor.id
+            : log.byUserId ? String(log.byUserId) : null,
+          role: movement.actor && movement.actor.role
+            ? movement.actor.role
+            : log.byRole ? String(log.byRole) : null,
+          email: movement.actor && movement.actor.email ? movement.actor.email : null,
+        };
+        movement.evidence = [...new Set([
+          ...asArray(movement.evidence),
+          "ActivityLog.meta.deductedRegularMeals",
+          "ActivityLog.meta.deductedPremiumMeals",
+          "ActivityLog.meta.before/after",
+          "ActivityLog.meta.reason",
+        ])];
+      }
+    }
   }
 
   return {
     ...provenance,
-    contractVersion: "subscription_meal_movement_provenance.v2",
+    contractVersion: "subscription_meal_movement_provenance.v3",
     coverage: recalculateCoverage(
       movements,
       provenance.coverage && provenance.coverage.balanceConsumedMeals
@@ -222,7 +340,9 @@ async function enrichSubscriptionMealMovementProvenance(provenance = {}) {
 module.exports = {
   correctedSource,
   enrichSubscriptionMealMovementProvenance,
+  manualDeductionDetails,
   pickupSnapshotItems,
+  reasonLabel,
   recalculateCoverage,
   snapshotMealItem,
 };
