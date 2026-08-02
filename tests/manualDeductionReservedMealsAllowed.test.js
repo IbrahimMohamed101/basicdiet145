@@ -38,14 +38,13 @@ async function run() {
         quantity: 1,
         state: "reserved",
       },
-      {
-        allocationKey: "2026-08-03:slot_2",
-        date: "2026-08-03",
-        slotKey: "slot_2",
-        quantity: 1,
-        state: "reserved",
-      },
     ],
+  };
+
+  const updatedSubscription = {
+    ...subscription,
+    remainingMeals: 23,
+    consumedMeals: 5,
   };
 
   const repository = {
@@ -55,43 +54,38 @@ async function run() {
     findLastManualDeduction: async () => null,
     deductAtomically: async () => {
       atomicDeductionCalls += 1;
-      return subscription;
+      return updatedSubscription;
     },
     createDeductionLog: async () => {
       logCalls += 1;
     },
   };
-  const runTransactionWithRetry = async (callback) => callback({});
+
   const { manualDeduction } = createManualDeductionCommandService({
     repository,
     getBusinessDate: async () => "2026-08-03",
-    runTransactionWithRetry,
+    runTransactionWithRetry: async (callback) => callback({}),
   });
 
-  await assert.rejects(
-    () => manualDeduction({
-      subscriptionId: String(subscriptionId),
-      body: {
-        regularMeals: 1,
-        premiumMeals: 0,
-        reason: "cashier_walk_in",
-      },
-      actorId: new mongoose.Types.ObjectId(),
-      actorRole: "admin",
-    }),
-    (error) => {
-      assert.equal(error.code, "MANUAL_DEDUCTION_CONFLICTS_WITH_RESERVED_MEALS");
-      assert.equal(error.status, 409);
-      assert.equal(error.details.businessDate, "2026-08-03");
-      assert.equal(error.details.reservedMeals, 2);
-      assert.equal(error.details.actionRequired, "FULFILL_OR_RELEASE_RESERVED_DAY");
-      return true;
-    }
-  );
-  assert.equal(atomicDeductionCalls, 0, "reserved-day conflict must stop before balance mutation");
-  assert.equal(logCalls, 0, "failed deduction must not create an audit success log");
+  const result = await manualDeduction({
+    subscriptionId: String(subscriptionId),
+    body: {
+      regularMeals: 1,
+      premiumMeals: 0,
+      reason: "cashier_walk_in",
+    },
+    actorId: new mongoose.Types.ObjectId(),
+    actorRole: "admin",
+  });
 
-  console.log("manual deduction reserved conflict tests passed");
+  assert.equal(atomicDeductionCalls, 1, "manual deduction remains available when a day has reserved meals");
+  assert.equal(logCalls, 1, "successful deduction keeps its audit log");
+  assert.equal(result.deducted.total, 1);
+  assert.equal(result.remaining.totalMeals, 23);
+  assert.equal(result.balance.reservedMeals, 2);
+  assert.equal(result.balance.displayRemainingMeals, 25);
+
+  console.log("manual deduction with reserved meals remains allowed");
 }
 
 run().catch((error) => {
