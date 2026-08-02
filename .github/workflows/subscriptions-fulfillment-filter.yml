@@ -1,0 +1,37 @@
+name: Subscription fulfillment filter
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/subscriptionFulfillmentListController.js"
+      - "src/routes/dashboardSubscriptions.js"
+      - "src/services/dashboard/subscriptionFulfillmentListService.js"
+      - "tests/subscriptionFulfillmentListFilter.test.js"
+      - ".github/workflows/subscriptions-fulfillment-filter.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fulfillment-filter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate syntax
+        run: |
+          node --check src/controllers/dashboard/subscriptionFulfillmentListController.js
+          node --check src/routes/dashboardSubscriptions.js
+          node --check src/services/dashboard/subscriptionFulfillmentListService.js
+          node --check tests/subscriptionFulfillmentListFilter.test.js
+      - name: Verify fulfillment filter contract
+        run: NODE_ENV=test node tests/subscriptionFulfillmentListFilter.test.js
