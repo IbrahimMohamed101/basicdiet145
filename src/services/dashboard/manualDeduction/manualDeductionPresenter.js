@@ -93,16 +93,13 @@ function buildDeductionResponse({ subscription, counts, balances, addonBalances,
       total: counts.total,
       addons: counts.addons.map((addon) => ({ addonId: addon.addonId, qty: addon.qty })),
     },
+    // Keep this object byte-compatible with existing dashboards and integrations.
+    // The explicit display/available/reserved contract lives in the sibling
+    // `balance` object so old clients do not confuse display credit with capacity.
     remaining: {
       regularMeals: balances.remainingRegularMeals,
       premiumMeals: balances.remainingPremiumMeals,
-      // Kept for old dashboards: totalMeals is the safe unreserved capacity.
       totalMeals: balance.availableMeals,
-      availableMeals: balance.availableMeals,
-      displayRemainingMeals: balance.displayRemainingMeals,
-      reservedMeals: balance.reservedMeals,
-      consumedMeals: balance.consumedMeals,
-      forfeitedMeals: balance.forfeitedMeals,
       addons: addonBalances.map((addon) => ({ addonId: String(addon.addonId), remainingQty: addon.remainingQty })),
     },
     balance,
