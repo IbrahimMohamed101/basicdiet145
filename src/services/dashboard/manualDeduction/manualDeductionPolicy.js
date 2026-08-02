@@ -1,5 +1,6 @@
 "use strict";
 
+const dateUtils = require("../../../utils/date");
 const { ACTIVE_STATUS } = require("./constants");
 const { ManualDeductionError } = require("./ManualDeductionError");
 
@@ -62,9 +63,9 @@ function resolveAddonBalances(subscription) {
 
 function chooseDefaultSubscription(subscriptions, businessDate) {
   const current = subscriptions.find((subscription) => {
-    const start = subscription.startDate ? String(subscription.startDate.toISOString()).slice(0, 10) : null;
+    const start = subscription.startDate ? dateUtils.toKSADateString(subscription.startDate) : null;
     const endDate = subscription.validityEndDate || subscription.endDate || null;
-    const end = endDate ? String(endDate.toISOString()).slice(0, 10) : null;
+    const end = endDate ? dateUtils.toKSADateString(endDate) : null;
     return (!start || start <= businessDate) && (!end || end >= businessDate);
   });
   return current || subscriptions[0] || null;
@@ -116,7 +117,7 @@ function toDateOnly(value) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return dateUtils.toKSADateString(date);
 }
 
 function safeLedgerInteger(value) {
