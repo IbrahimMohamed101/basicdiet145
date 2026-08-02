@@ -5,16 +5,20 @@ on:
     branches: [main]
     paths:
       - "src/services/dashboard/subscriptionOperationsAuditService.js"
+      - "src/services/dashboard/subscriptionOperationsDailyDeliveryService.js"
       - "src/controllers/dashboard/subscriptionOperationsAuditController.js"
       - "src/routes/dashboardAccounting.js"
       - "tests/subscriptionOperationsAuditService.test.js"
+      - "tests/subscriptionOperationsDailyDeliveryService.test.js"
       - ".github/workflows/subscription-operations-audit.yml"
   pull_request:
     paths:
       - "src/services/dashboard/subscriptionOperationsAuditService.js"
+      - "src/services/dashboard/subscriptionOperationsDailyDeliveryService.js"
       - "src/controllers/dashboard/subscriptionOperationsAuditController.js"
       - "src/routes/dashboardAccounting.js"
       - "tests/subscriptionOperationsAuditService.test.js"
+      - "tests/subscriptionOperationsDailyDeliveryService.test.js"
       - ".github/workflows/subscription-operations-audit.yml"
   workflow_dispatch:
 
@@ -32,7 +36,10 @@ jobs:
       - name: Syntax validation
         run: |
           node --check src/services/dashboard/subscriptionOperationsAuditService.js
+          node --check src/services/dashboard/subscriptionOperationsDailyDeliveryService.js
           node --check src/controllers/dashboard/subscriptionOperationsAuditController.js
           node --check src/routes/dashboardAccounting.js
       - name: Focused audit tests
-        run: NODE_ENV=test node tests/subscriptionOperationsAuditService.test.js
+        run: |
+          NODE_ENV=test node tests/subscriptionOperationsAuditService.test.js
+          NODE_ENV=test node tests/subscriptionOperationsDailyDeliveryService.test.js
