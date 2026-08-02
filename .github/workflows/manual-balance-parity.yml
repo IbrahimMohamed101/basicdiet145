@@ -1,0 +1,55 @@
+name: Manual balance parity
+
+on:
+  pull_request:
+    paths:
+      - "src/services/dashboard/manualDeduction/**"
+      - "src/services/subscription/subscriptionDashboardMealBalanceProjectionService.js"
+      - "tests/manualDeductionBalancePolicy.test.js"
+      - "tests/manualDeductionBalancePresentation.test.js"
+      - "tests/manualDeductionReservedConflict.test.js"
+      - ".github/workflows/manual-balance-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  balance-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      NODE_ENV: test
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test_manual_balance_parity
+      DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate syntax
+        run: |
+          node --check src/services/dashboard/manualDeduction/manualDeductionBalanceReadModel.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionCommandService.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionPolicy.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionPresenter.js
+          node --check tests/manualDeductionBalancePresentation.test.js
+          node --check tests/manualDeductionReservedConflict.test.js
+      - name: Verify deduction capacity policy
+        run: NODE_ENV=test node tests/manualDeductionBalancePolicy.test.js
+      - name: Verify display and available balance contract
+        run: NODE_ENV=test DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED=true node tests/manualDeductionBalancePresentation.test.js
+      - name: Verify reserved-day conflict guard
+        run: NODE_ENV=test node tests/manualDeductionReservedConflict.test.js
+      - name: Verify existing dashboard manual deduction lifecycle
+        run: npm run test:dashboard-manual-deduction

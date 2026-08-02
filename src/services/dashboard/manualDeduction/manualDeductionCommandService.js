@@ -10,6 +10,18 @@ const {
 } = require("./manualDeductionPolicy");
 const { buildDeductionLog, buildDeductionResponse } = require("./manualDeductionPresenter");
 
+function reservedBaseMealsForDate(subscription, businessDate) {
+  return (Array.isArray(subscription && subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : [])
+    .filter((allocation) => (
+      allocation
+      && String(allocation.date || "") === businessDate
+      && allocation.state === "reserved"
+    ))
+    .reduce((sum, allocation) => sum + Math.max(1, Number(allocation.quantity || 1)), 0);
+}
+
 function createManualDeductionCommandService({ repository, getBusinessDate, runTransactionWithRetry }) {
   async function validateSubscriptionCustomerExists(subscription, session) {
     const customer = await repository.customerExists(subscription.userId, session);
@@ -30,6 +42,23 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     }
   }
 
+  function ensureNoReservedMealConflict(subscription, businessDate, counts) {
+    if (!counts || counts.total <= 0) return;
+    const reservedMeals = reservedBaseMealsForDate(subscription, businessDate);
+    if (reservedMeals <= 0) return;
+
+    throw new ManualDeductionError(
+      "MANUAL_DEDUCTION_CONFLICTS_WITH_RESERVED_MEALS",
+      "Meals are already reserved for this subscription today; fulfill or release the reserved day instead of deducting manually",
+      409,
+      {
+        businessDate,
+        reservedMeals,
+        actionRequired: "FULFILL_OR_RELEASE_RESERVED_DAY",
+      }
+    );
+  }
+
   async function manualDeduction({ subscriptionId, body, actorId, actorRole }) {
     assertCashierOrAdminRole(actorRole);
     if (!repository.isValidObjectId(subscriptionId)) {
@@ -45,6 +74,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
         validateSubscriptionCanDeduct(subscription, businessDate);
         await validateSubscriptionCustomerExists(subscription, session);
         await ensureNoDeliveryDeductionToday(subscription, businessDate, session);
+        ensureNoReservedMealConflict(subscription, businessDate, counts);
         const before = validateBalances(subscription, counts);
         const updated = await repository.deductAtomically({ subscription, counts, session });
         const after = resolveBalances(updated);
@@ -89,4 +119,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
   return { manualDeduction };
 }
 
-module.exports = { createManualDeductionCommandService };
+module.exports = {
+  createManualDeductionCommandService,
+  reservedBaseMealsForDate,
+};
