@@ -82,16 +82,17 @@ run_test() {
 echo "=== Running Critical Tests for Frontend Handoff ==="
 
 echo ""
-echo "[1/8] Running unit tests (npm test)..."
+echo "[1/9] Running unit tests (npm test)..."
 npm test
 
-run_test "2/8" tests/dynamicDirectMealCatalogPolicy.test.js
-run_test "3/8" tests/checkout.integration.test.js
-run_test "4/8" tests/oneTimeOrderOps.test.js
-run_test "5/8" tests/subscriptionBalancePolicy.test.js
-run_test "6/8" tests/mobileApiContracts.test.js
-run_test "7/8" tests/fulfillmentStatusEndpoint.test.js
-run_test "8/8" tests/corsPreflight.test.js
+run_test "2/9" tests/upcomingSubscriptionPlanningBalance.test.js
+run_test "3/9" tests/dynamicDirectMealCatalogPolicy.test.js
+run_test "4/9" tests/checkout.integration.test.js
+run_test "5/9" tests/oneTimeOrderOps.test.js
+run_test "6/9" tests/subscriptionBalancePolicy.test.js
+run_test "7/9" tests/mobileApiContracts.test.js
+run_test "8/9" tests/fulfillmentStatusEndpoint.test.js
+run_test "9/9" tests/corsPreflight.test.js
 
 echo ""
 echo "All critical tests passed."
