@@ -7,7 +7,7 @@ on:
       - "src/services/subscription/subscriptionDashboardMealBalanceProjectionService.js"
       - "tests/manualDeductionBalancePolicy.test.js"
       - "tests/manualDeductionBalancePresentation.test.js"
-      - "tests/manualDeductionReservedConflict.test.js"
+      - "tests/manualDeductionReservedMealsAllowed.test.js"
       - ".github/workflows/manual-balance-parity.yml"
   workflow_dispatch:
 
@@ -44,12 +44,12 @@ jobs:
           node --check src/services/dashboard/manualDeduction/manualDeductionPolicy.js
           node --check src/services/dashboard/manualDeduction/manualDeductionPresenter.js
           node --check tests/manualDeductionBalancePresentation.test.js
-          node --check tests/manualDeductionReservedConflict.test.js
+          node --check tests/manualDeductionReservedMealsAllowed.test.js
       - name: Verify deduction capacity policy
         run: NODE_ENV=test node tests/manualDeductionBalancePolicy.test.js
       - name: Verify display and available balance contract
         run: NODE_ENV=test DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED=true node tests/manualDeductionBalancePresentation.test.js
-      - name: Verify reserved-day conflict guard
-        run: NODE_ENV=test node tests/manualDeductionReservedConflict.test.js
+      - name: Verify reserved meals do not block manual deduction
+        run: NODE_ENV=test node tests/manualDeductionReservedMealsAllowed.test.js
       - name: Verify existing dashboard manual deduction lifecycle
         run: npm run test:dashboard-manual-deduction
