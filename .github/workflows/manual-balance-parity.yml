@@ -17,8 +17,14 @@ jobs:
   balance-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
     env:
       NODE_ENV: test
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test_manual_balance_parity
       DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED: "true"
     steps:
       - name: Checkout
@@ -33,6 +39,8 @@ jobs:
       - name: Validate syntax
         run: |
           node --check src/services/dashboard/manualDeduction/manualDeductionBalanceReadModel.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionCommandService.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionPolicy.js
           node --check src/services/dashboard/manualDeduction/manualDeductionPresenter.js
           node --check tests/manualDeductionBalancePresentation.test.js
       - name: Verify deduction capacity policy
