@@ -3,6 +3,9 @@
 const { pickLang } = require("../../../utils/i18n");
 const { MANUAL_DEDUCTION_ACTION } = require("./constants");
 const { resolveAddonBalances, resolveBalances } = require("./manualDeductionPolicy");
+const {
+  buildManualDeductionBalanceReadModel,
+} = require("./manualDeductionBalanceReadModel");
 
 function serializeCustomer(user) {
   return {
@@ -14,6 +17,7 @@ function serializeCustomer(user) {
 
 function serializeSubscription(subscription, plan, lang = "en") {
   const balances = resolveBalances(subscription);
+  const balance = buildManualDeductionBalanceReadModel(subscription, balances);
   const addonBalances = resolveAddonBalances(subscription);
   return {
     id: String(subscription._id),
@@ -21,10 +25,17 @@ function serializeSubscription(subscription, plan, lang = "en") {
     status: subscription.status,
     fulfillmentMethod: subscription.deliveryMode === "pickup" ? "pickup" : "delivery",
     totalMeals: balances.totalMeals,
-    consumedMeals: balances.consumedMeals,
-    remainingMeals: balances.remainingMeals,
+    consumedMeals: balance.consumedMeals,
+    forfeitedMeals: balance.forfeitedMeals,
+    reservedMeals: balance.reservedMeals,
+    // Backward-compatible write-capacity field. This must stay unreserved.
+    remainingMeals: balance.availableMeals,
+    availableMeals: balance.availableMeals,
+    displayRemainingMeals: balance.displayRemainingMeals,
+    remainingMealsSemantics: balance.availableSemantics,
     remainingRegularMeals: balances.remainingRegularMeals,
     remainingPremiumMeals: balances.remainingPremiumMeals,
+    balance,
     addonBalances,
   };
 }
@@ -73,6 +84,7 @@ function buildDeductionLog({ subscription, counts, before, after, actorId, actor
 }
 
 function buildDeductionResponse({ subscription, counts, balances, addonBalances, businessDate }) {
+  const balance = buildManualDeductionBalanceReadModel(subscription, balances);
   return {
     subscriptionId: String(subscription._id),
     deducted: {
@@ -84,9 +96,16 @@ function buildDeductionResponse({ subscription, counts, balances, addonBalances,
     remaining: {
       regularMeals: balances.remainingRegularMeals,
       premiumMeals: balances.remainingPremiumMeals,
-      totalMeals: balances.remainingMeals,
+      // Kept for old dashboards: totalMeals is the safe unreserved capacity.
+      totalMeals: balance.availableMeals,
+      availableMeals: balance.availableMeals,
+      displayRemainingMeals: balance.displayRemainingMeals,
+      reservedMeals: balance.reservedMeals,
+      consumedMeals: balance.consumedMeals,
+      forfeitedMeals: balance.forfeitedMeals,
       addons: addonBalances.map((addon) => ({ addonId: String(addon.addonId), remainingQty: addon.remainingQty })),
     },
+    balance,
     businessDate,
     fulfillmentMethod: subscription.deliveryMode === "pickup" ? "pickup" : "delivery",
   };
