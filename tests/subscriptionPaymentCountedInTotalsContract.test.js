@@ -57,3 +57,5 @@ function main() {
 }
 
 main();
+
+// Validation-only branch marker. Runtime behavior is identical to main.
