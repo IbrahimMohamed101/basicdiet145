@@ -119,6 +119,48 @@ function toDateOnly(value) {
   return date.toISOString().slice(0, 10);
 }
 
+function safeLedgerInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function validateModernBalanceIntegrity(subscription) {
+  const entitlementVersion = Number(subscription && subscription.entitlementVersion || 0);
+  if (entitlementVersion < 2) return;
+
+  const counters = {
+    totalMeals: safeLedgerInteger(subscription.totalMeals),
+    availableMeals: safeLedgerInteger(subscription.remainingMeals),
+    reservedMeals: safeLedgerInteger(subscription.reservedMeals),
+    consumedMeals: safeLedgerInteger(subscription.consumedMeals),
+    forfeitedMeals: safeLedgerInteger(subscription.forfeitedMeals),
+  };
+  if (Object.values(counters).includes(null)) {
+    throw new ManualDeductionError(
+      "BALANCE_INTEGRITY_ERROR",
+      "Subscription balance counters are incomplete or invalid",
+      409,
+      { counters }
+    );
+  }
+
+  const accountedMeals = counters.availableMeals
+    + counters.reservedMeals
+    + counters.consumedMeals
+    + counters.forfeitedMeals;
+  if (accountedMeals !== counters.totalMeals) {
+    throw new ManualDeductionError(
+      "BALANCE_INTEGRITY_ERROR",
+      "Subscription balance does not reconcile",
+      409,
+      {
+        ...counters,
+        accountedMeals,
+        equationDifference: counters.totalMeals - accountedMeals,
+      }
+    );
+  }
+}
+
 function validateSubscriptionCanDeduct(subscription, businessDate = null) {
   if (!subscription) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
@@ -137,6 +179,7 @@ function validateSubscriptionCanDeduct(subscription, businessDate = null) {
       );
     }
   }
+  validateModernBalanceIntegrity(subscription);
 }
 
 function validateBalances(subscription, counts) {
@@ -173,7 +216,7 @@ function validateBalances(subscription, counts) {
 
 function buildPremiumAllocation(subscription, premiumMeals) {
   let remaining = premiumMeals;
-  const rows = (Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [])
+  const rows = (Array.isArray(subscription && subscription.premiumBalance) ? subscription.premiumBalance : [])
     .filter((row) => row && row._id && Number(row.remainingQty || 0) > 0)
     .sort((a, b) => {
       const dateA = a.purchasedAt ? new Date(a.purchasedAt).getTime() : 0;
@@ -204,5 +247,6 @@ module.exports = {
   resolveBalances,
   validateBalances,
   validateCounts,
+  validateModernBalanceIntegrity,
   validateSubscriptionCanDeduct,
 };
