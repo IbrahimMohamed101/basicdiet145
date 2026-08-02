@@ -11,7 +11,11 @@ const {
 const {
   validateBalances,
   validateCounts,
+  validateSubscriptionCanDeduct,
 } = require("../src/services/dashboard/manualDeduction/manualDeductionPolicy");
+const {
+  reservedBaseMealsForDate,
+} = require("../src/services/dashboard/manualDeduction/manualDeductionCommandService");
 
 function modernSubscription(overrides = {}) {
   return {
@@ -29,6 +33,9 @@ function modernSubscription(overrides = {}) {
     premiumBalance: [],
     addonBalance: [],
     addonSubscriptions: [],
+    startDate: new Date("2026-08-01T00:00:00.000Z"),
+    validityEndDate: new Date("2026-08-30T00:00:00.000Z"),
+    baseMealAllocations: [],
     ...overrides,
   };
 }
@@ -57,6 +64,9 @@ function run() {
   assert.doesNotThrow(
     () => validateBalances(subscription, validateCounts({ regularMeals: 24, premiumMeals: 0 }))
   );
+  assert.doesNotThrow(
+    () => validateSubscriptionCanDeduct(subscription, "2026-08-03")
+  );
 
   const updated = modernSubscription({
     remainingMeals: 22,
@@ -83,15 +93,52 @@ function run() {
   assert.equal(response.remaining.reservedMeals, 6);
   assert.equal(response.balance.manualDeductionMaxMeals, 22);
 
-  const inconsistent = serializeSubscription(
-    modernSubscription({ reservedMeals: 5 }),
-    null,
-    "ar"
-  );
+  const inconsistentSubscription = modernSubscription({ reservedMeals: 5 });
+  const inconsistent = serializeSubscription(inconsistentSubscription, null, "ar");
   assert.equal(inconsistent.balance.balanced, false);
   assert.equal(inconsistent.balance.projectionApplied, false);
   assert.equal(inconsistent.displayRemainingMeals, 24);
   assert.equal(inconsistent.balance.displaySemantics, "AVAILABLE_ONLY_FAIL_CLOSED");
+  assert.throws(
+    () => validateSubscriptionCanDeduct(inconsistentSubscription, "2026-08-03"),
+    (error) => error && error.code === "BALANCE_INTEGRITY_ERROR"
+  );
+
+  const reservedToday = modernSubscription({
+    baseMealAllocations: [
+      {
+        allocationKey: "2026-08-03:slot_1",
+        date: "2026-08-03",
+        slotKey: "slot_1",
+        quantity: 1,
+        state: "reserved",
+      },
+      {
+        allocationKey: "2026-08-03:slot_2",
+        date: "2026-08-03",
+        slotKey: "slot_2",
+        quantity: 1,
+        state: "reserved",
+      },
+      {
+        allocationKey: "2026-08-04:slot_1",
+        date: "2026-08-04",
+        slotKey: "slot_1",
+        quantity: 1,
+        state: "reserved",
+      },
+      {
+        allocationKey: "2026-08-03:old",
+        date: "2026-08-03",
+        slotKey: "old",
+        quantity: 1,
+        state: "released",
+      },
+    ],
+  });
+  assert.equal(reservedBaseMealsForDate(reservedToday, "2026-08-03"), 2);
+  assert.equal(reservedBaseMealsForDate(reservedToday, "2026-08-04"), 1);
+  assert.equal(reservedBaseMealsForDate(reservedToday, "2026-08-05"), 0);
 
   const legacy = serializeSubscription({
     ...modernSubscription(),
