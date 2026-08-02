@@ -1,5 +1,6 @@
 "use strict";
 
+// Validation branch: keep this suite focused on pure audit invariants.
 const assert = require("assert");
 
 const {
