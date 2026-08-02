@@ -87,10 +87,15 @@ function run() {
     businessDate: "2026-08-03",
   });
 
-  assert.equal(response.remaining.totalMeals, 22);
-  assert.equal(response.remaining.availableMeals, 22);
-  assert.equal(response.remaining.displayRemainingMeals, 28);
-  assert.equal(response.remaining.reservedMeals, 6);
+  assert.deepEqual(response.remaining, {
+    regularMeals: 22,
+    premiumMeals: 0,
+    totalMeals: 22,
+    addons: [],
+  });
+  assert.equal(response.balance.availableMeals, 22);
+  assert.equal(response.balance.displayRemainingMeals, 28);
+  assert.equal(response.balance.reservedMeals, 6);
   assert.equal(response.balance.manualDeductionMaxMeals, 22);
 
   const inconsistentSubscription = modernSubscription({ reservedMeals: 5 });
