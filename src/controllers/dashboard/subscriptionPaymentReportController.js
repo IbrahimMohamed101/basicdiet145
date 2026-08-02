@@ -3,6 +3,9 @@
 const accountingDailyReportService = require("../../services/dashboard/accountingDailyReportService");
 const subscriptionPaymentMethodReportService = require("../../services/dashboard/subscriptionPaymentMethodReportService");
 const subscriptionPaymentRangeReportService = require("../../services/dashboard/subscriptionPaymentRangeReportService");
+const {
+  normalizeSubscriptionPaymentReportContract,
+} = require("../../services/dashboard/subscriptionPaymentReportContractService");
 
 function handleError(res, err) {
   if (err instanceof accountingDailyReportService.AccountingReportError) {
@@ -33,11 +36,12 @@ function handleError(res, err) {
 
 async function getDailySubscriptionPayments(req, res) {
   try {
-    const data = await subscriptionPaymentMethodReportService.buildDailySubscriptionPaymentReport({
+    const rawData = await subscriptionPaymentMethodReportService.buildDailySubscriptionPaymentReport({
       date: req.query.date,
       fulfillmentMethod: req.query.fulfillmentMethod,
       includeDetails: req.query.includeDetails,
     });
+    const data = normalizeSubscriptionPaymentReportContract(rawData);
     return res.status(200).json({
       status: true,
       message: "تم إنشاء التقرير اليومي بنجاح",
@@ -51,11 +55,12 @@ async function getDailySubscriptionPayments(req, res) {
 
 async function getMonthlySubscriptionPayments(req, res) {
   try {
-    const data = await subscriptionPaymentMethodReportService.buildMonthlySubscriptionPaymentReport({
+    const rawData = await subscriptionPaymentMethodReportService.buildMonthlySubscriptionPaymentReport({
       month: req.query.month,
       fulfillmentMethod: req.query.fulfillmentMethod,
       includeDetails: req.query.includeDetails,
     });
+    const data = normalizeSubscriptionPaymentReportContract(rawData);
     return res.status(200).json({
       status: true,
       message: "تم إنشاء التقرير الشهري بنجاح",
@@ -69,13 +74,14 @@ async function getMonthlySubscriptionPayments(req, res) {
 
 async function getRangeSubscriptionPayments(req, res) {
   try {
-    const data = await subscriptionPaymentRangeReportService.buildRangeSubscriptionPaymentReport({
+    const rawData = await subscriptionPaymentRangeReportService.buildRangeSubscriptionPaymentReport({
       from: req.query.from,
       to: req.query.to,
       fulfillmentMethod: req.query.fulfillmentMethod,
       includeDetails: req.query.includeDetails,
       comparePrevious: req.query.comparePrevious,
     });
+    const data = normalizeSubscriptionPaymentReportContract(rawData);
     return res.status(200).json({
       status: true,
       message: "تم إنشاء تحليل النطاق بنجاح",
