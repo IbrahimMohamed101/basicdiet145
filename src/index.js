@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
 
 const { createServer } = require("http");
