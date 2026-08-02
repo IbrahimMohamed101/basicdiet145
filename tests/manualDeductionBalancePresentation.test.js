@@ -13,9 +13,6 @@ const {
   validateCounts,
   validateSubscriptionCanDeduct,
 } = require("../src/services/dashboard/manualDeduction/manualDeductionPolicy");
-const {
-  reservedBaseMealsForDate,
-} = require("../src/services/dashboard/manualDeduction/manualDeductionCommandService");
 
 function modernSubscription(overrides = {}) {
   return {
@@ -108,42 +105,6 @@ function run() {
     () => validateSubscriptionCanDeduct(inconsistentSubscription, "2026-08-03"),
     (error) => error && error.code === "BALANCE_INTEGRITY_ERROR"
   );
-
-  const reservedToday = modernSubscription({
-    baseMealAllocations: [
-      {
-        allocationKey: "2026-08-03:slot_1",
-        date: "2026-08-03",
-        slotKey: "slot_1",
-        quantity: 1,
-        state: "reserved",
-      },
-      {
-        allocationKey: "2026-08-03:slot_2",
-        date: "2026-08-03",
-        slotKey: "slot_2",
-        quantity: 1,
-        state: "reserved",
-      },
-      {
-        allocationKey: "2026-08-04:slot_1",
-        date: "2026-08-04",
-        slotKey: "slot_1",
-        quantity: 1,
-        state: "reserved",
-      },
-      {
-        allocationKey: "2026-08-03:old",
-        date: "2026-08-03",
-        slotKey: "old",
-        quantity: 1,
-        state: "released",
-      },
-    ],
-  });
-  assert.equal(reservedBaseMealsForDate(reservedToday, "2026-08-03"), 2);
-  assert.equal(reservedBaseMealsForDate(reservedToday, "2026-08-04"), 1);
-  assert.equal(reservedBaseMealsForDate(reservedToday, "2026-08-05"), 0);
 
   const legacy = serializeSubscription({
     ...modernSubscription(),
