@@ -9,6 +9,7 @@ const {
   serializeSubscription,
 } = require("../src/services/dashboard/manualDeduction/manualDeductionPresenter");
 const {
+  chooseDefaultSubscription,
   validateBalances,
   validateCounts,
   validateSubscriptionCanDeduct,
@@ -63,6 +64,24 @@ function run() {
   );
   assert.doesNotThrow(
     () => validateSubscriptionCanDeduct(subscription, "2026-08-03")
+  );
+
+  // Mongo stores Riyadh midnight as the previous UTC calendar date. The final
+  // subscription day must stay inclusive in the restaurant timezone.
+  const riyadhBounded = modernSubscription({
+    startDate: new Date("2026-07-27T21:00:00.000Z"), // 2026-07-28 00:00 Riyadh
+    validityEndDate: new Date("2026-08-02T21:00:00.000Z"), // 2026-08-03 00:00 Riyadh
+  });
+  assert.doesNotThrow(
+    () => validateSubscriptionCanDeduct(riyadhBounded, "2026-08-03")
+  );
+  assert.throws(
+    () => validateSubscriptionCanDeduct(riyadhBounded, "2026-08-04"),
+    (error) => error && error.code === "SUBSCRIPTION_OUTSIDE_VALIDITY"
+  );
+  assert.equal(
+    chooseDefaultSubscription([riyadhBounded], "2026-08-03"),
+    riyadhBounded
   );
 
   const updated = modernSubscription({
