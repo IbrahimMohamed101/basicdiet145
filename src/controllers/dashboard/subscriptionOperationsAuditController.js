@@ -3,8 +3,10 @@
 const errorResponse = require("../../utils/errorResponse");
 const {
   SubscriptionOperationsAuditError,
-  buildSubscriptionOperationsAudit,
 } = require("../../services/dashboard/subscriptionOperationsAuditService");
+const {
+  buildSubscriptionOperationsAuditWithDailyDelivery,
+} = require("../../services/dashboard/subscriptionOperationsDailyDeliveryService");
 
 function parseBoolean(value, fallback = true) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -13,7 +15,7 @@ function parseBoolean(value, fallback = true) {
 
 async function getSubscriptionOperationsAudit(req, res) {
   try {
-    const data = await buildSubscriptionOperationsAudit({
+    const data = await buildSubscriptionOperationsAuditWithDailyDelivery({
       from: req.query.from,
       to: req.query.to,
       includeDetails: parseBoolean(req.query.includeDetails, true),
