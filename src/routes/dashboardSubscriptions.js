@@ -2,6 +2,7 @@
 
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/subscriptionManualDeductionController");
+const fulfillmentListController = require("../controllers/dashboard/subscriptionFulfillmentListController");
 const auditController = require("../controllers/dashboard/subscriptionAuditController");
 const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentRecordingController");
 const subscriptionTrackingController = require("../controllers/subscriptionTrackingController");
@@ -25,6 +26,13 @@ const manualDeductionWriteAccess = dashboardRoleMiddleware([
   "cashier",
   "restaurant",
 ]);
+
+router.get(
+  "/list",
+  dashboardAuthMiddleware,
+  subscriptionStaffAccess,
+  asyncHandler(fulfillmentListController.list)
+);
 
 router.get(
   "/search",
