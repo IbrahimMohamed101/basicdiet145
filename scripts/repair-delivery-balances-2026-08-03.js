@@ -11,7 +11,12 @@ const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
 const REPAIR_KEY = "delivery-balance-repair-2026-08-03-v1";
 const REPAIR_ACTION = "subscription_manual_deduction_reversal";
 const REQUIRED_CONFIRMATION = "REPAIR_ROA_OSAMAH_2026_08_03";
-const SCRIPT_VERSION = "1.0.0";
+const REQUIRED_STANDALONE_CONFIRMATION = "REPAIR_ROA_OSAMAH_STANDALONE_2026_08_03";
+const SCRIPT_VERSION = "1.1.0";
+const EXECUTION_MODES = Object.freeze({
+  transaction: "transactional_repair",
+  standalone: "standalone_resumable_repair",
+});
 const CORRECTION_PERIOD = Object.freeze({
   from: "2026-07-29",
   through: "2026-08-02",
@@ -162,6 +167,21 @@ function objectId(value) {
     throw new RepairPreconditionError(`Invalid ObjectId in repair configuration: ${value}`);
   }
   return new mongoose.Types.ObjectId(String(value));
+}
+
+function deterministicJournalId(subscriptionId) {
+  const hex = crypto.createHash("sha256")
+    .update(`${REPAIR_KEY}:${String(subscriptionId)}`)
+    .digest("hex")
+    .slice(0, 24);
+  return new mongoose.Types.ObjectId(hex);
+}
+
+async function detectTopology(db) {
+  const hello = await db.admin().command({ hello: 1 });
+  if (hello && hello.msg === "isdbgrid") return "mongos";
+  if (hello && hello.setName) return "replica_set";
+  return "standalone";
 }
 
 function canonicalize(value) {
@@ -440,23 +460,30 @@ async function assertRepairKeyUnused(db, session) {
 
 function reversalLog(spec, preview, executedAt) {
   return {
+    _id: deterministicJournalId(spec.subscriptionId),
     entityType: "subscription",
     entityId: objectId(spec.subscriptionId),
     action: REPAIR_ACTION,
     byRole: "system",
     meta: {
       repairKey: REPAIR_KEY,
+      targetKey: spec.key,
+      status: "applied",
       subscriptionId: spec.subscriptionId,
       reversedActivityLogIds: spec.reversedActivityLogIds.map(objectId),
       restoredRegularMeals: spec.restoredRegularMeals,
       restoredPremiumMeals: spec.restoredPremiumMeals,
       releasedReservedMeals: preview.releasedReservedMeals,
       before: preview.before,
+      expectedAfter: preview.after,
       after: preview.after,
       reason: spec.reason,
       correctionPeriod: CORRECTION_PERIOD,
+      preparedAt: executedAt,
+      appliedAt: executedAt,
       executedAt,
       scriptVersion: SCRIPT_VERSION,
+      executionMode: "transaction",
     },
     createdAt: executedAt,
     updatedAt: executedAt,
@@ -527,12 +554,619 @@ async function validateAppliedTarget(db, spec, beforeScope, session) {
   assertNoDifferences(differences, `Applied result validation failed for ${spec.key}`);
 }
 
+function targetPreviewFromBefore(spec, scope, before) {
+  const previewScope = {
+    ...scope,
+    subscription: { ...scope.subscription, ...before },
+  };
+  return previewTarget(spec, previewScope);
+}
+
+function repairJournalFilter(spec) {
+  return { _id: deterministicJournalId(spec.subscriptionId) };
+}
+
+function withoutRepairJournals(scope) {
+  return {
+    ...scope,
+    activityLogs: scope.activityLogs.filter((row) => row.action !== REPAIR_ACTION),
+  };
+}
+
+function subscriptionInvariantHash(subscription) {
+  const value = { ...(subscription || {}) };
+  for (const field of [
+    "remainingMeals",
+    "reservedMeals",
+    "consumedMeals",
+    "updatedAt",
+    "baseMealAllocations",
+    "premiumBalance",
+    "addonBalance",
+  ]) delete value[field];
+  return hash(value);
+}
+
+function targetAllocations(subscription, spec) {
+  const ids = new Set((spec.releasedAllocationIds || []).map(String));
+  return (Array.isArray(subscription && subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : []).filter((row) => ids.has(String(row && row._id)));
+}
+
+function journalPreflightSnapshot(spec, scope) {
+  const subscription = scope.subscription;
+  return {
+    updatedAt: subscription.updatedAt || null,
+    premiumBalance: subscription.premiumBalance || [],
+    addonBalance: subscription.addonBalance || [],
+    baseMealAllocations: subscription.baseMealAllocations || [],
+    targetedBaseMealAllocations: targetAllocations(subscription, spec),
+    subscriptionSnapshotHash: hash(subscription),
+    subscriptionInvariantHash: subscriptionInvariantHash(subscription),
+  };
+}
+
+function preparedJournal(spec, preview, scope, preparedAt) {
+  return {
+    _id: deterministicJournalId(spec.subscriptionId),
+    entityType: "subscription",
+    entityId: objectId(spec.subscriptionId),
+    action: REPAIR_ACTION,
+    byRole: "system",
+    meta: {
+      repairKey: REPAIR_KEY,
+      targetKey: spec.key,
+      status: "prepared",
+      subscriptionId: spec.subscriptionId,
+      reversedActivityLogIds: spec.reversedActivityLogIds.map(objectId),
+      restoredRegularMeals: spec.restoredRegularMeals,
+      restoredPremiumMeals: spec.restoredPremiumMeals,
+      releasedReservedMeals: preview.releasedReservedMeals,
+      before: preview.before,
+      expectedAfter: preview.after,
+      reason: spec.reason,
+      correctionPeriod: CORRECTION_PERIOD,
+      scriptVersion: SCRIPT_VERSION,
+      preparedAt,
+      appliedAt: null,
+      after: null,
+      executionMode: "standalone_resumable",
+      preflight: journalPreflightSnapshot(spec, scope),
+    },
+    createdAt: preparedAt,
+    updatedAt: preparedAt,
+  };
+}
+
+function journalDifferences(spec, journal, preview) {
+  const differences = [];
+  const meta = journal && journal.meta || {};
+  const expected = {
+    id: String(deterministicJournalId(spec.subscriptionId)),
+    entityType: "subscription",
+    entityId: spec.subscriptionId,
+    action: REPAIR_ACTION,
+    repairKey: REPAIR_KEY,
+    targetKey: spec.key,
+    subscriptionId: spec.subscriptionId,
+    reversedActivityLogIds: spec.reversedActivityLogIds.map(String),
+    restoredRegularMeals: spec.restoredRegularMeals,
+    restoredPremiumMeals: spec.restoredPremiumMeals,
+    releasedReservedMeals: preview.releasedReservedMeals,
+    before: preview.before,
+    expectedAfter: preview.after,
+    reason: spec.reason,
+    correctionPeriod: CORRECTION_PERIOD,
+    scriptVersion: SCRIPT_VERSION,
+    executionMode: "standalone_resumable",
+  };
+  const actual = {
+    id: String(journal && journal._id || ""),
+    entityType: journal && journal.entityType,
+    entityId: String(journal && journal.entityId || ""),
+    action: journal && journal.action,
+    repairKey: meta.repairKey,
+    targetKey: meta.targetKey,
+    subscriptionId: String(meta.subscriptionId || ""),
+    reversedActivityLogIds: (meta.reversedActivityLogIds || []).map(String),
+    restoredRegularMeals: Number(meta.restoredRegularMeals || 0),
+    restoredPremiumMeals: Number(meta.restoredPremiumMeals || 0),
+    releasedReservedMeals: Number(meta.releasedReservedMeals || 0),
+    before: meta.before,
+    expectedAfter: meta.expectedAfter,
+    reason: meta.reason,
+    correctionPeriod: meta.correctionPeriod,
+    scriptVersion: meta.scriptVersion,
+    executionMode: meta.executionMode,
+  };
+  if (hash(actual) !== hash(expected)) {
+    differences.push(difference(`${spec.key}.journal`, expected, actual));
+  }
+  if (!['prepared', 'applied'].includes(String(meta.status || ""))) {
+    differences.push(difference(`${spec.key}.journal.status`, ["prepared", "applied"], meta.status));
+  }
+  if (!meta.preparedAt) differences.push(difference(`${spec.key}.journal.preparedAt`, "present", meta.preparedAt));
+  if (!meta.preflight || !meta.preflight.updatedAt) {
+    differences.push(difference(`${spec.key}.journal.preflight`, "complete", meta.preflight || null));
+  }
+  return differences;
+}
+
+function staticTargetDifferences(spec, scope) {
+  const differences = [];
+  const baselineScope = withoutRepairJournals(scope);
+  if (!scope.subscription) return [difference(`${spec.key}.subscription`, "present", "missing")];
+  if (!scope.user) differences.push(difference(`${spec.key}.user`, "present", "missing"));
+  if (String(scope.subscription.userId) !== String(spec.userId)) {
+    differences.push(difference(`${spec.key}.userId`, spec.userId, scope.subscription.userId));
+  }
+  if (String(scope.user && scope.user.name || "").trim() !== spec.expectedName) {
+    differences.push(difference(`${spec.key}.name`, spec.expectedName, scope.user && scope.user.name));
+  }
+  if (scope.user && identityHash(scope.user) !== spec.identityHash) {
+    differences.push(difference(`${spec.key}.identityHash`, spec.identityHash, identityHash(scope.user)));
+  }
+  for (const field of ["activityLogs", "days", "deliveries"]) {
+    const actual = scopeHashes(baselineScope)[field];
+    if (spec.expectedSnapshotHashes && actual !== spec.expectedSnapshotHashes[field]) {
+      differences.push(difference(`${spec.key}.snapshot.${field}`, spec.expectedSnapshotHashes[field], actual));
+    }
+  }
+  const manualLogs = baselineScope.activityLogs
+    .filter((row) => row.action === "manual_subscription_meal_deduction")
+    .sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt));
+  const actualManual = manualLogs.map(manualLogSummary);
+  if (hash(actualManual) !== hash(spec.expectedManualLogs)) {
+    differences.push(difference(`${spec.key}.manualLogs`, spec.expectedManualLogs, actualManual));
+  }
+  const reversedIds = new Set(spec.reversedActivityLogIds.map(String));
+  const selectedLogs = manualLogs.filter((row) => reversedIds.has(String(row._id)));
+  if (selectedLogs.length !== reversedIds.size) {
+    differences.push(difference(`${spec.key}.reversedActivityLogIds.count`, reversedIds.size, selectedLogs.length));
+  }
+  const totals = manualTotals(manualLogs, spec.reversedActivityLogIds);
+  if (totals.reversed !== spec.restoredRegularMeals + spec.restoredPremiumMeals) {
+    differences.push(difference(
+      `${spec.key}.reversalTotal`,
+      spec.restoredRegularMeals + spec.restoredPremiumMeals,
+      totals.reversed
+    ));
+  }
+  return differences;
+}
+
+function expectedReleasedAllocations(journal, spec) {
+  const preparedAt = new Date(journal.meta.preparedAt);
+  const releaseIds = new Set((spec.releasedAllocationIds || []).map(String));
+  return (journal.meta.preflight.baseMealAllocations || []).map((row) => {
+    if (!releaseIds.has(String(row && row._id))) return row;
+    return { ...row, state: "released", releasedAt: preparedAt };
+  });
+}
+
+function targetStateDetails(spec, scope, preview, journal) {
+  const beforeDifferences = [];
+  const afterDifferences = [];
+  const subscription = scope.subscription || {};
+  const wallet = walletSummary(subscription);
+  const preflight = journal && journal.meta && journal.meta.preflight;
+
+  if (!journal) {
+    beforeDifferences.push(...validateTarget(spec, scope));
+    return {
+      state: beforeDifferences.length ? "inconsistent" : "before",
+      beforeDifferences,
+      afterDifferences: [],
+    };
+  }
+
+  if (!preflight) {
+    return {
+      state: "inconsistent",
+      beforeDifferences: [difference(`${spec.key}.journal.preflight`, "complete", null)],
+      afterDifferences: [difference(`${spec.key}.journal.preflight`, "complete", null)],
+    };
+  }
+
+  for (const [field, expected] of Object.entries(preview.before)) {
+    if (Number(wallet[field]) !== Number(expected)) {
+      beforeDifferences.push(difference(`${spec.key}.before.${field}`, expected, wallet[field]));
+    }
+  }
+  if (hash(subscription) !== preflight.subscriptionSnapshotHash) {
+    beforeDifferences.push(difference(
+      `${spec.key}.before.subscriptionSnapshotHash`,
+      preflight.subscriptionSnapshotHash,
+      hash(subscription)
+    ));
+  }
+
+  for (const [field, expected] of Object.entries(preview.after)) {
+    if (Number(wallet[field]) !== Number(expected)) {
+      afterDifferences.push(difference(`${spec.key}.after.${field}`, expected, wallet[field]));
+    }
+  }
+  if (subscriptionInvariantHash(subscription) !== preflight.subscriptionInvariantHash) {
+    afterDifferences.push(difference(
+      `${spec.key}.after.subscriptionInvariantHash`,
+      preflight.subscriptionInvariantHash,
+      subscriptionInvariantHash(subscription)
+    ));
+  }
+  if (hash(subscription.premiumBalance || []) !== hash(preflight.premiumBalance || [])) {
+    afterDifferences.push(difference(`${spec.key}.after.premiumBalance`, "unchanged", "changed"));
+  }
+  if (hash(subscription.addonBalance || []) !== hash(preflight.addonBalance || [])) {
+    afterDifferences.push(difference(`${spec.key}.after.addonBalance`, "unchanged", "changed"));
+  }
+  if (hash(subscription.baseMealAllocations || []) !== hash(expectedReleasedAllocations(journal, spec))) {
+    afterDifferences.push(difference(`${spec.key}.after.baseMealAllocations`, "expected released allocation state", "changed"));
+  }
+  if (hash(subscription.updatedAt || null) !== hash(journal.meta.preparedAt || null)) {
+    afterDifferences.push(difference(`${spec.key}.after.updatedAt`, journal.meta.preparedAt, subscription.updatedAt));
+  }
+
+  if (!beforeDifferences.length) return { state: "before", beforeDifferences, afterDifferences };
+  if (!afterDifferences.length) return { state: "after", beforeDifferences, afterDifferences };
+  return { state: "inconsistent", beforeDifferences, afterDifferences };
+}
+
+async function assertProtectedScopes(db, config, stage) {
+  const snapshots = {};
+  const differences = [];
+  for (const spec of config.protected) {
+    const scope = await loadScope(db, spec);
+    differences.push(...validateScope(spec, scope));
+    snapshots[spec.key] = scopeHashes(scope);
+  }
+  assertNoDifferences(differences, `Protected subscription verification failed at ${stage}`);
+  return snapshots;
+}
+
+async function standaloneGlobalPreflight(db, config) {
+  const deterministicIds = config.targets.map((spec) => deterministicJournalId(spec.subscriptionId));
+  const [journalsById, journalsByRepairKey] = await Promise.all([
+    db.collection("activitylogs").find({ _id: { $in: deterministicIds } }).toArray(),
+    db.collection("activitylogs").find({
+      entityType: "subscription",
+      action: REPAIR_ACTION,
+      "meta.repairKey": REPAIR_KEY,
+    }).toArray(),
+  ]);
+  const expectedIdSet = new Set(deterministicIds.map(String));
+  const differences = [];
+  for (const journal of journalsByRepairKey) {
+    if (!expectedIdSet.has(String(journal._id))) {
+      differences.push(difference("repairJournals.unexpectedId", [...expectedIdSet], String(journal._id)));
+    }
+  }
+  for (const journal of journalsById) {
+    if (journal.meta && journal.meta.repairKey !== REPAIR_KEY) {
+      differences.push(difference(`repairJournals.${journal._id}.repairKey`, REPAIR_KEY, journal.meta.repairKey));
+    }
+  }
+
+  const journals = new Map(journalsById.map((row) => [String(row._id), row]));
+  const contexts = new Map();
+  for (const spec of config.targets) {
+    const scope = await loadScope(db, spec);
+    differences.push(...staticTargetDifferences(spec, scope));
+    const journal = journals.get(String(deterministicJournalId(spec.subscriptionId))) || null;
+    const before = journal && journal.meta && journal.meta.before
+      ? journal.meta.before
+      : walletSummary(scope.subscription);
+    const preview = targetPreviewFromBefore(spec, scope, before);
+    differences.push(...validatePreview(spec, preview));
+    if (journal) differences.push(...journalDifferences(spec, journal, preview));
+    const state = targetStateDetails(spec, scope, preview, journal);
+    if (state.state === "inconsistent") {
+      differences.push(difference(
+        `${spec.key}.subscriptionState`,
+        "exact before or expected after",
+        { beforeDifferences: state.beforeDifferences, afterDifferences: state.afterDifferences }
+      ));
+    }
+    if (journal && journal.meta.status === "applied" && state.state !== "after") {
+      differences.push(difference(`${spec.key}.stateMachine`, "journal applied + subscription after", {
+        journalStatus: journal.meta.status,
+        subscriptionState: state.state,
+      }));
+    }
+    contexts.set(spec.key, { spec, scope, journal, preview, state: state.state });
+  }
+
+  const protectedSnapshots = await assertProtectedScopes(db, config, "global_preflight");
+  assertNoDifferences(differences, "Standalone global preflight failed");
+  return { contexts, protectedSnapshots };
+}
+
+async function prepareStandaloneJournal(db, context) {
+  if (context.journal) return { journal: context.journal, created: false };
+  const preparedAt = new Date();
+  const document = preparedJournal(context.spec, context.preview, context.scope, preparedAt);
+  try {
+    await db.collection("activitylogs").insertOne(document);
+    return { journal: document, created: true };
+  } catch (error) {
+    if (!(error && error.code === 11000)) throw error;
+    const existing = await db.collection("activitylogs").findOne(repairJournalFilter(context.spec));
+    const differences = journalDifferences(context.spec, existing, context.preview);
+    assertNoDifferences(differences, `Existing deterministic journal does not match for ${context.spec.key}`);
+    return { journal: existing, created: false };
+  }
+}
+
+function standaloneCasFilter(context) {
+  const { spec, journal, preview } = context;
+  const preflight = journal.meta.preflight;
+  const before = preview.before;
+  const filter = {
+    _id: objectId(spec.subscriptionId),
+    totalMeals: before.totalMeals,
+    selectedMealsPerDay: before.selectedMealsPerDay,
+    remainingMeals: before.remainingMeals,
+    updatedAt: preflight.updatedAt,
+    premiumBalance: preflight.premiumBalance || [],
+    addonBalance: preflight.addonBalance || [],
+  };
+  if (Number(before.entitlementVersion || 0) >= 2) {
+    for (const field of ["reservedMeals", "consumedMeals", "forfeitedMeals", "entitlementVersion"]) {
+      filter[field] = before[field];
+    }
+  }
+  const targeted = preflight.targetedBaseMealAllocations || [];
+  if (targeted.length) {
+    filter.$and = targeted.map((row) => ({
+      baseMealAllocations: {
+        $elemMatch: {
+          _id: row._id,
+          date: row.date,
+          state: "reserved",
+          quantity: 1,
+        },
+      },
+    }));
+  }
+  return filter;
+}
+
+function standaloneCasUpdate(context) {
+  const { spec, journal, preview } = context;
+  const set = {
+    remainingMeals: preview.after.remainingMeals,
+    updatedAt: new Date(journal.meta.preparedAt),
+  };
+  if (Number(preview.before.entitlementVersion || 0) >= 2) {
+    set.reservedMeals = preview.after.reservedMeals;
+    set.consumedMeals = preview.after.consumedMeals;
+  }
+  const update = { $set: set };
+  const options = {};
+  const releaseIds = (spec.releasedAllocationIds || []).map(objectId);
+  if (releaseIds.length) {
+    set["baseMealAllocations.$[allocation].state"] = "released";
+    set["baseMealAllocations.$[allocation].releasedAt"] = new Date(journal.meta.preparedAt);
+    options.arrayFilters = [{
+      "allocation._id": { $in: releaseIds },
+      "allocation.state": "reserved",
+      "allocation.quantity": 1,
+    }];
+  }
+  return { update, options };
+}
+
+async function finalizeStandaloneJournal(db, context, afterScope) {
+  const appliedAt = new Date();
+  const result = await db.collection("activitylogs").updateOne(
+    { _id: context.journal._id, "meta.status": "prepared" },
+    {
+      $set: {
+        "meta.status": "applied",
+        "meta.appliedAt": appliedAt,
+        "meta.after": walletSummary(afterScope.subscription),
+        "meta.afterSnapshotHash": hash(afterScope.subscription),
+        updatedAt: appliedAt,
+      },
+    }
+  );
+  if (result.matchedCount === 1 && result.modifiedCount === 1) {
+    context.journal.meta.status = "applied";
+    context.journal.meta.appliedAt = appliedAt;
+    return true;
+  }
+  const current = await db.collection("activitylogs").findOne({ _id: context.journal._id });
+  if (current && current.meta && current.meta.status === "applied") {
+    context.journal = current;
+    return false;
+  }
+  throw new RepairPreconditionError(`Journal finalization failed for ${context.spec.key}`, [
+    difference(`${context.spec.key}.journalFinalize`, { matchedCount: 1, modifiedCount: 1 }, result),
+  ]);
+}
+
+async function applyStandaloneTarget(db, context, config, { faultInjectionStep = "", beforeTargetApply = null } = {}) {
+  const { spec, preview } = context;
+  const actionsPerformed = [];
+  await assertProtectedScopes(db, config, `before_${spec.key}`);
+  let scope = await loadScope(db, spec);
+  let state = targetStateDetails(spec, scope, preview, context.journal);
+  assertNoDifferences(
+    state.state === "inconsistent" ? [difference(`${spec.key}.state`, "before or after", state)] : [],
+    `Standalone target state is inconsistent for ${spec.key}`
+  );
+  const stateBefore = `${context.journal.meta.status}_${state.state}`;
+
+  if (context.journal.meta.status === "applied") {
+    if (state.state !== "after") {
+      throw new RepairPreconditionError(`Critical journal/subscription inconsistency for ${spec.key}`, [
+        difference(`${spec.key}.stateMachine`, "applied_after", stateBefore),
+      ]);
+    }
+    actionsPerformed.push("already_applied_noop");
+  } else if (state.state === "after") {
+    const finalized = await finalizeStandaloneJournal(db, context, scope);
+    actionsPerformed.push(finalized ? "journal_finalized_recovery" : "already_finalized_noop");
+  } else {
+    if (typeof beforeTargetApply === "function") await beforeTargetApply({ db, context });
+    const { update, options } = standaloneCasUpdate(context);
+    const result = await db.collection("subscriptions").updateOne(
+      standaloneCasFilter(context),
+      update,
+      options
+    );
+    if (result.matchedCount !== 1 || result.modifiedCount !== 1) {
+      scope = await loadScope(db, spec);
+      state = targetStateDetails(spec, scope, preview, context.journal);
+      if (state.state !== "after") {
+        throw new RepairPreconditionError(`Standalone compare-and-set failed for ${spec.key}`, [
+          difference(`${spec.key}.casResult`, { matchedCount: 1, modifiedCount: 1 }, result),
+          difference(`${spec.key}.stateAfterCasFailure`, "expected after for recovery", state),
+        ]);
+      }
+      actionsPerformed.push("subscription_already_updated_recovery");
+    } else {
+      actionsPerformed.push("subscription_updated_cas");
+    }
+    if (faultInjectionStep === `after_${spec.key}_subscription_update`) {
+      throw new Error(`Injected failure after ${spec.key} subscription update`);
+    }
+    scope = await loadScope(db, spec);
+    state = targetStateDetails(spec, scope, preview, context.journal);
+    assertNoDifferences(
+      state.state === "after" ? [] : [difference(`${spec.key}.appliedState`, "after", state)],
+      `Standalone applied result validation failed for ${spec.key}`
+    );
+    const finalized = await finalizeStandaloneJournal(db, context, scope);
+    actionsPerformed.push(finalized ? "journal_finalized" : "already_finalized_noop");
+  }
+
+  if (faultInjectionStep === `after_${spec.key}_finalize`) {
+    throw new Error(`Injected failure after ${spec.key} finalize`);
+  }
+  const protectedAfter = await assertProtectedScopes(db, config, `after_${spec.key}`);
+  const finalScope = await loadScope(db, spec);
+  const finalState = targetStateDetails(spec, finalScope, preview, context.journal);
+  assertNoDifferences(
+    finalState.state === "after" ? [] : [difference(`${spec.key}.finalState`, "after", finalState)],
+    `Standalone final state validation failed for ${spec.key}`
+  );
+  return {
+    stateBefore,
+    actionsPerformed,
+    stateAfter: "applied_after",
+    journalId: String(context.journal._id),
+    before: preview.before,
+    after: walletSummary(finalScope.subscription),
+    protectedAfter,
+  };
+}
+
+async function runStandaloneRepair({ db, apply, config, faultInjectionStep, beforeTargetApply }) {
+  const preflight = await standaloneGlobalPreflight(db, config);
+  const deterministicJournalIds = Object.fromEntries(config.targets.map((spec) => [
+    spec.key,
+    String(deterministicJournalId(spec.subscriptionId)),
+  ]));
+  if (!apply) {
+    return {
+      ok: true,
+      mode: "dry_run",
+      topology: "standalone",
+      databaseName: db.databaseName,
+      repairKey: REPAIR_KEY,
+      writes: 0,
+      executionPlan: EXECUTION_MODES.standalone,
+      deterministicJournalIds,
+      targetStates: Object.fromEntries([...preflight.contexts].map(([key, context]) => [
+        key,
+        context.journal ? `${context.journal.meta.status}_${context.state}` : context.state,
+      ])),
+      targets: [...preflight.contexts.values()].map((context) => ({
+        ...context.preview,
+        journalId: deterministicJournalIds[context.spec.key],
+      })),
+      protected: config.protected.map((spec) => ({
+        key: spec.key,
+        subscriptionId: spec.subscriptionId,
+        snapshotBefore: preflight.protectedSnapshots[spec.key],
+        snapshotAfter: preflight.protectedSnapshots[spec.key],
+        unchanged: true,
+      })),
+    };
+  }
+
+  const prepareActions = {};
+  for (const spec of config.targets) {
+    const context = preflight.contexts.get(spec.key);
+    const prepared = await prepareStandaloneJournal(db, context);
+    context.journal = prepared.journal;
+    prepareActions[spec.key] = prepared.created ? "journal_prepared" : "journal_reused";
+    if (faultInjectionStep === "after_prepare_roa" && spec.key === "roa") {
+      throw new Error("Injected failure after preparing Roa journal");
+    }
+  }
+  if (faultInjectionStep === "after_prepare_all") {
+    throw new Error("Injected failure after preparing all journals");
+  }
+
+  const targets = {};
+  try {
+    for (const spec of config.targets) {
+      const context = preflight.contexts.get(spec.key);
+      const result = await applyStandaloneTarget(db, context, config, {
+        faultInjectionStep,
+        beforeTargetApply,
+      });
+      result.actionsPerformed.unshift(prepareActions[spec.key]);
+      targets[spec.key] = result;
+    }
+  } catch (error) {
+    const targetStates = {};
+    for (const spec of config.targets) {
+      const context = preflight.contexts.get(spec.key);
+      const journal = await db.collection("activitylogs").findOne(repairJournalFilter(spec));
+      const scope = await loadScope(db, spec);
+      const state = targetStateDetails(spec, scope, context.preview, journal);
+      targetStates[spec.key] = {
+        journalStatus: journal && journal.meta && journal.meta.status || "missing",
+        subscriptionState: state.state,
+        result: targets[spec.key] || null,
+      };
+    }
+    error.resumable = true;
+    error.executionPlan = EXECUTION_MODES.standalone;
+    error.targetStates = targetStates;
+    throw error;
+  }
+  const protectedSnapshots = await assertProtectedScopes(db, config, "final");
+  return {
+    ok: true,
+    mode: "standalone_apply",
+    topology: "standalone",
+    databaseName: db.databaseName,
+    repairKey: REPAIR_KEY,
+    executionPlan: EXECUTION_MODES.standalone,
+    resumable: true,
+    deterministicJournalIds,
+    targets,
+    protected: config.protected.map((spec) => ({
+      key: spec.key,
+      subscriptionId: spec.subscriptionId,
+      snapshotAfter: protectedSnapshots[spec.key],
+      unchanged: true,
+    })),
+  };
+}
+
 async function runRepair({
   apply = false,
   confirmation = "",
+  allowStandalone = false,
   config = PRODUCTION_CONFIG,
   expectedDatabaseName = process.env.MONGO_DB || config.databaseName,
   faultInjectionStep = "",
+  beforeTargetApply = null,
 } = {}) {
   if (!mongoose.connection.db) throw new Error("MongoDB connection is required");
   const db = mongoose.connection.db;
@@ -546,10 +1180,37 @@ async function runRepair({
   }
   assertNoDifferences(databaseDifferences, "Database name verification failed");
 
+  const topology = await detectTopology(db);
+  if (topology === "standalone") {
+    if (apply && !allowStandalone) {
+      const error = new RepairPreconditionError(
+        "Standalone MongoDB apply requires ALLOW_STANDALONE_REPAIR=true",
+        [difference("topology", "replica_set or mongos, or explicit standalone authorization", topology)]
+      );
+      error.topology = topology;
+      throw error;
+    }
+    if (apply && confirmation !== REQUIRED_STANDALONE_CONFIRMATION) {
+      const error = new RepairPreconditionError("Explicit standalone repair confirmation is missing or invalid", [
+        difference("REPAIR_CONFIRMATION", REQUIRED_STANDALONE_CONFIRMATION, confirmation || "missing"),
+      ]);
+      error.topology = topology;
+      throw error;
+    }
+    try {
+      return await runStandaloneRepair({ db, apply, config, faultInjectionStep, beforeTargetApply });
+    } catch (error) {
+      error.topology = topology;
+      throw error;
+    }
+  }
+
   if (apply && confirmation !== REQUIRED_CONFIRMATION) {
-    throw new RepairPreconditionError("Explicit production repair confirmation is missing or invalid", [
+    const error = new RepairPreconditionError("Explicit production repair confirmation is missing or invalid", [
       difference("REPAIR_CONFIRMATION", REQUIRED_CONFIRMATION, confirmation || "missing"),
     ]);
+    error.topology = topology;
+    throw error;
   }
 
   const execute = async (session = null) => {
@@ -580,9 +1241,15 @@ async function runRepair({
       return {
         ok: true,
         mode: "dry_run",
+        topology,
         repairKey: REPAIR_KEY,
         databaseName: actualDatabaseName,
         writes: 0,
+        executionPlan: EXECUTION_MODES.transaction,
+        deterministicJournalIds: Object.fromEntries(config.targets.map((spec) => [
+          spec.key,
+          String(deterministicJournalId(spec.subscriptionId)),
+        ])),
         targets: previews,
         protected: config.protected.map((spec) => ({
           key: spec.key,
@@ -620,8 +1287,10 @@ async function runRepair({
     return {
       ok: true,
       mode: "apply",
+      topology,
       repairKey: REPAIR_KEY,
       databaseName: actualDatabaseName,
+      executionPlan: EXECUTION_MODES.transaction,
       targets: previews,
       protected: config.protected.map((spec) => ({
         key: spec.key,
@@ -650,13 +1319,19 @@ async function runRepair({
 
 function applyRequestedFromEnvironment() {
   const allow = process.env.ALLOW_PRODUCTION_REPAIR === "true";
+  const allowStandalone = process.env.ALLOW_STANDALONE_REPAIR === "true";
   const confirmation = String(process.env.REPAIR_CONFIRMATION || "");
   if (allow !== Boolean(confirmation)) {
     throw new RepairPreconditionError(
       "ALLOW_PRODUCTION_REPAIR and REPAIR_CONFIRMATION must either both be absent (dry run) or both be supplied (apply)"
     );
   }
-  return { apply: allow, confirmation };
+  if (allowStandalone && !allow) {
+    throw new RepairPreconditionError(
+      "ALLOW_STANDALONE_REPAIR requires ALLOW_PRODUCTION_REPAIR=true and explicit confirmation"
+    );
+  }
+  return { apply: allow, allowStandalone, confirmation };
 }
 
 async function main() {
@@ -677,6 +1352,10 @@ if (require.main === module) {
       ok: false,
       code: error && error.code || "REPAIR_FAILED",
       message: error && error.message || "Repair failed",
+      topology: error && error.topology || undefined,
+      executionPlan: error && error.executionPlan || undefined,
+      resumable: error && error.resumable || undefined,
+      targetStates: error && error.targetStates || undefined,
       differences: error && error.differences || [],
     };
     console.error(JSON.stringify(output, null, 2));
@@ -691,8 +1370,11 @@ module.exports = {
   REPAIR_ACTION,
   REPAIR_KEY,
   REQUIRED_CONFIRMATION,
+  REQUIRED_STANDALONE_CONFIRMATION,
   RepairPreconditionError,
   SCRIPT_VERSION,
+  detectTopology,
+  deterministicJournalId,
   hash,
   loadScope,
   manualTotals,

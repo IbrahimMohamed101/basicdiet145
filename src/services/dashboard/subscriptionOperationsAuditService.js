@@ -269,9 +269,14 @@ function manualReversalRow(log) {
     restoredRegularMeals: nonNegativeInteger(meta.restoredRegularMeals),
     restoredPremiumMeals: nonNegativeInteger(meta.restoredPremiumMeals),
     releasedReservedMeals: nonNegativeInteger(meta.releasedReservedMeals),
+    status: String(meta.status || "").trim() || null,
+    targetKey: String(meta.targetKey || "").trim() || null,
+    executionMode: String(meta.executionMode || "").trim() || null,
     reason: String(meta.reason || "").trim() || null,
     correctionPeriod: meta.correctionPeriod || null,
-    executedAt: meta.executedAt || log && log.createdAt || null,
+    preparedAt: meta.preparedAt || null,
+    appliedAt: meta.appliedAt || null,
+    executedAt: meta.appliedAt || meta.executedAt || log && log.createdAt || null,
     scriptVersion: String(meta.scriptVersion || "").trim() || null,
     createdAt: log && log.createdAt || null,
   };
@@ -279,8 +284,10 @@ function manualReversalRow(log) {
 
 function manualDeductionLedger(deductionLogs = [], reversalLogs = []) {
   const reversals = reversalLogs.map(manualReversalRow);
+  const appliedReversals = reversals.filter((row) => row.status === "applied");
+  const pendingReversals = reversals.filter((row) => row.status === "prepared");
   const reversalIdsByDeduction = new Map();
-  for (const reversal of reversals) {
+  for (const reversal of appliedReversals) {
     for (const deductionId of reversal.reversedActivityLogIds) {
       if (!reversalIdsByDeduction.has(deductionId)) reversalIdsByDeduction.set(deductionId, []);
       reversalIdsByDeduction.get(deductionId).push(reversal.id);
@@ -311,6 +318,11 @@ function manualDeductionLedger(deductionLogs = [], reversalLogs = []) {
   return {
     records,
     reversals,
+    appliedReversals,
+    pendingReversals,
+    pendingManualDeductionReversals: pendingReversals,
+    manualDeductionReversalsApplied: appliedReversals.length,
+    manualDeductionReversalsPending: pendingReversals.length,
     grossManualDeductions,
     reversedManualDeductions,
     netManualDeductions: grossManualDeductions - reversedManualDeductions,
@@ -693,6 +705,8 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
           reversedManualDeductions: 0,
           netManualDeductions: 0,
           manuallyDeductedMeals: 0,
+          manualDeductionReversalsApplied: 0,
+          manualDeductionReversalsPending: 0,
         },
         issues: { counts: { critical: 0, high: 0, medium: 0, low: 0, total: 0 }, byCode: {} },
       },
@@ -836,6 +850,9 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
       balance,
       manualDeductionsInRange: rangeManualRows,
       manualDeductionReversals: allManualLedger.reversals,
+      pendingManualDeductionReversals: allManualLedger.pendingManualDeductionReversals,
+      manualDeductionReversalsApplied: allManualLedger.manualDeductionReversalsApplied,
+      manualDeductionReversalsPending: allManualLedger.manualDeductionReversalsPending,
       issues: subscriptionIssues,
       risk: rowRisk,
       days: includeDetails ? dayAudits : [],
@@ -860,6 +877,8 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
           (sum, row) => sum + row.manualDeduction.netManualDeductions,
           0
         ),
+        manualDeductionReversalsApplied: allManualLedger.manualDeductionReversalsApplied,
+        manualDeductionReversalsPending: allManualLedger.manualDeductionReversalsPending,
         criticalDays: dayAudits.filter((row) => row.risk === "critical").length,
         highRiskDays: dayAudits.filter((row) => row.risk === "high").length,
       },
@@ -949,6 +968,14 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
         ),
         manuallyDeductedMeals: subscriptionAudits.reduce(
           (sum, row) => sum + row.periodSummary.netManualDeductions,
+          0
+        ),
+        manualDeductionReversalsApplied: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.manualDeductionReversalsApplied,
+          0
+        ),
+        manualDeductionReversalsPending: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.manualDeductionReversalsPending,
           0
         ),
         reservedMeals: subscriptionAudits.reduce((sum, row) => sum + row.periodSummary.reservedMeals, 0),

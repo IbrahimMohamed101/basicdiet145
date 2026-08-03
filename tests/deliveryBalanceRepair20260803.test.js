@@ -4,7 +4,7 @@ process.env.NODE_ENV = "test";
 
 const assert = require("assert");
 const mongoose = require("mongoose");
-const { MongoMemoryReplSet } = require("mongodb-memory-server");
+const { MongoMemoryReplSet, MongoMemoryServer } = require("mongodb-memory-server");
 
 require("../src/models/User");
 require("../src/models/Plan");
@@ -12,6 +12,8 @@ require("../src/models/Plan");
 const {
   REPAIR_ACTION,
   REQUIRED_CONFIRMATION,
+  REQUIRED_STANDALONE_CONFIRMATION,
+  deterministicJournalId,
   hash,
   loadScope,
   runRepair,
@@ -293,96 +295,236 @@ async function expectPreconditionFailure(promise) {
   await assert.rejects(promise, (error) => error && error.code === "REPAIR_PRECONDITION_FAILED");
 }
 
-async function run() {
-  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
-  dbName = `delivery_balance_repair_test_${Date.now()}`;
-  await mongoose.connect(replSet.getUri(dbName));
-  const db = mongoose.connection.db;
+function standaloneApplyOptions(config, extras = {}) {
+  return {
+    apply: true,
+    allowStandalone: true,
+    confirmation: REQUIRED_STANDALONE_CONFIRMATION,
+    config,
+    expectedDatabaseName: dbName,
+    ...extras,
+  };
+}
 
+async function journalRows(db) {
+  return db.collection("activitylogs").find({ action: REPAIR_ACTION }).sort({ _id: 1 }).toArray();
+}
+
+async function assertFinalBalances(db) {
+  const roa = await db.collection("subscriptions").findOne({ _id: oid(IDS.roa) });
+  const osamah = await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) });
+  assert.strictEqual(roa.remainingMeals, 66);
+  assert.strictEqual(osamah.remainingMeals, 48);
+  assert.strictEqual(osamah.remainingMeals - osamah.premiumBalance.reduce((sum, row) => sum + Number(row.remainingQty || 0), 0), 47);
+  assert.strictEqual(osamah.reservedMeals, 0);
+  assert.strictEqual(osamah.consumedMeals, 4);
+  assert.strictEqual(osamah.forfeitedMeals, 0);
+  assert(osamah.baseMealAllocations.every((row) => row.state === "released" && row.releasedAt));
+}
+
+async function runStandaloneCases() {
+  const standalone = await MongoMemoryServer.create();
+  dbName = `delivery_balance_standalone_${Date.now()}`;
+  await mongoose.connect(standalone.getUri(dbName));
+  const db = mongoose.connection.db;
   try {
     let config = await seedScenario();
     const dryBefore = await snapshots(config);
     const dryRun = await runRepair({ config, expectedDatabaseName: dbName });
-    assert.strictEqual(dryRun.mode, "dry_run");
+    assert.strictEqual(dryRun.mode, "dry_run", "1. standalone dry run mode");
+    assert.strictEqual(dryRun.topology, "standalone");
+    assert.strictEqual(dryRun.executionPlan, "standalone_resumable_repair");
     assert.strictEqual(dryRun.writes, 0);
-    assert.deepStrictEqual(await snapshots(config), dryBefore, "1. dry run must not write");
+    assert.strictEqual(dryRun.deterministicJournalIds.roa, String(deterministicJournalId(IDS.roa)));
+    assert.strictEqual(dryRun.deterministicJournalIds.osamah, String(deterministicJournalId(IDS.osamah)));
+    assert.deepStrictEqual(await snapshots(config), dryBefore, "1. dry run writes zero");
 
     config = await seedScenario();
-    await db.collection("subscriptions").updateOne({ _id: oid(IDS.roa) }, { $set: { totalMeals: 77 } });
-    const mismatchBaseline = hash(await db.collection("subscriptions").find({}).sort({ _id: 1 }).toArray());
     await expectPreconditionFailure(runRepair({
       apply: true,
-      confirmation: REQUIRED_CONFIRMATION,
+      confirmation: REQUIRED_STANDALONE_CONFIRMATION,
       config,
       expectedDatabaseName: dbName,
     }));
-    assert.strictEqual(hash(await db.collection("subscriptions").find({}).sort({ _id: 1 }).toArray()), mismatchBaseline, "2. mismatch prevents every repair write");
-    assert.strictEqual(await db.collection("activitylogs").countDocuments({ action: REPAIR_ACTION }), 0);
+    assert.strictEqual((await journalRows(db)).length, 0, "2. standalone gate failure writes zero");
+
+    config = await seedScenario();
+    await db.collection("subscriptions").updateOne({ _id: oid(IDS.roa) }, { $set: { totalMeals: 77 } });
+    await expectPreconditionFailure(runRepair(standaloneApplyOptions(config)));
+    assert.strictEqual((await journalRows(db)).length, 0, "3. global preflight prevents prepared journals");
+
+    config = await seedScenario();
+    await assert.rejects(
+      runRepair(standaloneApplyOptions(config, { faultInjectionStep: "after_prepare_roa" })),
+      /Injected failure/
+    );
+    let journals = await journalRows(db);
+    assert.strictEqual(journals.length, 1, "4. first deterministic prepared journal exists once");
+    assert.strictEqual(String(journals[0]._id), String(deterministicJournalId(IDS.roa)));
+    assert.strictEqual(journals[0].meta.status, "prepared");
+    let resumed = await runRepair(standaloneApplyOptions(config));
+    assert.strictEqual(resumed.mode, "standalone_apply", "7. resume after prepare succeeds");
+    await assertFinalBalances(db);
+
+    config = await seedScenario();
+    await assert.rejects(
+      runRepair(standaloneApplyOptions(config, { faultInjectionStep: "after_prepare_all" })),
+      /Injected failure/
+    );
+    journals = await journalRows(db);
+    assert.deepStrictEqual(journals.map((row) => row.meta.status), ["prepared", "prepared"]);
+    const pendingReport = await buildSubscriptionOperationsAudit({
+      from: "2026-07-29",
+      to: "2026-08-03",
+      now: new Date("2026-08-03T12:00:00Z"),
+    });
+    const pendingRoa = pendingReport.subscriptionAudits.find((row) => row.subscriptionId === IDS.roa);
+    assert.strictEqual(pendingRoa.balance.reversedManualDeductions, 0, "12. prepared does not reverse audit totals");
+    assert.strictEqual(pendingRoa.balance.netManualDeductions, 26);
+    assert.strictEqual(pendingRoa.manualDeductionReversalsPending, 1);
+    resumed = await runRepair(standaloneApplyOptions(config));
+    assert.strictEqual(resumed.targets.roa.stateBefore, "prepared_before", "7. prepared journal resumes at CAS");
+    assert.strictEqual(resumed.targets.osamah.stateBefore, "prepared_before");
+    await assertFinalBalances(db);
+
+    config = await seedScenario();
+    const protectedBeforeUpdateCrash = {
+      ahmed: scopeHashes(await loadScope(db, config.protected[0])),
+      haifa: scopeHashes(await loadScope(db, config.protected[1])),
+    };
+    await assert.rejects(
+      runRepair(standaloneApplyOptions(config, { faultInjectionStep: "after_roa_subscription_update" })),
+      /Injected failure/
+    );
+    let roa = await db.collection("subscriptions").findOne({ _id: oid(IDS.roa) });
+    journals = await journalRows(db);
+    assert.strictEqual(roa.remainingMeals, 66, "8. subscription update committed before finalize fault");
+    assert.strictEqual(journals.find((row) => row.meta.targetKey === "roa").meta.status, "prepared");
+    resumed = await runRepair(standaloneApplyOptions(config));
+    assert(resumed.targets.roa.actionsPerformed.includes("journal_finalized_recovery"));
+    await assertFinalBalances(db);
+    assert.deepStrictEqual(scopeHashes(await loadScope(db, config.protected[0])), protectedBeforeUpdateCrash.ahmed, "14. Ahmed unchanged");
+    assert.deepStrictEqual(scopeHashes(await loadScope(db, config.protected[1])), protectedBeforeUpdateCrash.haifa, "15. Haifa unchanged");
+
+    config = await seedScenario();
+    let partialFailure;
+    try {
+      await runRepair(standaloneApplyOptions(config, { faultInjectionStep: "after_roa_finalize" }));
+    } catch (error) {
+      partialFailure = error;
+    }
+    assert(partialFailure && /Injected failure/.test(partialFailure.message));
+    assert.strictEqual(partialFailure.targetStates.roa.journalStatus, "applied");
+    assert.strictEqual(partialFailure.targetStates.roa.subscriptionState, "after");
+    assert.strictEqual(partialFailure.targetStates.osamah.journalStatus, "prepared");
+    assert.strictEqual(partialFailure.targetStates.osamah.subscriptionState, "before");
+    journals = await journalRows(db);
+    assert.strictEqual(journals.find((row) => row.meta.targetKey === "roa").meta.status, "applied");
+    assert.strictEqual(journals.find((row) => row.meta.targetKey === "osamah").meta.status, "prepared");
+    resumed = await runRepair(standaloneApplyOptions(config));
+    assert(resumed.targets.roa.actionsPerformed.includes("already_applied_noop"), "9. Roa is not repeated");
+    await assertFinalBalances(db);
+
+    config = await seedScenario();
+    await assert.rejects(
+      runRepair(standaloneApplyOptions(config, { faultInjectionStep: "after_osamah_subscription_update" })),
+      /Injected failure/
+    );
+    let osamah = await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) });
+    assert.strictEqual(osamah.remainingMeals, 48);
+    assert.strictEqual((await journalRows(db)).find((row) => row.meta.targetKey === "osamah").meta.status, "prepared");
+    resumed = await runRepair(standaloneApplyOptions(config));
+    assert(resumed.targets.osamah.actionsPerformed.includes("journal_finalized_recovery"));
+
+    const premiumAfter = hash((await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) })).premiumBalance);
+    const addonsAfter = hash((await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) })).addonBalance);
+    const appliedStateHash = hash(await db.collection("subscriptions").find({
+      _id: { $in: [oid(IDS.roa), oid(IDS.osamah)] },
+    }).sort({ _id: 1 }).toArray());
+    const activityIndexes = await db.collection("activitylogs").indexes();
+    assert.deepStrictEqual(
+      activityIndexes.map((row) => row.name),
+      ["_id_"],
+      "19. deterministic _id is the idempotency barrier without the optional repair index"
+    );
+    const repeated = await runRepair(standaloneApplyOptions(config));
+    assert(repeated.targets.roa.actionsPerformed.includes("already_applied_noop"), "10. applied after is a no-op");
+    assert(repeated.targets.osamah.actionsPerformed.includes("already_applied_noop"));
+    assert.strictEqual((await journalRows(db)).length, 2, "18/19. repeat creates no journals despite no repair index");
+    assert.strictEqual(hash(await db.collection("subscriptions").find({
+      _id: { $in: [oid(IDS.roa), oid(IDS.osamah)] },
+    }).sort({ _id: 1 }).toArray()), appliedStateHash);
+    assert.strictEqual(hash((await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) })).premiumBalance), premiumAfter, "16. premium unchanged");
+    assert.strictEqual(hash((await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) })).addonBalance), addonsAfter, "16. add-ons unchanged");
+
+    const appliedReport = await buildSubscriptionOperationsAudit({
+      from: "2026-07-29",
+      to: "2026-08-03",
+      now: new Date("2026-08-03T12:00:00Z"),
+    });
+    const appliedRoa = appliedReport.subscriptionAudits.find((row) => row.subscriptionId === IDS.roa);
+    const appliedOsamah = appliedReport.subscriptionAudits.find((row) => row.subscriptionId === IDS.osamah);
+    assert.deepStrictEqual([
+      appliedRoa.balance.grossManualDeductions,
+      appliedRoa.balance.reversedManualDeductions,
+      appliedRoa.balance.netManualDeductions,
+    ], [26, 14, 12], "13. applied Roa reversal affects audit");
+    assert.deepStrictEqual([
+      appliedOsamah.balance.grossManualDeductions,
+      appliedOsamah.balance.reversedManualDeductions,
+      appliedOsamah.balance.netManualDeductions,
+    ], [8, 4, 4], "13. applied Osamah reversal affects audit");
+
+    config = await seedScenario();
+    const beforeConcurrent = await db.collection("subscriptions").findOne({ _id: oid(IDS.roa) });
+    await expectPreconditionFailure(runRepair(standaloneApplyOptions(config, {
+      beforeTargetApply: async ({ db: callbackDb, context }) => {
+        if (context.spec.key === "roa") {
+          await callbackDb.collection("subscriptions").updateOne(
+            { _id: oid(IDS.roa) },
+            { $set: { updatedAt: new Date("2026-08-03T01:00:00Z") } }
+          );
+        }
+      },
+    })));
+    roa = await db.collection("subscriptions").findOne({ _id: oid(IDS.roa) });
+    assert.strictEqual(roa.remainingMeals, beforeConcurrent.remainingMeals, "11. CAS rejects concurrent updatedAt change");
+    assert.strictEqual((await journalRows(db)).filter((row) => row.meta.status === "prepared").length, 2);
+
+    console.log("delivery balance standalone repair tests passed (19 standalone safety cases)");
+  } finally {
+    await mongoose.disconnect().catch(() => {});
+    await standalone.stop().catch(() => {});
+  }
+}
+
+async function runTransactionCases() {
+  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
+  dbName = `delivery_balance_transaction_${Date.now()}`;
+  await mongoose.connect(replSet.getUri(dbName));
+  const db = mongoose.connection.db;
+  try {
+    let config = await seedScenario();
+    const dryBefore = await snapshots(config);
+    const dryRun = await runRepair({ config, expectedDatabaseName: dbName });
+    assert.strictEqual(dryRun.topology, "replica_set");
+    assert.strictEqual(dryRun.executionPlan, "transactional_repair");
+    assert.deepStrictEqual(await snapshots(config), dryBefore);
 
     config = await seedScenario();
     const ahmedBefore = scopeHashes(await loadScope(db, config.protected[0]));
     const haifaBefore = scopeHashes(await loadScope(db, config.protected[1]));
-    const osamahBefore = await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) });
-    const premiumBefore = hash(osamahBefore.premiumBalance);
-    const addonsBefore = hash(osamahBefore.addonBalance);
-    const originalLogsBefore = await db.collection("activitylogs").find({
-      entityId: { $in: [oid(IDS.roa), oid(IDS.osamah)] },
-      action: "manual_subscription_meal_deduction",
-    }).sort({ _id: 1 }).toArray();
-
     const applied = await runRepair({
       apply: true,
       confirmation: REQUIRED_CONFIRMATION,
       config,
       expectedDatabaseName: dbName,
     });
-    assert.strictEqual(applied.mode, "apply");
-    const roa = await db.collection("subscriptions").findOne({ _id: oid(IDS.roa) });
-    const osamah = await db.collection("subscriptions").findOne({ _id: oid(IDS.osamah) });
-    assert.strictEqual(roa.remainingMeals, 66, "3. Roa balance becomes 66");
-    assert.strictEqual(osamah.remainingMeals, 48, "4. Osamah remaining becomes 48");
-    assert.strictEqual(osamah.reservedMeals, 0);
-    assert.strictEqual(osamah.consumedMeals, 4);
-    assert(osamah.baseMealAllocations.every((row) => row.state === "released"));
-    assert.strictEqual(hash(osamah.premiumBalance), premiumBefore, "5. premium balances stay unchanged");
-    assert.strictEqual(hash(osamah.addonBalance), addonsBefore, "5. add-on balances stay unchanged");
-    assert.deepStrictEqual(scopeHashes(await loadScope(db, config.protected[0])), ahmedBefore, "6. Ahmed stays unchanged");
-    assert.deepStrictEqual(scopeHashes(await loadScope(db, config.protected[1])), haifaBefore, "7. Haifa stays unchanged");
-
-    const appliedStateHash = hash(await db.collection("subscriptions").find({ _id: { $in: [oid(IDS.roa), oid(IDS.osamah)] } }).sort({ _id: 1 }).toArray());
-    await expectPreconditionFailure(runRepair({
-      apply: true,
-      confirmation: REQUIRED_CONFIRMATION,
-      config,
-      expectedDatabaseName: dbName,
-    }));
-    assert.strictEqual(await db.collection("activitylogs").countDocuments({ action: REPAIR_ACTION }), 2, "8. rerun does not duplicate repair");
-    assert.strictEqual(hash(await db.collection("subscriptions").find({ _id: { $in: [oid(IDS.roa), oid(IDS.osamah)] } }).sort({ _id: 1 }).toArray()), appliedStateHash);
-
-    const report = await buildSubscriptionOperationsAudit({
-      from: "2026-07-29",
-      to: "2026-08-03",
-      now: new Date("2026-08-03T12:00:00Z"),
-    });
-    const roaAudit = report.subscriptionAudits.find((row) => row.subscriptionId === IDS.roa);
-    const osamahAudit = report.subscriptionAudits.find((row) => row.subscriptionId === IDS.osamah);
-    assert(roaAudit && osamahAudit);
-    assert.deepStrictEqual(
-      [roaAudit.balance.grossManualDeductions, roaAudit.balance.reversedManualDeductions, roaAudit.balance.netManualDeductions],
-      [26, 14, 12],
-      "10. report exposes Roa gross/reversed/net"
-    );
-    assert.deepStrictEqual(
-      [osamahAudit.balance.grossManualDeductions, osamahAudit.balance.reversedManualDeductions, osamahAudit.balance.netManualDeductions],
-      [8, 4, 4],
-      "10. report exposes Osamah gross/reversed/net"
-    );
-    assert.strictEqual(osamah.totalMeals, osamah.remainingMeals + osamah.reservedMeals + osamah.consumedMeals + osamah.forfeitedMeals, "11. balance equation remains balanced");
-    const originalLogsAfter = await db.collection("activitylogs").find({
-      entityId: { $in: [oid(IDS.roa), oid(IDS.osamah)] },
-      action: "manual_subscription_meal_deduction",
-    }).sort({ _id: 1 }).toArray();
-    assert.strictEqual(hash(originalLogsAfter), hash(originalLogsBefore), "12. historical logs are not changed or deleted");
+    assert.strictEqual(applied.mode, "apply", "17. transaction path remains available");
+    await assertFinalBalances(db);
+    assert.deepStrictEqual(scopeHashes(await loadScope(db, config.protected[0])), ahmedBefore);
+    assert.deepStrictEqual(scopeHashes(await loadScope(db, config.protected[1])), haifaBefore);
+    assert((await journalRows(db)).every((row) => row.meta.status === "applied"));
 
     config = await seedScenario();
     const rollbackBefore = await snapshots(config);
@@ -393,14 +535,20 @@ async function run() {
       expectedDatabaseName: dbName,
       faultInjectionStep: "after_target_1",
     }), /Injected failure/);
-    assert.deepStrictEqual(await snapshots(config), rollbackBefore, "9. injected failure rolls back the complete repair");
-    assert.strictEqual(await db.collection("activitylogs").countDocuments({ action: REPAIR_ACTION }), 0);
+    assert.deepStrictEqual(await snapshots(config), rollbackBefore, "17. transaction rollback remains atomic");
+    assert.strictEqual((await journalRows(db)).length, 0);
 
-    console.log("delivery balance repair 2026-08-03 tests passed (12 safety cases)");
+    console.log("delivery balance transaction repair tests passed");
   } finally {
     await mongoose.disconnect().catch(() => {});
     await replSet.stop().catch(() => {});
   }
+}
+
+async function run() {
+  await runStandaloneCases();
+  await runTransactionCases();
+  console.log("delivery balance repair 2026-08-03 tests passed (20 requested scenarios covered)");
 }
 
 run().catch((error) => {
