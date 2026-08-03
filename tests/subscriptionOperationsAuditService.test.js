@@ -7,6 +7,7 @@ const {
   balanceSummary,
   buildDayAudit,
   classifyAcquisitionSource,
+  manualDeductionLedger,
   resolveRange,
 } = require("../src/services/dashboard/subscriptionOperationsAuditService");
 
@@ -71,6 +72,41 @@ function run() {
   assert.strictEqual(balance.balanced, true);
   assert.strictEqual(balance.aggregateOnlyConsumedMeals, 1);
   assert.strictEqual(balance.unattributedAggregateConsumption, 0);
+
+  const deductionLedger = manualDeductionLedger([
+    {
+      _id: "507f191e810c19729de86031",
+      entityId: "507f191e810c19729de86030",
+      action: "manual_subscription_meal_deduction",
+      meta: { deductedTotalMeals: 6, deductedRegularMeals: 6, deductedPremiumMeals: 0 },
+    },
+    {
+      _id: "507f191e810c19729de86032",
+      entityId: "507f191e810c19729de86030",
+      action: "manual_subscription_meal_deduction",
+      meta: { deductedTotalMeals: 4, deductedRegularMeals: 3, deductedPremiumMeals: 1 },
+    },
+  ], [{
+    _id: "507f191e810c19729de86033",
+    entityId: "507f191e810c19729de86030",
+    action: "subscription_manual_deduction_reversal",
+    meta: {
+      repairKey: "test-reversal",
+      reversedActivityLogIds: ["507f191e810c19729de86031"],
+      restoredRegularMeals: 6,
+      restoredPremiumMeals: 0,
+    },
+  }]);
+  assert.strictEqual(deductionLedger.grossManualDeductions, 10);
+  assert.strictEqual(deductionLedger.reversedManualDeductions, 6);
+  assert.strictEqual(deductionLedger.netManualDeductions, 4);
+  assert.strictEqual(deductionLedger.breakdown.net.regular, 3);
+  assert.strictEqual(deductionLedger.breakdown.net.premium, 1);
+  assert.strictEqual(
+    balanceSummary(subscription, deductionLedger).manualConsumedMeals,
+    4,
+    "reversed deductions must not remain actual consumption"
+  );
 
   const riskyDay = buildDayAudit({
     subscription,
