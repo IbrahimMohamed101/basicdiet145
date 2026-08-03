@@ -9,7 +9,10 @@ const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const dateUtils = require("../../utils/date");
-const { MANUAL_DEDUCTION_ACTION } = require("./manualDeduction/constants");
+const {
+  MANUAL_DEDUCTION_ACTION,
+  MANUAL_DEDUCTION_REVERSAL_ACTION,
+} = require("./manualDeduction/constants");
 
 const MAX_RANGE_DAYS = 31;
 const DAY_TERMINAL_CONSUMED_STATUSES = new Set([
@@ -254,6 +257,91 @@ function manualDeductionRow(log) {
   };
 }
 
+function manualReversalRow(log) {
+  const meta = log && log.meta && typeof log.meta === "object" ? log.meta : {};
+  return {
+    id: id(log && log._id),
+    repairKey: String(meta.repairKey || "").trim() || null,
+    subscriptionId: id(meta.subscriptionId || log && log.entityId),
+    reversedActivityLogIds: (Array.isArray(meta.reversedActivityLogIds)
+      ? meta.reversedActivityLogIds
+      : []).map(id).filter(Boolean),
+    restoredRegularMeals: nonNegativeInteger(meta.restoredRegularMeals),
+    restoredPremiumMeals: nonNegativeInteger(meta.restoredPremiumMeals),
+    releasedReservedMeals: nonNegativeInteger(meta.releasedReservedMeals),
+    status: String(meta.status || "").trim() || null,
+    targetKey: String(meta.targetKey || "").trim() || null,
+    executionMode: String(meta.executionMode || "").trim() || null,
+    reason: String(meta.reason || "").trim() || null,
+    correctionPeriod: meta.correctionPeriod || null,
+    preparedAt: meta.preparedAt || null,
+    appliedAt: meta.appliedAt || null,
+    executedAt: meta.appliedAt || meta.executedAt || log && log.createdAt || null,
+    scriptVersion: String(meta.scriptVersion || "").trim() || null,
+    createdAt: log && log.createdAt || null,
+  };
+}
+
+function manualDeductionLedger(deductionLogs = [], reversalLogs = []) {
+  const reversals = reversalLogs.map(manualReversalRow);
+  const appliedReversals = reversals.filter((row) => row.status === "applied");
+  const pendingReversals = reversals.filter((row) => row.status === "prepared");
+  const reversalIdsByDeduction = new Map();
+  for (const reversal of appliedReversals) {
+    for (const deductionId of reversal.reversedActivityLogIds) {
+      if (!reversalIdsByDeduction.has(deductionId)) reversalIdsByDeduction.set(deductionId, []);
+      reversalIdsByDeduction.get(deductionId).push(reversal.id);
+    }
+  }
+
+  const records = deductionLogs.map(manualDeductionRow).map((row) => {
+    const reversalIds = reversalIdsByDeduction.get(row.id) || [];
+    const reversedTotalMeals = reversalIds.length ? row.totalMeals : 0;
+    const reversedRegularMeals = reversalIds.length ? row.regularMeals : 0;
+    const reversedPremiumMeals = reversalIds.length ? row.premiumMeals : 0;
+    return {
+      ...row,
+      reversed: reversalIds.length > 0,
+      reversalActivityLogIds: reversalIds,
+      reversedTotalMeals,
+      reversedRegularMeals,
+      reversedPremiumMeals,
+      netTotalMeals: row.totalMeals - reversedTotalMeals,
+      netRegularMeals: row.regularMeals - reversedRegularMeals,
+      netPremiumMeals: row.premiumMeals - reversedPremiumMeals,
+    };
+  });
+
+  const sum = (field) => records.reduce((total, row) => total + nonNegativeInteger(row[field]), 0);
+  const grossManualDeductions = sum("totalMeals");
+  const reversedManualDeductions = sum("reversedTotalMeals");
+  return {
+    records,
+    reversals,
+    appliedReversals,
+    pendingReversals,
+    pendingManualDeductionReversals: pendingReversals,
+    manualDeductionReversalsApplied: appliedReversals.length,
+    manualDeductionReversalsPending: pendingReversals.length,
+    grossManualDeductions,
+    reversedManualDeductions,
+    netManualDeductions: grossManualDeductions - reversedManualDeductions,
+    breakdown: {
+      gross: { regular: sum("regularMeals"), premium: sum("premiumMeals"), total: grossManualDeductions },
+      reversed: {
+        regular: sum("reversedRegularMeals"),
+        premium: sum("reversedPremiumMeals"),
+        total: reversedManualDeductions,
+      },
+      net: {
+        regular: sum("netRegularMeals"),
+        premium: sum("netPremiumMeals"),
+        total: grossManualDeductions - reversedManualDeductions,
+      },
+    },
+  };
+}
+
 function balanceSummary(subscription, allManualDeductions = []) {
   const totalMeals = nonNegativeInteger(subscription.totalMeals);
   const availableMeals = nonNegativeInteger(subscription.remainingMeals);
@@ -262,10 +350,25 @@ function balanceSummary(subscription, allManualDeductions = []) {
   const forfeitedMeals = nonNegativeInteger(subscription.forfeitedMeals);
   const entitlementVersion = nonNegativeInteger(subscription.entitlementVersion);
   const allocations = allocationCounters(subscription.baseMealAllocations || []);
-  const manualConsumedMeals = allManualDeductions.reduce(
-    (sum, row) => sum + nonNegativeInteger(row.totalMeals),
-    0
-  );
+  const manualLedger = Array.isArray(allManualDeductions)
+    ? {
+      grossManualDeductions: allManualDeductions.reduce(
+        (sum, row) => sum + nonNegativeInteger(row.totalMeals),
+        0
+      ),
+      reversedManualDeductions: allManualDeductions.reduce(
+        (sum, row) => sum + nonNegativeInteger(row.reversedTotalMeals),
+        0
+      ),
+      netManualDeductions: allManualDeductions.reduce(
+        (sum, row) => sum + nonNegativeInteger(
+          row.netTotalMeals === undefined ? row.totalMeals : row.netTotalMeals
+        ),
+        0
+      ),
+    }
+    : allManualDeductions;
+  const manualConsumedMeals = nonNegativeInteger(manualLedger.netManualDeductions);
   const accountedMeals = availableMeals + reservedMeals + consumedMeals + forfeitedMeals;
   const equationDifference = totalMeals - accountedMeals;
   const aggregateOnlyConsumedMeals = Math.max(0, consumedMeals - allocations.consumed);
@@ -283,6 +386,9 @@ function balanceSummary(subscription, allManualDeductions = []) {
     equationDifference,
     balanced: entitlementVersion < 2 || equationDifference === 0,
     allocations,
+    grossManualDeductions: nonNegativeInteger(manualLedger.grossManualDeductions),
+    reversedManualDeductions: nonNegativeInteger(manualLedger.reversedManualDeductions),
+    netManualDeductions: manualConsumedMeals,
     manualConsumedMeals,
     aggregateOnlyConsumedMeals,
     unattributedAggregateConsumption,
@@ -303,8 +409,19 @@ function buildDayAudit({
   const expectedMeals = expectedMealCount(subscription, day);
   const selectedMeals = completeMealCount(day);
   const allocation = allocationCounters(allocations);
-  const manualMeals = manualDeductions.reduce((sum, row) => sum + row.totalMeals, 0);
-  const manualCount = manualDeductions.length;
+  const grossManualDeductions = manualDeductions.reduce(
+    (sum, row) => sum + nonNegativeInteger(row.totalMeals),
+    0
+  );
+  const reversedManualDeductions = manualDeductions.reduce(
+    (sum, row) => sum + nonNegativeInteger(row.reversedTotalMeals),
+    0
+  );
+  const netManualDeductions = grossManualDeductions - reversedManualDeductions;
+  const manualMeals = netManualDeductions;
+  const manualCount = manualDeductions.filter((row) =>
+    nonNegativeInteger(row.netTotalMeals === undefined ? row.totalMeals : row.netTotalMeals) > 0
+  ).length;
   const pickupFulfilled = pickupRequests.some((request) => request.status === "fulfilled");
   const deliveryDelivered = Boolean(delivery && delivery.status === "delivered");
   const dayConsumed = DAY_TERMINAL_CONSUMED_STATUSES.has(String(day && day.status || ""));
@@ -461,7 +578,11 @@ function buildDayAudit({
     allocation,
     manualDeduction: {
       count: manualCount,
-      totalMeals: manualMeals,
+      grossCount: manualDeductions.length,
+      totalMeals: netManualDeductions,
+      grossManualDeductions,
+      reversedManualDeductions,
+      netManualDeductions,
       records: manualDeductions,
     },
     fulfilled,
@@ -543,7 +664,7 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
     SubscriptionPickupRequest.find({ date: dateFilter }).lean(),
     ActivityLog.find({
       entityType: "subscription",
-      action: MANUAL_DEDUCTION_ACTION,
+      action: { $in: [MANUAL_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION] },
       $or: [
         { "meta.businessDate": dateFilter },
         { createdAt: createdAtFilter },
@@ -577,7 +698,16 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
       range: { from: range.from, to: range.to, days: range.days, timezone: range.timezone },
       summary: {
         newSubscriptions: { total: 0, pickup: 0, delivery: 0, matrix: {} },
-        operations: { reviewedSubscriptions: 0, reviewedDays: 0 },
+        operations: {
+          reviewedSubscriptions: 0,
+          reviewedDays: 0,
+          grossManualDeductions: 0,
+          reversedManualDeductions: 0,
+          netManualDeductions: 0,
+          manuallyDeductedMeals: 0,
+          manualDeductionReversalsApplied: 0,
+          manualDeductionReversalsPending: 0,
+        },
         issues: { counts: { critical: 0, high: 0, medium: 0, low: 0, total: 0 }, byCode: {} },
       },
       newSubscriptions: [],
@@ -598,7 +728,7 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
     ActivityLog.find({
       entityType: "subscription",
       entityId: { $in: objectIds },
-      action: MANUAL_DEDUCTION_ACTION,
+      action: { $in: [MANUAL_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION] },
     }).sort({ createdAt: 1 }).lean(),
   ]);
 
@@ -606,13 +736,7 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
   const daysBySubscription = groupBy(days, (row) => id(row.subscriptionId));
   const deliveriesBySubscription = groupBy(deliveries, (row) => id(row.subscriptionId));
   const pickupBySubscription = groupBy(pickupRequests, (row) => id(row.subscriptionId));
-  const allManualBySubscription = groupBy(
-    allManualLogs.map(manualDeductionRow),
-    (row) => {
-      const original = allManualLogs.find((log) => id(log._id) === row.id);
-      return id(original && original.entityId);
-    }
-  );
+  const allManualLogsBySubscription = groupBy(allManualLogs, (row) => id(row.entityId));
   const manualInRangeIds = new Set(manualLogsInRange.map((row) => id(row._id)));
   const newSubscriptionIdSet = new Set(newSubscriptionIds.map(id));
 
@@ -628,11 +752,16 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
     const customer = subscriptionCustomer(subscription);
     const plan = subscriptionPlan(subscription);
     const fulfillmentMethod = String(subscription.deliveryMode || "unknown");
-    const allManualRows = allManualBySubscription.get(subscriptionId) || [];
+    const subscriptionManualLogs = allManualLogsBySubscription.get(subscriptionId) || [];
+    const allManualLedger = manualDeductionLedger(
+      subscriptionManualLogs.filter((row) => row.action === MANUAL_DEDUCTION_ACTION),
+      subscriptionManualLogs.filter((row) => row.action === MANUAL_DEDUCTION_REVERSAL_ACTION)
+    );
+    const allManualRows = allManualLedger.records;
     const rangeManualRows = allManualRows.filter((row) =>
       manualInRangeIds.has(row.id) || (row.date >= range.from && row.date <= range.to)
     );
-    const balance = balanceSummary(subscription, allManualRows);
+    const balance = balanceSummary(subscription, allManualLedger);
     const subscriptionIssues = [];
 
     if (!balance.balanced) {
@@ -720,6 +849,10 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
       endDate: dateWindow(subscription).end,
       balance,
       manualDeductionsInRange: rangeManualRows,
+      manualDeductionReversals: allManualLedger.reversals,
+      pendingManualDeductionReversals: allManualLedger.pendingManualDeductionReversals,
+      manualDeductionReversalsApplied: allManualLedger.manualDeductionReversalsApplied,
+      manualDeductionReversalsPending: allManualLedger.manualDeductionReversalsPending,
       issues: subscriptionIssues,
       risk: rowRisk,
       days: includeDetails ? dayAudits : [],
@@ -728,7 +861,24 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
         fulfilledDays: dayAudits.filter((row) => row.fulfilled).length,
         automaticConsumedMeals: dayAudits.reduce((sum, row) => sum + row.allocation.consumed, 0),
         reservedMeals: dayAudits.reduce((sum, row) => sum + row.allocation.reserved, 0),
-        manualDeductedMeals: dayAudits.reduce((sum, row) => sum + row.manualDeduction.totalMeals, 0),
+        grossManualDeductions: dayAudits.reduce(
+          (sum, row) => sum + row.manualDeduction.grossManualDeductions,
+          0
+        ),
+        reversedManualDeductions: dayAudits.reduce(
+          (sum, row) => sum + row.manualDeduction.reversedManualDeductions,
+          0
+        ),
+        netManualDeductions: dayAudits.reduce(
+          (sum, row) => sum + row.manualDeduction.netManualDeductions,
+          0
+        ),
+        manualDeductedMeals: dayAudits.reduce(
+          (sum, row) => sum + row.manualDeduction.netManualDeductions,
+          0
+        ),
+        manualDeductionReversalsApplied: allManualLedger.manualDeductionReversalsApplied,
+        manualDeductionReversalsPending: allManualLedger.manualDeductionReversalsPending,
         criticalDays: dayAudits.filter((row) => row.risk === "critical").length,
         highRiskDays: dayAudits.filter((row) => row.risk === "high").length,
       },
@@ -804,7 +954,30 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
         pickupSubscriptions: subscriptionAudits.filter((row) => row.fulfillmentMethod === "pickup").length,
         reviewedDays,
         automaticConsumedMeals: subscriptionAudits.reduce((sum, row) => sum + row.periodSummary.automaticConsumedMeals, 0),
-        manuallyDeductedMeals: subscriptionAudits.reduce((sum, row) => sum + row.periodSummary.manualDeductedMeals, 0),
+        grossManualDeductions: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.grossManualDeductions,
+          0
+        ),
+        reversedManualDeductions: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.reversedManualDeductions,
+          0
+        ),
+        netManualDeductions: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.netManualDeductions,
+          0
+        ),
+        manuallyDeductedMeals: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.netManualDeductions,
+          0
+        ),
+        manualDeductionReversalsApplied: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.manualDeductionReversalsApplied,
+          0
+        ),
+        manualDeductionReversalsPending: subscriptionAudits.reduce(
+          (sum, row) => sum + row.periodSummary.manualDeductionReversalsPending,
+          0
+        ),
         reservedMeals: subscriptionAudits.reduce((sum, row) => sum + row.periodSummary.reservedMeals, 0),
       },
       issues: issueSummary,
@@ -822,5 +995,7 @@ module.exports = {
   buildDayAudit,
   buildSubscriptionOperationsAudit,
   classifyAcquisitionSource,
+  manualDeductionLedger,
+  manualReversalRow,
   resolveRange,
 };
