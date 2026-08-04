@@ -59,3 +59,4 @@ jobs:
 
 # Trigger commit after workflow registration.
 # Registered on main.
+# Retrigger pull-request validation.
