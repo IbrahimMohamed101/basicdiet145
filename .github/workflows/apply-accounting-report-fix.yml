@@ -58,3 +58,4 @@ jobs:
           git push origin HEAD:agent/fix-accounting-reports-excel
 
 # Trigger commit after workflow registration.
+# Registered on main.
