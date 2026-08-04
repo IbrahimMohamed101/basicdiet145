@@ -2,10 +2,12 @@
 
 const { Router } = require("express");
 const adminController = require("../controllers/adminController");
+const customerCredentialController = require("../controllers/dashboardCustomerCredentialController");
 const builderPremiumMealController = require("../controllers/builderPremiumMealController");
 const zoneController = require("../controllers/zoneController");
 const asyncHandler = require("../middleware/asyncHandler");
 const ignoreDashboardCustomerEmail = require("../middleware/ignoreDashboardCustomerEmail");
+const { adminPasswordResetLimiter } = require("../middleware/rateLimit");
 const {
   dashboardAuthMiddleware,
   dashboardRoleMiddleware,
@@ -18,6 +20,10 @@ const subscriptionStaffReadAccess = dashboardRoleMiddleware([
   "cashier",
   "restaurant",
   "kitchen",
+]);
+const customerCredentialResetAccess = dashboardRoleMiddleware([
+  "admin",
+  "restaurant",
 ]);
 
 // The create-subscription workspace uses these exact legacy dashboard reads.
@@ -74,6 +80,18 @@ router.post(
   dashboardRoleMiddleware(["admin", "restaurant", "kitchen"]),
   ignoreDashboardCustomerEmail,
   asyncHandler(adminController.createAppUserAdmin)
+);
+
+// Restaurant staff may restore access for an app customer without knowing the
+// customer's old password. The generated temporary credential is returned once,
+// all existing customer sessions are revoked, and the app requires a permanent
+// password change on the next login.
+router.post(
+  "/users/:id/reset-password",
+  dashboardAuthMiddleware,
+  customerCredentialResetAccess,
+  adminPasswordResetLimiter,
+  asyncHandler(customerCredentialController.issueTemporaryCustomerCredential)
 );
 
 module.exports = router;
