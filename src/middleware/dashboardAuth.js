@@ -24,6 +24,14 @@ function decodeDashboardToken(token) {
   }
 }
 
+function wasDashboardTokenRevokedByPasswordChange(user, decoded) {
+  if (!user || !user.passwordChangedAt || !decoded || !decoded.issuedAt) {
+    return false;
+  }
+  const changedAtSec = Math.floor(new Date(user.passwordChangedAt).getTime() / 1000);
+  return changedAtSec > Number(decoded.issuedAt);
+}
+
 /**
  * Protected dashboard auth middleware.
  *
@@ -61,11 +69,8 @@ async function dashboardAuthMiddleware(req, res, next) {
   }
 
   // If the user changed their password after this token was issued, invalidate it.
-  if (user.passwordChangedAt && decoded.issuedAt) {
-    const changedAtSec = Math.floor(new Date(user.passwordChangedAt).getTime() / 1000);
-    if (changedAtSec > decoded.issuedAt) {
-      return errorResponse(res, 401, "TOKEN_REVOKED", { messageKey: "errors.dashboardAuth.tokenRevoked" });
-    }
+  if (wasDashboardTokenRevokedByPasswordChange(user, decoded)) {
+    return errorResponse(res, 401, "TOKEN_REVOKED", { messageKey: "errors.dashboardAuth.tokenRevoked" });
   }
 
   // Use current DB role — not the potentially stale token role
@@ -101,7 +106,11 @@ async function dashboardOptionalAuthMiddleware(req, _res, next) {
       .select("_id role isActive passwordChangedAt")
       .lean();
 
-    if (user && user.isActive !== false) {
+    if (
+      user
+      && user.isActive !== false
+      && !wasDashboardTokenRevokedByPasswordChange(user, decoded)
+    ) {
       req.dashboardUser = user;
       req.dashboardUserId = String(user._id);
       req.dashboardUserRole = String(user.role);
