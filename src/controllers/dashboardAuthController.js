@@ -1,11 +1,12 @@
 const DashboardUser = require("../models/DashboardUser");
 const errorResponse = require("../utils/errorResponse");
-const { issueDashboardAccessToken } = require("../services/dashboardTokenService");
+const { issueDashboardSession } = require("../services/dashboardTokenService");
 const {
   normalizeDashboardEmail,
   buildDashboardEmailQuery,
   isValidEmailFormat,
   validateDashboardPassword,
+  hashDashboardPassword,
   compareDashboardPassword,
   sanitizeDashboardUser,
 } = require("../services/dashboardPasswordService");
@@ -64,10 +65,10 @@ async function login(req, res) {
   user.lastLoginAt = now;
   await user.save();
 
-  const token = issueDashboardAccessToken(user);
+  const session = issueDashboardSession(user);
   return res.status(200).json({
     status: true,
-    token,
+    ...session,
     user: sanitizeDashboardUser(user),
   });
 }
@@ -92,10 +93,58 @@ async function me(req, res) {
     });
   }
   const sanitizedUser = sanitizeDashboardUser(user);
+  const session = issueDashboardSession(user);
   return res.status(200).json({
     status: true,
+    ...session,
     data: { user: sanitizedUser },
     user: sanitizedUser,
+  });
+}
+
+async function changePassword(req, res) {
+  const currentPassword = String((req.body && req.body.currentPassword) || "");
+  const newPassword = String((req.body && req.body.newPassword) || "");
+
+  if (!currentPassword || !newPassword) {
+    return errorResponse(res, 400, "INVALID", "Current password and new password are required");
+  }
+
+  const passwordValidation = validateDashboardPassword(newPassword);
+  if (!passwordValidation.ok) {
+    return errorResponse(res, 400, "WEAK_PASSWORD", passwordValidation.message);
+  }
+
+  const user = await DashboardUser.findOne({
+    _id: req.dashboardUserId,
+    isActive: true,
+  });
+  if (!user) {
+    return errorResponse(res, 404, "DASHBOARD_USER_NOT_FOUND", "Dashboard user not found");
+  }
+
+  const currentPasswordMatches = await compareDashboardPassword(currentPassword, user.passwordHash);
+  if (!currentPasswordMatches) {
+    return errorResponse(res, 401, "CURRENT_PASSWORD_INVALID", "Current password is incorrect");
+  }
+
+  const passwordUnchanged = await compareDashboardPassword(newPassword, user.passwordHash);
+  if (passwordUnchanged) {
+    return errorResponse(res, 409, "PASSWORD_UNCHANGED", "New password must be different from current password");
+  }
+
+  user.passwordHash = await hashDashboardPassword(newPassword);
+  user.passwordChangedAt = new Date();
+  user.failedAttempts = 0;
+  user.lockUntil = null;
+  user.updatedBy = user._id;
+  await user.save();
+
+  const session = issueDashboardSession(user);
+  return res.status(200).json({
+    status: true,
+    ...session,
+    user: sanitizeDashboardUser(user),
   });
 }
 
@@ -104,4 +153,4 @@ async function logout(_req, res) {
   return res.status(200).json({ status: true });
 }
 
-module.exports = { login, me, logout };
+module.exports = { login, me, changePassword, logout };
