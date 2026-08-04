@@ -1,0 +1,43 @@
+name: Finalize accounting backend
+
+on:
+  push:
+    branches:
+      - fix/accounting-reports-final
+    paths:
+      - .github/workflows/finalize-accounting-backend.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/accounting-reports-final
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate JavaScript syntax
+        run: |
+          node --check src/services/dashboard/subscriptionPaymentAccountingFacade.js
+          node --check src/controllers/dashboard/subscriptionPaymentReportController.js
+          node --check tests/subscriptionPaymentAccountingFacade.test.js
+      - name: Run accounting facade contract
+        run: node tests/subscriptionPaymentAccountingFacade.test.js
+      - name: Run existing accounting presentation contract
+        run: node tests/subscriptionPaymentReportPresentation.test.js
+      - name: Commit validated cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/finalize-accounting-backend.yml
+          git commit -m "test(accounting): validate final report contracts"
+          git push origin HEAD:fix/accounting-reports-final
