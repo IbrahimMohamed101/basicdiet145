@@ -10,6 +10,12 @@ const RefreshSessionSchema = new mongoose.Schema(
     ipAddress: { type: String, default: null },
     expiresAt: { type: Date, required: true, index: true },
     revokedAt: { type: Date, default: null, index: true },
+    revokedReason: {
+      type: String,
+      enum: ["rotation", "logout", "logout_all", "security"],
+      default: null,
+      index: true,
+    },
     lastUsedAt: { type: Date, default: null },
   },
   { timestamps: true }
