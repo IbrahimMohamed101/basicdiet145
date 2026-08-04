@@ -1,7 +1,7 @@
 "use strict";
 
 const accountingDailyReportService = require("../../services/dashboard/accountingDailyReportService");
-const subscriptionPaymentMethodReportService = require("../../services/dashboard/subscriptionPaymentMethodReportService");
+const subscriptionPaymentMethodReportService = require("../../services/dashboard/subscriptionPaymentAccountingFacade");
 const subscriptionPaymentRangeReportService = require("../../services/dashboard/subscriptionPaymentRangeReportService");
 const {
   normalizeSubscriptionPaymentReportContract,
