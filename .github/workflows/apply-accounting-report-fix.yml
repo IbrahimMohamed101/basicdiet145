@@ -1,0 +1,58 @@
+name: Apply accounting report fix
+
+on:
+  push:
+    branches:
+      - agent/fix-accounting-reports-excel
+    paths:
+      - scripts/apply_accounting_report_fix.py
+      - .github/workflows/apply-accounting-report-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-accounting-reports-excel
+          fetch-depth: 0
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply focused patch
+        run: python3 scripts/apply_accounting_report_fix.py
+
+      - name: Validate JavaScript syntax
+        run: |
+          node --check src/services/dashboard/subscriptionPaymentMethodReportService.js
+          node --check tests/dashboardSubscriptionPaymentDailyReport.test.js
+
+      - name: Run accounting presentation tests
+        run: node tests/subscriptionPaymentReportPresentation.test.js
+
+      - name: Run accounting integration test
+        run: node tests/dashboardSubscriptionPaymentDailyReport.test.js
+
+      - name: Remove temporary patch files
+        run: git rm scripts/apply_accounting_report_fix.py .github/workflows/apply-accounting-report-fix.yml
+
+      - name: Commit applied fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/dashboard/subscriptionPaymentMethodReportService.js tests/dashboardSubscriptionPaymentDailyReport.test.js
+          git commit -m "fix(accounting): clarify providers and preserve orphan payments [accounting-fix-applied]"
+          git push origin HEAD:agent/fix-accounting-reports-excel
