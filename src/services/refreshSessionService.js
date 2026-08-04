@@ -1,6 +1,9 @@
 const crypto = require("crypto");
 const RefreshSession = require("../models/RefreshSession");
 
+const DEFAULT_ROTATION_GRACE_MS = 5000;
+const MAX_ROTATION_GRACE_MS = 10000;
+
 function getRefreshExpiresDays() {
   const days = Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS || 30);
   return Number.isFinite(days) && days > 0 ? days : 30;
@@ -8,6 +11,12 @@ function getRefreshExpiresDays() {
 
 function getRefreshExpiresInSeconds() {
   return getRefreshExpiresDays() * 24 * 60 * 60;
+}
+
+function getRefreshRotationGraceMs() {
+  const value = Number(process.env.REFRESH_ROTATION_GRACE_MS);
+  if (!Number.isFinite(value)) return DEFAULT_ROTATION_GRACE_MS;
+  return Math.min(MAX_ROTATION_GRACE_MS, Math.max(0, Math.floor(value)));
 }
 
 function generateRefreshToken() {
@@ -24,6 +33,18 @@ function hashRefreshToken(refreshToken) {
 
 function resolveClientIp(req) {
   return req.ip || (req.connection && req.connection.remoteAddress) || null;
+}
+
+function isWithinRotationGrace(session, now = Date.now()) {
+  if (!session || session.revokedReason !== "rotation" || !session.revokedAt) {
+    return false;
+  }
+  const graceMs = getRefreshRotationGraceMs();
+  if (graceMs <= 0) return false;
+  const revokedAtMs = new Date(session.revokedAt).getTime();
+  return Number.isFinite(revokedAtMs)
+    && revokedAtMs <= now
+    && now - revokedAtMs <= graceMs;
 }
 
 async function createRefreshSession({ userId, req, deviceId, deviceName }) {
@@ -54,26 +75,43 @@ async function findUsableRefreshSession(refreshToken) {
   if (!refreshToken) return { session: null, reason: "invalid" };
   const session = await findRefreshSession(refreshToken);
   if (!session) return { session: null, reason: "invalid" };
-  if (session.revokedAt) return { session: null, reason: "revoked" };
   if (session.expiresAt.getTime() <= Date.now()) return { session: null, reason: "expired" };
+
+  if (session.revokedAt) {
+    if (!isWithinRotationGrace(session)) {
+      return { session: null, reason: "revoked" };
+    }
+
+    // Flutter can issue multiple requests together when a 15-minute access token
+    // expires. Each request may attempt refresh with the same token. Mark this
+    // short, rotation-only replay so rotateRefreshSession can issue another valid
+    // replacement without treating a real logout/password reset as reusable.
+    session.__rotationGrace = true;
+  }
+
   session.lastUsedAt = new Date();
   await session.save();
   return { session, reason: null };
 }
 
-async function revokeRefreshToken(refreshToken) {
+async function revokeRefreshToken(refreshToken, reason = "logout") {
   if (!refreshToken) return { revoked: false, reason: "missing" };
   const session = await findRefreshSession(refreshToken);
   if (!session) return { revoked: false, reason: "invalid" };
   if (session.revokedAt) return { revoked: false, reason: "revoked" };
   session.revokedAt = new Date();
+  session.revokedReason = reason;
   await session.save();
   return { revoked: true, reason: null };
 }
 
 async function rotateRefreshSession({ session, req, deviceId, deviceName }) {
-  session.revokedAt = new Date();
-  await session.save();
+  if (!session.__rotationGrace) {
+    session.revokedAt = new Date();
+    session.revokedReason = "rotation";
+    await session.save();
+  }
+
   return createRefreshSession({
     userId: session.userId,
     req,
@@ -82,10 +120,10 @@ async function rotateRefreshSession({ session, req, deviceId, deviceName }) {
   });
 }
 
-async function revokeAllUserSessions(userId) {
+async function revokeAllUserSessions(userId, reason = "logout_all") {
   await RefreshSession.updateMany(
     { userId, revokedAt: null },
-    { $set: { revokedAt: new Date() } }
+    { $set: { revokedAt: new Date(), revokedReason: reason } }
   );
 }
 
@@ -96,5 +134,7 @@ module.exports = {
   rotateRefreshSession,
   revokeAllUserSessions,
   getRefreshExpiresInSeconds,
+  getRefreshRotationGraceMs,
   hashRefreshToken,
+  isWithinRotationGrace,
 };
