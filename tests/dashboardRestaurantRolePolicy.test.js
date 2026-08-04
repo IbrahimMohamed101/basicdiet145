@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const {
   DASHBOARD_ROLES,
   dashboardRoleHasPermission,
@@ -60,6 +62,40 @@ function run() {
     assert.strictEqual(result.statusCode, 403);
     assert.strictEqual(result.body.error.code, "FORBIDDEN");
   }
+
+  const customerCredentialRoles = ["admin", "restaurant"];
+  assert.strictEqual(
+    invokeRoleMiddleware(customerCredentialRoles).nextCalled,
+    true,
+    "restaurant can reset an app customer's credentials"
+  );
+  assert.strictEqual(
+    dashboardRoleHasPermission("kitchen", customerCredentialRoles),
+    false,
+    "legacy kitchen-only accounts cannot reset customer credentials"
+  );
+  assert.strictEqual(
+    dashboardRoleHasPermission("cashier", customerCredentialRoles),
+    false,
+    "legacy cashier-only accounts cannot reset customer credentials"
+  );
+
+  const capabilitiesRouteSource = fs.readFileSync(
+    path.join(__dirname, "../src/routes/dashboardRestaurantCapabilities.js"),
+    "utf8"
+  );
+  assert(
+    capabilitiesRouteSource.includes('"/users/:id/reset-password"'),
+    "restaurant capabilities expose the app-customer reset endpoint"
+  );
+  assert(
+    capabilitiesRouteSource.includes("adminPasswordResetLimiter"),
+    "app-customer resets remain rate limited"
+  );
+  assert(
+    capabilitiesRouteSource.includes("issueTemporaryCustomerCredential"),
+    "the route uses the scoped customer credential handler"
+  );
 
   assert(
     actionIds({ entityType: "order", status: "confirmed", mode: "pickup", role: "restaurant" })
