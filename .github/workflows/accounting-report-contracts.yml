@@ -1,0 +1,41 @@
+name: Accounting report contracts
+
+on:
+  pull_request:
+    paths:
+      - "src/services/dashboard/subscriptionPaymentAccountingFacade.js"
+      - "src/services/dashboard/subscriptionPaymentMethodReportService.js"
+      - "src/controllers/dashboard/subscriptionPaymentReportController.js"
+      - "tests/subscriptionPaymentAccountingFacade.test.js"
+      - "tests/subscriptionPaymentReportPresentation.test.js"
+      - ".github/workflows/accounting-report-contracts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/services/dashboard/subscriptionPaymentAccountingFacade.js"
+      - "src/services/dashboard/subscriptionPaymentMethodReportService.js"
+      - "src/controllers/dashboard/subscriptionPaymentReportController.js"
+      - "tests/subscriptionPaymentAccountingFacade.test.js"
+      - "tests/subscriptionPaymentReportPresentation.test.js"
+      - ".github/workflows/accounting-report-contracts.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate syntax
+        run: |
+          node --check src/services/dashboard/subscriptionPaymentAccountingFacade.js
+          node --check src/controllers/dashboard/subscriptionPaymentReportController.js
+          node --check tests/subscriptionPaymentAccountingFacade.test.js
+      - name: Verify provider and orphan-payment accounting
+        run: node tests/subscriptionPaymentAccountingFacade.test.js
+      - name: Verify existing presentation contract
+        run: node tests/subscriptionPaymentReportPresentation.test.js
