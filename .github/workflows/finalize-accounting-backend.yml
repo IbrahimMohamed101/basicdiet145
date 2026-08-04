@@ -41,3 +41,5 @@ jobs:
           git rm .github/workflows/finalize-accounting-backend.yml
           git commit -m "test(accounting): validate final report contracts"
           git push origin HEAD:fix/accounting-reports-final
+
+# Trigger after workflow registration.
