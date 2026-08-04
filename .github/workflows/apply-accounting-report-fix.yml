@@ -1,26 +1,27 @@
 name: Apply accounting report fix
 
 on:
-  push:
-    branches:
-      - agent/fix-accounting-reports-excel
-    paths:
-      - scripts/apply_accounting_report_fix.py
-      - .github/workflows/apply-accounting-report-fix.yml
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   apply-and-validate:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'agent/fix-accounting-reports-excel'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Checkout branch
+      - name: Checkout trusted review branch
         uses: actions/checkout@v4
         with:
-          ref: agent/fix-accounting-reports-excel
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
       - name: Use Node.js 20
         uses: actions/setup-node@v4
@@ -34,17 +35,19 @@ jobs:
       - name: Validate JavaScript syntax
         run: |
           node --check src/services/dashboard/subscriptionPaymentMethodReportService.js
+          node --check src/services/dashboard/subscriptionPaymentAccountingFacade.js
+          node --check src/controllers/dashboard/subscriptionPaymentReportController.js
           node --check tests/dashboardSubscriptionPaymentDailyReport.test.js
       - name: Run accounting presentation tests
         run: node tests/subscriptionPaymentReportPresentation.test.js
       - name: Run accounting integration test
         run: node tests/dashboardSubscriptionPaymentDailyReport.test.js
-      - name: Remove temporary patch files
+      - name: Remove temporary patch files from branch
         run: git rm scripts/apply_accounting_report_fix.py .github/workflows/apply-accounting-report-fix.yml
-      - name: Commit applied fix
+      - name: Commit validated fix to review branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/services/dashboard/subscriptionPaymentMethodReportService.js tests/dashboardSubscriptionPaymentDailyReport.test.js
-          git commit -m "fix(accounting): clarify providers and preserve orphan payments [accounting-fix-applied]"
-          git push origin HEAD:agent/fix-accounting-reports-excel
+          git commit -m "fix(accounting): validate providers and preserve orphan payments" || exit 0
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
