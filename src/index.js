@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./services/installSubscriptionStackingShadowProjection");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
 
