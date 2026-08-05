@@ -1,0 +1,54 @@
+name: Subscription Stacking Phase 0-1
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/utils/featureFlags.js"
+      - "tests/subscriptionStackingPhase01.test.js"
+      - ".github/workflows/subscription-stacking-phase01.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/utils/featureFlags.js"
+      - "tests/subscriptionStackingPhase01.test.js"
+      - ".github/workflows/subscription-stacking-phase01.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-phase01-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Phase 0-1 safety contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPhase01.test.js
+
+      - name: Current subscription regression gate
+        run: npm run test:current-subscription
+
+      - name: Subscription lifecycle regression gate
+        run: npm run test:subscriptions
