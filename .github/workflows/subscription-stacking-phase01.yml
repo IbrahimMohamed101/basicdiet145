@@ -15,6 +15,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
+      - "src/services/subscription/subscriptionStackingReadService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
@@ -24,6 +25,7 @@ on:
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
+      - "tests/subscriptionStackingCurrentOverviewRead.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
@@ -43,6 +45,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
+      - "src/services/subscription/subscriptionStackingReadService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
@@ -52,6 +55,7 @@ on:
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
+      - "tests/subscriptionStackingCurrentOverviewRead.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
@@ -69,7 +73,7 @@ concurrency:
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
       - name: Checkout
@@ -98,6 +102,9 @@ jobs:
 
       - name: Non-mutating shadow reconciliation contracts
         run: NODE_ENV=test node tests/subscriptionStackingShadowService.test.js
+
+      - name: Allowlisted current overview read contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCurrentOverviewRead.test.js
 
       - name: Fail-closed rollout policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
