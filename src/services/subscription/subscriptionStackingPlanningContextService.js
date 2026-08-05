@@ -6,6 +6,7 @@ const {
   preserveExistingSelectionsForBlueprint,
 } = require("./subscriptionEntitlementSlotBlueprintService");
 const {
+  assertTransactionalSession,
   materializeEntitlementDayBlueprint,
 } = require("./subscriptionEntitlementLedgerService");
 const {
@@ -228,10 +229,12 @@ async function resolveStackingPlanningContext({
 
   let persistedBlueprint = null;
   if (materialize) {
-    if (!session) {
+    try {
+      assertTransactionalSession(session);
+    } catch (_err) {
       throw planningError(
         "STACKING_PLANNING_TRANSACTION_REQUIRED",
-        "Blueprint materialization requires a transaction session",
+        "Blueprint materialization requires an active transaction",
         503
       );
     }
