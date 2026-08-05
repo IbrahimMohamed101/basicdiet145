@@ -106,8 +106,16 @@ SubscriptionEntitlementAllocationSchema.index(
   { unique: true, name: "uniq_subscription_entitlement_allocation_key" }
 );
 SubscriptionEntitlementAllocationSchema.index(
-  { containerSubscriptionId: 1, date: 1, slotKey: 1 },
-  { unique: true, name: "uniq_subscription_entitlement_allocation_slot" }
+  {
+    containerSubscriptionId: 1,
+    date: 1,
+    slotKey: 1,
+    plannerRevisionHash: 1,
+  },
+  {
+    unique: true,
+    name: "uniq_subscription_entitlement_allocation_slot_revision",
+  }
 );
 SubscriptionEntitlementAllocationSchema.index({
   entitlementBatchId: 1,
