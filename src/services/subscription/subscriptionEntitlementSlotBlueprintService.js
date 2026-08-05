@@ -3,6 +3,7 @@
 const {
   isBatchProjectableOnDate,
   normalizeDateString,
+  resolveBatchDailyContribution,
 } = require("./subscriptionEntitlementProjectionService");
 
 function normalizePositiveInteger(value) {
@@ -34,16 +35,21 @@ function buildEntitlementSlotBlueprint({ batches = [], businessDate } = {}) {
 
   for (const batch of projectable) {
     const batchId = String(batch._id || "");
-    const mealsPerDay = normalizePositiveInteger(batch.mealsPerDay);
+    const sourceMealsPerDay = normalizePositiveInteger(batch.mealsPerDay);
+    const availableContribution = resolveBatchDailyContribution(batch);
     const proteinGrams = normalizePositiveInteger(batch.proteinGrams);
 
-    for (let contributionIndex = 1; contributionIndex <= mealsPerDay; contributionIndex += 1) {
+    for (
+      let contributionIndex = 1;
+      contributionIndex <= availableContribution;
+      contributionIndex += 1
+    ) {
       slots.push({
         slotIndex,
         slotKey: `slot_${slotIndex}`,
         entitlementBatchId: batchId || null,
         contributionIndex,
-        sourceMealsPerDay: mealsPerDay,
+        sourceMealsPerDay,
         proteinGrams: proteinGrams || null,
         effectiveStartDate: normalizeDateString(batch.effectiveStartDate),
         validityEndDate: normalizeDateString(batch.validityEndDate || batch.endDate),
