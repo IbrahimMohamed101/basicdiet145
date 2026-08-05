@@ -12,6 +12,7 @@ on:
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
+      - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
@@ -20,6 +21,7 @@ on:
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
+      - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
@@ -36,6 +38,7 @@ on:
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
+      - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
@@ -44,6 +47,7 @@ on:
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
+      - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
@@ -61,7 +65,7 @@ concurrency:
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -84,6 +88,9 @@ jobs:
 
       - name: Batch factory and slot blueprint contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js
+
+      - name: Batch persistence idempotency integration
+        run: NODE_ENV=test node tests/subscriptionEntitlementBatchPersistence.integration.test.js
 
       - name: Non-mutating shadow reconciliation contracts
         run: NODE_ENV=test node tests/subscriptionStackingShadowService.test.js
