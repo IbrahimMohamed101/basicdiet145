@@ -12,11 +12,13 @@ on:
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
+      - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
+      - "tests/subscriptionStackingRolloutPolicy.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -29,11 +31,13 @@ on:
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
+      - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
+      - "tests/subscriptionStackingRolloutPolicy.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -73,6 +77,9 @@ jobs:
 
       - name: Non-mutating shadow reconciliation contracts
         run: NODE_ENV=test node tests/subscriptionStackingShadowService.test.js
+
+      - name: Fail-closed rollout policy contracts
+        run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
