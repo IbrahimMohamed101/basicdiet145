@@ -15,6 +15,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
+      - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -22,6 +23,7 @@ on:
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
+      - "tests/subscriptionEntitlementLedger.integration.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -37,6 +39,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
+      - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -44,6 +47,7 @@ on:
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
+      - "tests/subscriptionEntitlementLedger.integration.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -57,7 +61,7 @@ concurrency:
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -89,6 +93,9 @@ jobs:
 
       - name: Isolated persistence model contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
+
+      - name: Transactional batch ledger integration
+        run: NODE_ENV=test node tests/subscriptionEntitlementLedger.integration.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
