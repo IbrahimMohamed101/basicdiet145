@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-1
+name: Subscription Stacking Phase 0-2
 
 on:
   push:
@@ -6,16 +6,20 @@ on:
       - feat/subscription-stacking-phase-0-1-20260806
     paths:
       - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
+      - "tests/subscriptionEntitlementProjection.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
       - main
     paths:
       - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
+      - "tests/subscriptionEntitlementProjection.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -23,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase01-${{ github.ref }}
+  group: subscription-stacking-phase02-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -46,6 +50,9 @@ jobs:
 
       - name: Phase 0-1 safety contracts
         run: NODE_ENV=test node tests/subscriptionStackingPhase01.test.js
+
+      - name: Phase 2 shadow projection contracts
+        run: NODE_ENV=test node tests/subscriptionEntitlementProjection.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
