@@ -5,6 +5,7 @@ const SubscriptionDay = require("../../models/SubscriptionDay");
 const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const CheckoutDraft = require("../../models/CheckoutDraft");
 const Payment = require("../../models/Payment");
+const dateUtils = require("../../utils/date");
 const {
   consumePromoCodeUsageReservation,
 } = require("../promoCodeService");
@@ -79,7 +80,7 @@ function hasPaidPurchaseExtras(subscriptionPayload = {}) {
   return premiumRows.length > 0 || addonRows.length > 0 || addonBalanceRows.length > 0;
 }
 
-function buildContainerMirror({ container, batches, businessDate, now = new Date() } = {}) {
+function buildContainerMirror({ container, batches, businessDate } = {}) {
   if (!container) {
     throw activationError(
       "STACKING_CONTAINER_REQUIRED",
@@ -113,13 +114,6 @@ function buildContainerMirror({ container, batches, businessDate, now = new Date
       1,
       Number(projection.requiredMealsPerDay || container.selectedMealsPerDay || 1)
     ),
-    stackingMirror: {
-      version: 1,
-      updatedAt: now,
-      businessDate: String(businessDate || ""),
-      batchCount: allBatches.length,
-      activeBatchCount: Number(projection.batchCount || 0),
-    },
   };
 }
 
@@ -312,10 +306,12 @@ async function activatePaidDraftIntoExistingContainerTransactional({
     businessDate,
     now,
   });
-  const requestedDate = normalizeDate(
-    purchasePayload.effectiveStartDate,
-    "purchase.effectiveStartDate"
-  ).toISOString().slice(0, 10);
+  const requestedDate = dateUtils.toKSADateString(
+    normalizeDate(
+      purchasePayload.effectiveStartDate,
+      "purchase.effectiveStartDate"
+    )
+  );
   const requestedStartDay = await runtime.findStartDay({
     containerSubscriptionId: container._id,
     date: requestedDate,
@@ -346,7 +342,6 @@ async function activatePaidDraftIntoExistingContainerTransactional({
     container,
     batches: allBatches,
     businessDate,
-    now,
   });
   const updatedContainer = await runtime.updateContainer({
     containerId: container._id,
