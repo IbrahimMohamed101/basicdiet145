@@ -22,6 +22,7 @@ on:
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/services/subscription/subscriptionStackingActivationService.js"
       - "src/services/subscription/subscriptionStackingPlanningContextService.js"
+      - "src/services/subscription/subscriptionStackingKitchenGramsService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -36,6 +37,7 @@ on:
       - "tests/subscriptionStackingSchedulePolicy.test.js"
       - "tests/subscriptionStackingActivationService.test.js"
       - "tests/subscriptionStackingPlanningContext.test.js"
+      - "tests/subscriptionStackingKitchenGrams.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -58,6 +60,7 @@ on:
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/services/subscription/subscriptionStackingActivationService.js"
       - "src/services/subscription/subscriptionStackingPlanningContextService.js"
+      - "src/services/subscription/subscriptionStackingKitchenGramsService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -72,6 +75,7 @@ on:
       - "tests/subscriptionStackingSchedulePolicy.test.js"
       - "tests/subscriptionStackingActivationService.test.js"
       - "tests/subscriptionStackingPlanningContext.test.js"
+      - "tests/subscriptionStackingKitchenGrams.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -85,7 +89,7 @@ concurrency:
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 70
 
     steps:
       - name: Checkout
@@ -138,6 +142,9 @@ jobs:
 
       - name: Per-day planning context contracts
         run: NODE_ENV=test node tests/subscriptionStackingPlanningContext.test.js
+
+      - name: Per-slot kitchen grams contracts
+        run: NODE_ENV=test node tests/subscriptionStackingKitchenGrams.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
