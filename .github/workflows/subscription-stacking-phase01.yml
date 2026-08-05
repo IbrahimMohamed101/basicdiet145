@@ -7,9 +7,12 @@ on:
     paths:
       - "src/models/SubscriptionEntitlementBatch.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
+      - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
+      - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
+      - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -17,9 +20,12 @@ on:
     paths:
       - "src/models/SubscriptionEntitlementBatch.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
+      - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
+      - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
+      - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -53,6 +59,9 @@ jobs:
 
       - name: Phase 2 shadow projection contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementProjection.test.js
+
+      - name: Batch factory and slot blueprint contracts
+        run: NODE_ENV=test node tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
