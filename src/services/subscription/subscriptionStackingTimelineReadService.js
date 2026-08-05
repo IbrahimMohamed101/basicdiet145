@@ -238,6 +238,15 @@ function createTimelineReadWrapper(original, runtimeOverrides = null) {
       userId = String(batches[0] && batches[0].userId || "");
       if (!runtime.readEnabledForUser(userId)) return timeline;
 
+      if (!timeline || typeof timeline !== "object" || !Array.isArray(timeline.days)) {
+        throw timelineReadError(
+          "STACKING_TIMELINE_SHAPE_INVALID",
+          "Stacking timeline projection requires a valid days array",
+          503,
+          { hasTimeline: Boolean(timeline), daysType: typeof (timeline && timeline.days) }
+        );
+      }
+
       const embeddedBusinessDate = String(
         options.businessDate
         || timeline.businessDate
