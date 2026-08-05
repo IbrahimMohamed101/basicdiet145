@@ -4,6 +4,7 @@ const {
 } = require("./services/subscription/subscriptionStackingRolloutPolicyService");
 assertSubscriptionStackingRolloutConfiguration(process.env);
 require("./services/installSubscriptionStackingShadowProjection");
+require("./services/installSubscriptionStackingWriteRouter");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
 
