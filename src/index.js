@@ -1,4 +1,8 @@
 require("dotenv").config();
+const {
+  assertSubscriptionStackingRolloutConfiguration,
+} = require("./services/subscription/subscriptionStackingRolloutPolicyService");
+assertSubscriptionStackingRolloutConfiguration(process.env);
 require("./services/installSubscriptionStackingShadowProjection");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
