@@ -3,6 +3,9 @@
 const {
   createCurrentOverviewShadowWrapper,
 } = require("./subscription/subscriptionStackingShadowService");
+const {
+  createCurrentOverviewReadWrapper,
+} = require("./subscription/subscriptionStackingReadService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingShadowProjection.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionStackingShadowProjection.wrapped");
@@ -33,7 +36,10 @@ function installSubscriptionStackingShadowProjection() {
   }
 
   if (original[WRAPPED_KEY] !== true) {
-    const wrapped = createCurrentOverviewShadowWrapper(original);
+    // Shadow observes the legacy response first. The read wrapper may then apply
+    // an allowlisted projection. Both wrappers are default-closed by flags.
+    const shadowWrapped = createCurrentOverviewShadowWrapper(original);
+    const wrapped = createCurrentOverviewReadWrapper(shadowWrapped);
     copyFunctionMetadata(original, wrapped);
     Object.defineProperty(wrapped, WRAPPED_KEY, { value: true });
     Object.defineProperty(wrapped, "__original", { value: original });
@@ -43,9 +49,9 @@ function installSubscriptionStackingShadowProjection() {
   const state = Object.freeze({
     installed: true,
     installedAt: new Date(),
-    responseMutationEnabled: false,
+    responseMutationEnabledByFlag: true,
     writeEnabled: false,
-    mode: "allowlisted_shadow_only",
+    mode: "allowlisted_shadow_and_current_overview_read",
   });
   globalThis[INSTALL_KEY] = state;
   return state;
