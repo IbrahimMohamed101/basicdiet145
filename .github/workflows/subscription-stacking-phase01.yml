@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-7
+name: Subscription Stacking Phase 0-8
 
 on:
   push:
@@ -19,6 +19,7 @@ on:
       - "src/services/subscription/subscriptionStackingReadService.js"
       - "src/services/subscription/subscriptionStackingTimelineReadService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
+      - "src/services/subscription/subscriptionStackingProductionSafetyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/services/subscription/subscriptionStackingActivationService.js"
@@ -37,6 +38,7 @@ on:
       - "tests/subscriptionStackingCurrentOverviewRead.test.js"
       - "tests/subscriptionStackingTimelineRead.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
+      - "tests/subscriptionStackingProductionSafety.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
       - "tests/subscriptionStackingSchedulePolicy.test.js"
@@ -66,6 +68,7 @@ on:
       - "src/services/subscription/subscriptionStackingReadService.js"
       - "src/services/subscription/subscriptionStackingTimelineReadService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
+      - "src/services/subscription/subscriptionStackingProductionSafetyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/services/subscription/subscriptionStackingActivationService.js"
@@ -84,6 +87,7 @@ on:
       - "tests/subscriptionStackingCurrentOverviewRead.test.js"
       - "tests/subscriptionStackingTimelineRead.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
+      - "tests/subscriptionStackingProductionSafety.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
       - "tests/subscriptionStackingSchedulePolicy.test.js"
@@ -101,13 +105,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase07-${{ github.ref }}
+  group: subscription-stacking-phase08-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 95
 
     steps:
       - name: Checkout
@@ -145,6 +149,9 @@ jobs:
 
       - name: Fail-closed rollout policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
+
+      - name: Production write kill-switch contracts
+        run: NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
 
       - name: Isolated persistence model contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
