@@ -7,6 +7,8 @@ on:
     paths:
       - "src/index.js"
       - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/models/SubscriptionEntitlementDayBlueprint.js"
+      - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
@@ -19,6 +21,7 @@ on:
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
+      - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -26,6 +29,8 @@ on:
     paths:
       - "src/index.js"
       - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/models/SubscriptionEntitlementDayBlueprint.js"
+      - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
@@ -38,6 +43,7 @@ on:
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
+      - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -80,6 +86,9 @@ jobs:
 
       - name: Fail-closed rollout policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
+
+      - name: Isolated persistence model contracts
+        run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
