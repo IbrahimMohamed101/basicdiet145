@@ -9,6 +9,9 @@ const {
 const {
   createTimelineReadWrapper,
 } = require("./subscription/subscriptionStackingTimelineReadService");
+const {
+  createKitchenDetailsGramsWrapper,
+} = require("./subscription/subscriptionStackingKitchenGramsService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingShadowProjection.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionStackingShadowProjection.wrapped");
@@ -64,13 +67,30 @@ function installSubscriptionStackingShadowProjection() {
     timelineService.buildSubscriptionTimeline = wrappedTimeline;
   }
 
+  // Kitchen payloads keep their legacy subscription-level grams unless a slot
+  // carries an explicit entitlement/fulfillment snapshot. No feature flag is
+  // required because absent snapshots leave the output byte-for-byte compatible.
+  const opsPayloadService = require("./dashboard/opsPayloadService");
+  const originalKitchenDetails = opsPayloadService.buildKitchenDetailsPayload;
+  if (typeof originalKitchenDetails !== "function") {
+    throw new Error("opsPayloadService.buildKitchenDetailsPayload is missing");
+  }
+  if (originalKitchenDetails[WRAPPED_KEY] !== true) {
+    const wrappedKitchenDetails = createKitchenDetailsGramsWrapper(originalKitchenDetails);
+    copyFunctionMetadata(originalKitchenDetails, wrappedKitchenDetails);
+    Object.defineProperty(wrappedKitchenDetails, WRAPPED_KEY, { value: true });
+    Object.defineProperty(wrappedKitchenDetails, "__original", { value: originalKitchenDetails });
+    opsPayloadService.buildKitchenDetailsPayload = wrappedKitchenDetails;
+  }
+
   const state = Object.freeze({
     installed: true,
     installedAt: new Date(),
     currentOverviewReadEnabledByFlag: true,
     timelineReadEnabledByFlag: true,
+    kitchenPerSlotGramsEnabledBySnapshot: true,
     writeEnabled: false,
-    mode: "allowlisted_shadow_current_overview_and_timeline_read",
+    mode: "allowlisted_reads_and_snapshot_kitchen_grams",
   });
   globalThis[INSTALL_KEY] = state;
   return state;
