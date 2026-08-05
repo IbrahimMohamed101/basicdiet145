@@ -1,10 +1,8 @@
 "use strict";
 
-const {
-  isSubscriptionStackingReadEnabled,
-  isSubscriptionStackingShadowEnabled,
-  isSubscriptionStackingWriteEnabled,
-} = require("../../utils/featureFlags");
+function isEnabled(rawValue) {
+  return String(rawValue || "").trim().toLowerCase() === "true";
+}
 
 function parseIdAllowlist(rawValue) {
   return new Set(
@@ -23,14 +21,12 @@ function policyError(code, message, details = {}) {
 }
 
 function resolveSubscriptionStackingRolloutState(env = process.env) {
-  const shadowEnabled = isSubscriptionStackingShadowEnabled();
-  const readEnabled = isSubscriptionStackingReadEnabled();
-  const writeEnabled = isSubscriptionStackingWriteEnabled();
+  const shadowEnabled = isEnabled(env.SUBSCRIPTION_STACKING_SHADOW_ENABLED);
+  const readEnabled = isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED);
+  const writeEnabled = isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED);
   const shadowAllowlist = parseIdAllowlist(env.SUBSCRIPTION_STACKING_SHADOW_USER_IDS);
   const rolloutAllowlist = parseIdAllowlist(env.SUBSCRIPTION_STACKING_USER_IDS);
-  const allowAllUsers = String(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS || "")
-    .trim()
-    .toLowerCase() === "true";
+  const allowAllUsers = isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS);
 
   return {
     shadowEnabled,
@@ -100,13 +96,13 @@ function isUserAllowedForStacking(userId, env = process.env) {
 }
 
 function isReadStackingEnabledForUser(userId, env = process.env) {
-  return isSubscriptionStackingReadEnabled()
+  return isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED)
     && isUserAllowedForStacking(userId, env);
 }
 
 function isWriteStackingEnabledForUser(userId, env = process.env) {
-  return isSubscriptionStackingWriteEnabled()
-    && isSubscriptionStackingReadEnabled()
+  return isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED)
+    && isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED)
     && isUserAllowedForStacking(userId, env);
 }
 
