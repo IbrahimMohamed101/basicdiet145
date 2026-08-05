@@ -21,6 +21,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/services/subscription/subscriptionStackingActivationService.js"
+      - "src/services/subscription/subscriptionStackingPlanningContextService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -34,6 +35,7 @@ on:
       - "tests/subscriptionEntitlementLedger.integration.test.js"
       - "tests/subscriptionStackingSchedulePolicy.test.js"
       - "tests/subscriptionStackingActivationService.test.js"
+      - "tests/subscriptionStackingPlanningContext.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -55,6 +57,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/services/subscription/subscriptionStackingActivationService.js"
+      - "src/services/subscription/subscriptionStackingPlanningContextService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -68,6 +71,7 @@ on:
       - "tests/subscriptionEntitlementLedger.integration.test.js"
       - "tests/subscriptionStackingSchedulePolicy.test.js"
       - "tests/subscriptionStackingActivationService.test.js"
+      - "tests/subscriptionStackingPlanningContext.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -81,7 +85,7 @@ concurrency:
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 65
 
     steps:
       - name: Checkout
@@ -131,6 +135,9 @@ jobs:
 
       - name: Additive activation domain contracts
         run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+
+      - name: Per-day planning context contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPlanningContext.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
