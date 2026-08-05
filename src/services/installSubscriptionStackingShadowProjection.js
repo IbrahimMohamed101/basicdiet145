@@ -6,6 +6,9 @@ const {
 const {
   createCurrentOverviewReadWrapper,
 } = require("./subscription/subscriptionStackingReadService");
+const {
+  createTimelineReadWrapper,
+} = require("./subscription/subscriptionStackingTimelineReadService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingShadowProjection.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionStackingShadowProjection.wrapped");
@@ -30,28 +33,44 @@ function installSubscriptionStackingShadowProjection() {
   if (globalThis[INSTALL_KEY]) return globalThis[INSTALL_KEY];
 
   const overviewService = require("./subscription/subscriptionClientOverviewService");
-  const original = overviewService.buildCurrentSubscriptionOverview;
-  if (typeof original !== "function") {
+  const originalOverview = overviewService.buildCurrentSubscriptionOverview;
+  if (typeof originalOverview !== "function") {
     throw new Error("subscriptionClientOverviewService.buildCurrentSubscriptionOverview is missing");
   }
 
-  if (original[WRAPPED_KEY] !== true) {
+  if (originalOverview[WRAPPED_KEY] !== true) {
     // Shadow observes the legacy response first. The read wrapper may then apply
     // an allowlisted projection. Both wrappers are default-closed by flags.
-    const shadowWrapped = createCurrentOverviewShadowWrapper(original);
-    const wrapped = createCurrentOverviewReadWrapper(shadowWrapped);
-    copyFunctionMetadata(original, wrapped);
-    Object.defineProperty(wrapped, WRAPPED_KEY, { value: true });
-    Object.defineProperty(wrapped, "__original", { value: original });
-    overviewService.buildCurrentSubscriptionOverview = wrapped;
+    const shadowWrapped = createCurrentOverviewShadowWrapper(originalOverview);
+    const wrappedOverview = createCurrentOverviewReadWrapper(shadowWrapped);
+    copyFunctionMetadata(originalOverview, wrappedOverview);
+    Object.defineProperty(wrappedOverview, WRAPPED_KEY, { value: true });
+    Object.defineProperty(wrappedOverview, "__original", { value: originalOverview });
+    overviewService.buildCurrentSubscriptionOverview = wrappedOverview;
+  }
+
+  // This module is installed before app/routes/controllers are loaded, so the
+  // subscriptionService re-export captures the wrapped timeline function.
+  const timelineService = require("./subscription/subscriptionTimelineService");
+  const originalTimeline = timelineService.buildSubscriptionTimeline;
+  if (typeof originalTimeline !== "function") {
+    throw new Error("subscriptionTimelineService.buildSubscriptionTimeline is missing");
+  }
+  if (originalTimeline[WRAPPED_KEY] !== true) {
+    const wrappedTimeline = createTimelineReadWrapper(originalTimeline);
+    copyFunctionMetadata(originalTimeline, wrappedTimeline);
+    Object.defineProperty(wrappedTimeline, WRAPPED_KEY, { value: true });
+    Object.defineProperty(wrappedTimeline, "__original", { value: originalTimeline });
+    timelineService.buildSubscriptionTimeline = wrappedTimeline;
   }
 
   const state = Object.freeze({
     installed: true,
     installedAt: new Date(),
-    responseMutationEnabledByFlag: true,
+    currentOverviewReadEnabledByFlag: true,
+    timelineReadEnabledByFlag: true,
     writeEnabled: false,
-    mode: "allowlisted_shadow_and_current_overview_read",
+    mode: "allowlisted_shadow_current_overview_and_timeline_read",
   });
   globalThis[INSTALL_KEY] = state;
   return state;
