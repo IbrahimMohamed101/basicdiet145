@@ -1,5 +1,9 @@
 require("dotenv").config();
 const {
+  assertSubscriptionStackingProductionSafety,
+} = require("./services/subscription/subscriptionStackingProductionSafetyService");
+assertSubscriptionStackingProductionSafety(process.env);
+const {
   assertSubscriptionStackingRolloutConfiguration,
 } = require("./services/subscription/subscriptionStackingRolloutPolicyService");
 assertSubscriptionStackingRolloutConfiguration(process.env);
