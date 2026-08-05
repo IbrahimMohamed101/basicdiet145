@@ -32,6 +32,21 @@ function normalizePositiveCount(value) {
   return parsed > 0 ? parsed : 0;
 }
 
+function resolveBatchDailyContribution(
+  batch,
+  { historicalLifecycle = false } = {}
+) {
+  const mealsPerDay = normalizePositiveCount(batch && batch.mealsPerDay);
+  if (!mealsPerDay) return 0;
+  if (historicalLifecycle) return mealsPerDay;
+
+  // New reservations cannot exceed credits that are still available in the
+  // exact batch. This prevents a final one-credit balance from exposing three
+  // required slots and then failing only during confirmation.
+  const remainingMeals = normalizeCount(batch && batch.remainingMeals);
+  return Math.min(mealsPerDay, remainingMeals);
+}
+
 function buildFulfillmentSignature(batch = {}) {
   const delivery = batch.deliverySnapshot && typeof batch.deliverySnapshot === "object"
     ? batch.deliverySnapshot
@@ -96,12 +111,15 @@ function isBatchProjectableOnDate(
   return PROJECTABLE_STATUSES.has(String(batch.status || ""));
 }
 
-function buildGramContributions(projectableBatches) {
+function buildGramContributions(
+  projectableBatches,
+  { historicalLifecycle = false } = {}
+) {
   const byGrams = new Map();
 
   for (const batch of projectableBatches) {
     const proteinGrams = normalizePositiveCount(batch.proteinGrams);
-    const mealsPerDay = normalizePositiveCount(batch.mealsPerDay);
+    const mealsPerDay = resolveBatchDailyContribution(batch, { historicalLifecycle });
     if (!proteinGrams || !mealsPerDay) continue;
 
     const current = byGrams.get(proteinGrams) || {
@@ -119,17 +137,22 @@ function buildGramContributions(projectableBatches) {
   );
 }
 
-function buildFulfillmentProjection(projectableBatches) {
+function buildFulfillmentProjection(
+  projectableBatches,
+  { historicalLifecycle = false } = {}
+) {
   const bySignature = new Map();
 
   for (const batch of projectableBatches) {
+    const contribution = resolveBatchDailyContribution(batch, { historicalLifecycle });
+    if (!contribution) continue;
     const signature = buildFulfillmentSignature(batch);
     const current = bySignature.get(signature) || {
       signature,
       mealsPerDay: 0,
       batchIds: [],
     };
-    current.mealsPerDay += normalizePositiveCount(batch.mealsPerDay);
+    current.mealsPerDay += contribution;
     if (batch._id) current.batchIds.push(String(batch._id));
     bySignature.set(signature, current);
   }
@@ -179,17 +202,22 @@ function projectSubscriptionEntitlements({
     }
   );
 
-  const requiredMealsPerDay = projectableBatches.reduce(
-    (sum, batch) => sum + normalizePositiveCount(batch.mealsPerDay),
+  const dailyContributions = projectableBatches.map((batch) => ({
+    entitlementBatchId: String(batch._id || ""),
+    meals: resolveBatchDailyContribution(batch, { historicalLifecycle }),
+  }));
+  const requiredMealsPerDay = dailyContributions.reduce(
+    (sum, contribution) => sum + contribution.meals,
     0
   );
-  const grams = buildGramContributions(projectableBatches);
-  const fulfillment = buildFulfillmentProjection(projectableBatches);
+  const grams = buildGramContributions(projectableBatches, { historicalLifecycle });
+  const fulfillment = buildFulfillmentProjection(projectableBatches, { historicalLifecycle });
 
   return {
     businessDate: targetDate,
     batchCount: projectableBatches.length,
     batchIds: projectableBatches.map((batch) => String(batch._id || "")).filter(Boolean),
+    dailyContributions,
     mealBalance,
     requiredMealsPerDay,
     grams,
@@ -207,4 +235,5 @@ module.exports = {
   isHistoricalLifecycleAvailable,
   normalizeDateString,
   projectSubscriptionEntitlements,
+  resolveBatchDailyContribution,
 };
