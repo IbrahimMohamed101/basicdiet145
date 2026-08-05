@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-6
+name: Subscription Stacking Phase 0-7
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - "src/models/SubscriptionEntitlementDayBlueprint.js"
       - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
+      - "src/services/installSubscriptionStackingWriteRouter.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
@@ -26,6 +27,7 @@ on:
       - "src/services/subscription/subscriptionStackingLifecycleService.js"
       - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
       - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
+      - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -44,6 +46,7 @@ on:
       - "tests/subscriptionStackingLifecycleService.test.js"
       - "tests/subscriptionStackingDayMaterialization.test.js"
       - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
+      - "tests/subscriptionStackingFinalizeRouter.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -54,6 +57,7 @@ on:
       - "src/models/SubscriptionEntitlementDayBlueprint.js"
       - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
+      - "src/services/installSubscriptionStackingWriteRouter.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
@@ -70,6 +74,7 @@ on:
       - "src/services/subscription/subscriptionStackingLifecycleService.js"
       - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
       - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
+      - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -88,6 +93,7 @@ on:
       - "tests/subscriptionStackingLifecycleService.test.js"
       - "tests/subscriptionStackingDayMaterialization.test.js"
       - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
+      - "tests/subscriptionStackingFinalizeRouter.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -95,13 +101,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase06-${{ github.ref }}
+  group: subscription-stacking-phase07-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 85
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -166,6 +172,9 @@ jobs:
 
       - name: Paid draft stacking orchestration contracts
         run: NODE_ENV=test node tests/subscriptionStackingPaidDraftOrchestrator.test.js
+
+      - name: Default-closed finalize router contracts
+        run: NODE_ENV=test node tests/subscriptionStackingFinalizeRouter.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
