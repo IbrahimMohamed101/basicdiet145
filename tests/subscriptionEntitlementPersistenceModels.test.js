@@ -165,7 +165,7 @@ function testUniqueIndexesExist() {
 
   assert(blueprintIndexNames.includes("uniq_subscription_entitlement_day_blueprint"));
   assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_key"));
-  assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_slot"));
+  assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_slot_revision"));
   assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_operation"));
 }
 
