@@ -5,27 +5,35 @@ on:
     branches:
       - feat/subscription-stacking-phase-0-1-20260806
     paths:
+      - "src/index.js"
       - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
+      - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
+      - "tests/subscriptionStackingShadowService.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
       - main
     paths:
+      - "src/index.js"
       - "src/models/SubscriptionEntitlementBatch.js"
+      - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
+      - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
       - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
+      - "tests/subscriptionStackingShadowService.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -62,6 +70,9 @@ jobs:
 
       - name: Batch factory and slot blueprint contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js
+
+      - name: Non-mutating shadow reconciliation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingShadowService.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
