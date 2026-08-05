@@ -17,6 +17,7 @@ on:
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
+      - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -26,6 +27,7 @@ on:
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
+      - "tests/subscriptionStackingSchedulePolicy.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -43,6 +45,7 @@ on:
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
+      - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -52,6 +55,7 @@ on:
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
+      - "tests/subscriptionStackingSchedulePolicy.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -103,6 +107,9 @@ jobs:
 
       - name: Transactional batch ledger integration
         run: NODE_ENV=test node tests/subscriptionEntitlementLedger.integration.test.js
+
+      - name: Overlap scheduling policy contracts
+        run: NODE_ENV=test node tests/subscriptionStackingSchedulePolicy.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
