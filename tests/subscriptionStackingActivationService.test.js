@@ -4,6 +4,7 @@ process.env.NODE_ENV = "test";
 
 const assert = require("assert");
 const mongoose = require("mongoose");
+const dateUtils = require("../src/utils/date");
 
 const {
   activatePaidDraftIntoExistingContainerTransactional,
@@ -113,10 +114,6 @@ function createRuntime({ container, requestedStartDay = null } = {}) {
     promo: [],
   };
 
-  function asPlain(batch) {
-    return batch && typeof batch.toObject === "function" ? batch.toObject() : batch;
-  }
-
   const runtime = {
     findActiveContainer: async () => container || null,
     findBatches: async () => batches.map((batch) => ({ ...batch })),
@@ -154,7 +151,7 @@ function createRuntime({ container, requestedStartDay = null } = {}) {
     },
   };
 
-  return { runtime, batches, calls, asPlain };
+  return { runtime, batches, calls };
 }
 
 async function testImmediateMixedGramPurchaseStacksWithoutCancelingContainer() {
@@ -191,7 +188,7 @@ async function testImmediateMixedGramPurchaseStacksWithoutCancelingContainer() {
   assert.strictEqual(mirror.remainingMeals, 72);
   assert.strictEqual(mirror.consumedMeals, 58);
   assert.strictEqual(mirror.selectedMealsPerDay, 5);
-  assert.strictEqual(mirror.validityEndDate.toISOString().slice(0, 10), "2026-08-30");
+  assert.strictEqual(dateUtils.toKSADateString(mirror.validityEndDate), "2026-08-31");
   assert.strictEqual(calls.completedDrafts.length, 1);
   assert.strictEqual(String(calls.completedDrafts[0].containerId), String(container._id));
   assert.strictEqual(calls.linkedPayments.length, 1);
@@ -234,7 +231,7 @@ async function testFuturePurchaseExtendsHorizonButDoesNotExposeBalanceEarly() {
   assert.strictEqual(mirror.totalMeals, 27);
   assert.strictEqual(mirror.remainingMeals, 20);
   assert.strictEqual(mirror.selectedMealsPerDay, 3);
-  assert.strictEqual(mirror.validityEndDate.toISOString().slice(0, 10), "2026-09-03");
+  assert.strictEqual(dateUtils.toKSADateString(mirror.validityEndDate), "2026-09-04");
 }
 
 async function testCommittedTodayShiftsPurchaseUsingKsaDate() {
