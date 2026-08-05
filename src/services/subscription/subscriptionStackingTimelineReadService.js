@@ -11,6 +11,7 @@ const {
   isWriteStackingEnabledForUser,
 } = require("./subscriptionStackingRolloutPolicyService");
 const {
+  normalizeDateString,
   projectSubscriptionEntitlements,
 } = require("./subscriptionEntitlementProjectionService");
 
@@ -126,16 +127,27 @@ function rebuildMonthSummary(days = []) {
   return Array.from(byKey.values());
 }
 
+function filterTimelineVisibleBatches(batches, businessDate) {
+  const currentDate = normalizeDateString(businessDate);
+  return (Array.isArray(batches) ? batches : []).filter((batch) => {
+    if (!batch) return false;
+    if (String(batch.status || "") !== "paid_scheduled") return true;
+    const startDate = normalizeDateString(batch.effectiveStartDate);
+    return Boolean(currentDate && startDate && startDate <= currentDate);
+  });
+}
+
 function applyProjectionToTimelineResult(timeline, batches, businessDate) {
   if (!timeline || typeof timeline !== "object" || !Array.isArray(timeline.days)) {
     return timeline;
   }
 
+  const visibleBatches = filterTimelineVisibleBatches(batches, businessDate);
   const projectedDays = [];
   for (const day of timeline.days) {
     if (!day || !day.date) continue;
     const projection = projectSubscriptionEntitlements({
-      batches,
+      batches: visibleBatches,
       businessDate: day.date,
       historicalLifecycle: true,
     });
@@ -144,7 +156,7 @@ function applyProjectionToTimelineResult(timeline, batches, businessDate) {
   }
 
   const currentProjection = projectSubscriptionEntitlements({
-    batches,
+    batches: visibleBatches,
     businessDate,
   });
   const currentRequired = normalizeCount(currentProjection.requiredMealsPerDay);
@@ -280,5 +292,6 @@ module.exports = {
   applyProjectionToTimelineDay,
   applyProjectionToTimelineResult,
   createTimelineReadWrapper,
+  filterTimelineVisibleBatches,
   rebuildMonthSummary,
 };
