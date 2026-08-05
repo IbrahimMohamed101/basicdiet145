@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-2
+name: Subscription Stacking Phase 0-3
 
 on:
   push:
@@ -20,6 +20,7 @@ on:
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
+      - "src/services/subscription/subscriptionStackingActivationService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -32,6 +33,7 @@ on:
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
       - "tests/subscriptionStackingSchedulePolicy.test.js"
+      - "tests/subscriptionStackingActivationService.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -52,6 +54,7 @@ on:
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
+      - "src/services/subscription/subscriptionStackingActivationService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -64,6 +67,7 @@ on:
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
       - "tests/subscriptionStackingSchedulePolicy.test.js"
+      - "tests/subscriptionStackingActivationService.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -71,13 +75,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase02-${{ github.ref }}
+  group: subscription-stacking-phase03-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -124,6 +128,9 @@ jobs:
 
       - name: Overlap scheduling policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingSchedulePolicy.test.js
+
+      - name: Additive activation domain contracts
+        run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
