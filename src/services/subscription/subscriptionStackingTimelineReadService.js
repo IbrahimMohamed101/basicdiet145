@@ -5,6 +5,7 @@ const { logger } = require("../../utils/logger");
 const {
   isSubscriptionStackingReadEnabled,
 } = require("../../utils/featureFlags");
+const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const {
   isReadStackingEnabledForUser,
   isWriteStackingEnabledForUser,
@@ -186,6 +187,7 @@ function defaultRuntime() {
     globallyEnabled: () => isSubscriptionStackingReadEnabled(),
     readEnabledForUser: (userId) => isReadStackingEnabledForUser(userId),
     writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
+    getBusinessDate: () => getRestaurantBusinessDate(),
     async findBatchesByContainer(containerSubscriptionId) {
       return SubscriptionEntitlementBatch.find({
         containerSubscriptionId,
@@ -224,12 +226,13 @@ function createTimelineReadWrapper(original, runtimeOverrides = null) {
       userId = String(batches[0] && batches[0].userId || "");
       if (!runtime.readEnabledForUser(userId)) return timeline;
 
-      const businessDate = String(
+      const embeddedBusinessDate = String(
         options.businessDate
         || timeline.businessDate
         || timeline.mealBalance && timeline.mealBalance.businessDate
         || ""
       );
+      const businessDate = embeddedBusinessDate || String(await runtime.getBusinessDate() || "");
       if (!businessDate) {
         throw timelineReadError(
           "STACKING_TIMELINE_BUSINESS_DATE_MISSING",
