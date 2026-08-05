@@ -96,7 +96,16 @@ function resolveBatchLifecycleState(batch, businessDate, now = new Date()) {
   if (desiredStatus !== currentStatus) set.status = desiredStatus;
   if (desiredStatus === "active" && !batch.activatedAt) set.activatedAt = now;
   if (desiredStatus === "exhausted" && !batch.exhaustedAt) set.exhaustedAt = now;
-  if (desiredStatus === "expired" && !batch.expiredAt) set.expiredAt = now;
+  // Do not invent an expiration timestamp for historical rows that are already
+  // expired. The timestamp is authoritative only when this reconciliation
+  // performs the actual transition into the expired state.
+  if (
+    desiredStatus === "expired"
+    && currentStatus !== "expired"
+    && !batch.expiredAt
+  ) {
+    set.expiredAt = now;
+  }
 
   // Clear stale terminal timestamps only when a reversible state legitimately
   // becomes live again. Historical audit remains in metadata/logs, while the
