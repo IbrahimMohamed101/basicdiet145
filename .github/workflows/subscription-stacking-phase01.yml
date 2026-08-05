@@ -16,6 +16,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingReadService.js"
+      - "src/services/subscription/subscriptionStackingTimelineReadService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
@@ -26,6 +27,7 @@ on:
       - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingCurrentOverviewRead.test.js"
+      - "tests/subscriptionStackingTimelineRead.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
@@ -46,6 +48,7 @@ on:
       - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
       - "src/services/subscription/subscriptionStackingShadowService.js"
       - "src/services/subscription/subscriptionStackingReadService.js"
+      - "src/services/subscription/subscriptionStackingTimelineReadService.js"
       - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
       - "src/services/subscription/subscriptionEntitlementLedgerService.js"
       - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
@@ -56,6 +59,7 @@ on:
       - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
       - "tests/subscriptionStackingShadowService.test.js"
       - "tests/subscriptionStackingCurrentOverviewRead.test.js"
+      - "tests/subscriptionStackingTimelineRead.test.js"
       - "tests/subscriptionStackingRolloutPolicy.test.js"
       - "tests/subscriptionEntitlementPersistenceModels.test.js"
       - "tests/subscriptionEntitlementLedger.integration.test.js"
@@ -73,7 +77,7 @@ concurrency:
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
 
     steps:
       - name: Checkout
@@ -105,6 +109,9 @@ jobs:
 
       - name: Allowlisted current overview read contracts
         run: NODE_ENV=test node tests/subscriptionStackingCurrentOverviewRead.test.js
+
+      - name: Allowlisted timeline read contracts
+        run: NODE_ENV=test node tests/subscriptionStackingTimelineRead.test.js
 
       - name: Fail-closed rollout policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
