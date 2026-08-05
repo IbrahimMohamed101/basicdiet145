@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-5
+name: Subscription Stacking Phase 0-6
 
 on:
   push:
@@ -25,6 +25,7 @@ on:
       - "src/services/subscription/subscriptionStackingKitchenGramsService.js"
       - "src/services/subscription/subscriptionStackingLifecycleService.js"
       - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
+      - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -42,6 +43,7 @@ on:
       - "tests/subscriptionStackingKitchenGrams.test.js"
       - "tests/subscriptionStackingLifecycleService.test.js"
       - "tests/subscriptionStackingDayMaterialization.test.js"
+      - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -67,6 +69,7 @@ on:
       - "src/services/subscription/subscriptionStackingKitchenGramsService.js"
       - "src/services/subscription/subscriptionStackingLifecycleService.js"
       - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
+      - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -84,6 +87,7 @@ on:
       - "tests/subscriptionStackingKitchenGrams.test.js"
       - "tests/subscriptionStackingLifecycleService.test.js"
       - "tests/subscriptionStackingDayMaterialization.test.js"
+      - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -91,13 +95,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase05-${{ github.ref }}
+  group: subscription-stacking-phase06-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 80
+    timeout-minutes: 85
 
     steps:
       - name: Checkout
@@ -159,6 +163,9 @@ jobs:
 
       - name: Subscription day materialization contracts
         run: NODE_ENV=test node tests/subscriptionStackingDayMaterialization.test.js
+
+      - name: Paid draft stacking orchestration contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPaidDraftOrchestrator.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
