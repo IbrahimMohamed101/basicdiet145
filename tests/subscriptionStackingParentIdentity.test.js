@@ -50,7 +50,7 @@ async function testMatchingParentPasses() {
     },
   });
   assert.strictEqual(result.ok, true);
-  assert.strictEqual(result.subscriptionId, "***64d37");
+  assert.strictEqual(result.subscriptionId, "***f64d37");
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].options.headers.Authorization, "Bearer test-token");
 }
