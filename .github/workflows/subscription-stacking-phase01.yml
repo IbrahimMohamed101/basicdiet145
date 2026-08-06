@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-12
+name: Subscription Stacking Phase 0-13
 
 on:
   push:
@@ -35,13 +35,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase12-${{ github.ref }}
+  group: subscription-stacking-phase13-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 115
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -91,6 +91,9 @@ jobs:
 
       - name: Unsupported stacked action guards
         run: NODE_ENV=test node tests/subscriptionStackingUnsupportedActionGuards.test.js
+
+      - name: Per-batch compensation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCompensationService.test.js
 
       - name: Isolated persistence model contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
