@@ -1,0 +1,80 @@
+name: Apply Verified Production Dependency Lockfile
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - ".github/workflows/apply-production-dependency-lockfile.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-verified-production-dependency-lockfile
+  cancel-in-progress: false
+
+jobs:
+  apply-lockfile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/subscription-stacking-phase-0-1-20260806
+          fetch-depth: 0
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install current locked dependencies
+        run: npm ci
+
+      - name: Generate verified lockfile
+        shell: bash
+        run: |
+          cp package.json /tmp/package.before.json
+          set +e
+          npm audit fix --package-lock-only --omit=dev
+          audit_fix_status=$?
+          set -e
+          echo "npm audit fix exit status: $audit_fix_status"
+
+          cmp --silent package.json /tmp/package.before.json
+          test "$(git diff --name-only | sort)" = "package-lock.json"
+          echo "79df717dd28d1986e50af7b3767aee38903a13630c700b49b0d2c9a5608b2383  package-lock.json" | sha256sum --check --strict
+
+      - name: Reinstall exact verified lockfile
+        run: npm ci
+
+      - name: Enforce zero production High or Critical vulnerabilities
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --json > /tmp/production-audit.json
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('/tmp/production-audit.json', 'utf8'));
+          const metadata = report.metadata && report.metadata.vulnerabilities || {};
+          console.log(JSON.stringify(metadata, null, 2));
+          if (Number(metadata.high || 0) > 0 || Number(metadata.critical || 0) > 0) {
+            process.exit(1);
+          }
+          NODE
+
+      - name: Commit package-lock only
+        shell: bash
+        run: |
+          test "$(git diff --name-only | sort)" = "package-lock.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m "security: remove production high and critical dependency findings"
+          git push origin HEAD:feat/subscription-stacking-phase-0-1-20260806
