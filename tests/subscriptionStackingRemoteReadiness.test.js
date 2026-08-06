@@ -6,6 +6,7 @@ const assert = require("node:assert");
 const {
   buildSubscriptionStackingRemoteReadiness,
   resolveDeploymentCommit,
+  resolveDeploymentSafetyAttestation,
 } = require("../src/services/subscription/subscriptionStackingRemoteReadinessService");
 
 const USER_ID = "507f1f77bcf86cd799439011";
@@ -14,6 +15,9 @@ function buildEnv(overrides = {}) {
   return {
     NODE_ENV: "staging",
     APP_ENV: "staging",
+    STAGING_PAYMENT_MODE: "sandbox",
+    STAGING_DATABASE_ISOLATION_CONFIRMED: "true",
+    STAGING_PAYMENT_SANDBOX_CONFIRMED: "true",
     SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
     SUBSCRIPTION_STACKING_READ_ENABLED: "true",
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
@@ -31,10 +35,14 @@ function run() {
     env: buildEnv(),
     globalObject: {},
   });
-  assert.strictEqual(safe.contractVersion, "subscription_stacking_remote_readiness.v1");
+  assert.strictEqual(safe.contractVersion, "subscription_stacking_remote_readiness.v2");
   assert.strictEqual(safe.environment.production, false);
   assert.strictEqual(safe.deployment.commitSha, "abc123def456");
+  assert.strictEqual(safe.deployment.safetyAttestation.databaseIsolationConfirmed, true);
+  assert.strictEqual(safe.deployment.safetyAttestation.paymentSandboxConfirmed, true);
+  assert.strictEqual(safe.deployment.safetyAttestation.safePaymentMode, true);
   assert.strictEqual(safe.rollout.singleUserCanary, true);
+  assert.strictEqual(safe.certification.readProbeReady, true);
   assert.strictEqual(safe.certification.baseMealCanaryReady, true);
   assert.deepStrictEqual(safe.certification.blockedReasons, []);
 
@@ -45,6 +53,32 @@ function run() {
   });
   assert.strictEqual(production.certification.baseMealCanaryReady, false);
   assert(production.certification.blockedReasons.includes("production_environment"));
+
+  const missingDatabaseAttestation = buildSubscriptionStackingRemoteReadiness({
+    userId: USER_ID,
+    env: buildEnv({ STAGING_DATABASE_ISOLATION_CONFIRMED: "false" }),
+    globalObject: {},
+  });
+  assert.strictEqual(missingDatabaseAttestation.certification.readProbeReady, false);
+  assert.strictEqual(missingDatabaseAttestation.certification.baseMealCanaryReady, false);
+  assert(missingDatabaseAttestation.certification.blockedReasons.includes("database_isolation_not_attested"));
+
+  const unsafePayment = buildSubscriptionStackingRemoteReadiness({
+    userId: USER_ID,
+    env: buildEnv({ STAGING_PAYMENT_MODE: "live" }),
+    globalObject: {},
+  });
+  assert.strictEqual(unsafePayment.certification.readProbeReady, true);
+  assert.strictEqual(unsafePayment.certification.baseMealCanaryReady, false);
+  assert(unsafePayment.certification.blockedReasons.includes("unsafe_or_missing_payment_mode"));
+
+  const missingCommit = buildSubscriptionStackingRemoteReadiness({
+    userId: USER_ID,
+    env: buildEnv({ RAILWAY_GIT_COMMIT_SHA: "" }),
+    globalObject: {},
+  });
+  assert.strictEqual(missingCommit.certification.readProbeReady, false);
+  assert(missingCommit.certification.blockedReasons.includes("deployment_commit_not_exposed"));
 
   const wildcard = buildSubscriptionStackingRemoteReadiness({
     userId: USER_ID,
@@ -72,6 +106,21 @@ function run() {
   );
   assert.strictEqual(resolveDeploymentCommit({ SOURCE_VERSION: "source-sha" }), "source-sha");
   assert.strictEqual(resolveDeploymentCommit({}), null);
+  assert.deepStrictEqual(
+    resolveDeploymentSafetyAttestation({
+      STAGING_PAYMENT_MODE: "mock",
+      STAGING_DATABASE_ISOLATION_CONFIRMED: "true",
+      STAGING_PAYMENT_SANDBOX_CONFIRMED: "true",
+    }),
+    {
+      databaseIsolationConfirmed: true,
+      paymentSandboxConfirmed: true,
+      paymentMode: "mock",
+      safePaymentMode: true,
+      readSafe: true,
+      writeSafe: true,
+    }
+  );
 
   console.log("subscription stacking remote readiness tests passed");
 }
