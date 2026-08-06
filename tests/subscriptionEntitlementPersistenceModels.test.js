@@ -8,6 +8,7 @@ const mongoose = require("mongoose");
 const SubscriptionEntitlementBatch = require("../src/models/SubscriptionEntitlementBatch");
 const SubscriptionEntitlementDayBlueprint = require("../src/models/SubscriptionEntitlementDayBlueprint");
 const SubscriptionEntitlementAllocation = require("../src/models/SubscriptionEntitlementAllocation");
+const SubscriptionEntitlementCompensation = require("../src/models/SubscriptionEntitlementCompensation");
 
 function buildBatch() {
   return new SubscriptionEntitlementBatch({
@@ -20,6 +21,9 @@ function buildBatch() {
     effectiveStartDate: new Date("2026-08-01T00:00:00+03:00"),
     endDate: new Date("2026-08-26T00:00:00+03:00"),
     validityEndDate: new Date("2026-08-26T00:00:00+03:00"),
+    baseValidityEndDate: new Date("2026-08-26T00:00:00+03:00"),
+    compensationDays: 0,
+    compensationRevision: 0,
     daysCount: 26,
     mealsPerDay: 2,
     proteinGrams: 150,
@@ -28,6 +32,25 @@ function buildBatch() {
     status: "active",
     applicationState: "pending",
   });
+}
+
+async function testBatchAcceptsCompensationValidityBaseline() {
+  const batch = buildBatch();
+  batch.compensationDays = 2;
+  batch.compensationRevision = 1;
+  batch.validityEndDate = new Date("2026-08-28T00:00:00+03:00");
+  await batch.validate();
+  assert.strictEqual(batch.compensationDays, 2);
+  assert.strictEqual(batch.compensationRevision, 1);
+}
+
+async function testBatchRejectsValidityBeforeCompensationBase() {
+  const batch = buildBatch();
+  batch.validityEndDate = new Date("2026-08-25T00:00:00+03:00");
+  await assert.rejects(
+    () => batch.validate(),
+    (err) => Boolean(err && err.errors && err.errors.validityEndDate)
+  );
 }
 
 async function testBlueprintAcceptsMixedGramSlots() {
@@ -155,6 +178,24 @@ async function testAllocationRejectsConflictingTerminalTimestamps() {
   );
 }
 
+async function testCompensationModelCapturesOneBatchDayAction() {
+  const batch = buildBatch();
+  const compensation = new SubscriptionEntitlementCompensation({
+    userId: batch.userId,
+    containerSubscriptionId: batch.containerSubscriptionId,
+    entitlementBatchId: batch._id,
+    sourceDayId: new mongoose.Types.ObjectId(),
+    sourceDate: "2026-08-06",
+    actionType: "skip",
+    sourceKey: `stack-comp:${batch._id}:skip:2026-08-06`,
+    state: "active",
+  });
+  await compensation.validate();
+  assert.strictEqual(compensation.actionType, "skip");
+  assert.strictEqual(compensation.state, "active");
+  assert(compensation.appliedAt instanceof Date);
+}
+
 function testUniqueIndexesExist() {
   const blueprintIndexNames = SubscriptionEntitlementDayBlueprint.schema.indexes()
     .map(([, options]) => options && options.name)
@@ -162,18 +203,25 @@ function testUniqueIndexesExist() {
   const allocationIndexNames = SubscriptionEntitlementAllocation.schema.indexes()
     .map(([, options]) => options && options.name)
     .filter(Boolean);
+  const compensationIndexNames = SubscriptionEntitlementCompensation.schema.indexes()
+    .map(([, options]) => options && options.name)
+    .filter(Boolean);
 
   assert(blueprintIndexNames.includes("uniq_subscription_entitlement_day_blueprint"));
   assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_key"));
   assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_slot_revision"));
   assert(allocationIndexNames.includes("uniq_subscription_entitlement_allocation_operation"));
+  assert(compensationIndexNames.includes("uniq_subscription_entitlement_compensation_source"));
 }
 
 async function run() {
+  await testBatchAcceptsCompensationValidityBaseline();
+  await testBatchRejectsValidityBeforeCompensationBase();
   await testBlueprintAcceptsMixedGramSlots();
   await testBlueprintRejectsNonContiguousSlots();
   await testAllocationCapturesExactBatchAndGrams();
   await testAllocationRejectsConflictingTerminalTimestamps();
+  await testCompensationModelCapturesOneBatchDayAction();
   testUniqueIndexesExist();
 
   console.log("subscription entitlement persistence model tests passed");
