@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-10
+name: Subscription Stacking Phase 0-11
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - "src/models/SubscriptionEntitlementDayBlueprint.js"
       - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
+      - "src/services/installSubscriptionStackingCheckoutPreflight.js"
       - "src/services/installSubscriptionStackingWriteRouter.js"
       - "src/services/installSubscriptionStackingSelectionRouter.js"
       - "src/services/installSubscriptionStackingEntitlementRouter.js"
@@ -35,6 +36,7 @@ on:
       - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
       - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
       - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
+      - "src/services/subscription/subscriptionStackingCheckoutPreflightService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -60,6 +62,7 @@ on:
       - "tests/subscriptionStackingSelectionRouter.test.js"
       - "tests/subscriptionStackingFulfillmentLedger.test.js"
       - "tests/subscriptionStackingEntitlementRouter.test.js"
+      - "tests/subscriptionStackingCheckoutPreflight.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -70,6 +73,7 @@ on:
       - "src/models/SubscriptionEntitlementDayBlueprint.js"
       - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
+      - "src/services/installSubscriptionStackingCheckoutPreflight.js"
       - "src/services/installSubscriptionStackingWriteRouter.js"
       - "src/services/installSubscriptionStackingSelectionRouter.js"
       - "src/services/installSubscriptionStackingEntitlementRouter.js"
@@ -95,6 +99,7 @@ on:
       - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
       - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
       - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
+      - "src/services/subscription/subscriptionStackingCheckoutPreflightService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -120,6 +125,7 @@ on:
       - "tests/subscriptionStackingSelectionRouter.test.js"
       - "tests/subscriptionStackingFulfillmentLedger.test.js"
       - "tests/subscriptionStackingEntitlementRouter.test.js"
+      - "tests/subscriptionStackingCheckoutPreflight.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -127,13 +133,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase10-${{ github.ref }}
+  group: subscription-stacking-phase11-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 105
+    timeout-minutes: 110
 
     steps:
       - name: Checkout
@@ -177,6 +183,9 @@ jobs:
 
       - name: Production write kill-switch contracts
         run: NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
+
+      - name: Checkout pre-invoice safety contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
 
       - name: Isolated persistence model contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
