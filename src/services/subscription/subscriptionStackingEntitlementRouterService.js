@@ -3,6 +3,9 @@
 const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const SubscriptionEntitlementAllocation = require("../../models/SubscriptionEntitlementAllocation");
 const { startSafeSession } = require("../../utils/mongoTransactionSupport");
+const {
+  isSubscriptionStackingWriteEnabled,
+} = require("../../utils/featureFlags");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const {
   isWriteStackingEnabledForUser,
@@ -24,6 +27,7 @@ function routerError(code, message, status = 503, details = {}) {
 
 function defaultRuntime() {
   return {
+    globallyEnabled: () => isSubscriptionStackingWriteEnabled(),
     writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
     async findStackingOwner(subscriptionId, session = null) {
       let query = SubscriptionEntitlementBatch.findOne({
@@ -88,6 +92,9 @@ async function withTransactionIfNeeded(session, runtime, work) {
 }
 
 async function resolveStackingRoute({ subscriptionId, session, runtime }) {
+  if (!runtime.globallyEnabled()) {
+    return { userId: "", enabled: false };
+  }
   const userId = await runtime.findStackingOwner(subscriptionId, session);
   return {
     userId,
