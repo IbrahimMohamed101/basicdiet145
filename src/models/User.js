@@ -87,7 +87,6 @@ UserSchema.index(
   {
     name: "email_1_unique_sparse",
     unique: true,
-    sparse: true,
     partialFilterExpression: { email: { $type: "string", $ne: "" } },
   }
 );
@@ -97,7 +96,6 @@ UserSchema.index(
   {
     name: "phoneE164_1_unique_sparse",
     unique: true,
-    sparse: true,
     partialFilterExpression: { phoneE164: { $type: "string", $ne: "" } },
   }
 );
