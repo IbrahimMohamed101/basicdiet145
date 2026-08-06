@@ -5,6 +5,8 @@ on:
     branches:
       - feat/subscription-stacking-phase-0-1-20260806
     paths:
+      - "src/models/**"
+      - "tests/mongooseIndexCompatibility.test.js"
       - "tests/subscriptionBalancePolicy.test.js"
       - "tests/helpers/temporaryEnvironment.js"
       - "tests/helpers/mongoCatalogStability.js"
@@ -15,6 +17,8 @@ on:
     branches:
       - main
     paths:
+      - "src/models/**"
+      - "tests/mongooseIndexCompatibility.test.js"
       - "tests/subscriptionBalancePolicy.test.js"
       - "tests/helpers/temporaryEnvironment.js"
       - "tests/helpers/mongoCatalogStability.js"
@@ -47,6 +51,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit Mongoose index compatibility
+        run: NODE_ENV=test node tests/mongooseIndexCompatibility.test.js
 
       - name: Run balance policy three times without retry
         shell: bash
