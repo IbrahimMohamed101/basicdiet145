@@ -2,6 +2,7 @@
 
 process.env.NODE_ENV = "test";
 process.env.APP_ENV = "staging";
+process.env.MONGODB_URI = "mongodb://staging-db.example.com:27017/basicdiet_staging";
 process.env.DEV_AUTH_BYPASS = "true";
 process.env.DEV_STATIC_TOKEN = "stacking-readiness-test-token";
 process.env.DEV_STATIC_USER_ID = "507f1f77bcf86cd799439011";
