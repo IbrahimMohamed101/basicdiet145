@@ -1,0 +1,47 @@
+name: Subscription Stacking Cutoff Compatibility
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/services/subscription/subscriptionCutoffPolicyService.js"
+      - "src/services/subscription/subscriptionStackingSkipService.js"
+      - "tests/subscriptionStackingCutoffCompatibility.test.js"
+      - ".github/workflows/subscription-stacking-cutoff-compatibility.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/services/subscription/subscriptionCutoffPolicyService.js"
+      - "src/services/subscription/subscriptionStackingSkipService.js"
+      - "tests/subscriptionStackingCutoffCompatibility.test.js"
+      - ".github/workflows/subscription-stacking-cutoff-compatibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cutoff-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify stacked skip cutoff actions
+        run: NODE_ENV=test node tests/subscriptionStackingCutoffCompatibility.test.js
+
+      - name: Atomic skip domain regression
+        run: NODE_ENV=test node tests/subscriptionStackingSkipService.test.js

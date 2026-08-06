@@ -1,0 +1,158 @@
+name: Subscription Stacking Phase 0-13
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/index.js"
+      - "src/models/SubscriptionEntitlement*.js"
+      - "src/services/installSubscriptionStacking*.js"
+      - "src/services/subscription/subscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionStacking*.js"
+      - "src/utils/featureFlags.js"
+      - "tests/subscriptionEntitlement*.test.js"
+      - "tests/subscriptionEntitlement*.integration.test.js"
+      - "tests/subscriptionStacking*.test.js"
+      - ".github/workflows/subscription-stacking-phase01.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/index.js"
+      - "src/models/SubscriptionEntitlement*.js"
+      - "src/services/installSubscriptionStacking*.js"
+      - "src/services/subscription/subscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionStacking*.js"
+      - "src/utils/featureFlags.js"
+      - "tests/subscriptionEntitlement*.test.js"
+      - "tests/subscriptionEntitlement*.integration.test.js"
+      - "tests/subscriptionStacking*.test.js"
+      - ".github/workflows/subscription-stacking-phase01.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-phase13-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Phase 0-1 safety contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPhase01.test.js
+
+      - name: Phase 2 shadow projection contracts
+        run: NODE_ENV=test node tests/subscriptionEntitlementProjection.test.js
+
+      - name: Partial final balance contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPartialBalance.test.js
+
+      - name: Batch factory and slot blueprint contracts
+        run: NODE_ENV=test node tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js
+
+      - name: Batch persistence idempotency integration
+        run: NODE_ENV=test node tests/subscriptionEntitlementBatchPersistence.integration.test.js
+
+      - name: Non-mutating shadow reconciliation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingShadowService.test.js
+
+      - name: Allowlisted current overview read contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCurrentOverviewRead.test.js
+
+      - name: Allowlisted timeline read contracts
+        run: NODE_ENV=test node tests/subscriptionStackingTimelineRead.test.js
+
+      - name: Fail-closed rollout policy contracts
+        run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
+
+      - name: Production rollout kill-switch contracts
+        run: NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
+
+      - name: Checkout pre-invoice safety contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
+
+      - name: Unsupported stacked action guards
+        run: NODE_ENV=test node tests/subscriptionStackingUnsupportedActionGuards.test.js
+
+      - name: Per-batch compensation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCompensationService.test.js
+
+      - name: Isolated persistence model contracts
+        run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
+
+      - name: Transactional batch ledger integration
+        run: NODE_ENV=test node tests/subscriptionEntitlementLedger.integration.test.js
+
+      - name: Overlap scheduling policy contracts
+        run: NODE_ENV=test node tests/subscriptionStackingSchedulePolicy.test.js
+
+      - name: Additive activation domain contracts
+        run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+
+      - name: Per-day planning context contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPlanningContext.test.js
+
+      - name: Per-slot kitchen grams contracts
+        run: NODE_ENV=test node tests/subscriptionStackingKitchenGrams.test.js
+
+      - name: Batch lifecycle reconciliation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingLifecycleService.test.js
+
+      - name: Subscription day materialization contracts
+        run: NODE_ENV=test node tests/subscriptionStackingDayMaterialization.test.js
+
+      - name: Paid draft stacking orchestration contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPaidDraftOrchestrator.test.js
+
+      - name: Default-closed finalize router contracts
+        run: NODE_ENV=test node tests/subscriptionStackingFinalizeRouter.test.js
+
+      - name: Selection write safety guards
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionWriteGuards.test.js
+
+      - name: Default-closed selection router contracts
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionRouter.test.js
+
+      - name: Fulfillment ledger transition contracts
+        run: NODE_ENV=test node tests/subscriptionStackingFulfillmentLedger.test.js
+
+      - name: Default-closed entitlement bridge contracts
+        run: NODE_ENV=test node tests/subscriptionStackingEntitlementRouter.test.js
+
+      - name: Current subscription regression gate
+        run: npm run test:current-subscription
+
+      - name: Subscription lifecycle regression gate
+        shell: bash
+        run: |
+          set +e
+          npm run test:subscriptions 2>&1 | tee /tmp/subscription-regression.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q "Unable to acquire IX lock" /tmp/subscription-regression.log; then
+            echo "Transient MongoDB IX lock detected; retrying the complete regression gate once."
+            npm run test:subscriptions
+            exit $?
+          fi
+          exit "$status"

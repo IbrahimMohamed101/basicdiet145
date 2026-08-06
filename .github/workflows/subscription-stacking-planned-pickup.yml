@@ -1,0 +1,79 @@
+name: Subscription Stacking Planned Pickup
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
+      - "src/services/subscription/subscriptionStackingPlannedPickupRouterService.js"
+      - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
+      - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
+      - "tests/subscriptionStackingPlannedPickupRouter.test.js"
+      - "tests/subscriptionStackingEntitlementRouter.test.js"
+      - "tests/subscriptionStackingFulfillmentLedger.test.js"
+      - ".github/workflows/subscription-stacking-planned-pickup.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
+      - "src/services/subscription/subscriptionStackingPlannedPickupRouterService.js"
+      - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
+      - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
+      - "tests/subscriptionStackingPlannedPickupRouter.test.js"
+      - "tests/subscriptionStackingEntitlementRouter.test.js"
+      - "tests/subscriptionStackingFulfillmentLedger.test.js"
+      - ".github/workflows/subscription-stacking-planned-pickup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-planned-pickup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  planned-pickup-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Planned pickup router contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPlannedPickupRouter.test.js
+
+      - name: Entitlement bridge regression
+        run: NODE_ENV=test node tests/subscriptionStackingEntitlementRouter.test.js
+
+      - name: Fulfillment ledger regression
+        run: NODE_ENV=test node tests/subscriptionStackingFulfillmentLedger.test.js
+
+      - name: Subscription lifecycle regression gate
+        shell: bash
+        run: |
+          set +e
+          npm run test:subscriptions 2>&1 | tee /tmp/subscription-regression.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q "Unable to acquire IX lock" /tmp/subscription-regression.log; then
+            echo "Transient MongoDB lock detected; retrying the full regression gate once."
+            npm run test:subscriptions
+            exit $?
+          fi
+          exit "$status"

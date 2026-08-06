@@ -1,0 +1,59 @@
+name: Subscription Stacking Security Matrix
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/index.js"
+      - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
+      - "src/services/subscription/subscriptionStacking*.js"
+      - "src/utils/featureFlags.js"
+      - "tests/subscriptionStackingSecurityMatrix.test.js"
+      - "tests/subscriptionStackingStartupIsolation.test.js"
+      - ".github/workflows/subscription-stacking-security-matrix.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/index.js"
+      - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
+      - "src/services/subscription/subscriptionStacking*.js"
+      - "src/utils/featureFlags.js"
+      - "tests/subscriptionStackingSecurityMatrix.test.js"
+      - "tests/subscriptionStackingStartupIsolation.test.js"
+      - ".github/workflows/subscription-stacking-security-matrix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stacking security matrix
+        run: NODE_ENV=test node tests/subscriptionStackingSecurityMatrix.test.js
+
+      - name: Startup isolation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
+      - name: Existing security regression gate
+        run: npm run test:security
+
+      - name: Current subscription regression gate
+        run: npm run test:current-subscription

@@ -111,7 +111,7 @@ PaymentSchema.index(
     name: "operationIdempotencyKey_1",
     unique: true,
     partialFilterExpression: {
-      operationIdempotencyKey: { $type: "string", $ne: "" },
+      operationIdempotencyKey: { $type: "string", $gt: "" },
     },
   }
 );

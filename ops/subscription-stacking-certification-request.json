@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "phase": "read",
+  "checkoutDraftId": "",
+  "idempotencyKey": "",
+  "expectedRemainingMeals": null,
+  "targetDate": "",
+  "expectedRequiredMeals": null,
+  "note": "Set enabled=true and commit with [stacking-cert:read], [stacking-cert:initiate], or [stacking-cert:verify] only after the protected staging environment is configured."
+}

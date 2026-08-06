@@ -333,8 +333,7 @@ OrderSchema.index(
   { userId: 1, idempotencyKey: 1 },
   {
     unique: true,
-    sparse: true,
-    partialFilterExpression: { idempotencyKey: { $type: "string", $ne: "" } },
+    partialFilterExpression: { idempotencyKey: { $type: "string", $gt: "" } },
   }
 );
 OrderSchema.index(
@@ -342,7 +341,7 @@ OrderSchema.index(
   {
     unique: true,
     partialFilterExpression: {
-      requestHash: { $type: "string", $ne: "" },
+      requestHash: { $type: "string", $gt: "" },
       status: ORDER_STATUSES.PENDING_PAYMENT,
     },
   }
