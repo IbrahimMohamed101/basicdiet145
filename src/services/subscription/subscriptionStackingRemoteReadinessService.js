@@ -97,7 +97,7 @@ function buildSubscriptionStackingRemoteReadiness({
     && singleUserCanary;
 
   return {
-    contractVersion: "subscription_stacking_remote_readiness.v2",
+    contractVersion: "subscription_stacking_remote_readiness.v1",
     environment: {
       production: environment.production,
       source: environment.source || null,
