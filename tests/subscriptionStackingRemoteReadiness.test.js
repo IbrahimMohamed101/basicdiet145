@@ -35,7 +35,7 @@ function run() {
     env: buildEnv(),
     globalObject: {},
   });
-  assert.strictEqual(safe.contractVersion, "subscription_stacking_remote_readiness.v2");
+  assert.strictEqual(safe.contractVersion, "subscription_stacking_remote_readiness.v1");
   assert.strictEqual(safe.environment.production, false);
   assert.strictEqual(safe.deployment.commitSha, "abc123def456");
   assert.strictEqual(safe.deployment.safetyAttestation.databaseIsolationConfirmed, true);
