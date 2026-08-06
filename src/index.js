@@ -7,6 +7,7 @@ const {
   assertSubscriptionStackingRolloutConfiguration,
 } = require("./services/subscription/subscriptionStackingRolloutPolicyService");
 assertSubscriptionStackingRolloutConfiguration(process.env);
+require("./services/installSubscriptionStackingUnsupportedActionGuards");
 require("./services/installSubscriptionStackingShadowProjection");
 require("./services/installSubscriptionStackingCheckoutPreflight");
 require("./services/installSubscriptionStackingWriteRouter");
