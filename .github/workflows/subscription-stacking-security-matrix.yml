@@ -5,19 +5,23 @@ on:
     branches:
       - feat/subscription-stacking-phase-0-1-20260806
     paths:
+      - "src/index.js"
       - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
       - "src/services/subscription/subscriptionStacking*.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingSecurityMatrix.test.js"
+      - "tests/subscriptionStackingStartupIsolation.test.js"
       - ".github/workflows/subscription-stacking-security-matrix.yml"
   pull_request:
     branches:
       - main
     paths:
+      - "src/index.js"
       - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
       - "src/services/subscription/subscriptionStacking*.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingSecurityMatrix.test.js"
+      - "tests/subscriptionStackingStartupIsolation.test.js"
       - ".github/workflows/subscription-stacking-security-matrix.yml"
   workflow_dispatch:
 
@@ -44,6 +48,9 @@ jobs:
 
       - name: Stacking security matrix
         run: NODE_ENV=test node tests/subscriptionStackingSecurityMatrix.test.js
+
+      - name: Startup isolation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
 
       - name: Existing security regression gate
         run: npm run test:security
