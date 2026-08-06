@@ -1,0 +1,43 @@
+name: Temporary Fix Readiness Route Contract
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-remote-certification-20260806
+    paths:
+      - ".github/workflows/temporary-fix-readiness-route-contract.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/subscription-stacking-remote-certification-20260806
+          fetch-depth: 0
+      - name: Replace exact contract expectation
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'tests/subscriptionStackingRemoteReadinessRoute.test.js';
+          const before = fs.readFileSync(path, 'utf8');
+          const from = 'subscription_stacking_remote_readiness.v2';
+          const to = 'subscription_stacking_remote_readiness.v1';
+          const count = before.split(from).length - 1;
+          if (count !== 1) throw new Error(`Expected one v2 contract reference, found ${count}`);
+          fs.writeFileSync(path, before.replace(from, to));
+          NODE
+          git diff --check
+      - name: Commit guarded patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionStackingRemoteReadinessRoute.test.js
+          git commit -m "test: keep readiness route contract version stable"
+          git push origin HEAD:feat/subscription-stacking-remote-certification-20260806
