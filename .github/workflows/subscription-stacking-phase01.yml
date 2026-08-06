@@ -83,7 +83,7 @@ jobs:
       - name: Fail-closed rollout policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
 
-      - name: Production write kill-switch contracts
+      - name: Production rollout kill-switch contracts
         run: NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
 
       - name: Checkout pre-invoice safety contracts
@@ -141,4 +141,18 @@ jobs:
         run: npm run test:current-subscription
 
       - name: Subscription lifecycle regression gate
-        run: npm run test:subscriptions
+        shell: bash
+        run: |
+          set +e
+          npm run test:subscriptions 2>&1 | tee /tmp/subscription-regression.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q "Unable to acquire IX lock" /tmp/subscription-regression.log; then
+            echo "Transient MongoDB IX lock detected; retrying the complete regression gate once."
+            npm run test:subscriptions
+            exit $?
+          fi
+          exit "$status"
