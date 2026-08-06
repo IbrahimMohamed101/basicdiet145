@@ -14,14 +14,15 @@ function safeEnv(overrides = {}) {
     NODE_ENV: "staging",
     STAGING_BASE_URL: "https://basicdiet-staging.example.com",
     STAGING_PAYMENT_MODE: "sandbox",
+    STAGING_DATABASE_ISOLATION_CONFIRMED: "true",
+    STAGING_PAYMENT_SANDBOX_CONFIRMED: "true",
     MONGODB_URI: "mongodb://user:secret@staging.mongo.local:27017/basicdiet_staging",
     SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
     SUBSCRIPTION_STACKING_READ_ENABLED: "true",
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
     SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "user-1",
-    SUBSCRIPTION_STACKING_READ_USER_IDS: "user-1",
-    SUBSCRIPTION_STACKING_WRITE_USER_IDS: "user-1",
-    SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE: "false",
+    SUBSCRIPTION_STACKING_USER_IDS: "user-1",
+    SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "false",
     ...overrides,
   };
 }
@@ -41,6 +42,8 @@ function testSafeSingleUserSandboxConfigurationPasses() {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.nodeEnv, "staging");
   assert.strictEqual(result.paymentMode, "sandbox");
+  assert.strictEqual(result.databaseIsolationConfirmed, true);
+  assert.strictEqual(result.paymentSandboxConfirmed, true);
   assert.strictEqual(result.rolloutUserCount, 1);
   assert.strictEqual(result.rolloutUserId, "user-1");
   assert.strictEqual(result.database.databaseName, "basicdiet_staging");
@@ -58,15 +61,30 @@ function testProductionHostsAreRejected() {
     STAGING_BASE_URL: "https://clientdashbourd-production.up.railway.app",
   })));
   assert(dashboard.includes("PRODUCTION_HOST_FORBIDDEN"));
+
+  const unknownProdHost = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+    STAGING_BASE_URL: "https://api-production.example.com",
+  })));
+  assert(unknownProdHost.includes("PRODUCTION_HOST_FORBIDDEN"));
 }
 
-function testProductionNodeEnvAndPaymentModeAreRejected() {
+function testProductionEnvironmentAndPaymentModeAreRejected() {
   const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
-    NODE_ENV: "production",
+    NODE_ENV: "development",
+    RAILWAY_ENVIRONMENT_NAME: "production",
     STAGING_PAYMENT_MODE: "live",
   })));
-  assert(codes.includes("PRODUCTION_NODE_ENV_FORBIDDEN"));
+  assert(codes.includes("PRODUCTION_ENVIRONMENT_FORBIDDEN"));
   assert(codes.includes("UNSAFE_PAYMENT_MODE"));
+}
+
+function testExplicitIsolationConfirmationsAreRequired() {
+  const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+    STAGING_DATABASE_ISOLATION_CONFIRMED: "false",
+    STAGING_PAYMENT_SANDBOX_CONFIRMED: "false",
+  })));
+  assert(codes.includes("DATABASE_ISOLATION_CONFIRMATION_REQUIRED"));
+  assert(codes.includes("PAYMENT_SANDBOX_CONFIRMATION_REQUIRED"));
 }
 
 function testProductionLikeDatabaseNameIsRejected() {
@@ -78,43 +96,56 @@ function testProductionLikeDatabaseNameIsRejected() {
   }
 }
 
-function testWriteRequiresShadowReadAndExactlyOneUser() {
+function testWriteRequiresShadowReadAndExactlyOneRuntimeUser() {
   const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_SHADOW_ENABLED: "false",
     SUBSCRIPTION_STACKING_READ_ENABLED: "false",
-    SUBSCRIPTION_STACKING_WRITE_USER_IDS: "user-1,user-2",
+    SUBSCRIPTION_STACKING_USER_IDS: "user-1,user-2",
   })));
   assert(codes.includes("WRITE_REQUIRES_READ"));
   assert(codes.includes("WRITE_REQUIRES_SHADOW"));
   assert(codes.includes("INITIAL_WRITE_REQUIRES_EXACTLY_ONE_USER"));
 }
 
-function testWildcardAndMissingAllowlistRelationshipsAreRejected() {
+function testWildcardAndMissingShadowRelationshipAreRejected() {
   const wildcardCodes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "*",
-    SUBSCRIPTION_STACKING_READ_USER_IDS: "*",
-    SUBSCRIPTION_STACKING_WRITE_USER_IDS: "*",
-    SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE: "true",
+    SUBSCRIPTION_STACKING_USER_IDS: "*",
+    SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
   })));
   assert(wildcardCodes.includes("WILDCARD_ROLLOUT_FORBIDDEN"));
-  assert(wildcardCodes.includes("WILDCARD_WRITE_OVERRIDE_FORBIDDEN"));
+  assert(wildcardCodes.includes("ALLOW_ALL_USERS_FORBIDDEN"));
 
   const relationCodes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "other-user",
-    SUBSCRIPTION_STACKING_READ_USER_IDS: "other-user",
   })));
-  assert(relationCodes.includes("WRITE_USER_MISSING_FROM_READ_ALLOWLIST"));
-  assert(relationCodes.includes("WRITE_USER_MISSING_FROM_SHADOW_ALLOWLIST"));
+  assert(relationCodes.includes("ROLLOUT_USER_MISSING_FROM_SHADOW_ALLOWLIST"));
 }
 
-function testReadOnlyModeAllowsEmptyWriteAllowlist() {
+function testUnusedLegacyVariablesAreRejected() {
+  const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+    SUBSCRIPTION_STACKING_READ_USER_IDS: "user-1",
+    SUBSCRIPTION_STACKING_WRITE_USER_IDS: "user-1",
+    SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE: "false",
+  })));
+  assert(codes.includes("UNUSED_ROLLOUT_VARIABLES_CONFIGURED"));
+}
+
+function testReadOnlyModeStillRequiresRuntimeAllowlist() {
   const result = validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "false",
-    SUBSCRIPTION_STACKING_WRITE_USER_IDS: "",
+    STAGING_PAYMENT_SANDBOX_CONFIRMED: "false",
   }));
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.writeEnabled, false);
-  assert.strictEqual(result.rolloutUserCount, 0);
+  assert.strictEqual(result.rolloutUserCount, 1);
+
+  const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+    SUBSCRIPTION_STACKING_WRITE_ENABLED: "false",
+    STAGING_PAYMENT_SANDBOX_CONFIRMED: "false",
+    SUBSCRIPTION_STACKING_USER_IDS: "",
+  })));
+  assert(codes.includes("ROLLOUT_ALLOWLIST_REQUIRED"));
 }
 
 function testHelpersNeverExposeCredentials() {
@@ -134,11 +165,13 @@ function testHelpersNeverExposeCredentials() {
 function run() {
   testSafeSingleUserSandboxConfigurationPasses();
   testProductionHostsAreRejected();
-  testProductionNodeEnvAndPaymentModeAreRejected();
+  testProductionEnvironmentAndPaymentModeAreRejected();
+  testExplicitIsolationConfirmationsAreRequired();
   testProductionLikeDatabaseNameIsRejected();
-  testWriteRequiresShadowReadAndExactlyOneUser();
-  testWildcardAndMissingAllowlistRelationshipsAreRejected();
-  testReadOnlyModeAllowsEmptyWriteAllowlist();
+  testWriteRequiresShadowReadAndExactlyOneRuntimeUser();
+  testWildcardAndMissingShadowRelationshipAreRejected();
+  testUnusedLegacyVariablesAreRejected();
+  testReadOnlyModeStillRequiresRuntimeAllowlist();
   testHelpersNeverExposeCredentials();
   console.log("subscription stacking staging environment tests passed");
 }
