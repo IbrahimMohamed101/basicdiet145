@@ -1,0 +1,83 @@
+name: Subscription Stacking Staging Readiness
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "scripts/validate-subscription-stacking-staging-env.js"
+      - "tests/subscriptionStackingStagingEnv.test.js"
+      - "docs/subscription-stacking-staging-runbook.md"
+      - ".github/workflows/subscription-stacking-staging-readiness.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/validate-subscription-stacking-staging-env.js"
+      - "tests/subscriptionStackingStagingEnv.test.js"
+      - "docs/subscription-stacking-staging-runbook.md"
+      - ".github/workflows/subscription-stacking-staging-readiness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-readiness-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Staging environment safety contracts
+        run: NODE_ENV=test node tests/subscriptionStackingStagingEnv.test.js
+
+      - name: Validator rejects production host
+        shell: bash
+        run: |
+          set +e
+          NODE_ENV=staging \
+          STAGING_BASE_URL=https://basicdiet145-production-51e9.up.railway.app \
+          STAGING_PAYMENT_MODE=sandbox \
+          MONGODB_URI=mongodb://localhost:27017/basicdiet_staging \
+          SUBSCRIPTION_STACKING_SHADOW_ENABLED=true \
+          SUBSCRIPTION_STACKING_READ_ENABLED=true \
+          SUBSCRIPTION_STACKING_WRITE_ENABLED=true \
+          SUBSCRIPTION_STACKING_SHADOW_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_READ_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_WRITE_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE=false \
+          node scripts/validate-subscription-stacking-staging-env.js >/tmp/stacking-validator.out 2>/tmp/stacking-validator.err
+          status=$?
+          test "$status" -ne 0
+          grep -q 'PRODUCTION_HOST_FORBIDDEN' /tmp/stacking-validator.err
+          ! grep -q 'localhost:27017/basicdiet_staging' /tmp/stacking-validator.err
+
+      - name: Validator accepts isolated sandbox configuration
+        run: |
+          NODE_ENV=staging \
+          STAGING_BASE_URL=https://basicdiet-staging.example.com \
+          STAGING_PAYMENT_MODE=sandbox \
+          MONGODB_URI=mongodb://local-user:local-secret@localhost:27017/basicdiet_staging \
+          SUBSCRIPTION_STACKING_SHADOW_ENABLED=true \
+          SUBSCRIPTION_STACKING_READ_ENABLED=true \
+          SUBSCRIPTION_STACKING_WRITE_ENABLED=true \
+          SUBSCRIPTION_STACKING_SHADOW_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_READ_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_WRITE_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE=false \
+          node scripts/validate-subscription-stacking-staging-env.js >/tmp/stacking-validator-safe.out
+          grep -q '"ok": true' /tmp/stacking-validator-safe.out
+          ! grep -q 'local-secret' /tmp/stacking-validator-safe.out
+          ! grep -q 'local-user' /tmp/stacking-validator-safe.out
