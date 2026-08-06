@@ -9,8 +9,11 @@ on:
       - "src/services/installSubscriptionStackingRemoteReadinessRoute.js"
       - "src/index.js"
       - "scripts/run-subscription-stacking-remote-certification.js"
+      - "scripts/assert-subscription-stacking-parent-identity.js"
       - "tests/subscriptionStackingRemoteReadiness.test.js"
+      - "tests/subscriptionStackingRemoteReadinessRoute.test.js"
       - "tests/subscriptionStackingRemoteCertification.test.js"
+      - "tests/subscriptionStackingParentIdentity.test.js"
       - ".github/workflows/subscription-stacking-remote-certification.yml"
   pull_request:
     branches:
@@ -20,8 +23,11 @@ on:
       - "src/services/installSubscriptionStackingRemoteReadinessRoute.js"
       - "src/index.js"
       - "scripts/run-subscription-stacking-remote-certification.js"
+      - "scripts/assert-subscription-stacking-parent-identity.js"
       - "tests/subscriptionStackingRemoteReadiness.test.js"
+      - "tests/subscriptionStackingRemoteReadinessRoute.test.js"
       - "tests/subscriptionStackingRemoteCertification.test.js"
+      - "tests/subscriptionStackingParentIdentity.test.js"
       - ".github/workflows/subscription-stacking-remote-certification.yml"
   workflow_dispatch:
     inputs:
@@ -40,10 +46,6 @@ on:
         type: string
       idempotency_key:
         description: Optional fixed idempotency key for initiate
-        required: false
-        type: string
-      subscription_id:
-        description: Optional expected parent subscription ID
         required: false
         type: string
       expected_remaining_meals:
@@ -83,14 +85,21 @@ jobs:
       - name: Remote readiness policy contracts
         run: NODE_ENV=test node tests/subscriptionStackingRemoteReadiness.test.js
 
+      - name: Authenticated remote readiness route
+        run: NODE_ENV=test node tests/subscriptionStackingRemoteReadinessRoute.test.js
+
       - name: Remote certification runner contracts
         run: NODE_ENV=test node tests/subscriptionStackingRemoteCertification.test.js
+
+      - name: Parent subscription identity contracts
+        run: NODE_ENV=test node tests/subscriptionStackingParentIdentity.test.js
 
       - name: Startup composition and syntax
         run: |
           node --check src/services/subscription/subscriptionStackingRemoteReadinessService.js
           node --check src/services/installSubscriptionStackingRemoteReadinessRoute.js
           node --check scripts/run-subscription-stacking-remote-certification.js
+          node --check scripts/assert-subscription-stacking-parent-identity.js
           node --check src/index.js
           NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
 
@@ -119,11 +128,11 @@ jobs:
       SUBSCRIPTION_STACKING_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
       SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "false"
       STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
+      STAGING_SUBSCRIPTION_ID: ${{ secrets.STACKING_STAGING_PARENT_SUBSCRIPTION_ID }}
       STAGING_CHECKOUT_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_CHECKOUT_PAYLOAD_JSON }}
       STAGING_CERTIFICATION_PHASE: ${{ inputs.phase }}
       STAGING_CHECKOUT_DRAFT_ID: ${{ inputs.checkout_draft_id }}
       STAGING_CHECKOUT_IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
-      STAGING_SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
       STAGING_EXPECTED_REMAINING_MEALS: ${{ inputs.expected_remaining_meals }}
       STAGING_TARGET_DATE: ${{ inputs.target_date }}
       STAGING_EXPECTED_REQUIRED_MEALS: ${{ inputs.expected_required_meals }}
@@ -146,8 +155,14 @@ jobs:
       - name: Reject unsafe staging configuration
         run: node scripts/validate-subscription-stacking-staging-env.js
 
+      - name: Assert parent subscription before phase
+        run: node scripts/assert-subscription-stacking-parent-identity.js
+
       - name: Run remote certification phase
         run: node scripts/run-subscription-stacking-remote-certification.js
+
+      - name: Assert parent subscription after phase
+        run: node scripts/assert-subscription-stacking-parent-identity.js
 
       - name: Publish certification summary
         if: success()
@@ -162,6 +177,7 @@ jobs:
           console.log(`- Passed: **${evidence.passed}**`);
           console.log(`- Target: \`${evidence.target.origin}\``);
           console.log(`- Deployment commit: \`${evidence.target.deploymentCommitSha || 'not exposed'}\``);
+          console.log(`- Parent identity before/after: **verified**`);
           console.log(`- Before remaining meals: **${evidence.before.remainingMeals ?? 'n/a'}**`);
           if (evidence.after) console.log(`- After remaining meals: **${evidence.after.remainingMeals ?? 'n/a'}**`);
           if (evidence.mutation && evidence.mutation.maskedCheckoutDraftId) {
