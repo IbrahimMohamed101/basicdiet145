@@ -86,6 +86,9 @@ jobs:
       - name: Production rollout kill-switch contracts
         run: NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
 
+      - name: Fresh-process startup composition regression
+        run: NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
       - name: Checkout pre-invoice safety contracts
         run: NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
 
