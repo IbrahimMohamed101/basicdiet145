@@ -1,44 +1,29 @@
 "use strict";
 
-const {
-  createStackingPlannedPickupWrapper,
-} = require("./subscription/subscriptionStackingPlannedPickupRouterService");
-
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingPlannedPickupRouter.installed");
-const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionStackingPlannedPickupRouter.wrapped");
 
 function installSubscriptionStackingPlannedPickupRouter() {
   if (globalThis[INSTALL_KEY]) return globalThis[INSTALL_KEY];
 
-  const entitlementService = require("./subscription/subscriptionMealEntitlementService");
-  const original = entitlementService.reservePickupEntitlements;
-  if (typeof original !== "function") {
-    throw new Error("subscriptionMealEntitlementService.reservePickupEntitlements is missing");
-  }
-
-  if (original[WRAPPED_KEY] !== true) {
-    const wrapped = createStackingPlannedPickupWrapper(original);
-    Object.defineProperty(wrapped, WRAPPED_KEY, { value: true });
-    Object.defineProperty(wrapped, "__original", { value: original });
-    entitlementService.reservePickupEntitlements = wrapped;
-  }
-
+  // Deliberately do not wrap reservePickupEntitlements yet. The planned pickup
+  // adapter must first bind the authenticated customer to the entitlement batch
+  // owner and verify the exact confirmed SubscriptionDay allocation set.
+  // Keeping this installer inert prevents an accidental require from bypassing
+  // legacy ownership/business checks while the application is serving clients.
   const state = Object.freeze({
-    installed: true,
-    installedAt: new Date(),
+    installed: false,
     defaultClosed: true,
-    confirmedDayOnly: true,
+    securityApproved: false,
+    reason: "ownership_and_confirmed_day_binding_required",
     createsNewCredits: false,
-    mode: "reuse_existing_stacking_allocations",
+    mode: "fail_closed",
   });
+
   globalThis[INSTALL_KEY] = state;
   return state;
 }
 
-installSubscriptionStackingPlannedPickupRouter();
-
 module.exports = {
   INSTALL_KEY,
-  WRAPPED_KEY,
   installSubscriptionStackingPlannedPickupRouter,
 };
