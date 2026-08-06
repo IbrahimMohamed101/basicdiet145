@@ -1,0 +1,83 @@
+name: Temporary Fix Invalid Mongoose Indexes
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - ".github/workflows/temporary-fix-invalid-mongoose-indexes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-index-definition-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/subscription-stacking-phase-0-1-20260806
+          fetch-depth: 0
+
+      - name: Remove invalid sparse plus partial combinations
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const targets = [
+            { path: 'src/models/Order.js', expected: 1 },
+            { path: 'src/models/User.js', expected: 2 },
+          ];
+          const needle = '    unique: true,\n    sparse: true,\n    partialFilterExpression:';
+          const replacement = '    unique: true,\n    partialFilterExpression:';
+
+          for (const target of targets) {
+            const before = fs.readFileSync(target.path, 'utf8');
+            const count = before.split(needle).length - 1;
+            if (count !== target.expected) {
+              throw new Error(`${target.path}: expected ${target.expected} invalid index definitions, found ${count}`);
+            }
+            const after = before.split(needle).join(replacement);
+            if (after === before) throw new Error(`${target.path}: no change applied`);
+            fs.writeFileSync(target.path, after);
+          }
+          NODE
+
+      - name: Verify exact change
+        shell: bash
+        run: |
+          git diff --check
+          node - <<'NODE'
+          const Order = require('./src/models/Order');
+          const User = require('./src/models/User');
+          const invalid = [];
+          for (const [modelName, model] of [['Order', Order], ['User', User]]) {
+            for (const [keys, options] of model.schema.indexes()) {
+              if (options && options.sparse === true && options.partialFilterExpression) {
+                invalid.push({ modelName, keys, name: options.name || null });
+              }
+            }
+          }
+          if (invalid.length) {
+            console.error(JSON.stringify(invalid, null, 2));
+            process.exit(1);
+          }
+          console.log('Mongoose index definitions are structurally valid');
+          NODE
+
+      - name: Commit branch-only fix
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/models/Order.js src/models/User.js
+          git commit -m "fix: remove invalid sparse partial index combinations"
+          git push origin HEAD:feat/subscription-stacking-phase-0-1-20260806
