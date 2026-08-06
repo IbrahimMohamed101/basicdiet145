@@ -11,6 +11,11 @@ const {
 
 const SKIP_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingSkipRouter.installed");
 const PLANNED_PICKUP_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingPlannedPickupRouter.installed");
+const SAFE_STAGING_PAYMENT_MODES = new Set(["sandbox", "mock", "test"]);
+
+function isEnabled(value) {
+  return String(value || "").trim().toLowerCase() === "true";
+}
 
 function isAllowlisted(allowlist, userId) {
   const value = String(userId || "").trim();
@@ -31,6 +36,22 @@ function resolveDeploymentCommit(env = process.env) {
   return commit || null;
 }
 
+function resolveDeploymentSafetyAttestation(env = process.env) {
+  const paymentMode = String(env.STAGING_PAYMENT_MODE || "").trim().toLowerCase();
+  const databaseIsolationConfirmed = isEnabled(env.STAGING_DATABASE_ISOLATION_CONFIRMED);
+  const paymentSandboxConfirmed = isEnabled(env.STAGING_PAYMENT_SANDBOX_CONFIRMED);
+  const safePaymentMode = SAFE_STAGING_PAYMENT_MODES.has(paymentMode);
+
+  return {
+    databaseIsolationConfirmed,
+    paymentSandboxConfirmed,
+    paymentMode: paymentMode || null,
+    safePaymentMode,
+    readSafe: databaseIsolationConfirmed,
+    writeSafe: databaseIsolationConfirmed && paymentSandboxConfirmed && safePaymentMode,
+  };
+}
+
 function buildSubscriptionStackingRemoteReadiness({
   userId,
   env = process.env,
@@ -46,6 +67,8 @@ function buildSubscriptionStackingRemoteReadiness({
 
   const environment = resolveProductionEnvironment(env);
   const rollout = resolveSubscriptionStackingRolloutState(env);
+  const deploymentSafety = resolveDeploymentSafetyAttestation(env);
+  const deploymentCommitSha = resolveDeploymentCommit(env);
   const shadowEnabledForUser = rollout.shadowEnabled
     && isAllowlisted(rollout.shadowAllowlist, subject);
   const readEnabledForUser = isReadStackingEnabledForUser(subject, env);
@@ -63,21 +86,26 @@ function buildSubscriptionStackingRemoteReadiness({
     globalObject && globalObject[PLANNED_PICKUP_INSTALL_KEY]
   );
 
-  const baseMealCanaryReady = !environment.production
-    && shadowEnabledForUser
+  const readProbeReady = !environment.production
+    && Boolean(deploymentCommitSha)
+    && deploymentSafety.readSafe
+    && shadowEnabledForUser;
+  const baseMealCanaryReady = readProbeReady
+    && deploymentSafety.writeSafe
     && readEnabledForUser
     && writeEnabledForUser
     && singleUserCanary;
 
   return {
-    contractVersion: "subscription_stacking_remote_readiness.v1",
+    contractVersion: "subscription_stacking_remote_readiness.v2",
     environment: {
       production: environment.production,
       source: environment.source || null,
       value: environment.value || environment.nodeEnv || null,
     },
     deployment: {
-      commitSha: resolveDeploymentCommit(env),
+      commitSha: deploymentCommitSha,
+      safetyAttestation: deploymentSafety,
     },
     rollout: {
       shadowEnabledGlobally: rollout.shadowEnabled,
@@ -102,10 +130,14 @@ function buildSubscriptionStackingRemoteReadiness({
       directPickupSupported: false,
     },
     certification: {
-      readProbeReady: !environment.production && shadowEnabledForUser,
+      readProbeReady,
       baseMealCanaryReady,
       blockedReasons: [
         environment.production ? "production_environment" : null,
+        !deploymentCommitSha ? "deployment_commit_not_exposed" : null,
+        !deploymentSafety.databaseIsolationConfirmed ? "database_isolation_not_attested" : null,
+        !deploymentSafety.paymentSandboxConfirmed ? "payment_sandbox_not_attested" : null,
+        !deploymentSafety.safePaymentMode ? "unsafe_or_missing_payment_mode" : null,
         !shadowEnabledForUser ? "shadow_not_enabled_for_user" : null,
         !readEnabledForUser ? "read_not_enabled_for_user" : null,
         !writeEnabledForUser ? "write_not_enabled_for_user" : null,
@@ -117,7 +149,9 @@ function buildSubscriptionStackingRemoteReadiness({
 
 module.exports = {
   PLANNED_PICKUP_INSTALL_KEY,
+  SAFE_STAGING_PAYMENT_MODES,
   SKIP_INSTALL_KEY,
   buildSubscriptionStackingRemoteReadiness,
   resolveDeploymentCommit,
+  resolveDeploymentSafetyAttestation,
 };
