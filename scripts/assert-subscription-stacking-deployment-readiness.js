@@ -2,6 +2,9 @@
 
 const crypto = require("node:crypto");
 const {
+  buildMongoDeploymentIdentityHash,
+} = require("../src/utils/mongoDeploymentIdentity");
+const {
   validateSubscriptionStackingStagingEnv,
 } = require("./validate-subscription-stacking-staging-env");
 
@@ -25,6 +28,9 @@ async function assertRemoteDeploymentReadiness(env = process.env, runtime = {}) 
   const token = String(env.STAGING_CLIENT_TOKEN || "").trim();
   const expectedCommit = String(env.STAGING_EXPECTED_DEPLOYMENT_COMMIT_SHA || "").trim();
   const phase = String(env.STAGING_CERTIFICATION_PHASE || "read").trim().toLowerCase();
+  const expectedDatabaseIdentityHash = buildMongoDeploymentIdentityHash(
+    env.MONGO_URI || env.MONGODB_URI || env.MONGO_URL || ""
+  );
 
   if (!token) {
     throw readinessError("DEPLOYMENT_READINESS_TOKEN_REQUIRED", "STAGING_CLIENT_TOKEN is required");
@@ -33,6 +39,12 @@ async function assertRemoteDeploymentReadiness(env = process.env, runtime = {}) 
     throw readinessError(
       "DEPLOYMENT_READINESS_EXPECTED_COMMIT_REQUIRED",
       "STAGING_EXPECTED_DEPLOYMENT_COMMIT_SHA is required"
+    );
+  }
+  if (!expectedDatabaseIdentityHash) {
+    throw readinessError(
+      "DEPLOYMENT_READINESS_EXPECTED_DATABASE_IDENTITY_REQUIRED",
+      "A valid staging MongoDB identity is required"
     );
   }
   if (!["read", "initiate", "verify"].includes(phase)) {
@@ -123,6 +135,15 @@ async function assertRemoteDeploymentReadiness(env = process.env, runtime = {}) 
         "Deployed service did not attest to an isolated staging database"
       );
     }
+    if (
+      attestation.databaseIdentityAvailable !== true
+      || String(attestation.databaseIdentityHash || "") !== expectedDatabaseIdentityHash
+    ) {
+      throw readinessError(
+        "DEPLOYMENT_READINESS_DATABASE_IDENTITY_MISMATCH",
+        "Deployed service is connected to a different MongoDB deployment identity"
+      );
+    }
 
     const certification = data.certification || {};
     if (phase === "read" && certification.readProbeReady !== true) {
@@ -155,6 +176,7 @@ async function assertRemoteDeploymentReadiness(env = process.env, runtime = {}) 
       origin: safety.baseUrl,
       deploymentCommit: maskCommit(actualCommit),
       databaseIsolationConfirmed: true,
+      databaseIdentityVerified: true,
       paymentSandboxConfirmed: WRITE_PHASES.has(phase)
         ? attestation.paymentSandboxConfirmed === true
         : null,
