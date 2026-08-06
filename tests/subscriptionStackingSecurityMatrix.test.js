@@ -36,23 +36,45 @@ function makeOriginals(calls) {
   }]));
 }
 
-function testProductionWriteAlwaysBlocked() {
-  for (const nodeEnv of ["production", " Production ", "PRODUCTION"]) {
-    assert.throws(
-      () => assertSubscriptionStackingProductionSafety({
-        NODE_ENV: nodeEnv,
-        SUBSCRIPTION_STACKING_WRITE_ENABLED: " TrUe ",
-      }),
-      (err) => Boolean(
-        err
-        && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_WRITE_BLOCKED"
-        && err.details
-        && err.details.writeEnabled === true
-      )
+function assertProductionModeBlocked(env, code, mode) {
+  assert.throws(
+    () => assertSubscriptionStackingProductionSafety(env),
+    (err) => Boolean(
+      err
+      && err.code === code
+      && err.details
+      && Array.isArray(err.details.enabledModes)
+      && err.details.enabledModes.includes(mode)
+    )
+  );
+}
+
+function testProductionRolloutAlwaysBlocked() {
+  for (const nodeEnv of ["production", " Production ", "PRODUCTION", "prod", "live"]) {
+    assertProductionModeBlocked(
+      { NODE_ENV: nodeEnv, SUBSCRIPTION_STACKING_WRITE_ENABLED: " TrUe " },
+      "SUBSCRIPTION_STACKING_PRODUCTION_WRITE_BLOCKED",
+      "write"
     );
   }
+  assertProductionModeBlocked(
+    { NODE_ENV: "production", SUBSCRIPTION_STACKING_READ_ENABLED: "true" },
+    "SUBSCRIPTION_STACKING_PRODUCTION_READ_BLOCKED",
+    "read"
+  );
+  assertProductionModeBlocked(
+    {
+      NODE_ENV: "development",
+      RAILWAY_ENVIRONMENT_NAME: "production",
+      SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
+    },
+    "SUBSCRIPTION_STACKING_PRODUCTION_SHADOW_BLOCKED",
+    "shadow"
+  );
   assert.doesNotThrow(() => assertSubscriptionStackingProductionSafety({
     NODE_ENV: "production",
+    SUBSCRIPTION_STACKING_SHADOW_ENABLED: "false",
+    SUBSCRIPTION_STACKING_READ_ENABLED: "false",
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "false",
   }));
 }
@@ -189,7 +211,7 @@ function testPlannedPickupInstallerIsInert() {
 }
 
 async function run() {
-  testProductionWriteAlwaysBlocked();
+  testProductionRolloutAlwaysBlocked();
   testRolloutPolicyFailsClosed();
   await testDisabledWrappersPerformNoLookup();
   await testDirectPickupRemainsFailClosed();
