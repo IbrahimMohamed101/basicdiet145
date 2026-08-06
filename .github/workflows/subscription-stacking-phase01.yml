@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-9
+name: Subscription Stacking Phase 0-10
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/installSubscriptionStackingWriteRouter.js"
       - "src/services/installSubscriptionStackingSelectionRouter.js"
+      - "src/services/installSubscriptionStackingEntitlementRouter.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
@@ -32,6 +33,8 @@ on:
       - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
       - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
       - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
+      - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
+      - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -55,6 +58,8 @@ on:
       - "tests/subscriptionStackingPartialBalance.test.js"
       - "tests/subscriptionStackingSelectionWriteGuards.test.js"
       - "tests/subscriptionStackingSelectionRouter.test.js"
+      - "tests/subscriptionStackingFulfillmentLedger.test.js"
+      - "tests/subscriptionStackingEntitlementRouter.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -67,6 +72,7 @@ on:
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/installSubscriptionStackingWriteRouter.js"
       - "src/services/installSubscriptionStackingSelectionRouter.js"
+      - "src/services/installSubscriptionStackingEntitlementRouter.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
@@ -87,6 +93,8 @@ on:
       - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
       - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
       - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
+      - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
+      - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -110,6 +118,8 @@ on:
       - "tests/subscriptionStackingPartialBalance.test.js"
       - "tests/subscriptionStackingSelectionWriteGuards.test.js"
       - "tests/subscriptionStackingSelectionRouter.test.js"
+      - "tests/subscriptionStackingFulfillmentLedger.test.js"
+      - "tests/subscriptionStackingEntitlementRouter.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -117,13 +127,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase09-${{ github.ref }}
+  group: subscription-stacking-phase10-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 105
 
     steps:
       - name: Checkout
@@ -203,6 +213,12 @@ jobs:
 
       - name: Default-closed selection router contracts
         run: NODE_ENV=test node tests/subscriptionStackingSelectionRouter.test.js
+
+      - name: Fulfillment ledger transition contracts
+        run: NODE_ENV=test node tests/subscriptionStackingFulfillmentLedger.test.js
+
+      - name: Default-closed entitlement bridge contracts
+        run: NODE_ENV=test node tests/subscriptionStackingEntitlementRouter.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
