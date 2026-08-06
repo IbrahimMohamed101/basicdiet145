@@ -50,33 +50,57 @@ jobs:
           NODE_ENV=staging \
           STAGING_BASE_URL=https://basicdiet145-production-51e9.up.railway.app \
           STAGING_PAYMENT_MODE=sandbox \
+          STAGING_DATABASE_ISOLATION_CONFIRMED=true \
+          STAGING_PAYMENT_SANDBOX_CONFIRMED=true \
           MONGODB_URI=mongodb://localhost:27017/basicdiet_staging \
           SUBSCRIPTION_STACKING_SHADOW_ENABLED=true \
           SUBSCRIPTION_STACKING_READ_ENABLED=true \
           SUBSCRIPTION_STACKING_WRITE_ENABLED=true \
           SUBSCRIPTION_STACKING_SHADOW_USER_IDS=user-1 \
-          SUBSCRIPTION_STACKING_READ_USER_IDS=user-1 \
-          SUBSCRIPTION_STACKING_WRITE_USER_IDS=user-1 \
-          SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE=false \
+          SUBSCRIPTION_STACKING_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false \
           node scripts/validate-subscription-stacking-staging-env.js >/tmp/stacking-validator.out 2>/tmp/stacking-validator.err
           status=$?
           test "$status" -ne 0
           grep -q 'PRODUCTION_HOST_FORBIDDEN' /tmp/stacking-validator.err
           ! grep -q 'localhost:27017/basicdiet_staging' /tmp/stacking-validator.err
 
+      - name: Validator rejects unused rollout aliases
+        shell: bash
+        run: |
+          set +e
+          NODE_ENV=staging \
+          STAGING_BASE_URL=https://basicdiet-staging.example.com \
+          STAGING_PAYMENT_MODE=sandbox \
+          STAGING_DATABASE_ISOLATION_CONFIRMED=true \
+          STAGING_PAYMENT_SANDBOX_CONFIRMED=true \
+          MONGODB_URI=mongodb://localhost:27017/basicdiet_staging \
+          SUBSCRIPTION_STACKING_SHADOW_ENABLED=true \
+          SUBSCRIPTION_STACKING_READ_ENABLED=true \
+          SUBSCRIPTION_STACKING_WRITE_ENABLED=true \
+          SUBSCRIPTION_STACKING_SHADOW_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_READ_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_WRITE_USER_IDS=user-1 \
+          node scripts/validate-subscription-stacking-staging-env.js >/tmp/stacking-validator-alias.out 2>/tmp/stacking-validator-alias.err
+          status=$?
+          test "$status" -ne 0
+          grep -q 'UNUSED_ROLLOUT_VARIABLES_CONFIGURED' /tmp/stacking-validator-alias.err
+
       - name: Validator accepts isolated sandbox configuration
         run: |
           NODE_ENV=staging \
           STAGING_BASE_URL=https://basicdiet-staging.example.com \
           STAGING_PAYMENT_MODE=sandbox \
+          STAGING_DATABASE_ISOLATION_CONFIRMED=true \
+          STAGING_PAYMENT_SANDBOX_CONFIRMED=true \
           MONGODB_URI=mongodb://local-user:local-secret@localhost:27017/basicdiet_staging \
           SUBSCRIPTION_STACKING_SHADOW_ENABLED=true \
           SUBSCRIPTION_STACKING_READ_ENABLED=true \
           SUBSCRIPTION_STACKING_WRITE_ENABLED=true \
           SUBSCRIPTION_STACKING_SHADOW_USER_IDS=user-1 \
-          SUBSCRIPTION_STACKING_READ_USER_IDS=user-1 \
-          SUBSCRIPTION_STACKING_WRITE_USER_IDS=user-1 \
-          SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE=false \
+          SUBSCRIPTION_STACKING_USER_IDS=user-1 \
+          SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false \
           node scripts/validate-subscription-stacking-staging-env.js >/tmp/stacking-validator-safe.out
           grep -q '"ok": true' /tmp/stacking-validator-safe.out
           ! grep -q 'local-secret' /tmp/stacking-validator-safe.out
