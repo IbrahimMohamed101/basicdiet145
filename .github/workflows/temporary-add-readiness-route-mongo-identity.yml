@@ -1,0 +1,46 @@
+name: Temporary Add Readiness Route Mongo Identity
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-remote-certification-20260806
+    paths:
+      - ".github/workflows/temporary-add-readiness-route-mongo-identity.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/subscription-stacking-remote-certification-20260806
+          fetch-depth: 0
+      - name: Add exact test Mongo URI
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'tests/subscriptionStackingRemoteReadinessRoute.test.js';
+          const before = fs.readFileSync(path, 'utf8');
+          const from = 'process.env.APP_ENV = "staging";';
+          const to = `${from}\nprocess.env.MONGODB_URI = "mongodb://staging-db.example.com:27017/basicdiet_staging";`;
+          const count = before.split(from).length - 1;
+          if (count !== 1) throw new Error(`Expected one APP_ENV line, found ${count}`);
+          if (before.includes('staging-db.example.com:27017/basicdiet_staging')) {
+            throw new Error('Mongo identity line already exists');
+          }
+          fs.writeFileSync(path, before.replace(from, to));
+          NODE
+          git diff --check
+      - name: Commit guarded patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/subscriptionStackingRemoteReadinessRoute.test.js
+          git commit -m "test: provide route readiness Mongo identity"
+          git push origin HEAD:feat/subscription-stacking-remote-certification-20260806
