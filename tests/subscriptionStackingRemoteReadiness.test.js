@@ -68,7 +68,7 @@ function run() {
     globalObject: {},
   });
   assert.strictEqual(missingDatabaseAttestation.certification.readProbeReady, false);
-  assert(missingDatabaseAttestation.certification.baseMealCanaryReady, false);
+  assert.strictEqual(missingDatabaseAttestation.certification.baseMealCanaryReady, false);
   assert(missingDatabaseAttestation.certification.blockedReasons.includes("database_isolation_not_attested"));
 
   const missingDatabaseIdentity = buildSubscriptionStackingRemoteReadiness({
