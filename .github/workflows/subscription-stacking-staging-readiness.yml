@@ -63,7 +63,7 @@ jobs:
           status=$?
           test "$status" -ne 0
           grep -q 'PRODUCTION_HOST_FORBIDDEN' /tmp/stacking-validator.err
-          ! grep -q 'localhost:27017/basicdiet_staging' /tmp/stacking-validator.err
+          ! grep -q 'mongodb://' /tmp/stacking-validator.err
 
       - name: Validator rejects unused rollout aliases
         shell: bash
@@ -86,6 +86,7 @@ jobs:
           status=$?
           test "$status" -ne 0
           grep -q 'UNUSED_ROLLOUT_VARIABLES_CONFIGURED' /tmp/stacking-validator-alias.err
+          ! grep -q 'mongodb://' /tmp/stacking-validator-alias.err
 
       - name: Validator accepts isolated sandbox configuration
         run: |
@@ -103,4 +104,5 @@ jobs:
           SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false \
           node scripts/validate-subscription-stacking-staging-env.js >/tmp/stacking-validator-safe.out
           grep -q '"ok": true' /tmp/stacking-validator-safe.out
-          ! grep -q 'localhost:27017/basicdiet_staging' /tmp/stacking-validator-safe.out
+          grep -q '"fingerprint": "localhost:27017/basicdiet_staging"' /tmp/stacking-validator-safe.out
+          ! grep -q 'mongodb://' /tmp/stacking-validator-safe.out
