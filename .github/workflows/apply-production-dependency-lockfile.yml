@@ -56,9 +56,15 @@ jobs:
           set -e
           echo "npm audit fix exit status: $audit_fix_status"
 
+          changed_files="$(git diff --name-only | sort)"
+          actual_sha="$(sha256sum package-lock.json | awk '{print $1}')"
+          echo "Changed files after generation:"
+          printf '%s\n' "$changed_files"
+          echo "Generated package-lock SHA256: $actual_sha"
+
           cmp --silent package.json /tmp/package.before.json
-          test "$(git diff --name-only | sort)" = "package-lock.json"
-          echo "79df717dd28d1986e50af7b3767aee38903a13630c700b49b0d2c9a5608b2383  package-lock.json" | sha256sum --check --strict
+          test "$changed_files" = "package-lock.json"
+          test "$actual_sha" = "79df717dd28d1986e50af7b3767aee38903a13630c700b49b0d2c9a5608b2383"
 
       - name: Reinstall exact verified lockfile
         run: npm ci
