@@ -1,6 +1,9 @@
 "use strict";
 
 const {
+  buildMongoDeploymentIdentityHash,
+} = require("../../utils/mongoDeploymentIdentity");
+const {
   resolveProductionEnvironment,
 } = require("./subscriptionStackingProductionSafetyService");
 const {
@@ -41,14 +44,23 @@ function resolveDeploymentSafetyAttestation(env = process.env) {
   const databaseIsolationConfirmed = isEnabled(env.STAGING_DATABASE_ISOLATION_CONFIRMED);
   const paymentSandboxConfirmed = isEnabled(env.STAGING_PAYMENT_SANDBOX_CONFIRMED);
   const safePaymentMode = SAFE_STAGING_PAYMENT_MODES.has(paymentMode);
+  const mongoUri = env.MONGO_URI || env.MONGODB_URI || env.MONGO_URL || "";
+  const databaseIdentityHash = buildMongoDeploymentIdentityHash(mongoUri);
+  const databaseIdentityAvailable = Boolean(databaseIdentityHash);
 
   return {
     databaseIsolationConfirmed,
+    databaseIdentityAvailable,
+    databaseIdentityHash,
     paymentSandboxConfirmed,
     paymentMode: paymentMode || null,
     safePaymentMode,
-    readSafe: databaseIsolationConfirmed,
-    writeSafe: databaseIsolationConfirmed && paymentSandboxConfirmed && safePaymentMode,
+    readSafe: databaseIsolationConfirmed && databaseIdentityAvailable,
+    writeSafe:
+      databaseIsolationConfirmed
+      && databaseIdentityAvailable
+      && paymentSandboxConfirmed
+      && safePaymentMode,
   };
 }
 
@@ -136,6 +148,7 @@ function buildSubscriptionStackingRemoteReadiness({
         environment.production ? "production_environment" : null,
         !deploymentCommitSha ? "deployment_commit_not_exposed" : null,
         !deploymentSafety.databaseIsolationConfirmed ? "database_isolation_not_attested" : null,
+        !deploymentSafety.databaseIdentityAvailable ? "database_identity_unavailable" : null,
         !deploymentSafety.paymentSandboxConfirmed ? "payment_sandbox_not_attested" : null,
         !deploymentSafety.safePaymentMode ? "unsafe_or_missing_payment_mode" : null,
         !shadowEnabledForUser ? "shadow_not_enabled_for_user" : null,
