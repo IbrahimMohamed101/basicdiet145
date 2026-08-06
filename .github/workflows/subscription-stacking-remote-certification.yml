@@ -1,0 +1,179 @@
+name: Subscription Stacking Remote Certification
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-remote-certification-20260806
+    paths:
+      - "src/services/subscription/subscriptionStackingRemoteReadinessService.js"
+      - "src/services/installSubscriptionStackingRemoteReadinessRoute.js"
+      - "src/index.js"
+      - "scripts/run-subscription-stacking-remote-certification.js"
+      - "tests/subscriptionStackingRemoteReadiness.test.js"
+      - "tests/subscriptionStackingRemoteCertification.test.js"
+      - ".github/workflows/subscription-stacking-remote-certification.yml"
+  pull_request:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/services/subscription/subscriptionStackingRemoteReadinessService.js"
+      - "src/services/installSubscriptionStackingRemoteReadinessRoute.js"
+      - "src/index.js"
+      - "scripts/run-subscription-stacking-remote-certification.js"
+      - "tests/subscriptionStackingRemoteReadiness.test.js"
+      - "tests/subscriptionStackingRemoteCertification.test.js"
+      - ".github/workflows/subscription-stacking-remote-certification.yml"
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Certification phase
+        required: true
+        type: choice
+        options:
+          - read
+          - initiate
+          - verify
+        default: read
+      checkout_draft_id:
+        description: Draft ID produced by initiate; required for verify
+        required: false
+        type: string
+      idempotency_key:
+        description: Optional fixed idempotency key for initiate
+        required: false
+        type: string
+      subscription_id:
+        description: Optional expected parent subscription ID
+        required: false
+        type: string
+      expected_remaining_meals:
+        description: Exact remaining balance expected after verify
+        required: false
+        type: string
+      target_date:
+        description: Timeline date to verify in YYYY-MM-DD
+        required: false
+        type: string
+      expected_required_meals:
+        description: Required meal slots expected for target date
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Remote readiness policy contracts
+        run: NODE_ENV=test node tests/subscriptionStackingRemoteReadiness.test.js
+
+      - name: Remote certification runner contracts
+        run: NODE_ENV=test node tests/subscriptionStackingRemoteCertification.test.js
+
+      - name: Startup composition and syntax
+        run: |
+          node --check src/services/subscription/subscriptionStackingRemoteReadinessService.js
+          node --check src/services/installSubscriptionStackingRemoteReadinessRoute.js
+          node --check scripts/run-subscription-stacking-remote-certification.js
+          node --check src/index.js
+          NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
+      - name: Current subscription regression
+        run: npm run test:current-subscription
+
+  remote-certification:
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: subscription-stacking-staging
+
+    env:
+      NODE_ENV: staging
+      APP_ENV: staging
+      STAGING_BASE_URL: ${{ secrets.STACKING_STAGING_BASE_URL }}
+      STAGING_PAYMENT_MODE: sandbox
+      STAGING_DATABASE_ISOLATION_CONFIRMED: "true"
+      STAGING_PAYMENT_SANDBOX_CONFIRMED: "true"
+      MONGODB_URI: ${{ secrets.STACKING_STAGING_MONGODB_URI }}
+      SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true"
+      SUBSCRIPTION_STACKING_READ_ENABLED: "true"
+      SUBSCRIPTION_STACKING_WRITE_ENABLED: "true"
+      SUBSCRIPTION_STACKING_SHADOW_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
+      SUBSCRIPTION_STACKING_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
+      SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "false"
+      STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
+      STAGING_CHECKOUT_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_CHECKOUT_PAYLOAD_JSON }}
+      STAGING_CERTIFICATION_PHASE: ${{ inputs.phase }}
+      STAGING_CHECKOUT_DRAFT_ID: ${{ inputs.checkout_draft_id }}
+      STAGING_CHECKOUT_IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
+      STAGING_SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
+      STAGING_EXPECTED_REMAINING_MEALS: ${{ inputs.expected_remaining_meals }}
+      STAGING_TARGET_DATE: ${{ inputs.target_date }}
+      STAGING_EXPECTED_REQUIRED_MEALS: ${{ inputs.expected_required_meals }}
+      STAGING_CERTIFICATION_OUTPUT: artifacts/subscription-stacking-remote-certification.json
+      STAGING_REQUEST_TIMEOUT_MS: "20000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Reject unsafe staging configuration
+        run: node scripts/validate-subscription-stacking-staging-env.js
+
+      - name: Run remote certification phase
+        run: node scripts/run-subscription-stacking-remote-certification.js
+
+      - name: Publish certification summary
+        if: success()
+        shell: bash
+        run: |
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const evidence = JSON.parse(fs.readFileSync('artifacts/subscription-stacking-remote-certification.json', 'utf8'));
+          console.log('# Subscription Stacking Remote Certification');
+          console.log('');
+          console.log(`- Phase: **${evidence.phase}**`);
+          console.log(`- Passed: **${evidence.passed}**`);
+          console.log(`- Target: \`${evidence.target.origin}\``);
+          console.log(`- Deployment commit: \`${evidence.target.deploymentCommitSha || 'not exposed'}\``);
+          console.log(`- Before remaining meals: **${evidence.before.remainingMeals ?? 'n/a'}**`);
+          if (evidence.after) console.log(`- After remaining meals: **${evidence.after.remainingMeals ?? 'n/a'}**`);
+          if (evidence.mutation && evidence.mutation.maskedCheckoutDraftId) {
+            console.log(`- Draft: \`${evidence.mutation.maskedCheckoutDraftId}\``);
+          }
+          NODE
+
+      - name: Upload certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-stacking-remote-certification-${{ inputs.phase }}-${{ github.run_id }}
+          path: artifacts/subscription-stacking-remote-certification.json
+          if-no-files-found: warn
+          retention-days: 30
