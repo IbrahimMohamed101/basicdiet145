@@ -38,9 +38,14 @@ jobs:
         shell: bash
         run: |
           cp package-lock.json package-lock.before.json
+          set +e
           npm audit fix --package-lock-only --omit=dev
+          audit_fix_status=$?
+          set -e
+          echo "npm audit fix exit status: $audit_fix_status"
           git diff --exit-code -- package.json
           git diff -- package-lock.json > dependency-fix.diff
+          test -s dependency-fix.diff
 
       - name: Reinstall proposed lockfile
         run: npm ci
@@ -74,7 +79,7 @@ jobs:
           if (blocked.length > 0) process.exit(1);
           NODE
           if [ "$status" -ne 0 ]; then
-            echo "npm audit returned findings; High/Critical classification is enforced above."
+            echo "npm audit returned non-blocking findings below High severity."
           fi
 
       - name: Stacking security matrix
