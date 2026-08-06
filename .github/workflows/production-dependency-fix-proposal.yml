@@ -18,8 +18,8 @@ permissions:
 
 jobs:
   lockfile-proposal:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -97,7 +97,21 @@ jobs:
       - name: Current subscription regression gate
         run: npm run test:current-subscription
 
+      - name: Start isolated MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh basicdiet-dependency-proposal-mongo
+
+      - name: Normalize isolated integration database names
+        run: |
+          sed -i 's/checkout_integration_/checkout_integration_test_/g' tests/checkout.integration.test.js
+          sed -i 's/meal_planner_integration_/meal_planner_integration_test_/g' tests/mealPlanner.integration.test.js
+
       - name: Premium lifecycle regression gate
+        env:
+          USE_MONGODB_MEMORY_REPLSET: "true"
+          MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_dependency_proposal_test?replicaSet=rs0
+          MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_dependency_proposal_test?replicaSet=rs0
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_dependency_proposal_test?replicaSet=rs0
+          NODE_ENV: test
         run: npm run test:premium-lifecycle
 
       - name: Upload proposal evidence
