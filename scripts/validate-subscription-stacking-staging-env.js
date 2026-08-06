@@ -7,6 +7,12 @@ const PRODUCTION_HOSTS = new Set([
   "clientdashbourd-production.up.railway.app",
 ]);
 const SAFE_PAYMENT_MODES = new Set(["sandbox", "mock", "test"]);
+const PRODUCTION_ENVIRONMENT_NAMES = new Set(["production", "prod", "live"]);
+const UNUSED_ROLLOUT_VARIABLES = [
+  "SUBSCRIPTION_STACKING_READ_USER_IDS",
+  "SUBSCRIPTION_STACKING_WRITE_USER_IDS",
+  "SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE",
+];
 
 function isEnabled(value) {
   return String(value || "").trim().toLowerCase() === "true";
@@ -72,6 +78,19 @@ function createValidationError(violations, summary) {
   return err;
 }
 
+function resolveProductionLikeEnvironment(env) {
+  const candidates = [
+    ["NODE_ENV", env.NODE_ENV],
+    ["APP_ENV", env.APP_ENV],
+    ["ENVIRONMENT", env.ENVIRONMENT],
+    ["DEPLOY_ENV", env.DEPLOY_ENV],
+    ["RAILWAY_ENVIRONMENT_NAME", env.RAILWAY_ENVIRONMENT_NAME],
+  ];
+  return candidates.find(([, value]) => (
+    PRODUCTION_ENVIRONMENT_NAMES.has(String(value || "").trim().toLowerCase())
+  )) || null;
+}
+
 function validateSubscriptionStackingStagingEnv(env = process.env) {
   const violations = [];
   const warnings = [];
@@ -82,24 +101,34 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
   const readEnabled = isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED);
   const writeEnabled = isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED);
   const shadowEnabled = isEnabled(env.SUBSCRIPTION_STACKING_SHADOW_ENABLED);
-  const wildcardWriteOverride = isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE);
-  const readUsers = parseCsv(env.SUBSCRIPTION_STACKING_READ_USER_IDS);
-  const writeUsers = parseCsv(env.SUBSCRIPTION_STACKING_WRITE_USER_IDS);
+  const allowAllUsers = isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS);
+  const rolloutUsers = parseCsv(env.SUBSCRIPTION_STACKING_USER_IDS);
   const shadowUsers = parseCsv(env.SUBSCRIPTION_STACKING_SHADOW_USER_IDS);
   const mongoIdentity = safeMongoIdentity(env.MONGODB_URI || env.MONGO_URI);
+  const productionEnvironment = resolveProductionLikeEnvironment(env);
+  const databaseIsolationConfirmed = isEnabled(env.STAGING_DATABASE_ISOLATION_CONFIRMED);
+  const paymentSandboxConfirmed = isEnabled(env.STAGING_PAYMENT_SANDBOX_CONFIRMED);
+  const unusedConfiguredVariables = UNUSED_ROLLOUT_VARIABLES.filter((name) => (
+    String(env[name] || "").trim() !== ""
+  ));
 
-  if (PRODUCTION_HOSTS.has(hostname)) {
+  if (
+    PRODUCTION_HOSTS.has(hostname)
+    || hostname.includes("production")
+    || hostname.startsWith("prod.")
+    || hostname.includes("-prod.")
+  ) {
     violations.push({
       code: "PRODUCTION_HOST_FORBIDDEN",
       field: "STAGING_BASE_URL",
       value: hostname,
     });
   }
-  if (nodeEnv === "production") {
+  if (productionEnvironment) {
     violations.push({
-      code: "PRODUCTION_NODE_ENV_FORBIDDEN",
-      field: "NODE_ENV",
-      value: nodeEnv,
+      code: "PRODUCTION_ENVIRONMENT_FORBIDDEN",
+      field: productionEnvironment[0],
+      value: String(productionEnvironment[1] || "").trim().toLowerCase(),
     });
   }
   if (!SAFE_PAYMENT_MODES.has(paymentMode)) {
@@ -107,6 +136,18 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
       code: "UNSAFE_PAYMENT_MODE",
       field: "STAGING_PAYMENT_MODE",
       allowed: Array.from(SAFE_PAYMENT_MODES),
+    });
+  }
+  if (!databaseIsolationConfirmed) {
+    violations.push({
+      code: "DATABASE_ISOLATION_CONFIRMATION_REQUIRED",
+      field: "STAGING_DATABASE_ISOLATION_CONFIRMED",
+    });
+  }
+  if (writeEnabled && !paymentSandboxConfirmed) {
+    violations.push({
+      code: "PAYMENT_SANDBOX_CONFIRMATION_REQUIRED",
+      field: "STAGING_PAYMENT_SANDBOX_CONFIRMED",
     });
   }
   if (!env.MONGODB_URI && !env.MONGO_URI) {
@@ -137,6 +178,17 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
     }
   }
 
+  if (unusedConfiguredVariables.length > 0) {
+    violations.push({
+      code: "UNUSED_ROLLOUT_VARIABLES_CONFIGURED",
+      fields: unusedConfiguredVariables,
+      requiredRuntimeVariables: [
+        "SUBSCRIPTION_STACKING_USER_IDS",
+        "SUBSCRIPTION_STACKING_SHADOW_USER_IDS",
+        "SUBSCRIPTION_STACKING_ALLOW_ALL_USERS",
+      ],
+    });
+  }
   if (writeEnabled && !readEnabled) {
     violations.push({
       code: "WRITE_REQUIRES_READ",
@@ -149,43 +201,45 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
       field: "SUBSCRIPTION_STACKING_SHADOW_ENABLED",
     });
   }
-  if (writeEnabled && writeUsers.length !== 1) {
+  if ((readEnabled || writeEnabled) && rolloutUsers.length === 0) {
     violations.push({
-      code: "INITIAL_WRITE_REQUIRES_EXACTLY_ONE_USER",
-      field: "SUBSCRIPTION_STACKING_WRITE_USER_IDS",
-      count: writeUsers.length,
+      code: "ROLLOUT_ALLOWLIST_REQUIRED",
+      field: "SUBSCRIPTION_STACKING_USER_IDS",
     });
   }
-  if (writeUsers.includes("*") || readUsers.includes("*") || shadowUsers.includes("*")) {
+  if (shadowEnabled && shadowUsers.length === 0) {
+    violations.push({
+      code: "SHADOW_ALLOWLIST_REQUIRED",
+      field: "SUBSCRIPTION_STACKING_SHADOW_USER_IDS",
+    });
+  }
+  if (writeEnabled && rolloutUsers.length !== 1) {
+    violations.push({
+      code: "INITIAL_WRITE_REQUIRES_EXACTLY_ONE_USER",
+      field: "SUBSCRIPTION_STACKING_USER_IDS",
+      count: rolloutUsers.length,
+    });
+  }
+  if (rolloutUsers.includes("*") || shadowUsers.includes("*")) {
     violations.push({
       code: "WILDCARD_ROLLOUT_FORBIDDEN",
       fields: [
         "SUBSCRIPTION_STACKING_SHADOW_USER_IDS",
-        "SUBSCRIPTION_STACKING_READ_USER_IDS",
-        "SUBSCRIPTION_STACKING_WRITE_USER_IDS",
+        "SUBSCRIPTION_STACKING_USER_IDS",
       ],
     });
   }
-  if (wildcardWriteOverride) {
+  if (allowAllUsers) {
     violations.push({
-      code: "WILDCARD_WRITE_OVERRIDE_FORBIDDEN",
-      field: "SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE",
+      code: "ALLOW_ALL_USERS_FORBIDDEN",
+      field: "SUBSCRIPTION_STACKING_ALLOW_ALL_USERS",
     });
   }
-  if (writeEnabled) {
-    const writeUser = writeUsers[0];
-    if (!readUsers.includes(writeUser)) {
-      violations.push({
-        code: "WRITE_USER_MISSING_FROM_READ_ALLOWLIST",
-        userId: writeUser,
-      });
-    }
-    if (!shadowUsers.includes(writeUser)) {
-      violations.push({
-        code: "WRITE_USER_MISSING_FROM_SHADOW_ALLOWLIST",
-        userId: writeUser,
-      });
-    }
+  if (writeEnabled && rolloutUsers.length === 1 && !shadowUsers.includes(rolloutUsers[0])) {
+    violations.push({
+      code: "ROLLOUT_USER_MISSING_FROM_SHADOW_ALLOWLIST",
+      userId: rolloutUsers[0],
+    });
   }
 
   if (baseUrl.protocol !== "https:") {
@@ -213,11 +267,14 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
     nodeEnv,
     baseUrl: `${baseUrl.protocol}//${hostname}`,
     paymentMode,
+    databaseIsolationConfirmed,
+    paymentSandboxConfirmed,
     shadowEnabled,
     readEnabled,
     writeEnabled,
-    rolloutUserCount: writeUsers.length,
-    rolloutUserId: writeUsers[0] || null,
+    rolloutUserCount: rolloutUsers.length,
+    rolloutUserId: rolloutUsers.length === 1 ? rolloutUsers[0] : null,
+    shadowUserCount: shadowUsers.length,
     database: mongoIdentity
       ? {
         host: mongoIdentity.host,
@@ -252,7 +309,9 @@ if (require.main === module) {
 module.exports = {
   PRODUCTION_HOSTS,
   SAFE_PAYMENT_MODES,
+  UNUSED_ROLLOUT_VARIABLES,
   parseCsv,
+  resolveProductionLikeEnvironment,
   safeMongoIdentity,
   validateSubscriptionStackingStagingEnv,
 };
