@@ -158,6 +158,7 @@ async function testImmediateMixedGramPurchaseStacksWithoutCancelingContainer() {
   const container = buildContainer();
   const { draft, payment, subscriptionPayload } = buildPaidPurchase(container);
   const { runtime, batches, calls } = createRuntime({ container });
+  const now = new Date("2026-08-06T12:00:00+03:00");
 
   const result = await activatePaidDraftIntoExistingContainerTransactional({
     draft,
@@ -165,6 +166,7 @@ async function testImmediateMixedGramPurchaseStacksWithoutCancelingContainer() {
     subscriptionPayload,
     businessDate: "2026-08-06",
     session: transactionalSession(),
+    now,
     runtime,
   });
 
@@ -178,6 +180,9 @@ async function testImmediateMixedGramPurchaseStacksWithoutCancelingContainer() {
   assert.strictEqual(batches[1].remainingMeals, 52);
   assert.strictEqual(batches[1].proteinGrams, 150);
   assert.strictEqual(batches[1].status, "active");
+  assert.strictEqual(batches[1].applicationState, "applied");
+  assert.strictEqual(batches[1].appliedAt, now);
+  assert.strictEqual(batches[1].activatedAt, now);
   assert.strictEqual(result.schedule.mixedProteinGrams, true);
   assert.strictEqual(result.schedule.effectiveStartDate, "2026-08-06");
   assert.deepStrictEqual(calls.requestedDates, ["2026-08-06"]);
@@ -226,6 +231,8 @@ async function testFuturePurchaseExtendsHorizonButDoesNotExposeBalanceEarly() {
 
   assert.strictEqual(result.schedule.shouldExposeBalanceNow, false);
   assert.strictEqual(result.purchaseBatch.status, "paid_scheduled");
+  assert.strictEqual(result.purchaseBatch.applicationState, "applied");
+  assert.strictEqual(result.purchaseBatch.activatedAt, null);
   assert.strictEqual(batches.length, 2);
   const mirror = calls.containerUpdates[0];
   assert.strictEqual(mirror.totalMeals, 27);

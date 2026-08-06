@@ -323,10 +323,21 @@ async function activatePaidDraftIntoExistingContainerTransactional({
     businessDate,
     requestedStartDay,
   });
-  const scheduledPurchasePayload = applyResolvedScheduleToBatchPayload(
+  const resolvedPurchasePayload = applyResolvedScheduleToBatchPayload(
     purchasePayload,
     schedule
   );
+  // Activation is enclosed by a mandatory MongoDB transaction. Stamp the
+  // purchase batch as applied before persistence so the audit state commits
+  // atomically with the parent mirror, draft, payment, and materialized days.
+  // If any later step fails, the transaction rolls the batch back as well.
+  const scheduledPurchasePayload = {
+    ...resolvedPurchasePayload,
+    applicationState: "applied",
+    applicationError: "",
+    appliedAt: now,
+    activatedAt: resolvedPurchasePayload.status === "active" ? now : null,
+  };
   const purchaseResult = await runtime.ensureBatchByPayload({
     payload: scheduledPurchasePayload,
     session,

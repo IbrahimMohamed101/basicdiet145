@@ -26,7 +26,9 @@ async function createPaidDraftPayment({ userId, planId, suffix }) {
     daysCount: 3,
     grams: 150,
     mealsPerDay: 1,
-    startDate: new Date("2026-08-01T00:00:00.000Z"),
+    // Keep the replacement days unambiguously in the future so the test does
+    // not change meaning as wall-clock time advances.
+    startDate: new Date("2099-08-01T00:00:00.000Z"),
     delivery: {
       type: "pickup",
       pickupLocationId: "main",
@@ -191,10 +193,18 @@ async function run() {
     activateInTransaction({ draftId: second.draft._id, paymentId: second.payment._id }),
   ]);
 
-  const activeCount = await Subscription.countDocuments({ userId, status: "active" });
-  const canceledCount = await Subscription.countDocuments({ userId, status: "canceled" });
-  const totalSubs = await Subscription.countDocuments({ userId });
-  const dayCount = await SubscriptionDay.countDocuments({});
+  const concurrentSubscriptions = await Subscription.find({ userId }).lean();
+  const activeSubscriptions = concurrentSubscriptions.filter((row) => row.status === "active");
+  const canceledSubscriptions = concurrentSubscriptions.filter((row) => row.status === "canceled");
+  const activeCount = activeSubscriptions.length;
+  const canceledCount = canceledSubscriptions.length;
+  const totalSubs = concurrentSubscriptions.length;
+  const activeDayCount = activeSubscriptions.length === 1
+    ? await SubscriptionDay.countDocuments({ subscriptionId: activeSubscriptions[0]._id })
+    : -1;
+  const canceledDayCount = canceledSubscriptions.length === 1
+    ? await SubscriptionDay.countDocuments({ subscriptionId: canceledSubscriptions[0]._id })
+    : -1;
 
   if (activeCount !== 1) {
     console.error(JSON.stringify({
@@ -204,14 +214,16 @@ async function run() {
       activeCount,
       canceledCount,
       totalSubs,
-      dayCount,
+      activeDayCount,
+      canceledDayCount,
     }, null, 2));
   }
 
   assert.strictEqual(activeCount, 1, "concurrent paid activations leave exactly one active subscription");
   assert.strictEqual(totalSubs, 2, "both paid activations remain as accounting history");
   assert.strictEqual(canceledCount, 1, "the superseded activation is canceled");
-  assert.strictEqual(dayCount, 3, "cancellation policy removes superseded future open days");
+  assert.strictEqual(activeDayCount, 3, "winning activation keeps its three future days");
+  assert.strictEqual(canceledDayCount, 0, "cancellation policy removes superseded future open days");
   assert(results.every((entry) => entry.ok), "both retried paid activations complete");
 
   await mongoose.disconnect();
