@@ -73,6 +73,12 @@ const SubscriptionEntitlementBatchSchema = new mongoose.Schema(
     effectiveStartDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     validityEndDate: { type: Date, required: true },
+    // Immutable baseline before skip/freeze compensation. Historical batches
+    // may leave it null until their first compensation mutation, at which point
+    // the current validityEndDate is captured transactionally.
+    baseValidityEndDate: { type: Date, default: null },
+    compensationDays: { type: Number, min: 0, default: 0 },
+    compensationRevision: { type: Number, min: 0, default: 0 },
 
     daysCount: { type: Number, required: true, min: 1 },
     mealsPerDay: { type: Number, required: true, min: 1 },
@@ -128,6 +134,9 @@ SubscriptionEntitlementBatchSchema.pre("validate", function validateBatch(next) 
   const validityEndMs = this.validityEndDate
     ? new Date(this.validityEndDate).getTime()
     : Number.NaN;
+  const baseValidityEndMs = this.baseValidityEndDate
+    ? new Date(this.baseValidityEndDate).getTime()
+    : Number.NaN;
 
   if (
     Number.isFinite(effectiveStartMs)
@@ -143,6 +152,17 @@ SubscriptionEntitlementBatchSchema.pre("validate", function validateBatch(next) 
     && validityEndMs < endMs
   ) {
     this.invalidate("validityEndDate", "validityEndDate must be on or after endDate");
+  }
+
+  if (
+    Number.isFinite(baseValidityEndMs)
+    && Number.isFinite(validityEndMs)
+    && validityEndMs < baseValidityEndMs
+  ) {
+    this.invalidate(
+      "validityEndDate",
+      "validityEndDate must be on or after baseValidityEndDate"
+    );
   }
 
   const accountedMeals = [
@@ -192,6 +212,11 @@ SubscriptionEntitlementBatchSchema.index({
   containerSubscriptionId: 1,
   effectiveStartDate: 1,
   endDate: 1,
+});
+SubscriptionEntitlementBatchSchema.index({
+  containerSubscriptionId: 1,
+  compensationRevision: 1,
+  updatedAt: 1,
 });
 SubscriptionEntitlementBatchSchema.index({
   applicationState: 1,
