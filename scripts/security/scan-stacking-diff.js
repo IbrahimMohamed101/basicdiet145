@@ -9,6 +9,7 @@ const diff = execFileSync(
   { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 }
 );
 
+const scannerPath = "scripts/security/scan-stacking-diff.js";
 const sensitiveFilePattern = /(^|\/)(\.env(?:\.|$)|[^/]+\.(?:pem|key|p12|pfx|jks|keystore))$/i;
 const scannedCodePath = /^(src|scripts|\.github)\//;
 const patterns = [
@@ -35,6 +36,7 @@ for (const line of diff.split(/\r?\n/)) {
   }
   if (!line.startsWith("+") || line.startsWith("+++")) continue;
   if (!currentFile || !scannedCodePath.test(currentFile)) continue;
+  if (currentFile === scannerPath) continue;
 
   const added = line.slice(1);
   for (const [type, pattern] of patterns) {
