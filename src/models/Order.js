@@ -333,7 +333,6 @@ OrderSchema.index(
   { userId: 1, idempotencyKey: 1 },
   {
     unique: true,
-    sparse: true,
     partialFilterExpression: { idempotencyKey: { $type: "string", $ne: "" } },
   }
 );
