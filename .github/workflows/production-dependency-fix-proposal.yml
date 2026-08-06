@@ -1,0 +1,105 @@
+name: Production Dependency Fix Proposal
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - ".github/workflows/production-dependency-fix-proposal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile-proposal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install current locked dependencies
+        run: npm ci
+
+      - name: Generate non-breaking lockfile-only audit fix
+        shell: bash
+        run: |
+          cp package-lock.json package-lock.before.json
+          npm audit fix --package-lock-only --omit=dev
+          git diff --exit-code -- package.json
+          git diff -- package-lock.json > dependency-fix.diff
+
+      - name: Reinstall proposed lockfile
+        run: npm ci
+
+      - name: Audit proposed production dependencies
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --json > production-audit-after.json
+          status=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('production-audit-after.json', 'utf8'));
+          const vulnerabilities = report.vulnerabilities || {};
+          const blocked = Object.entries(vulnerabilities)
+            .filter(([, value]) => ['high', 'critical'].includes(String(value && value.severity || '')))
+            .map(([name, value]) => ({
+              name,
+              severity: value.severity,
+              direct: Boolean(value.isDirect),
+              range: String(value.range || ''),
+              fixAvailable: Boolean(value.fixAvailable),
+            }));
+          const summary = {
+            metadata: report.metadata && report.metadata.vulnerabilities || {},
+            blocked,
+          };
+          fs.writeFileSync('production-audit-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
+          console.log(JSON.stringify(summary, null, 2));
+          if (blocked.length > 0) process.exit(1);
+          NODE
+          if [ "$status" -ne 0 ]; then
+            echo "npm audit returned findings; High/Critical classification is enforced above."
+          fi
+
+      - name: Stacking security matrix
+        run: NODE_ENV=test node tests/subscriptionStackingSecurityMatrix.test.js
+
+      - name: Startup isolation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
+      - name: Existing security regression gate
+        run: npm run test:security
+
+      - name: Subscription lifecycle regression gate
+        run: npm run test:subscriptions
+
+      - name: Current subscription regression gate
+        run: npm run test:current-subscription
+
+      - name: Premium lifecycle regression gate
+        run: npm run test:premium-lifecycle
+
+      - name: Upload proposal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-dependency-fix-proposal
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            package-lock.json
+            package-lock.before.json
+            dependency-fix.diff
+            production-audit-after.json
+            production-audit-summary.json
