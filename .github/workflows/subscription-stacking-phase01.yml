@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-11
+name: Subscription Stacking Phase 0-12
 
 on:
   push:
@@ -6,126 +6,28 @@ on:
       - feat/subscription-stacking-phase-0-1-20260806
     paths:
       - "src/index.js"
-      - "src/models/SubscriptionEntitlementBatch.js"
-      - "src/models/SubscriptionEntitlementDayBlueprint.js"
-      - "src/models/SubscriptionEntitlementAllocation.js"
-      - "src/services/installSubscriptionStackingShadowProjection.js"
-      - "src/services/installSubscriptionStackingCheckoutPreflight.js"
-      - "src/services/installSubscriptionStackingWriteRouter.js"
-      - "src/services/installSubscriptionStackingSelectionRouter.js"
-      - "src/services/installSubscriptionStackingEntitlementRouter.js"
-      - "src/services/subscription/subscriptionEntitlementProjectionService.js"
-      - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
-      - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
-      - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
-      - "src/services/subscription/subscriptionStackingShadowService.js"
-      - "src/services/subscription/subscriptionStackingReadService.js"
-      - "src/services/subscription/subscriptionStackingTimelineReadService.js"
-      - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
-      - "src/services/subscription/subscriptionStackingProductionSafetyService.js"
-      - "src/services/subscription/subscriptionEntitlementLedgerService.js"
-      - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
-      - "src/services/subscription/subscriptionStackingActivationService.js"
-      - "src/services/subscription/subscriptionStackingPlanningContextService.js"
-      - "src/services/subscription/subscriptionStackingKitchenGramsService.js"
-      - "src/services/subscription/subscriptionStackingLifecycleService.js"
-      - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
-      - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
-      - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
-      - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
-      - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
-      - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
-      - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
-      - "src/services/subscription/subscriptionStackingCheckoutPreflightService.js"
+      - "src/models/SubscriptionEntitlement*.js"
+      - "src/services/installSubscriptionStacking*.js"
+      - "src/services/subscription/subscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionStacking*.js"
       - "src/utils/featureFlags.js"
-      - "tests/subscriptionStackingPhase01.test.js"
-      - "tests/subscriptionEntitlementProjection.test.js"
-      - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
-      - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
-      - "tests/subscriptionStackingShadowService.test.js"
-      - "tests/subscriptionStackingCurrentOverviewRead.test.js"
-      - "tests/subscriptionStackingTimelineRead.test.js"
-      - "tests/subscriptionStackingRolloutPolicy.test.js"
-      - "tests/subscriptionStackingProductionSafety.test.js"
-      - "tests/subscriptionEntitlementPersistenceModels.test.js"
-      - "tests/subscriptionEntitlementLedger.integration.test.js"
-      - "tests/subscriptionStackingSchedulePolicy.test.js"
-      - "tests/subscriptionStackingActivationService.test.js"
-      - "tests/subscriptionStackingPlanningContext.test.js"
-      - "tests/subscriptionStackingKitchenGrams.test.js"
-      - "tests/subscriptionStackingLifecycleService.test.js"
-      - "tests/subscriptionStackingDayMaterialization.test.js"
-      - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
-      - "tests/subscriptionStackingFinalizeRouter.test.js"
-      - "tests/subscriptionStackingPartialBalance.test.js"
-      - "tests/subscriptionStackingSelectionWriteGuards.test.js"
-      - "tests/subscriptionStackingSelectionRouter.test.js"
-      - "tests/subscriptionStackingFulfillmentLedger.test.js"
-      - "tests/subscriptionStackingEntitlementRouter.test.js"
-      - "tests/subscriptionStackingCheckoutPreflight.test.js"
+      - "tests/subscriptionEntitlement*.test.js"
+      - "tests/subscriptionEntitlement*.integration.test.js"
+      - "tests/subscriptionStacking*.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
       - main
     paths:
       - "src/index.js"
-      - "src/models/SubscriptionEntitlementBatch.js"
-      - "src/models/SubscriptionEntitlementDayBlueprint.js"
-      - "src/models/SubscriptionEntitlementAllocation.js"
-      - "src/services/installSubscriptionStackingShadowProjection.js"
-      - "src/services/installSubscriptionStackingCheckoutPreflight.js"
-      - "src/services/installSubscriptionStackingWriteRouter.js"
-      - "src/services/installSubscriptionStackingSelectionRouter.js"
-      - "src/services/installSubscriptionStackingEntitlementRouter.js"
-      - "src/services/subscription/subscriptionEntitlementProjectionService.js"
-      - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
-      - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
-      - "src/services/subscription/subscriptionEntitlementSlotBlueprintService.js"
-      - "src/services/subscription/subscriptionStackingShadowService.js"
-      - "src/services/subscription/subscriptionStackingReadService.js"
-      - "src/services/subscription/subscriptionStackingTimelineReadService.js"
-      - "src/services/subscription/subscriptionStackingRolloutPolicyService.js"
-      - "src/services/subscription/subscriptionStackingProductionSafetyService.js"
-      - "src/services/subscription/subscriptionEntitlementLedgerService.js"
-      - "src/services/subscription/subscriptionStackingSchedulePolicyService.js"
-      - "src/services/subscription/subscriptionStackingActivationService.js"
-      - "src/services/subscription/subscriptionStackingPlanningContextService.js"
-      - "src/services/subscription/subscriptionStackingKitchenGramsService.js"
-      - "src/services/subscription/subscriptionStackingLifecycleService.js"
-      - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
-      - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
-      - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
-      - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
-      - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
-      - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
-      - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
-      - "src/services/subscription/subscriptionStackingCheckoutPreflightService.js"
+      - "src/models/SubscriptionEntitlement*.js"
+      - "src/services/installSubscriptionStacking*.js"
+      - "src/services/subscription/subscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionStacking*.js"
       - "src/utils/featureFlags.js"
-      - "tests/subscriptionStackingPhase01.test.js"
-      - "tests/subscriptionEntitlementProjection.test.js"
-      - "tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js"
-      - "tests/subscriptionEntitlementBatchPersistence.integration.test.js"
-      - "tests/subscriptionStackingShadowService.test.js"
-      - "tests/subscriptionStackingCurrentOverviewRead.test.js"
-      - "tests/subscriptionStackingTimelineRead.test.js"
-      - "tests/subscriptionStackingRolloutPolicy.test.js"
-      - "tests/subscriptionStackingProductionSafety.test.js"
-      - "tests/subscriptionEntitlementPersistenceModels.test.js"
-      - "tests/subscriptionEntitlementLedger.integration.test.js"
-      - "tests/subscriptionStackingSchedulePolicy.test.js"
-      - "tests/subscriptionStackingActivationService.test.js"
-      - "tests/subscriptionStackingPlanningContext.test.js"
-      - "tests/subscriptionStackingKitchenGrams.test.js"
-      - "tests/subscriptionStackingLifecycleService.test.js"
-      - "tests/subscriptionStackingDayMaterialization.test.js"
-      - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
-      - "tests/subscriptionStackingFinalizeRouter.test.js"
-      - "tests/subscriptionStackingPartialBalance.test.js"
-      - "tests/subscriptionStackingSelectionWriteGuards.test.js"
-      - "tests/subscriptionStackingSelectionRouter.test.js"
-      - "tests/subscriptionStackingFulfillmentLedger.test.js"
-      - "tests/subscriptionStackingEntitlementRouter.test.js"
-      - "tests/subscriptionStackingCheckoutPreflight.test.js"
+      - "tests/subscriptionEntitlement*.test.js"
+      - "tests/subscriptionEntitlement*.integration.test.js"
+      - "tests/subscriptionStacking*.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -133,13 +35,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase11-${{ github.ref }}
+  group: subscription-stacking-phase12-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 110
+    timeout-minutes: 115
 
     steps:
       - name: Checkout
@@ -186,6 +88,9 @@ jobs:
 
       - name: Checkout pre-invoice safety contracts
         run: NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
+
+      - name: Unsupported stacked action guards
+        run: NODE_ENV=test node tests/subscriptionStackingUnsupportedActionGuards.test.js
 
       - name: Isolated persistence model contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementPersistenceModels.test.js
