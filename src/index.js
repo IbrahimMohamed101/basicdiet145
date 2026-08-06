@@ -9,6 +9,7 @@ const {
 assertSubscriptionStackingRolloutConfiguration(process.env);
 require("./services/installSubscriptionStackingShadowProjection");
 require("./services/installSubscriptionStackingWriteRouter");
+require("./services/installSubscriptionStackingSelectionRouter");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
 
