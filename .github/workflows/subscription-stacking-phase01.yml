@@ -1,4 +1,4 @@
-name: Subscription Stacking Phase 0-8
+name: Subscription Stacking Phase 0-9
 
 on:
   push:
@@ -11,6 +11,7 @@ on:
       - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/installSubscriptionStackingWriteRouter.js"
+      - "src/services/installSubscriptionStackingSelectionRouter.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
@@ -29,6 +30,8 @@ on:
       - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
       - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
       - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
+      - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
+      - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -49,6 +52,9 @@ on:
       - "tests/subscriptionStackingDayMaterialization.test.js"
       - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
       - "tests/subscriptionStackingFinalizeRouter.test.js"
+      - "tests/subscriptionStackingPartialBalance.test.js"
+      - "tests/subscriptionStackingSelectionWriteGuards.test.js"
+      - "tests/subscriptionStackingSelectionRouter.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
     branches:
@@ -60,6 +66,7 @@ on:
       - "src/models/SubscriptionEntitlementAllocation.js"
       - "src/services/installSubscriptionStackingShadowProjection.js"
       - "src/services/installSubscriptionStackingWriteRouter.js"
+      - "src/services/installSubscriptionStackingSelectionRouter.js"
       - "src/services/subscription/subscriptionEntitlementProjectionService.js"
       - "src/services/subscription/subscriptionEntitlementBatchFactory.js"
       - "src/services/subscription/subscriptionEntitlementBatchPersistenceService.js"
@@ -78,6 +85,8 @@ on:
       - "src/services/subscription/subscriptionStackingDayMaterializationService.js"
       - "src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js"
       - "src/services/subscription/subscriptionStackingFinalizeRouterService.js"
+      - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
+      - "src/services/subscription/subscriptionStackingSelectionRouterService.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionStackingPhase01.test.js"
       - "tests/subscriptionEntitlementProjection.test.js"
@@ -98,6 +107,9 @@ on:
       - "tests/subscriptionStackingDayMaterialization.test.js"
       - "tests/subscriptionStackingPaidDraftOrchestrator.test.js"
       - "tests/subscriptionStackingFinalizeRouter.test.js"
+      - "tests/subscriptionStackingPartialBalance.test.js"
+      - "tests/subscriptionStackingSelectionWriteGuards.test.js"
+      - "tests/subscriptionStackingSelectionRouter.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
 
@@ -105,13 +117,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: subscription-stacking-phase08-${{ github.ref }}
+  group: subscription-stacking-phase09-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safety-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 95
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -131,6 +143,9 @@ jobs:
 
       - name: Phase 2 shadow projection contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementProjection.test.js
+
+      - name: Partial final balance contracts
+        run: NODE_ENV=test node tests/subscriptionStackingPartialBalance.test.js
 
       - name: Batch factory and slot blueprint contracts
         run: NODE_ENV=test node tests/subscriptionEntitlementBatchFactoryAndBlueprint.test.js
@@ -182,6 +197,12 @@ jobs:
 
       - name: Default-closed finalize router contracts
         run: NODE_ENV=test node tests/subscriptionStackingFinalizeRouter.test.js
+
+      - name: Selection write safety guards
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionWriteGuards.test.js
+
+      - name: Default-closed selection router contracts
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionRouter.test.js
 
       - name: Current subscription regression gate
         run: npm run test:current-subscription
