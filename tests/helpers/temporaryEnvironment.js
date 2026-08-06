@@ -1,5 +1,13 @@
 "use strict";
 
+const entrypoint = String(process.argv[1] || "").replace(/\\/g, "/");
+if (entrypoint.endsWith("/tests/subscriptionBalancePolicy.test.js")) {
+  // This test starts a fresh MongoMemory replica set and immediately exercises
+  // multi-document transactions. Await every registered collection/index before
+  // mongoose.connect resolves so catalog creation cannot race the freeze flow.
+  require("./mongoCatalogStability");
+}
+
 function captureEnvironment(variableNames) {
   return new Map(variableNames.map((name) => [
     name,
