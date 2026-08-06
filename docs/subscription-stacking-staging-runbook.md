@@ -1,7 +1,9 @@
 # Subscription Stacking — Safe Staging Runbook
 
 > This runbook is intentionally non-production. The current code hard-blocks
-> `SUBSCRIPTION_STACKING_WRITE_ENABLED=true` when `NODE_ENV=production`.
+> `SUBSCRIPTION_STACKING_SHADOW_ENABLED=true`,
+> `SUBSCRIPTION_STACKING_READ_ENABLED=true`, or
+> `SUBSCRIPTION_STACKING_WRITE_ENABLED=true` in production-like environments.
 
 ## 1. Preconditions
 
@@ -20,8 +22,26 @@ Do not start a remote write test until all conditions are true:
 - The user ID is known before configuring the allowlists.
 - Premium items and add-ons are removed from the staging purchase scenario.
 - Direct pickup reservation, freeze, cancellation, and skip range are not used.
+- `STAGING_DATABASE_ISOLATION_CONFIRMED=true` is set only after database separation is verified.
+- `STAGING_PAYMENT_SANDBOX_CONFIRMED=true` is set only after provider sandbox/mock mode is verified.
 
 Stop immediately if database isolation or payment mode cannot be proven.
+
+The application runtime uses these rollout variables exactly:
+
+```text
+SUBSCRIPTION_STACKING_SHADOW_USER_IDS
+SUBSCRIPTION_STACKING_USER_IDS
+SUBSCRIPTION_STACKING_ALLOW_ALL_USERS
+```
+
+Do not use these obsolete aliases; the readiness validator rejects them:
+
+```text
+SUBSCRIPTION_STACKING_READ_USER_IDS
+SUBSCRIPTION_STACKING_WRITE_USER_IDS
+SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE
+```
 
 ## 2. First deployment — everything closed
 
@@ -32,9 +52,8 @@ SUBSCRIPTION_STACKING_SHADOW_ENABLED=false
 SUBSCRIPTION_STACKING_READ_ENABLED=false
 SUBSCRIPTION_STACKING_WRITE_ENABLED=false
 SUBSCRIPTION_STACKING_SHADOW_USER_IDS=
-SUBSCRIPTION_STACKING_READ_USER_IDS=
-SUBSCRIPTION_STACKING_WRITE_USER_IDS=
-SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE=false
+SUBSCRIPTION_STACKING_USER_IDS=
+SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false
 ```
 
 Required checks:
@@ -54,6 +73,8 @@ SUBSCRIPTION_STACKING_SHADOW_ENABLED=true
 SUBSCRIPTION_STACKING_READ_ENABLED=false
 SUBSCRIPTION_STACKING_WRITE_ENABLED=false
 SUBSCRIPTION_STACKING_SHADOW_USER_IDS=<TEST_USER_ID>
+SUBSCRIPTION_STACKING_USER_IDS=
+SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false
 ```
 
 Check logs for:
@@ -77,7 +98,8 @@ SUBSCRIPTION_STACKING_SHADOW_ENABLED=true
 SUBSCRIPTION_STACKING_READ_ENABLED=true
 SUBSCRIPTION_STACKING_WRITE_ENABLED=false
 SUBSCRIPTION_STACKING_SHADOW_USER_IDS=<TEST_USER_ID>
-SUBSCRIPTION_STACKING_READ_USER_IDS=<TEST_USER_ID>
+SUBSCRIPTION_STACKING_USER_IDS=<TEST_USER_ID>
+SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false
 ```
 
 The test user does not have batches yet, so the API must continue to return the
@@ -89,16 +111,25 @@ Only after phases 2–4 pass:
 
 ```text
 NODE_ENV=staging
+STAGING_DATABASE_ISOLATION_CONFIRMED=true
+STAGING_PAYMENT_SANDBOX_CONFIRMED=true
 SUBSCRIPTION_STACKING_SHADOW_ENABLED=true
 SUBSCRIPTION_STACKING_READ_ENABLED=true
 SUBSCRIPTION_STACKING_WRITE_ENABLED=true
 SUBSCRIPTION_STACKING_SHADOW_USER_IDS=<TEST_USER_ID>
-SUBSCRIPTION_STACKING_READ_USER_IDS=<TEST_USER_ID>
-SUBSCRIPTION_STACKING_WRITE_USER_IDS=<TEST_USER_ID>
-SUBSCRIPTION_STACKING_ALLOW_WILDCARD_WRITE=false
+SUBSCRIPTION_STACKING_USER_IDS=<TEST_USER_ID>
+SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=false
 ```
 
-Never use `*` in the write allowlist.
+Never use `*` in either allowlist.
+
+Before starting the server, run:
+
+```text
+node scripts/validate-subscription-stacking-staging-env.js
+```
+
+Do not continue unless it returns `"ok": true`.
 
 ## 6. Acceptance scenario A — overlapping packages
 
@@ -212,12 +243,12 @@ Do not attempt these in the current staging write phase:
 - Additive package containing premium entitlements.
 - Additive package containing add-on entitlements.
 - Bulk planning.
-- Direct pickup reservation that is not based on confirmed day allocations.
+- Direct pickup reservation, including the experimental planned-pickup adapter.
 - Freeze or unfreeze.
 - Skip range.
 - Cancellation or refund of one batch.
 - Wildcard user rollout.
-- Production write activation.
+- Any production Shadow, Read, or Write activation.
 
 The backend must fail closed before invoice or mutation where applicable.
 
@@ -227,24 +258,33 @@ The backend must fail closed before invoice or mutation where applicable.
 
 Set all three feature flags to `false`.
 
-### After at least one stacked purchase is written
+### After at least one stacked purchase is written in staging
 
 The safe operational rollback is:
 
 ```text
 SUBSCRIPTION_STACKING_WRITE_ENABLED=false
 SUBSCRIPTION_STACKING_READ_ENABLED=true
+SUBSCRIPTION_STACKING_USER_IDS=<AFFECTED_TEST_USER_ID>
 ```
 
-Keep the affected user IDs in the read allowlist. Do not turn off the stacking
-read path for users whose source of truth has already moved to entitlement
-batches; otherwise scheduled activation and per-day projections may be hidden.
+Keep affected user IDs in `SUBSCRIPTION_STACKING_USER_IDS`. Do not turn off the
+stacking read path in staging for users whose source of truth has already moved
+to entitlement batches; otherwise scheduled activation and per-day projections
+may be hidden.
 
 Do not delete batches, allocations, blueprints, or compensation rows manually.
+
+Production rollout remains impossible until the production kill switch is
+removed in a separate reviewed change after all acceptance evidence exists.
 
 ## 12. Required evidence before removing the production kill switch
 
 - CI stacking phase passes.
+- Security Matrix and Startup Isolation pass.
+- Changed-code Secret Scan passes.
+- Production Dependency Security gate passes.
+- Changed JavaScript Syntax gate passes.
 - Atomic skip workflow passes.
 - Transactional vertical-slice workflow passes.
 - Remote staging scenarios A–D pass.
@@ -257,5 +297,5 @@ Do not delete batches, allocations, blueprints, or compensation rows manually.
 - Monitoring and an operator rollback command are documented.
 - A production database backup and limited rollout window are approved.
 
-Until all evidence exists, keep the pull request draft and the production write
-kill switch enabled.
+Until all evidence exists, keep the pull request draft and all production
+stacking modes disabled.
