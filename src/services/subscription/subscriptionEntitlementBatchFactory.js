@@ -168,6 +168,9 @@ function buildLegacyEntitlementBatchPayload({
     effectiveStartDate: startDate,
     endDate,
     validityEndDate,
+    baseValidityEndDate: validityEndDate,
+    compensationDays: 0,
+    compensationRevision: 0,
     daysCount: Number(
       subscription.contractSnapshot
       && subscription.contractSnapshot.plan
@@ -277,6 +280,9 @@ function buildPurchaseEntitlementBatchPayload({
     effectiveStartDate: startDate,
     endDate,
     validityEndDate,
+    baseValidityEndDate: validityEndDate,
+    compensationDays: 0,
+    compensationRevision: 0,
     daysCount: normalizePositiveInteger(draft.daysCount, "draft.daysCount"),
     mealsPerDay,
     proteinGrams,
