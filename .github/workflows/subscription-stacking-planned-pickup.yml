@@ -37,7 +37,7 @@ concurrency:
 jobs:
   planned-pickup-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -62,4 +62,18 @@ jobs:
         run: NODE_ENV=test node tests/subscriptionStackingFulfillmentLedger.test.js
 
       - name: Subscription lifecycle regression gate
-        run: npm run test:subscriptions
+        shell: bash
+        run: |
+          set +e
+          npm run test:subscriptions 2>&1 | tee /tmp/subscription-regression.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q "Unable to acquire IX lock" /tmp/subscription-regression.log; then
+            echo "Transient MongoDB lock detected; retrying the full regression gate once."
+            npm run test:subscriptions
+            exit $?
+          fi
+          exit "$status"
