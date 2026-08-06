@@ -45,7 +45,7 @@ async function run() {
   assert.strictEqual(authenticated.body.status, true);
   assert.strictEqual(
     authenticated.body.data.contractVersion,
-    "subscription_stacking_remote_readiness.v2"
+    "subscription_stacking_remote_readiness.v1"
   );
   assert.strictEqual(authenticated.body.data.environment.production, false);
   assert.strictEqual(authenticated.body.data.deployment.commitSha, "route-test-commit");
