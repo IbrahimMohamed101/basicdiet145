@@ -40,6 +40,24 @@ function normalizeDate(value) {
   return date;
 }
 
+function plainValue(value) {
+  if (!value) return null;
+  if (typeof value.toObject === "function") return value.toObject();
+  return value;
+}
+
+function mergeLifecycleSubscription(lifecycle, subscription) {
+  const lifecycleContainer = lifecycle && lifecycle.container
+    ? plainValue(lifecycle.container)
+    : null;
+  const currentSubscription = plainValue(subscription) || {};
+  if (!lifecycleContainer) return subscription;
+  return {
+    ...lifecycleContainer,
+    skipDaysUsed: Number(currentSubscription.skipDaysUsed || 0),
+  };
+}
+
 function assertOwnedActiveSubscription(subscription, userId, date) {
   if (!subscription) throw skipError("NOT_FOUND", "Subscription not found", 404);
   if (String(subscription.userId || "") !== String(userId || "")) {
@@ -48,8 +66,14 @@ function assertOwnedActiveSubscription(subscription, userId, date) {
   if (String(subscription.status || "") !== "active") {
     throw skipError("SUB_INACTIVE", "Subscription not active", 422);
   }
+  const startDate = subscription.startDate
+    ? dateUtils.toKSADateString(subscription.startDate)
+    : "";
   const end = subscription.validityEndDate || subscription.endDate;
   const endDate = end ? dateUtils.toKSADateString(end) : "";
+  if (startDate && date < startDate) {
+    throw skipError("SUB_NOT_STARTED", "Date is before subscription start", 422);
+  }
   if (endDate && date > endDate) {
     throw skipError("SUB_EXPIRED", "Subscription expired for this date", 422);
   }
@@ -73,12 +97,14 @@ function assertSkipPolicyAvailable(policy, subscription) {
 }
 
 function assertDateCanChange({ date, tomorrow }) {
-  if (!dateUtils.isOnOrAfterKSADate(date, tomorrow)) {
+  const targetDate = normalizeDate(date);
+  const tomorrowDate = normalizeDate(tomorrow);
+  if (targetDate < tomorrowDate) {
     throw skipError(
       "INVALID_DATE",
       "date must be from tomorrow onward",
       400,
-      { date, tomorrow }
+      { date: targetDate, tomorrow: tomorrowDate }
     );
   }
 }
@@ -278,7 +304,7 @@ async function performStackingSkipDay({
         status: "already_skipped",
         day,
         policy,
-        subscription: compensation.lifecycle && compensation.lifecycle.container || subscription,
+        subscription: mergeLifecycleSubscription(compensation.lifecycle, subscription),
         compensatedDaysAdded: 0,
         idempotent: true,
         stacking: { released, compensation },
@@ -333,10 +359,7 @@ async function performStackingSkipDay({
       status: "skipped",
       day: updatedDay,
       policy,
-      subscription: compensation.lifecycle && compensation.lifecycle.container
-        ? { ...compensation.lifecycle.container.toObject?.() || compensation.lifecycle.container,
-          skipDaysUsed: subscription.skipDaysUsed }
-        : subscription,
+      subscription: mergeLifecycleSubscription(compensation.lifecycle, subscription),
       compensatedDaysAdded: 1,
       idempotent: false,
       stacking: { released, compensation },
@@ -417,10 +440,7 @@ async function performStackingUnskipDay({
     await session.endSession();
     return {
       day: updatedDay,
-      subscription: compensation.lifecycle && compensation.lifecycle.container
-        ? { ...compensation.lifecycle.container.toObject?.() || compensation.lifecycle.container,
-          skipDaysUsed: subscription.skipDaysUsed }
-        : subscription,
+      subscription: mergeLifecycleSubscription(compensation.lifecycle, subscription),
       idempotent: false,
       stacking: { reopened, compensation },
     };
@@ -437,6 +457,7 @@ module.exports = {
   assertDayCanBeUnskipped,
   assertOwnedActiveSubscription,
   assertSkipPolicyAvailable,
+  mergeLifecycleSubscription,
   performStackingSkipDay,
   performStackingUnskipDay,
 };
