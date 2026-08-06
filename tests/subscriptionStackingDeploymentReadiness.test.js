@@ -4,11 +4,16 @@ process.env.NODE_ENV = "test";
 
 const assert = require("node:assert");
 const {
+  buildMongoDeploymentIdentityHash,
+} = require("../src/utils/mongoDeploymentIdentity");
+const {
   assertRemoteDeploymentReadiness,
 } = require("../scripts/assert-subscription-stacking-deployment-readiness");
 
 const USER_ID = "507f1f77bcf86cd799439011";
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+const MONGO_URI = "mongodb://localhost:27017/basicdiet_staging";
+const MONGO_IDENTITY_HASH = buildMongoDeploymentIdentityHash(MONGO_URI);
 
 function env(overrides = {}) {
   return {
@@ -18,7 +23,7 @@ function env(overrides = {}) {
     STAGING_PAYMENT_MODE: "sandbox",
     STAGING_DATABASE_ISOLATION_CONFIRMED: "true",
     STAGING_PAYMENT_SANDBOX_CONFIRMED: "true",
-    MONGODB_URI: "mongodb://localhost:27017/basicdiet_staging",
+    MONGODB_URI: MONGO_URI,
     SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
     SUBSCRIPTION_STACKING_READ_ENABLED: "true",
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
@@ -36,6 +41,8 @@ function env(overrides = {}) {
 function payload(overrides = {}) {
   const attestation = {
     databaseIsolationConfirmed: true,
+    databaseIdentityAvailable: true,
+    databaseIdentityHash: MONGO_IDENTITY_HASH,
     paymentSandboxConfirmed: true,
     paymentMode: "sandbox",
     safePaymentMode: true,
@@ -73,6 +80,7 @@ async function run() {
   });
   assert.strictEqual(success.ok, true);
   assert.strictEqual(success.databaseIsolationConfirmed, true);
+  assert.strictEqual(success.databaseIdentityVerified, true);
   assert.strictEqual(success.paymentSandboxConfirmed, true);
 
   await assert.rejects(
@@ -89,6 +97,15 @@ async function run() {
       })),
     }),
     (err) => err && err.code === "DEPLOYMENT_READINESS_DATABASE_NOT_ISOLATED"
+  );
+
+  await assert.rejects(
+    () => assertRemoteDeploymentReadiness(env(), {
+      fetchImpl: async () => response(payload({
+        attestation: { databaseIdentityHash: "sha256:different" },
+      })),
+    }),
+    (err) => err && err.code === "DEPLOYMENT_READINESS_DATABASE_IDENTITY_MISMATCH"
   );
 
   await assert.rejects(
