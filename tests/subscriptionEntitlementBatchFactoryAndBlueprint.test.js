@@ -150,6 +150,7 @@ function testMixedGramBlueprintIsDeterministic() {
         validityEndDate: "2026-08-26",
         mealsPerDay: 2,
         proteinGrams: 150,
+        remainingMeals: 52,
       },
       {
         _id: oldId,
@@ -159,6 +160,7 @@ function testMixedGramBlueprintIsDeterministic() {
         validityEndDate: "2026-08-09",
         mealsPerDay: 3,
         proteinGrams: 200,
+        remainingMeals: 20,
       },
     ],
   });
@@ -195,6 +197,7 @@ function testExistingSelectionsArePreservedWhenSlotsGrow() {
         validityEndDate: "2026-08-26",
         mealsPerDay: 5,
         proteinGrams: 200,
+        remainingMeals: 20,
       },
     ],
   });
