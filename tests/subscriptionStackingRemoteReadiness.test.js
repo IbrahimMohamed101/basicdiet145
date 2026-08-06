@@ -4,17 +4,23 @@ process.env.NODE_ENV = "test";
 
 const assert = require("node:assert");
 const {
+  buildMongoDeploymentIdentityHash,
+} = require("../src/utils/mongoDeploymentIdentity");
+const {
   buildSubscriptionStackingRemoteReadiness,
   resolveDeploymentCommit,
   resolveDeploymentSafetyAttestation,
 } = require("../src/services/subscription/subscriptionStackingRemoteReadinessService");
 
 const USER_ID = "507f1f77bcf86cd799439011";
+const MONGO_URI = "mongodb://staging-db.example.com:27017/basicdiet_staging";
+const MONGO_IDENTITY_HASH = buildMongoDeploymentIdentityHash(MONGO_URI);
 
 function buildEnv(overrides = {}) {
   return {
     NODE_ENV: "staging",
     APP_ENV: "staging",
+    MONGODB_URI: MONGO_URI,
     STAGING_PAYMENT_MODE: "sandbox",
     STAGING_DATABASE_ISOLATION_CONFIRMED: "true",
     STAGING_PAYMENT_SANDBOX_CONFIRMED: "true",
@@ -39,6 +45,8 @@ function run() {
   assert.strictEqual(safe.environment.production, false);
   assert.strictEqual(safe.deployment.commitSha, "abc123def456");
   assert.strictEqual(safe.deployment.safetyAttestation.databaseIsolationConfirmed, true);
+  assert.strictEqual(safe.deployment.safetyAttestation.databaseIdentityAvailable, true);
+  assert.strictEqual(safe.deployment.safetyAttestation.databaseIdentityHash, MONGO_IDENTITY_HASH);
   assert.strictEqual(safe.deployment.safetyAttestation.paymentSandboxConfirmed, true);
   assert.strictEqual(safe.deployment.safetyAttestation.safePaymentMode, true);
   assert.strictEqual(safe.rollout.singleUserCanary, true);
@@ -60,8 +68,16 @@ function run() {
     globalObject: {},
   });
   assert.strictEqual(missingDatabaseAttestation.certification.readProbeReady, false);
-  assert.strictEqual(missingDatabaseAttestation.certification.baseMealCanaryReady, false);
+  assert(missingDatabaseAttestation.certification.baseMealCanaryReady, false);
   assert(missingDatabaseAttestation.certification.blockedReasons.includes("database_isolation_not_attested"));
+
+  const missingDatabaseIdentity = buildSubscriptionStackingRemoteReadiness({
+    userId: USER_ID,
+    env: buildEnv({ MONGODB_URI: "" }),
+    globalObject: {},
+  });
+  assert.strictEqual(missingDatabaseIdentity.certification.readProbeReady, false);
+  assert(missingDatabaseIdentity.certification.blockedReasons.includes("database_identity_unavailable"));
 
   const unsafePayment = buildSubscriptionStackingRemoteReadiness({
     userId: USER_ID,
@@ -108,12 +124,15 @@ function run() {
   assert.strictEqual(resolveDeploymentCommit({}), null);
   assert.deepStrictEqual(
     resolveDeploymentSafetyAttestation({
+      MONGODB_URI: MONGO_URI,
       STAGING_PAYMENT_MODE: "mock",
       STAGING_DATABASE_ISOLATION_CONFIRMED: "true",
       STAGING_PAYMENT_SANDBOX_CONFIRMED: "true",
     }),
     {
       databaseIsolationConfirmed: true,
+      databaseIdentityAvailable: true,
+      databaseIdentityHash: MONGO_IDENTITY_HASH,
       paymentSandboxConfirmed: true,
       paymentMode: "mock",
       safePaymentMode: true,
