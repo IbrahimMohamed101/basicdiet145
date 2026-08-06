@@ -18,6 +18,10 @@ require("./services/installOneTimeOrderItemTypeCompatibility");
 
 const { createServer } = require("http");
 const { createApp } = require("./app");
+// `createApp` loads the full route/service composition first. Install this
+// authenticated, read-only probe afterwards so it cannot capture pre-composition
+// subscription services or alter existing Flutter routes.
+require("./services/installSubscriptionStackingRemoteReadinessRoute");
 const { connectDb } = require("./db");
 const mongoose = require("mongoose");
 const { startJobs } = require("./jobs");
