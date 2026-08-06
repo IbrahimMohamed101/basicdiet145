@@ -6,6 +6,10 @@ process.env.DEV_AUTH_BYPASS = "true";
 process.env.DEV_STATIC_TOKEN = "stacking-readiness-test-token";
 process.env.DEV_STATIC_USER_ID = "507f1f77bcf86cd799439011";
 process.env.DEV_STATIC_ROLE = "client";
+process.env.STAGING_PAYMENT_MODE = "sandbox";
+process.env.STAGING_DATABASE_ISOLATION_CONFIRMED = "true";
+process.env.STAGING_PAYMENT_SANDBOX_CONFIRMED = "true";
+process.env.RAILWAY_GIT_COMMIT_SHA = "route-test-commit";
 process.env.SUBSCRIPTION_STACKING_SHADOW_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_READ_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_WRITE_ENABLED = "true";
@@ -41,9 +45,18 @@ async function run() {
   assert.strictEqual(authenticated.body.status, true);
   assert.strictEqual(
     authenticated.body.data.contractVersion,
-    "subscription_stacking_remote_readiness.v1"
+    "subscription_stacking_remote_readiness.v2"
   );
   assert.strictEqual(authenticated.body.data.environment.production, false);
+  assert.strictEqual(authenticated.body.data.deployment.commitSha, "route-test-commit");
+  assert.strictEqual(
+    authenticated.body.data.deployment.safetyAttestation.databaseIsolationConfirmed,
+    true
+  );
+  assert.strictEqual(
+    authenticated.body.data.deployment.safetyAttestation.paymentSandboxConfirmed,
+    true
+  );
   assert.strictEqual(authenticated.body.data.rollout.writeEnabledForUser, true);
   assert.strictEqual(authenticated.body.data.certification.baseMealCanaryReady, true);
   assert.strictEqual(authenticated.body.data.runtime.skipRouterConnected, false);
