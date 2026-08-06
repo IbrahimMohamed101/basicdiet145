@@ -36,11 +36,25 @@ function ownedSession(events = []) {
   };
 }
 
-async function testDisabledRoutesEverythingToLegacy() {
+function enabledRuntime(overrides = {}) {
+  return {
+    globallyEnabled: () => true,
+    findStackingOwner: async () => "allowed",
+    writeEnabledForUser: () => true,
+    ...overrides,
+  };
+}
+
+async function testDisabledRoutesEverythingToLegacyWithoutDatabaseRead() {
   const calls = [];
+  let ownerLookupCount = 0;
   const wrappers = createStackingEntitlementWrappers(originalFunctions(calls), {
-    findStackingOwner: async () => "user-1",
-    writeEnabledForUser: () => false,
+    globallyEnabled: () => false,
+    findStackingOwner: async () => {
+      ownerLookupCount += 1;
+      throw new Error("owner lookup must not run while globally disabled");
+    },
+    writeEnabledForUser: () => true,
   });
   const args = { subscriptionId: "sub-1" };
 
@@ -49,17 +63,16 @@ async function testDisabledRoutesEverythingToLegacy() {
     assert.strictEqual(result.source, `legacy:${name}`);
   }
   assert.strictEqual(calls.length, 7);
+  assert.strictEqual(ownerLookupCount, 0);
 }
 
 async function testReserveDayReturnsExistingStackingAllocations() {
-  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), {
-    findStackingOwner: async () => "allowed",
-    writeEnabledForUser: () => true,
+  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), enabledRuntime({
     findDayAllocations: async () => [
       { allocationKey: "a-1", state: "reserved" },
       { allocationKey: "a-2", state: "consumed" },
     ],
-  });
+  }));
   const result = await wrappers.reserveDayEntitlements({
     subscriptionId: "sub-1",
     day: { _id: "day-1", date: "2026-08-06" },
@@ -69,11 +82,9 @@ async function testReserveDayReturnsExistingStackingAllocations() {
 }
 
 async function testMissingStackingReservationFailsClosed() {
-  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), {
-    findStackingOwner: async () => "allowed",
-    writeEnabledForUser: () => true,
+  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), enabledRuntime({
     findDayAllocations: async () => [],
-  });
+  }));
   await assert.rejects(
     () => wrappers.reserveDayEntitlements({
       subscriptionId: "sub-1",
@@ -86,9 +97,7 @@ async function testMissingStackingReservationFailsClosed() {
 async function testDayTransitionOwnsTransaction() {
   const events = [];
   const session = ownedSession(events);
-  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), {
-    findStackingOwner: async () => "allowed",
-    writeEnabledForUser: () => true,
+  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), enabledRuntime({
     startSession: async () => session,
     getBusinessDate: async () => "2026-08-06",
     transitionDay: async (args) => {
@@ -97,7 +106,7 @@ async function testDayTransitionOwnsTransaction() {
       assert.strictEqual(args.toState, "consumed");
       return { handled: true, changedCount: 5 };
     },
-  });
+  }));
   const result = await wrappers.transitionDayEntitlements({
     subscriptionId: "sub-1",
     day: { _id: "day-1", date: "2026-08-06" },
@@ -117,16 +126,14 @@ async function testDayTransitionOwnsTransaction() {
 async function testSingleAllocationRoutesOnlyWhenNewKeyExists() {
   const calls = [];
   const originals = originalFunctions(calls);
-  const wrappers = createStackingEntitlementWrappers(originals, {
-    findStackingOwner: async () => "allowed",
-    writeEnabledForUser: () => true,
+  const wrappers = createStackingEntitlementWrappers(originals, enabledRuntime({
     findAllocationsByKeys: async (_subscriptionId, keys) => (
       keys.includes("new-key") ? [{ allocationKey: "new-key" }] : []
     ),
     getBusinessDate: async () => "2026-08-06",
     transitionKeys: async () => ({ handled: true, changedCount: 1 }),
     reacquireAllocation: async () => ({ idempotent: false }),
-  });
+  }));
 
   const newResult = await wrappers.transitionAllocation({
     subscriptionId: "sub-1",
@@ -147,10 +154,10 @@ async function testSingleAllocationRoutesOnlyWhenNewKeyExists() {
 }
 
 async function testDirectPickupReservationFailsClosedForStacking() {
-  const wrappers = createStackingEntitlementWrappers(originalFunctions([]), {
-    findStackingOwner: async () => "allowed",
-    writeEnabledForUser: () => true,
-  });
+  const wrappers = createStackingEntitlementWrappers(
+    originalFunctions([]),
+    enabledRuntime()
+  );
   await assert.rejects(
     () => wrappers.reservePickupEntitlements({ subscriptionId: "sub-1" }),
     (err) => Boolean(
@@ -161,9 +168,10 @@ async function testDirectPickupReservationFailsClosedForStacking() {
   );
 }
 
-async function testNoBatchOwnerUsesLegacyEvenIfFlagCallbackWouldAllow() {
+async function testNoBatchOwnerUsesLegacyEvenIfGlobalFlagIsOn() {
   const calls = [];
   const wrappers = createStackingEntitlementWrappers(originalFunctions(calls), {
+    globallyEnabled: () => true,
     findStackingOwner: async () => "",
     writeEnabledForUser: () => true,
   });
@@ -173,13 +181,13 @@ async function testNoBatchOwnerUsesLegacyEvenIfFlagCallbackWouldAllow() {
 }
 
 async function run() {
-  await testDisabledRoutesEverythingToLegacy();
+  await testDisabledRoutesEverythingToLegacyWithoutDatabaseRead();
   await testReserveDayReturnsExistingStackingAllocations();
   await testMissingStackingReservationFailsClosed();
   await testDayTransitionOwnsTransaction();
   await testSingleAllocationRoutesOnlyWhenNewKeyExists();
   await testDirectPickupReservationFailsClosedForStacking();
-  await testNoBatchOwnerUsesLegacyEvenIfFlagCallbackWouldAllow();
+  await testNoBatchOwnerUsesLegacyEvenIfGlobalFlagIsOn();
   console.log("subscription stacking entitlement router tests passed");
 }
 
