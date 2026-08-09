@@ -16,8 +16,11 @@ const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const ActivityLog = require("../src/models/ActivityLog");
 require("../src/models/Plan");
 const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");
+const { executeAction } = require("../src/services/dashboard/opsTransitionService");
 const {
-  evaluateHistoricalDeliveryFulfillmentEligibility,
+  canRecoverHistoricalDeliveryFulfillment,
+} = require("../src/services/dashboard/historicalMutationPolicy");
+const {
   fulfillHistoricalDeliveryDay,
 } = require("../src/services/dashboard/historicalDeliveryFulfillmentService");
 
@@ -127,35 +130,43 @@ function assertHistoricalRecoveryPolicy() {
     entityType: "subscription",
     actionId: "fulfill",
     role: "courier",
+    mode: "delivery",
+    businessDate: "2026-08-01",
     today: "2026-08-09",
   };
 
-  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+  assert.strictEqual(canRecoverHistoricalDeliveryFulfillment({
     ...base,
-    day: { date: "2026-08-01", status: "out_for_delivery" },
-  }).allowed, true, "courier may close a historical delivery already out for delivery");
+    status: "out_for_delivery",
+  }), true, "courier may close a historical delivery already out for delivery");
 
-  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+  assert.strictEqual(canRecoverHistoricalDeliveryFulfillment({
     ...base,
-    day: { date: "2026-08-01", status: "ready_for_delivery" },
-  }).allowed, true, "courier may close a historical delivery already ready for delivery");
+    status: "ready_for_delivery",
+  }), true, "courier may close a historical delivery already ready for delivery");
 
-  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+  assert.strictEqual(canRecoverHistoricalDeliveryFulfillment({
     ...base,
     role: "kitchen",
-    day: { date: "2026-08-01", status: "out_for_delivery" },
-  }).allowed, false, "kitchen cannot recover historical home delivery fulfillment");
+    status: "out_for_delivery",
+  }), false, "kitchen cannot recover historical home delivery fulfillment");
 
-  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+  assert.strictEqual(canRecoverHistoricalDeliveryFulfillment({
     ...base,
-    day: { date: "2026-08-01", status: "in_preparation" },
-  }).allowed, false, "recovery cannot skip the delivery state machine from preparation");
+    status: "in_preparation",
+  }), false, "recovery cannot skip the delivery state machine from preparation");
 
-  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+  assert.strictEqual(canRecoverHistoricalDeliveryFulfillment({
     ...base,
-    entityType: "subscription_pickup_request",
-    day: { date: "2026-08-01", status: "ready_for_pickup" },
-  }).allowed, false, "pickup history remains protected");
+    mode: "pickup",
+    status: "ready_for_delivery",
+  }), false, "pickup history remains protected");
+
+  assert.strictEqual(canRecoverHistoricalDeliveryFulfillment({
+    ...base,
+    actionId: "dispatch",
+    status: "ready_for_delivery",
+  }), false, "only final fulfillment receives the historical exception");
 }
 
 (async function run() {
@@ -190,9 +201,9 @@ function assertHistoricalRecoveryPolicy() {
     }).lean();
     assert.strictEqual(manualConsumptionLogs.length, 0, "fulfillment must not create duplicate manual consumption logs");
 
-    // Re-seed the exact same historical delivery and exercise the dashboard
-    // recovery service. It must use the canonical fulfillment debit and keep the
-    // delivery projection/audit in sync without allowing broader history edits.
+    // Re-seed the exact same historical delivery and exercise the recovery path.
+    // It must use the canonical settlement while keeping stale notifications out
+    // of the recovery flow.
     await cleanup();
     await seed();
 
@@ -201,7 +212,6 @@ function assertHistoricalRecoveryPolicy() {
       userId: TEST_USER_ID,
       role: "courier",
     });
-    assert.strictEqual(recovery.alreadyFulfilled, false, "first recovery should perform fulfillment");
     assert.strictEqual(recovery.deductedCredits, 2, "historical recovery should deduct the canonical fulfilled count");
 
     const recoveredSubscription = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
@@ -224,15 +234,18 @@ function assertHistoricalRecoveryPolicy() {
     assert.strictEqual(recoveryAudits[0].meta.businessDate, "2026-05-01");
     assert.strictEqual(recoveryAudits[0].meta.recovery, true);
 
-    const replay = await fulfillHistoricalDeliveryDay({
-      dayId: TEST_DAY_ID,
+    // A repeated dashboard fulfill after recovery follows the existing
+    // historical idempotent-replay branch and must not debit again.
+    await executeAction("fulfill", {
+      entityId: TEST_DAY_ID,
+      entityType: "subscription",
       userId: TEST_USER_ID,
       role: "courier",
+      payload: {},
     });
-    assert.strictEqual(replay.alreadyFulfilled, true, "recovery replay should be idempotent");
 
     const afterReplay = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
-    assert.strictEqual(afterReplay.remainingMeals, 5, "recovery replay must not deduct a second time");
+    assert.strictEqual(afterReplay.remainingMeals, 5, "replay after recovery must not deduct a second time");
 
     const replayAudits = await SubscriptionAuditLog.find({
       entityId: TEST_DAY_ID,
