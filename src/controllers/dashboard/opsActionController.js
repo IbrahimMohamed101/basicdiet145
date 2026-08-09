@@ -11,6 +11,9 @@ const {
   resolveBusinessDate,
   canRecoverHistoricalDeliveryFulfillment,
 } = require("../../services/dashboard/historicalMutationPolicy");
+const {
+  fulfillHistoricalDeliveryDay,
+} = require("../../services/dashboard/historicalDeliveryFulfillmentService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 const dateUtils = require("../../utils/date");
@@ -168,15 +171,24 @@ async function handleAction(req, res) {
         return errorResponse(res, 409, code, `Action ${action} is not allowed in current state`);
       }
 
-      // 3. Execute the normal canonical transition. The transition service has
-      // the same narrow historical exception and still owns settlement/audit.
-      await opsTransitionService.executeAction(action, {
-        entityId,
-        entityType,
-        userId: req.dashboardUserId || req.userId,
-        role,
-        payload,
-      });
+      // 3. Historical completion is a reconciliation path: settle credits and
+      // delivery state without sending a stale delivery notification. Normal
+      // same-day operations continue through the canonical transition service.
+      if (historicalDeliveryRecovery) {
+        await fulfillHistoricalDeliveryDay({
+          dayId: entityId,
+          userId: req.dashboardUserId || req.userId,
+          role,
+        });
+      } else {
+        await opsTransitionService.executeAction(action, {
+          entityId,
+          entityType,
+          userId: req.dashboardUserId || req.userId,
+          role,
+          payload,
+        });
+      }
     }
 
     // 4. Return Updated Unified DTO
