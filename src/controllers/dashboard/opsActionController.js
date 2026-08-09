@@ -7,6 +7,13 @@ const SubscriptionPickupRequest = require("../../models/SubscriptionPickupReques
 const Subscription = require("../../models/Subscription");
 const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
 const { validateSubscriptionDayOperationalGate } = require("../../services/dashboard/subscriptionDayOperationalGateService");
+const {
+  resolveBusinessDate,
+  canRecoverHistoricalDeliveryFulfillment,
+} = require("../../services/dashboard/historicalMutationPolicy");
+const {
+  fulfillHistoricalDeliveryDay,
+} = require("../../services/dashboard/historicalDeliveryFulfillmentService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 const dateUtils = require("../../utils/date");
@@ -112,24 +119,36 @@ async function handleAction(req, res) {
       if (!doc) {
         return errorResponse(res, 404, "NOT_FOUND", "Entity not found");
       }
-      const targetBusinessDate = doc.date || doc.fulfillmentDate || doc.deliveryDate || doc.scheduledDate || doc.pickupDate || doc.serviceDate;
+
+      // Resolve the subscription before applying the historical guard so the
+      // recovery exception can prove this exact day is a home-delivery day.
+      const sub = await Subscription.findById(doc.subscriptionId)
+        .select("deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
+        .lean();
+      const mode = sub && sub.deliveryMode === "pickup" ? "pickup" : "delivery";
+      const effectiveMode = doc.fulfillmentModeOverride || mode;
+      const targetBusinessDate = resolveBusinessDate(doc);
+      const historicalDeliveryRecovery = canRecoverHistoricalDeliveryFulfillment({
+        entityType,
+        actionId: action,
+        status: doc.status,
+        role,
+        mode: effectiveMode,
+        businessDate: targetBusinessDate,
+      });
+
       if (targetBusinessDate && targetBusinessDate < dateUtils.getTodayKSADate()) {
         let isIdempotentReplay = false;
         if (action === "fulfill" && doc.status === "fulfilled") isIdempotentReplay = true;
         if (action === "no_show" && doc.status === "no_show") isIdempotentReplay = true;
         if (action === "cancel" && ["canceled", "cancelled", "delivery_canceled", "canceled_at_branch", "no_show"].includes(doc.status)) isIdempotentReplay = true;
         const isAdminNoShow = action === "no_show" && ["admin", "superadmin"].includes(String(role || ""));
-        if (!isIdempotentReplay && !isAdminNoShow) {
+        if (!isIdempotentReplay && !isAdminNoShow && !historicalDeliveryRecovery) {
           return errorResponse(res, 409, "HISTORICAL_MUTATION_FORBIDDEN", "Historical operational records cannot be modified");
         }
       }
 
       // 2. Validate action using Policy Engine
-      const sub = await Subscription.findById(doc.subscriptionId)
-        .select("deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
-        .lean();
-      const mode = sub && sub.deliveryMode === "pickup" ? "pickup" : "delivery";
-
       if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
         return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
       }
@@ -152,14 +171,24 @@ async function handleAction(req, res) {
         return errorResponse(res, 409, code, `Action ${action} is not allowed in current state`);
       }
 
-      // 3. Execute Transition
-      await opsTransitionService.executeAction(action, {
-        entityId,
-        entityType,
-        userId: req.dashboardUserId || req.userId,
-        role,
-        payload,
-      });
+      // 3. Historical completion is a reconciliation path: settle credits and
+      // delivery state without sending a stale delivery notification. Normal
+      // same-day operations continue through the canonical transition service.
+      if (historicalDeliveryRecovery) {
+        await fulfillHistoricalDeliveryDay({
+          dayId: entityId,
+          userId: req.dashboardUserId || req.userId,
+          role,
+        });
+      } else {
+        await opsTransitionService.executeAction(action, {
+          entityId,
+          entityType,
+          userId: req.dashboardUserId || req.userId,
+          role,
+          payload,
+        });
+      }
     }
 
     // 4. Return Updated Unified DTO
