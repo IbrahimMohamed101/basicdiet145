@@ -7,6 +7,7 @@ const SubscriptionAuditLog = require("../../models/SubscriptionAuditLog");
 const { fulfillSubscriptionDay } = require("../fulfillmentService");
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
+const { logger } = require("../../utils/logger");
 const {
   resolveBusinessDate,
   canRecoverHistoricalDeliveryFulfillment,
@@ -21,7 +22,7 @@ function operationalError(message, code, status = 409, details) {
 }
 
 async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
-  return runMongoTransactionWithRetry(async (session) => {
+  const settlement = await runMongoTransactionWithRetry(async (session) => {
     const day = await SubscriptionDay.findById(dayId).session(session);
     if (!day) throw operationalError("Subscription day not found", "NOT_FOUND", 404);
 
@@ -62,57 +63,89 @@ async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
       );
     }
 
-    const now = new Date();
-    const fulfilledDay = fulfillment.day || await SubscriptionDay.findById(day._id).session(session);
-
-    // Historical recovery intentionally does not trigger customer notifications.
-    // It reconciles the operational projection and balance only.
-    await Delivery.updateOne(
-      {
-        $or: [
-          { dayId: day._id },
-          { subscriptionId: subscription._id, date: day.date },
-        ],
-      },
-      {
-        $set: {
-          dayId: day._id,
-          subscriptionId: subscription._id,
-          date: day.date,
-          status: "delivered",
-          deliveredAt: now,
-          address: day.deliveryAddressOverride || subscription.deliveryAddress,
-          window: day.deliveryWindowOverride || subscription.deliveryWindow,
-        },
-      },
-      { upsert: true, session }
-    );
-
-    await SubscriptionAuditLog.create([{
-      entityType: "subscription_day",
-      entityId: day._id,
-      action: "dashboard_historical_fulfill",
-      fromStatus,
-      toStatus: "fulfilled",
-      actorType: String(role || "admin"),
-      actorId: userId || undefined,
-      meta: {
-        subscriptionId: String(day.subscriptionId),
-        businessDate,
-        recovery: true,
-        deductedCredits: Number(fulfillment.deductedCredits || 0),
-      },
-    }], { session });
-
     return {
-      day: fulfilledDay || day,
-      deductedCredits: Number(fulfillment.deductedCredits || 0),
+      day: fulfillment.day || day,
+      subscriptionId: subscription._id,
+      deliveryAddress: day.deliveryAddressOverride || subscription.deliveryAddress,
+      deliveryWindow: day.deliveryWindowOverride || subscription.deliveryWindow,
+      fromStatus,
       businessDate,
+      alreadyFulfilled: Boolean(fulfillment.alreadyFulfilled),
+      deductedCredits: Number(fulfillment.deductedCredits || 0),
     };
   }, {
     label: "historical_delivery_fulfillment_recovery",
     context: { dayId: String(dayId), role: String(role || "") },
   });
+
+  // Financial settlement + SubscriptionDay are authoritative. Railway can run
+  // without transactional rollback, so projection/audit failures after a valid
+  // debit must never turn a successful settlement into a retryable HTTP error.
+  // Reconcile these secondary records best-effort after the canonical settlement.
+  const now = new Date();
+  try {
+    await Delivery.updateOne(
+      {
+        $or: [
+          { dayId },
+          { subscriptionId: settlement.subscriptionId, date: settlement.businessDate },
+        ],
+      },
+      {
+        $set: {
+          dayId,
+          subscriptionId: settlement.subscriptionId,
+          date: settlement.businessDate,
+          status: "delivered",
+          deliveredAt: now,
+          address: settlement.deliveryAddress,
+          window: settlement.deliveryWindow,
+        },
+      },
+      { upsert: true }
+    );
+  } catch (err) {
+    logger.error("Historical delivery projection reconciliation failed", {
+      dayId: String(dayId),
+      businessDate: settlement.businessDate,
+      error: err.message,
+      code: err.code || null,
+    });
+  }
+
+  if (!settlement.alreadyFulfilled) {
+    try {
+      await SubscriptionAuditLog.create({
+        entityType: "subscription_day",
+        entityId: dayId,
+        action: "dashboard_historical_fulfill",
+        fromStatus: settlement.fromStatus,
+        toStatus: "fulfilled",
+        actorType: String(role || "admin"),
+        actorId: userId || undefined,
+        meta: {
+          subscriptionId: String(settlement.subscriptionId),
+          businessDate: settlement.businessDate,
+          recovery: true,
+          deductedCredits: settlement.deductedCredits,
+        },
+      });
+    } catch (err) {
+      logger.error("Historical delivery fulfillment audit write failed", {
+        dayId: String(dayId),
+        businessDate: settlement.businessDate,
+        error: err.message,
+        code: err.code || null,
+      });
+    }
+  }
+
+  return {
+    day: settlement.day,
+    businessDate: settlement.businessDate,
+    alreadyFulfilled: settlement.alreadyFulfilled,
+    deductedCredits: settlement.deductedCredits,
+  };
 }
 
 module.exports = {
