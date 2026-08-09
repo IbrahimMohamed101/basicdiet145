@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/courierController");
 const deliveryListController = require("../controllers/courierDeliveryListController");
+const deliveryFulfillmentController = require("../controllers/courierDeliveryFulfillmentController");
 const orderController = require("../controllers/orderCourierController");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -58,7 +59,7 @@ router.put("/deliveries/:id/arriving-soon", courierMutationAccess, asyncHandler(
  * @openapi
  * /courier/deliveries/{id}/delivered:
  *   put:
- *     summary: Mark delivery as delivered
+ *     summary: Mark delivery as delivered and fulfill its subscription day
  *     tags: [Courier]
  *     parameters:
  *       - name: id
@@ -66,9 +67,13 @@ router.put("/deliveries/:id/arriving-soon", courierMutationAccess, asyncHandler(
  *         required: true
  *     responses:
  *       200:
- *         description: Delivered
+ *         description: Delivered and subscription fulfillment settled
  */
-router.put("/deliveries/:id/delivered", courierMutationAccess, asyncHandler(controller.markDelivered));
+router.put(
+  "/deliveries/:id/delivered",
+  courierMutationAccess,
+  asyncHandler(deliveryFulfillmentController.markDelivered)
+);
 router.put("/deliveries/:id/cancel", courierMutationAccess, asyncHandler(controller.markCancelled));
 router.put("/deliveries/:id/pickup", courierMutationAccess, asyncHandler(controller.markPickup));
 router.put("/deliveries/:id/collect", courierMutationAccess, asyncHandler(controller.markCollect));

@@ -21,11 +21,12 @@ const {
   canRecoverHistoricalDeliveryFulfillment,
 } = require("../src/services/dashboard/historicalMutationPolicy");
 const {
-  fulfillHistoricalDeliveryDay,
-} = require("../src/services/dashboard/historicalDeliveryFulfillmentService");
+  markDelivered: markCourierDeliveryDelivered,
+} = require("../src/controllers/courierDeliveryFulfillmentController");
 
 const TEST_SUBSCRIPTION_ID = new mongoose.Types.ObjectId();
 const TEST_DAY_ID = new mongoose.Types.ObjectId();
+const TEST_DELIVERY_ID = new mongoose.Types.ObjectId();
 const TEST_USER_ID = new mongoose.Types.ObjectId();
 const TEST_PLAN_ID = new mongoose.Types.ObjectId();
 const TEST_TAG = `fulfillment-concurrency-${Date.now()}`;
@@ -71,6 +72,7 @@ async function cleanup() {
     }),
     Delivery.deleteMany({
       $or: [
+        { _id: TEST_DELIVERY_ID },
         { dayId: TEST_DAY_ID },
         { subscriptionId: TEST_SUBSCRIPTION_ID },
       ],
@@ -123,6 +125,33 @@ async function seed() {
       isExactCountSatisfied: true,
     },
   });
+}
+
+async function seedDelivery() {
+  await Delivery.create({
+    _id: TEST_DELIVERY_ID,
+    subscriptionId: TEST_SUBSCRIPTION_ID,
+    dayId: TEST_DAY_ID,
+    date: "2026-05-01",
+    status: "out_for_delivery",
+    address: { line1: TEST_TAG },
+    window: "13:00-16:00",
+  });
+}
+
+function createResponseRecorder() {
+  return {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+  };
 }
 
 function assertHistoricalRecoveryPolicy() {
@@ -201,41 +230,59 @@ function assertHistoricalRecoveryPolicy() {
     }).lean();
     assert.strictEqual(manualConsumptionLogs.length, 0, "fulfillment must not create duplicate manual consumption logs");
 
-    // Re-seed the exact same historical delivery and exercise the recovery path.
-    // It must use the canonical settlement while keeping stale notifications out
-    // of the recovery flow.
+    // This is the exact Delivery-tab contract: PUT /courier/deliveries/:id/delivered
+    // must finish the linked SubscriptionDay and settle meal credits in one action.
     await cleanup();
     await seed();
+    await seedDelivery();
 
-    const recovery = await fulfillHistoricalDeliveryDay({
-      dayId: TEST_DAY_ID,
+    const req = {
+      params: { id: String(TEST_DELIVERY_ID) },
+      userRole: "courier",
+      dashboardUserId: TEST_USER_ID,
       userId: TEST_USER_ID,
-      role: "courier",
-    });
-    assert.strictEqual(recovery.deductedCredits, 2, "historical recovery should deduct the canonical fulfilled count");
+    };
+    const firstResponse = createResponseRecorder();
+    await markCourierDeliveryDelivered(req, firstResponse);
 
-    const recoveredSubscription = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
-    assert.strictEqual(recoveredSubscription.remainingMeals, 5, "historical recovery deducts exactly once");
+    assert.strictEqual(firstResponse.statusCode, 200, "courier delivered action should succeed");
+    assert.strictEqual(firstResponse.body.status, true, "courier delivered response should be successful");
+    assert.strictEqual(firstResponse.body.fulfillment.status, "fulfilled", "courier response should confirm canonical fulfillment");
+    assert.strictEqual(firstResponse.body.fulfillment.deductedCredits, 2, "courier delivered action should report canonical deduction");
 
-    const recoveredDay = await SubscriptionDay.findById(TEST_DAY_ID).lean();
-    assert.strictEqual(recoveredDay.status, "fulfilled", "historical recovery closes the operational day");
-    assert.strictEqual(recoveredDay.creditsDeducted, true, "historical recovery records credit settlement");
+    const courierSubscription = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
+    assert.strictEqual(courierSubscription.remainingMeals, 5, "delivery-tab completion must deduct meal credits immediately");
 
-    const delivery = await Delivery.findOne({ dayId: TEST_DAY_ID }).lean();
-    assert(delivery, "historical recovery should create or reconcile the delivery projection");
-    assert.strictEqual(delivery.status, "delivered", "delivery projection should be delivered");
-    assert(delivery.deliveredAt, "delivery projection should record reconciliation time");
+    const courierDay = await SubscriptionDay.findById(TEST_DAY_ID).lean();
+    assert.strictEqual(courierDay.status, "fulfilled", "delivery-tab completion must set SubscriptionDay to fulfilled");
+    assert.strictEqual(courierDay.creditsDeducted, true, "delivery-tab completion must persist credit settlement");
+
+    const courierDelivery = await Delivery.findById(TEST_DELIVERY_ID).lean();
+    assert.strictEqual(courierDelivery.status, "delivered", "delivery projection must be delivered in the same flow");
+    assert(courierDelivery.deliveredAt, "delivery projection must record deliveredAt");
 
     const recoveryAudits = await SubscriptionAuditLog.find({
       entityId: TEST_DAY_ID,
       action: "dashboard_historical_fulfill",
     }).lean();
-    assert.strictEqual(recoveryAudits.length, 1, "historical recovery should leave one explicit audit record");
-    assert.strictEqual(recoveryAudits[0].meta.businessDate, "2026-05-01");
-    assert.strictEqual(recoveryAudits[0].meta.recovery, true);
+    assert.strictEqual(recoveryAudits.length, 1, "historical courier completion should leave one recovery audit");
 
-    // A repeated dashboard fulfill after recovery follows the existing
-    // historical idempotent-replay branch and must not debit again.
+    // Repeating the Delivery-tab action must be safe and must never debit twice.
+    const replayResponse = createResponseRecorder();
+    await markCourierDeliveryDelivered(req, replayResponse);
+    assert.strictEqual(replayResponse.statusCode, 200, "repeated courier delivered action should be idempotently successful");
+
+    const afterCourierReplay = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
+    assert.strictEqual(afterCourierReplay.remainingMeals, 5, "repeated delivery-tab completion must not deduct twice");
+
+    const replayAudits = await SubscriptionAuditLog.find({
+      entityId: TEST_DAY_ID,
+      action: "dashboard_historical_fulfill",
+    }).lean();
+    assert.strictEqual(replayAudits.length, 1, "repeated courier completion must not duplicate recovery audit rows");
+
+    // The operations endpoint remains compatible after the courier flow has already
+    // fulfilled the day and must also behave idempotently.
     await executeAction("fulfill", {
       entityId: TEST_DAY_ID,
       entityType: "subscription",
@@ -244,14 +291,8 @@ function assertHistoricalRecoveryPolicy() {
       payload: {},
     });
 
-    const afterReplay = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
-    assert.strictEqual(afterReplay.remainingMeals, 5, "replay after recovery must not deduct a second time");
-
-    const replayAudits = await SubscriptionAuditLog.find({
-      entityId: TEST_DAY_ID,
-      action: "dashboard_historical_fulfill",
-    }).lean();
-    assert.strictEqual(replayAudits.length, 1, "idempotent replay must not duplicate recovery audit rows");
+    const afterOperationsReplay = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
+    assert.strictEqual(afterOperationsReplay.remainingMeals, 5, "operations replay after courier completion must not deduct again");
 
     console.log("subscriptionFulfillmentConcurrency.test.js passed");
   } finally {
