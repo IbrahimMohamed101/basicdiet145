@@ -7,6 +7,10 @@ const SubscriptionPickupRequest = require("../../models/SubscriptionPickupReques
 const Subscription = require("../../models/Subscription");
 const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
 const { validateSubscriptionDayOperationalGate } = require("../../services/dashboard/subscriptionDayOperationalGateService");
+const {
+  evaluateHistoricalDeliveryFulfillmentEligibility,
+  fulfillHistoricalDeliveryDay,
+} = require("../../services/dashboard/historicalDeliveryFulfillmentService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 const dateUtils = require("../../utils/date");
@@ -112,6 +116,13 @@ async function handleAction(req, res) {
       if (!doc) {
         return errorResponse(res, 404, "NOT_FOUND", "Entity not found");
       }
+
+      const historicalDeliveryRecovery = evaluateHistoricalDeliveryFulfillmentEligibility({
+        entityType,
+        actionId: action,
+        day: doc,
+        role,
+      });
       const targetBusinessDate = doc.date || doc.fulfillmentDate || doc.deliveryDate || doc.scheduledDate || doc.pickupDate || doc.serviceDate;
       if (targetBusinessDate && targetBusinessDate < dateUtils.getTodayKSADate()) {
         let isIdempotentReplay = false;
@@ -119,7 +130,7 @@ async function handleAction(req, res) {
         if (action === "no_show" && doc.status === "no_show") isIdempotentReplay = true;
         if (action === "cancel" && ["canceled", "cancelled", "delivery_canceled", "canceled_at_branch", "no_show"].includes(doc.status)) isIdempotentReplay = true;
         const isAdminNoShow = action === "no_show" && ["admin", "superadmin"].includes(String(role || ""));
-        if (!isIdempotentReplay && !isAdminNoShow) {
+        if (!isIdempotentReplay && !isAdminNoShow && !historicalDeliveryRecovery.allowed) {
           return errorResponse(res, 409, "HISTORICAL_MUTATION_FORBIDDEN", "Historical operational records cannot be modified");
         }
       }
@@ -152,14 +163,23 @@ async function handleAction(req, res) {
         return errorResponse(res, 409, code, `Action ${action} is not allowed in current state`);
       }
 
-      // 3. Execute Transition
-      await opsTransitionService.executeAction(action, {
-        entityId,
-        entityType,
-        userId: req.dashboardUserId || req.userId,
-        role,
-        payload,
-      });
+      // 3. Execute Transition. Historical delivery completion uses a narrow
+      // recovery path so the general historical-mutation guard remains intact.
+      if (historicalDeliveryRecovery.allowed && mode === "delivery" && action === "fulfill") {
+        await fulfillHistoricalDeliveryDay({
+          dayId: entityId,
+          userId: req.dashboardUserId || req.userId,
+          role,
+        });
+      } else {
+        await opsTransitionService.executeAction(action, {
+          entityId,
+          entityType,
+          userId: req.dashboardUserId || req.userId,
+          role,
+          payload,
+        });
+      }
     }
 
     // 4. Return Updated Unified DTO
