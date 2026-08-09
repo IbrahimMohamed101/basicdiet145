@@ -11,12 +11,18 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const Delivery = require("../src/models/Delivery");
 const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const ActivityLog = require("../src/models/ActivityLog");
 require("../src/models/Plan");
 const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");
+const {
+  evaluateHistoricalDeliveryFulfillmentEligibility,
+  fulfillHistoricalDeliveryDay,
+} = require("../src/services/dashboard/historicalDeliveryFulfillmentService");
 
 const TEST_SUBSCRIPTION_ID = new mongoose.Types.ObjectId();
+const TEST_DAY_ID = new mongoose.Types.ObjectId();
 const TEST_USER_ID = new mongoose.Types.ObjectId();
 const TEST_PLAN_ID = new mongoose.Types.ObjectId();
 const TEST_TAG = `fulfillment-concurrency-${Date.now()}`;
@@ -49,13 +55,21 @@ async function cleanup() {
     SubscriptionAuditLog.deleteMany({
       $or: [
         { entityId: TEST_SUBSCRIPTION_ID },
+        { entityId: TEST_DAY_ID },
         { "meta.subscriptionId": String(TEST_SUBSCRIPTION_ID) },
       ],
     }),
     ActivityLog.deleteMany({
       $or: [
         { entityId: TEST_SUBSCRIPTION_ID },
+        { entityId: TEST_DAY_ID },
         { "meta.subscriptionId": String(TEST_SUBSCRIPTION_ID) },
+      ],
+    }),
+    Delivery.deleteMany({
+      $or: [
+        { dayId: TEST_DAY_ID },
+        { subscriptionId: TEST_SUBSCRIPTION_ID },
       ],
     }),
     SubscriptionDay.deleteMany({ subscriptionId: TEST_SUBSCRIPTION_ID }),
@@ -83,6 +97,7 @@ async function seed() {
   });
 
   await SubscriptionDay.create({
+    _id: TEST_DAY_ID,
     subscriptionId: TEST_SUBSCRIPTION_ID,
     date: "2026-05-01",
     status: "out_for_delivery",
@@ -107,8 +122,45 @@ async function seed() {
   });
 }
 
+function assertHistoricalRecoveryPolicy() {
+  const base = {
+    entityType: "subscription",
+    actionId: "fulfill",
+    role: "courier",
+    today: "2026-08-09",
+  };
+
+  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+    ...base,
+    day: { date: "2026-08-01", status: "out_for_delivery" },
+  }).allowed, true, "courier may close a historical delivery already out for delivery");
+
+  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+    ...base,
+    day: { date: "2026-08-01", status: "ready_for_delivery" },
+  }).allowed, true, "courier may close a historical delivery already ready for delivery");
+
+  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+    ...base,
+    role: "kitchen",
+    day: { date: "2026-08-01", status: "out_for_delivery" },
+  }).allowed, false, "kitchen cannot recover historical home delivery fulfillment");
+
+  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+    ...base,
+    day: { date: "2026-08-01", status: "in_preparation" },
+  }).allowed, false, "recovery cannot skip the delivery state machine from preparation");
+
+  assert.strictEqual(evaluateHistoricalDeliveryFulfillmentEligibility({
+    ...base,
+    entityType: "subscription_pickup_request",
+    day: { date: "2026-08-01", status: "ready_for_pickup" },
+  }).allowed, false, "pickup history remains protected");
+}
+
 (async function run() {
   try {
+    assertHistoricalRecoveryPolicy();
     await connect();
     await cleanup();
     await seed();
@@ -137,6 +189,56 @@ async function seed() {
       action: "cashier_manual_consumption",
     }).lean();
     assert.strictEqual(manualConsumptionLogs.length, 0, "fulfillment must not create duplicate manual consumption logs");
+
+    // Re-seed the exact same historical delivery and exercise the dashboard
+    // recovery service. It must use the canonical fulfillment debit and keep the
+    // delivery projection/audit in sync without allowing broader history edits.
+    await cleanup();
+    await seed();
+
+    const recovery = await fulfillHistoricalDeliveryDay({
+      dayId: TEST_DAY_ID,
+      userId: TEST_USER_ID,
+      role: "courier",
+    });
+    assert.strictEqual(recovery.alreadyFulfilled, false, "first recovery should perform fulfillment");
+    assert.strictEqual(recovery.deductedCredits, 2, "historical recovery should deduct the canonical fulfilled count");
+
+    const recoveredSubscription = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
+    assert.strictEqual(recoveredSubscription.remainingMeals, 5, "historical recovery deducts exactly once");
+
+    const recoveredDay = await SubscriptionDay.findById(TEST_DAY_ID).lean();
+    assert.strictEqual(recoveredDay.status, "fulfilled", "historical recovery closes the operational day");
+    assert.strictEqual(recoveredDay.creditsDeducted, true, "historical recovery records credit settlement");
+
+    const delivery = await Delivery.findOne({ dayId: TEST_DAY_ID }).lean();
+    assert(delivery, "historical recovery should create or reconcile the delivery projection");
+    assert.strictEqual(delivery.status, "delivered", "delivery projection should be delivered");
+    assert(delivery.deliveredAt, "delivery projection should record reconciliation time");
+
+    const recoveryAudits = await SubscriptionAuditLog.find({
+      entityId: TEST_DAY_ID,
+      action: "dashboard_historical_fulfill",
+    }).lean();
+    assert.strictEqual(recoveryAudits.length, 1, "historical recovery should leave one explicit audit record");
+    assert.strictEqual(recoveryAudits[0].meta.businessDate, "2026-05-01");
+    assert.strictEqual(recoveryAudits[0].meta.recovery, true);
+
+    const replay = await fulfillHistoricalDeliveryDay({
+      dayId: TEST_DAY_ID,
+      userId: TEST_USER_ID,
+      role: "courier",
+    });
+    assert.strictEqual(replay.alreadyFulfilled, true, "recovery replay should be idempotent");
+
+    const afterReplay = await Subscription.findById(TEST_SUBSCRIPTION_ID).lean();
+    assert.strictEqual(afterReplay.remainingMeals, 5, "recovery replay must not deduct a second time");
+
+    const replayAudits = await SubscriptionAuditLog.find({
+      entityId: TEST_DAY_ID,
+      action: "dashboard_historical_fulfill",
+    }).lean();
+    assert.strictEqual(replayAudits.length, 1, "idempotent replay must not duplicate recovery audit rows");
 
     console.log("subscriptionFulfillmentConcurrency.test.js passed");
   } finally {
