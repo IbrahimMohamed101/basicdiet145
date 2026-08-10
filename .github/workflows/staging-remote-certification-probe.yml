@@ -1,0 +1,96 @@
+name: Staging Remote Certification Probe
+
+on:
+  push:
+    branches:
+      - cert/staging-remote-20260810
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://basicdiet145-staging.up.railway.app
+      EXPECTED_DEPLOY_SHA: 71cea27c9313151945d873ac746512d9c779aeef
+    steps:
+      - name: Public health gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in live ready health; do
+            echo "== GET /${path} =="
+            body="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "${BASE_URL}/${path}")"
+            echo "$body" | jq .
+            test "$(echo "$body" | jq -r '.status')" = "true"
+          done
+
+      - name: Register isolated staging certification user
+        id: auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          tail="$(printf '%07d' $((GITHUB_RUN_ID % 10000000)))"
+          phone="+96655${tail}"
+          password="StagingCert!${GITHUB_RUN_ID}Aa9"
+          payload="$(jq -nc --arg phone "$phone" --arg password "$password" '{phone:$phone,password:$password,confirmPassword:$password,fullName:"Stacking Remote Certification"}')"
+          response="$(curl --fail-with-body --silent --show-error -X POST "${BASE_URL}/api/auth/register" -H 'Content-Type: application/json' --data "$payload")"
+          token="$(echo "$response" | jq -r '.accessToken // empty')"
+          user_id="$(echo "$response" | jq -r '.user.id // empty')"
+          test -n "$token"
+          test -n "$user_id"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+          echo "user_id=$user_id" >> "$GITHUB_OUTPUT"
+          echo "Registered isolated staging user: $user_id"
+
+      - name: Authenticated identity gate
+        shell: bash
+        env:
+          TOKEN: ${{ steps.auth.outputs.token }}
+          USER_ID: ${{ steps.auth.outputs.user_id }}
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/auth/me" -H "Authorization: Bearer ${TOKEN}")"
+          echo "$response" | jq '{status, ok, user: (.user // .data // {})}'
+          actual="$(echo "$response" | jq -r '(.user.id // .data.id // .data.user.id // empty)')"
+          if [ -n "$actual" ]; then test "$actual" = "$USER_ID"; fi
+
+      - name: Remote readiness with rollout closed
+        shell: bash
+        env:
+          TOKEN: ${{ steps.auth.outputs.token }}
+          USER_ID: ${{ steps.auth.outputs.user_id }}
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/subscriptions/stacking/readiness" -H "Authorization: Bearer ${TOKEN}")"
+          echo "$response" | jq '.data'
+
+          test "$(echo "$response" | jq -r '.data.contractVersion')" = "subscription_stacking_remote_readiness.v1"
+          test "$(echo "$response" | jq -r '.data.environment.production')" = "false"
+          test "$(echo "$response" | jq -r '.data.deployment.commitSha')" = "$EXPECTED_DEPLOY_SHA"
+          test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.databaseIsolationConfirmed')" = "true"
+          test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.databaseIdentityAvailable')" = "true"
+          test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.readSafe')" = "true"
+
+          test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledGlobally')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.readEnabledGlobally')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledGlobally')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.allowAllUsers')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.wildcardConfigured')" = "false"
+          test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "false"
+          test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "false"
+
+          test "$(echo "$response" | jq -r '.data.runtime.skipRouterConnected')" = "false"
+          test "$(echo "$response" | jq -r '.data.runtime.plannedPickupRouterConnected')" = "false"
+          test "$(echo "$response" | jq -r '.data.runtime.baseMealCheckoutSupported')" = "true"
+          test "$(echo "$response" | jq -r '.data.runtime.premiumStackingSupported')" = "false"
+          test "$(echo "$response" | jq -r '.data.runtime.addonStackingSupported')" = "false"
+          test "$(echo "$response" | jq -r '.data.runtime.freezeSupported')" = "false"
+          test "$(echo "$response" | jq -r '.data.runtime.cancellationSupported')" = "false"
+          test "$(echo "$response" | jq -r '.data.runtime.directPickupSupported')" = "false"
+
+          echo "REMOTE_FLAGS_OFF_GATE=PASS"
+          echo "CERT_TEST_USER_ID=$USER_ID"
