@@ -175,7 +175,7 @@ function run() {
   );
   assertIncludes(
     courier,
-    "restaurantCourierReadOnlyResponse,\n  asyncHandler(controller.listTodayDeliveries)",
+    "restaurantCourierReadOnlyResponse,\n  asyncHandler(deliveryListController.listDeliveries)",
     "subscription delivery list must be read-only for restaurant"
   );
   assertIncludes(
