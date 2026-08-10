@@ -28,7 +28,11 @@ function baseQuote(overrides = {}) {
 }
 
 function activeContainer() {
-  return { _id: "active-sub-1", userId: "user-1", status: "active" };
+  return {
+    _id: "64f000000000000000000001",
+    userId: "user-1",
+    status: "active",
+  };
 }
 
 async function testDisabledPreflightIsExactNoOp() {
@@ -91,6 +95,14 @@ async function testFirstSubscriptionMayUseStandardPremiumFlow() {
       originalCalls += 1;
       const resolved = await runtime.resolveCheckoutQuoteOrThrow();
       assert.strictEqual(resolved, premiumQuote);
+      assert.strictEqual(
+        runtime.stackingFinalizationIntent.mode,
+        "standard_initial"
+      );
+      assert.strictEqual(
+        runtime.stackingFinalizationIntent.expectedParentSubscriptionId,
+        null
+      );
       return { ok: true, source: "standard-first-subscription" };
     },
     {
@@ -127,6 +139,14 @@ async function testBaseOnlyAdditiveCheckoutUsesSameResolvedQuote() {
       const second = await runtime.resolveCheckoutQuoteOrThrow();
       assert.strictEqual(first, quote);
       assert.strictEqual(second, quote);
+      assert.strictEqual(
+        runtime.stackingFinalizationIntent.mode,
+        "additive_existing_parent"
+      );
+      assert.strictEqual(
+        String(runtime.stackingFinalizationIntent.expectedParentSubscriptionId),
+        "64f000000000000000000001"
+      );
       return { ok: true, source: "stacking-base-only" };
     },
     {
@@ -221,6 +241,7 @@ async function testCompletedIdempotentDraftStillReadsNormally() {
   });
   assert.strictEqual(result.allowed, true);
   assert.strictEqual(result.reason, "completed_idempotent_checkout");
+  assert.strictEqual(result.finalizationIntent, null);
 }
 
 function testUnsupportedExtraDetectionUsesCanonicalTotalsToo() {

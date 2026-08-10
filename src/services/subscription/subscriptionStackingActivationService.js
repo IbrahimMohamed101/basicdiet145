@@ -152,11 +152,19 @@ function buildDayFulfillmentOverrides({ container, batch } = {}) {
 
 function defaultRuntime() {
   return {
-    async findActiveContainer({ userId, session }) {
-      return Subscription.findOne({
+    async findActiveContainer({
+      userId,
+      expectedContainerSubscriptionId,
+      session,
+    }) {
+      const query = {
         userId,
         status: "active",
-      }).sort({ createdAt: -1 }).session(session);
+      };
+      if (expectedContainerSubscriptionId) {
+        query._id = expectedContainerSubscriptionId;
+      }
+      return Subscription.findOne(query).sort({ createdAt: -1 }).session(session);
     },
     async findBatches({ containerSubscriptionId, session }) {
       return SubscriptionEntitlementBatch.find({
@@ -227,6 +235,7 @@ async function activatePaidDraftIntoExistingContainerTransactional({
   subscriptionPayload,
   businessDate,
   session,
+  expectedParentSubscriptionId = null,
   now = new Date(),
   runtime: runtimeOverrides = null,
 } = {}) {
@@ -264,15 +273,42 @@ async function activatePaidDraftIntoExistingContainerTransactional({
 
   const container = await runtime.findActiveContainer({
     userId: draft.userId,
+    expectedContainerSubscriptionId: expectedParentSubscriptionId,
     session,
   });
   if (!container) {
+    if (expectedParentSubscriptionId) {
+      throw activationError(
+        "STACKING_EXPECTED_PARENT_UNAVAILABLE",
+        "The checkout-time parent subscription is no longer active",
+        409,
+        {
+          expectedParentSubscriptionId:
+            stringId(expectedParentSubscriptionId),
+        }
+      );
+    }
     return {
       outcome: "delegate_to_standard_activation",
       container: null,
       legacyBatch: null,
       purchaseBatch: null,
     };
+  }
+  if (
+    expectedParentSubscriptionId
+    && stringId(container._id) !== stringId(expectedParentSubscriptionId)
+  ) {
+    throw activationError(
+      "STACKING_EXPECTED_PARENT_MISMATCH",
+      "Additive activation resolved a different parent subscription",
+      409,
+      {
+        expectedParentSubscriptionId:
+          stringId(expectedParentSubscriptionId),
+        resolvedParentSubscriptionId: stringId(container._id),
+      }
+    );
   }
 
   const legacyPayload = buildLegacyEntitlementBatchPayload({

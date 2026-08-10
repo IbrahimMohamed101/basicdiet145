@@ -7,7 +7,7 @@ const { resolveMealsPerDay } = require("../utils/subscription/subscriptionDaySel
 const { recomputePlannerMetaFromSlots, projectMaterializedAndLegacyForExistingSlots } = require("./subscription/mealSlotPlannerService");
 const { writeLog } = require("../utils/log");
 const { logger } = require("../utils/logger");
-const { finalizeSubscriptionDraftPaymentFlow } = require("./subscription/subscriptionActivationService");
+const subscriptionActivationService = require("./subscription/subscriptionActivationService");
 const { settlePaidPremiumExtraDayPayment } = require("./subscription/premiumExtraDayPaymentService");
 const { getPaymentMetadata } = require("./subscription/subscriptionCheckoutHelpers");
 const { applyCommercialStateToDay } = require("./subscription/subscriptionDayCommercialStateService");
@@ -37,7 +37,8 @@ function defaultRuntime() {
     async findDayById(dayId, { session } = {}) { return SubscriptionDay.findById(dayId).session(session); },
     async createDay(payload, { session } = {}) { const created = await SubscriptionDay.create([payload], { session }); return created[0]; },
     async writeLog(payload) { await writeLog(payload); },
-    finalizeSubscriptionDraftPaymentFlow: (...args) => finalizeSubscriptionDraftPaymentFlow(...args),
+    finalizeSubscriptionDraftPaymentFlow: (...args) =>
+      subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow(...args),
   };
 }
 

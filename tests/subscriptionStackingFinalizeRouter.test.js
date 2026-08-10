@@ -33,6 +33,25 @@ function transactionalSession() {
   };
 }
 
+function markAdditive(draft, parentId = new mongoose.Types.ObjectId()) {
+  draft.stackingFinalization = {
+    version: "subscription_stacking.finalization.v1",
+    mode: "additive_existing_parent",
+    expectedParentSubscriptionId: parentId,
+    decidedAt: new Date("2026-08-06T09:00:00+03:00"),
+  };
+  return parentId;
+}
+
+function markInitial(draft) {
+  draft.stackingFinalization = {
+    version: "subscription_stacking.finalization.v1",
+    mode: "standard_initial",
+    expectedParentSubscriptionId: null,
+    decidedAt: new Date("2026-08-06T09:00:00+03:00"),
+  };
+}
+
 async function testDisabledRouterDelegatesUnchanged() {
   const { draft, payment } = ids();
   const calls = [];
@@ -53,6 +72,7 @@ async function testDisabledRouterDelegatesUnchanged() {
 
 async function testAllowlistedSessionUsesStackingPath() {
   const { draft, payment } = ids();
+  const expectedParentSubscriptionId = markAdditive(draft);
   let originalCalled = false;
   const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
     async () => {
@@ -67,6 +87,10 @@ async function testAllowlistedSessionUsesStackingPath() {
         assert.strictEqual(args.payment, payment);
         assert.strictEqual(args.businessDate, "2026-08-06");
         assert.strictEqual(args.session.inTransaction(), true);
+        assert.strictEqual(
+          String(args.expectedParentSubscriptionId),
+          String(expectedParentSubscriptionId)
+        );
         return {
           outcome: "stacked_into_existing_container",
           applied: true,
@@ -88,11 +112,12 @@ async function testAllowlistedSessionUsesStackingPath() {
   assert.strictEqual(result.stacking.applied, true);
 }
 
-async function testNoContainerDelegatesInsideSameSession() {
+async function testAdditiveRouteNeverFallsThroughToLegacy() {
   const { draft, payment } = ids();
-  const received = [];
-  const original = async (args) => {
-    received.push(args);
+  markAdditive(draft);
+  let originalCalled = false;
+  const original = async () => {
+    originalCalled = true;
     return { applied: true, subscriptionId: "new-standard-sub" };
   };
   const activeSession = transactionalSession();
@@ -101,15 +126,18 @@ async function testNoContainerDelegatesInsideSameSession() {
     getBusinessDate: async () => "2026-08-06",
     applyStack: async () => ({ outcome: "delegate_to_standard_activation" }),
   });
-  const result = await wrapper({ draft, payment, session: activeSession });
-
-  assert.strictEqual(result.subscriptionId, "new-standard-sub");
-  assert.strictEqual(received.length, 1);
-  assert.strictEqual(received[0].session, activeSession);
+  await assert.rejects(
+    () => wrapper({ draft, payment, session: activeSession }),
+    (err) => Boolean(
+      err && err.code === "STACKING_FINALIZATION_ROUTE_FELL_THROUGH"
+    )
+  );
+  assert.strictEqual(originalCalled, false);
 }
 
 async function testRouterOwnsTransactionWhenCallerHasNone() {
   const { draft, payment } = ids();
+  markAdditive(draft);
   const events = [];
   const activeSession = {
     supportsTransactions: true,
@@ -172,12 +200,14 @@ async function testCompletedDraftUsesCanonicalIdempotencyPath() {
   const { draft, payment } = ids();
   draft.status = "completed";
   draft.subscriptionId = new mongoose.Types.ObjectId();
+  markAdditive(draft, draft.subscriptionId);
   let stackCalled = false;
+  let originalCalled = false;
   const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
-    async () => ({
-      applied: true,
-      subscriptionId: String(draft.subscriptionId),
-    }),
+    async () => {
+      originalCalled = true;
+      return { applied: false };
+    },
     {
       writeEnabledForUser: () => true,
       applyStack: async () => {
@@ -189,10 +219,13 @@ async function testCompletedDraftUsesCanonicalIdempotencyPath() {
   const result = await wrapper({ draft, payment, session: transactionalSession() });
   assert.strictEqual(result.subscriptionId, String(draft.subscriptionId));
   assert.strictEqual(stackCalled, false);
+  assert.strictEqual(originalCalled, false);
+  assert.strictEqual(result.stacking.idempotent, true);
 }
 
 async function testMissingReloadedDocumentFailsClosedAndEndsSession() {
   const { draft, payment } = ids();
+  markAdditive(draft);
   let ended = false;
   const owned = {
     supportsTransactions: true,
@@ -219,6 +252,7 @@ async function testMissingReloadedDocumentFailsClosedAndEndsSession() {
 
 async function testInvalidStackResultFailsClosed() {
   const { draft, payment } = ids();
+  markAdditive(draft);
   const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
     async () => ({ applied: true, subscriptionId: "legacy" }),
     {
@@ -236,14 +270,109 @@ async function testInvalidStackResultFailsClosed() {
   );
 }
 
+async function testAllowlistedDraftWithoutAuthorityFailsClosed() {
+  const { draft, payment } = ids();
+  let originalCalled = false;
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => {
+      originalCalled = true;
+      return { applied: true, subscriptionId: "legacy" };
+    },
+    { writeEnabledForUser: () => true }
+  );
+  await assert.rejects(
+    () => wrapper({ draft, payment, session: transactionalSession() }),
+    (err) => Boolean(err && err.code === "STACKING_FINALIZATION_INTENT_MISSING")
+  );
+  assert.strictEqual(originalCalled, false);
+}
+
+async function testAdditiveDraftCannotBecomeLegacyAfterKillSwitch() {
+  const { draft, payment } = ids();
+  markAdditive(draft);
+  let originalCalled = false;
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => {
+      originalCalled = true;
+      return { applied: true, subscriptionId: "legacy" };
+    },
+    { writeEnabledForUser: () => false }
+  );
+  await assert.rejects(
+    () => wrapper({ draft, payment, session: transactionalSession() }),
+    (err) => Boolean(
+      err && err.code === "STACKING_FINALIZATION_DISABLED_AFTER_CHECKOUT"
+    )
+  );
+  assert.strictEqual(originalCalled, false);
+}
+
+async function testInitialAuthorityUsesLegacyOnlyWhenNoParentExists() {
+  const { draft, payment } = ids();
+  markInitial(draft);
+  let originalCalls = 0;
+  let stackCalls = 0;
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => {
+      originalCalls += 1;
+      return { applied: true, subscriptionId: "initial-subscription" };
+    },
+    {
+      writeEnabledForUser: () => true,
+      findActiveContainer: async () => null,
+      applyStack: async () => {
+        stackCalls += 1;
+        return null;
+      },
+    }
+  );
+  const result = await wrapper({
+    draft,
+    payment,
+    session: transactionalSession(),
+  });
+  assert.strictEqual(result.subscriptionId, "initial-subscription");
+  assert.strictEqual(originalCalls, 1);
+  assert.strictEqual(stackCalls, 0);
+}
+
+async function testInitialAuthorityCannotReplaceNewlyActiveParent() {
+  const { draft, payment } = ids();
+  markInitial(draft);
+  let originalCalled = false;
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => {
+      originalCalled = true;
+      return { applied: true, subscriptionId: "legacy" };
+    },
+    {
+      writeEnabledForUser: () => true,
+      findActiveContainer: async () => ({
+        _id: new mongoose.Types.ObjectId(),
+      }),
+    }
+  );
+  await assert.rejects(
+    () => wrapper({ draft, payment, session: transactionalSession() }),
+    (err) => Boolean(
+      err && err.code === "STACKING_INITIAL_FINALIZATION_CONFLICT"
+    )
+  );
+  assert.strictEqual(originalCalled, false);
+}
+
 async function run() {
   await testDisabledRouterDelegatesUnchanged();
   await testAllowlistedSessionUsesStackingPath();
-  await testNoContainerDelegatesInsideSameSession();
+  await testAdditiveRouteNeverFallsThroughToLegacy();
   await testRouterOwnsTransactionWhenCallerHasNone();
   await testCompletedDraftUsesCanonicalIdempotencyPath();
   await testMissingReloadedDocumentFailsClosedAndEndsSession();
   await testInvalidStackResultFailsClosed();
+  await testAllowlistedDraftWithoutAuthorityFailsClosed();
+  await testAdditiveDraftCannotBecomeLegacyAfterKillSwitch();
+  await testInitialAuthorityUsesLegacyOnlyWhenNoParentExists();
+  await testInitialAuthorityCannotReplaceNewlyActiveParent();
   console.log("subscription stacking finalize router tests passed");
 }
 

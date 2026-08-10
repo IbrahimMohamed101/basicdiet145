@@ -285,6 +285,36 @@ async function testNoActiveContainerDelegatesToStandardActivation() {
   assert.strictEqual(calls.linkedPayments.length, 0);
 }
 
+async function testExpectedParentCannotDisappearOrChange() {
+  const expectedParent = buildContainer();
+  const purchase = buildPaidPurchase(expectedParent);
+  const missingRuntime = createRuntime({ container: null }).runtime;
+
+  await assert.rejects(
+    () => activatePaidDraftIntoExistingContainerTransactional({
+      ...purchase,
+      expectedParentSubscriptionId: expectedParent._id,
+      businessDate: "2026-08-06",
+      session: transactionalSession(),
+      runtime: missingRuntime,
+    }),
+    (err) => Boolean(err && err.code === "STACKING_EXPECTED_PARENT_UNAVAILABLE")
+  );
+
+  const differentParent = buildContainer({ userId: expectedParent.userId });
+  const mismatchRuntime = createRuntime({ container: differentParent }).runtime;
+  await assert.rejects(
+    () => activatePaidDraftIntoExistingContainerTransactional({
+      ...purchase,
+      expectedParentSubscriptionId: expectedParent._id,
+      businessDate: "2026-08-06",
+      session: transactionalSession(),
+      runtime: mismatchRuntime,
+    }),
+    (err) => Boolean(err && err.code === "STACKING_EXPECTED_PARENT_MISMATCH")
+  );
+}
+
 async function testExtrasAreHardBlockedUntilTheirLedgerIsIntegrated() {
   const container = buildContainer();
   const purchase = buildPaidPurchase(container, {
@@ -356,6 +386,7 @@ async function run() {
   await testFuturePurchaseExtendsHorizonButDoesNotExposeBalanceEarly();
   await testCommittedTodayShiftsPurchaseUsingKsaDate();
   await testNoActiveContainerDelegatesToStandardActivation();
+  await testExpectedParentCannotDisappearOrChange();
   await testExtrasAreHardBlockedUntilTheirLedgerIsIntegrated();
   await testTransactionIsMandatory();
   testMirrorProjectionAndExtrasDetection();

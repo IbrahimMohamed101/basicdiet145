@@ -48,6 +48,7 @@ async function applyPaidDraftToSubscriptionStackTransactional({
   payment,
   businessDate,
   session,
+  expectedParentSubscriptionId = null,
   now = new Date(),
   runtime: runtimeOverrides = null,
 } = {}) {
@@ -93,6 +94,7 @@ async function applyPaidDraftToSubscriptionStackTransactional({
     subscriptionPayload: activationPayload.subscriptionPayload,
     businessDate,
     session,
+    expectedParentSubscriptionId,
     now,
   });
 

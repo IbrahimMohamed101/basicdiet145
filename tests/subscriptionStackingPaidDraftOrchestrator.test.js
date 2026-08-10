@@ -42,18 +42,24 @@ function fixture() {
 async function testHappyPathMaterializesDaysAfterActivation() {
   const { draft, payment, container, purchaseBatch } = fixture();
   const calls = [];
+  const expectedParentSubscriptionId = container._id;
   const result = await applyPaidDraftToSubscriptionStackTransactional({
     draft,
     payment,
     businessDate: "2026-08-06",
+    expectedParentSubscriptionId,
     session: session(),
     runtime: {
       buildActivationPayload: async () => {
         calls.push("build");
         return { subscriptionPayload: { selectedMealsPerDay: 2 } };
       },
-      activateIntoContainer: async () => {
+      activateIntoContainer: async (args) => {
         calls.push("activate");
+        assert.strictEqual(
+          String(args.expectedParentSubscriptionId),
+          String(expectedParentSubscriptionId)
+        );
         return {
           outcome: "stacked_into_existing_container",
           container,
