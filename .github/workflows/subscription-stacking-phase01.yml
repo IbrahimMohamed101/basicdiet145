@@ -4,15 +4,24 @@ on:
   push:
     branches:
       - feat/subscription-stacking-phase-0-1-20260806
+      - fix/subscription-stacking-release-safety-v2-20260809
     paths:
       - "src/index.js"
+      - "src/controllers/subscriptionController.js"
+      - "src/middleware/dashboardSubscriptionStacking*.js"
+      - "src/models/CheckoutDraft.js"
       - "src/models/SubscriptionEntitlement*.js"
+      - "src/routes/index.js"
+      - "src/services/dashboard/subscriptionDashboardStackingReadService.js"
       - "src/services/installSubscriptionStacking*.js"
+      - "src/services/paymentApplicationService.js"
+      - "src/services/subscription/runtime.js"
       - "src/services/subscription/subscriptionEntitlement*.js"
       - "src/services/subscription/subscriptionStacking*.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionEntitlement*.test.js"
       - "tests/subscriptionEntitlement*.integration.test.js"
+      - "tests/subscriptionDashboardStackingReadModel.test.js"
       - "tests/subscriptionStacking*.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   pull_request:
@@ -20,13 +29,21 @@ on:
       - main
     paths:
       - "src/index.js"
+      - "src/controllers/subscriptionController.js"
+      - "src/middleware/dashboardSubscriptionStacking*.js"
+      - "src/models/CheckoutDraft.js"
       - "src/models/SubscriptionEntitlement*.js"
+      - "src/routes/index.js"
+      - "src/services/dashboard/subscriptionDashboardStackingReadService.js"
       - "src/services/installSubscriptionStacking*.js"
+      - "src/services/paymentApplicationService.js"
+      - "src/services/subscription/runtime.js"
       - "src/services/subscription/subscriptionEntitlement*.js"
       - "src/services/subscription/subscriptionStacking*.js"
       - "src/utils/featureFlags.js"
       - "tests/subscriptionEntitlement*.test.js"
       - "tests/subscriptionEntitlement*.integration.test.js"
+      - "tests/subscriptionDashboardStackingReadModel.test.js"
       - "tests/subscriptionStacking*.test.js"
       - ".github/workflows/subscription-stacking-phase01.yml"
   workflow_dispatch:
@@ -88,6 +105,15 @@ jobs:
 
       - name: Fresh-process startup composition regression
         run: NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
+      - name: Finalization routing authority contracts
+        run: NODE_ENV=test node tests/subscriptionStackingFinalizationAuthority.test.js
+
+      - name: Dashboard stacked-subscription mutation guard
+        run: NODE_ENV=test node tests/subscriptionStackingDashboardWriteGuard.test.js
+
+      - name: Dashboard package and payment read contract
+        run: NODE_ENV=test node tests/subscriptionDashboardStackingReadModel.test.js
 
       - name: Checkout pre-invoice safety contracts
         run: NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
