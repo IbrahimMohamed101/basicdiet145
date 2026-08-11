@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 10
     env:
       BASE_URL: https://basicdiet145-staging-2882.up.railway.app
-      EXPECTED_DEPLOY_SHA: 71cea27c9313151945d873ac746512d9c779aeef
+      EXPECTED_DEPLOY_SHA: c6db595b3f55abd7c0717de4ce8cf22d226c101d
     steps:
       - name: Public health gates
         shell: bash
