@@ -72,6 +72,22 @@ function buildFulfillmentSignature(batch = {}) {
     address.line1,
   ].map((value) => String(value || "").trim().toLowerCase()).join("|");
 
+  // Pickup fulfillment is owned by the branch (and pickup window when one is
+  // explicitly selected). Customer delivery-address data can still be carried
+  // in canonical snapshots for compatibility, but it is irrelevant to whether
+  // two pickup entitlements can overlap. Including it here incorrectly shifts
+  // same-branch pickup purchases to a later date.
+  if (mode === "pickup") {
+    return [mode, pickupLocationId, window].join("::");
+  }
+
+  // Delivery fulfillment depends on the destination profile. A stale or
+  // irrelevant pickupLocationId must not affect delivery compatibility.
+  if (mode === "delivery") {
+    return [mode, zoneId, window, addressIdentity].join("::");
+  }
+
+  // Preserve a fail-safe identity for historical/unknown fulfillment modes.
   return [mode, pickupLocationId, zoneId, window, addressIdentity].join("::");
 }
 
