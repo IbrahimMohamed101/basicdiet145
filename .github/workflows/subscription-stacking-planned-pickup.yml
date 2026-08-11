@@ -7,9 +7,11 @@ on:
     paths:
       - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
       - "src/services/subscription/subscriptionStackingPlannedPickupRouterService.js"
+      - "src/services/subscription/subscriptionPickupRequestBalanceService.js"
       - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
       - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
       - "tests/subscriptionStackingPlannedPickupRouter.test.js"
+      - "tests/subscriptionStackingPickupBalanceIntegration.test.js"
       - "tests/subscriptionStackingEntitlementRouter.test.js"
       - "tests/subscriptionStackingFulfillmentLedger.test.js"
       - ".github/workflows/subscription-stacking-planned-pickup.yml"
@@ -19,9 +21,11 @@ on:
     paths:
       - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
       - "src/services/subscription/subscriptionStackingPlannedPickupRouterService.js"
+      - "src/services/subscription/subscriptionPickupRequestBalanceService.js"
       - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
       - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
       - "tests/subscriptionStackingPlannedPickupRouter.test.js"
+      - "tests/subscriptionStackingPickupBalanceIntegration.test.js"
       - "tests/subscriptionStackingEntitlementRouter.test.js"
       - "tests/subscriptionStackingFulfillmentLedger.test.js"
       - ".github/workflows/subscription-stacking-planned-pickup.yml"
@@ -54,6 +58,9 @@ jobs:
 
       - name: Planned pickup router contracts
         run: NODE_ENV=test node tests/subscriptionStackingPlannedPickupRouter.test.js
+
+      - name: Pickup balance integration
+        run: NODE_ENV=test node tests/subscriptionStackingPickupBalanceIntegration.test.js
 
       - name: Entitlement bridge regression
         run: NODE_ENV=test node tests/subscriptionStackingEntitlementRouter.test.js
