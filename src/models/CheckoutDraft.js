@@ -125,6 +125,10 @@ const StackingFinalizationSchema = new mongoose.Schema(
       default: null,
     },
     decidedAt: { type: Date, required: true },
+    // Versioned, checkout-time authority for future additive extra activation.
+    // Runtime additive purchases remain fail-closed; P2 only persists the
+    // immutable quantities/identities needed by the internal finalizer.
+    extraEntitlements: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { _id: false }
 );
@@ -197,6 +201,7 @@ const CheckoutDraftSchema = new mongoose.Schema(
     stackingFinalization: {
       type: StackingFinalizationSchema,
       default: null,
+      immutable: true,
     },
 
     breakdown: {

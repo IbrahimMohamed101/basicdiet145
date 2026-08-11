@@ -5,6 +5,7 @@ const {
 } = require("./subscriptionActivationService");
 const {
   activatePaidDraftIntoExistingContainerTransactional,
+  activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
 } = require("./subscriptionStackingActivationService");
 const {
   materializeStackingSubscriptionDaysTransactional,
@@ -35,15 +36,15 @@ function defaultRuntime() {
   };
 }
 
-function resolveRuntime(runtimeOverrides = null) {
-  const runtime = defaultRuntime();
+function resolveRuntime(runtimeOverrides = null, runtimeDefaults = null) {
+  const runtime = runtimeDefaults || defaultRuntime();
   if (!runtimeOverrides || typeof runtimeOverrides !== "object" || Array.isArray(runtimeOverrides)) {
     return runtime;
   }
   return { ...runtime, ...runtimeOverrides };
 }
 
-async function applyPaidDraftToSubscriptionStackTransactional({
+async function applyPaidDraftToSubscriptionStackCoreTransactional({
   draft,
   payment,
   businessDate,
@@ -51,6 +52,7 @@ async function applyPaidDraftToSubscriptionStackTransactional({
   expectedParentSubscriptionId = null,
   now = new Date(),
   runtime: runtimeOverrides = null,
+  runtimeDefaults = null,
 } = {}) {
   assertTransactionalSession(session);
   if (!draft || !draft._id || !draft.userId) {
@@ -75,7 +77,7 @@ async function applyPaidDraftToSubscriptionStackTransactional({
     );
   }
 
-  const runtime = resolveRuntime(runtimeOverrides);
+  const runtime = resolveRuntime(runtimeOverrides, runtimeDefaults);
   const activationPayload = await runtime.buildActivationPayload({ draft });
   if (
     !activationPayload
@@ -149,6 +151,27 @@ async function applyPaidDraftToSubscriptionStackTransactional({
   };
 }
 
+async function applyPaidDraftToSubscriptionStackTransactional(args = {}) {
+  return applyPaidDraftToSubscriptionStackCoreTransactional(args);
+}
+
+// Dark-wired P2 boundary. Runtime dispatch continues to call the guarded
+// function above; only direct internal callers can exercise wallet seeding.
+async function applyPinnedExtrasPaidDraftToSubscriptionStackTransactional(args = {}) {
+  return applyPaidDraftToSubscriptionStackCoreTransactional({
+    ...args,
+    runtimeDefaults: {
+      ...defaultRuntime(),
+      activateIntoContainer: (activationArgs) => (
+        activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(
+          activationArgs
+        )
+      ),
+    },
+  });
+}
+
 module.exports = {
   applyPaidDraftToSubscriptionStackTransactional,
+  applyPinnedExtrasPaidDraftToSubscriptionStackTransactional,
 };

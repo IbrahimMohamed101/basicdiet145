@@ -218,6 +218,7 @@ function buildPurchaseEntitlementBatchPayload({
   draft,
   payment,
   subscriptionPayload,
+  authoritativeExtraSnapshot = null,
   containerSubscriptionId,
   businessDate,
   now = new Date(),
@@ -291,17 +292,21 @@ function buildPurchaseEntitlementBatchPayload({
     reservedMeals: 0,
     consumedMeals: 0,
     forfeitedMeals: 0,
-    premiumSnapshot: Array.isArray(subscriptionPayload.premiumBalance)
-      ? subscriptionPayload.premiumBalance
-      : [],
-    addonSnapshot: {
-      subscriptions: Array.isArray(subscriptionPayload.addonSubscriptions)
-        ? subscriptionPayload.addonSubscriptions
-        : [],
-      balances: Array.isArray(subscriptionPayload.addonBalance)
-        ? subscriptionPayload.addonBalance
-        : [],
-    },
+    premiumSnapshot: authoritativeExtraSnapshot
+      ? authoritativeExtraSnapshot.premium
+      : (Array.isArray(subscriptionPayload.premiumBalance)
+        ? subscriptionPayload.premiumBalance
+        : []),
+    addonSnapshot: authoritativeExtraSnapshot
+      ? authoritativeExtraSnapshot.addons
+      : {
+        subscriptions: Array.isArray(subscriptionPayload.addonSubscriptions)
+          ? subscriptionPayload.addonSubscriptions
+          : [],
+        balances: Array.isArray(subscriptionPayload.addonBalance)
+          ? subscriptionPayload.addonBalance
+          : [],
+      },
     deliverySnapshot: {
       mode: subscriptionPayload.deliveryMode || "delivery",
       address: subscriptionPayload.deliveryAddress || null,

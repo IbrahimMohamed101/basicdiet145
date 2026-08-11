@@ -26,6 +26,12 @@ const {
   applyResolvedScheduleToBatchPayload,
   resolveStackingPurchaseSchedule,
 } = require("./subscriptionStackingSchedulePolicyService");
+const {
+  ensureExtraBucketsForBatch,
+} = require("./subscriptionExtraEntitlementBucketService");
+const {
+  resolvePinnedExtraActivationSnapshot,
+} = require("./subscriptionStackingExtraActivationAuthorityService");
 
 function activationError(code, message, status = 409, details = {}) {
   const err = new Error(message);
@@ -178,6 +184,7 @@ function defaultRuntime() {
       }).session(session).lean();
     },
     ensureBatchByPayload: (args) => ensureBatchByPayload(args),
+    seedExtraBuckets: (args) => ensureExtraBucketsForBatch(args),
     async updateContainer({ containerId, update, session }) {
       return Subscription.findOneAndUpdate(
         { _id: containerId, status: "active" },
@@ -229,7 +236,7 @@ function resolveRuntime(runtimeOverrides = null) {
   return { ...runtime, ...runtimeOverrides };
 }
 
-async function activatePaidDraftIntoExistingContainerTransactional({
+async function activatePaidDraftIntoExistingContainerCoreTransactional({
   draft,
   payment,
   subscriptionPayload,
@@ -237,6 +244,7 @@ async function activatePaidDraftIntoExistingContainerTransactional({
   session,
   expectedParentSubscriptionId = null,
   now = new Date(),
+  seedExtraWallets = false,
   runtime: runtimeOverrides = null,
 } = {}) {
   assertTransactionalSession(session);
@@ -263,13 +271,9 @@ async function activatePaidDraftIntoExistingContainerTransactional({
       422
     );
   }
-  if (hasPaidPurchaseExtras(subscriptionPayload)) {
-    throw activationError(
-      "STACKING_PREMIUM_ADDON_WRITE_NOT_READY",
-      "Premium and add-on stacking writes are not enabled yet",
-      503
-    );
-  }
+  const authoritativeExtraSnapshot = seedExtraWallets
+    ? resolvePinnedExtraActivationSnapshot({ draft, subscriptionPayload })
+    : null;
 
   const container = await runtime.findActiveContainer({
     userId: draft.userId,
@@ -338,6 +342,7 @@ async function activatePaidDraftIntoExistingContainerTransactional({
     draft,
     payment,
     subscriptionPayload,
+    authoritativeExtraSnapshot,
     containerSubscriptionId: container._id,
     businessDate,
     now,
@@ -381,6 +386,12 @@ async function activatePaidDraftIntoExistingContainerTransactional({
   const purchaseBatch = purchaseResult.batch && typeof purchaseResult.batch.toObject === "function"
     ? purchaseResult.batch.toObject()
     : purchaseResult.batch;
+  const extraWalletSeeding = seedExtraWallets
+    ? await runtime.seedExtraBuckets({
+      batch: purchaseResult.batch,
+      session,
+    })
+    : { buckets: [], createdOrExisting: 0, idempotent: true };
 
   const allBatches = existingBatches
     .filter((batch) => String(batch.sourceKey || "") !== String(purchaseBatch.sourceKey || ""))
@@ -447,6 +458,7 @@ async function activatePaidDraftIntoExistingContainerTransactional({
     container: updatedContainer,
     legacyBatch: legacyResult.batch,
     purchaseBatch: purchaseResult.batch,
+    extraWalletSeeding,
     schedule,
     idempotent: Boolean(
       legacyResult.idempotent
@@ -460,8 +472,34 @@ async function activatePaidDraftIntoExistingContainerTransactional({
   };
 }
 
+// Runtime entry point. P2 intentionally keeps paid extras unreachable even
+// when stacking base-meal writes are enabled for an allowlisted user.
+async function activatePaidDraftIntoExistingContainerTransactional(args = {}) {
+  if (hasPaidPurchaseExtras(args.subscriptionPayload)) {
+    throw activationError(
+      "STACKING_PREMIUM_ADDON_WRITE_NOT_READY",
+      "Premium and add-on stacking writes are not enabled yet",
+      503
+    );
+  }
+  return activatePaidDraftIntoExistingContainerCoreTransactional({
+    ...args,
+    seedExtraWallets: false,
+  });
+}
+
+// Dark-wired internal service boundary for P2 integration and future routing.
+// It is deliberately not referenced by the runtime write router.
+async function activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(args = {}) {
+  return activatePaidDraftIntoExistingContainerCoreTransactional({
+    ...args,
+    seedExtraWallets: true,
+  });
+}
+
 module.exports = {
   activatePaidDraftIntoExistingContainerTransactional,
+  activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
   buildContainerMirror,
   buildDayFulfillmentOverrides,
   hasPaidPurchaseExtras,
