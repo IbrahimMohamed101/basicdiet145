@@ -1,4 +1,4 @@
-name: Staging Remote Read Certification Probe
+name: Staging Remote Write Readiness Probe
 
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
-      - name: Remote read-only readiness gate
+      - name: Remote write-readiness gate
         shell: bash
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
@@ -70,25 +70,24 @@ jobs:
           test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledForUser')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.readEnabledGlobally')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.readEnabledForUser')" = "true"
-          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledGlobally')" = "false"
-          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledForUser')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledGlobally')" = "true"
+          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledForUser')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.singleUserCanary')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.allowAllUsers')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.wildcardConfigured')" = "false"
 
           test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "true"
-          test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "false"
-          echo "$response" | jq -e '.data.certification.blockedReasons == ["write_not_enabled_for_user"]' >/dev/null
+          test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "true"
+          echo "$response" | jq -e '.data.certification.blockedReasons | length == 0' >/dev/null
 
-          echo "REMOTE_READ_GATE=PASS"
+          echo "REMOTE_WRITE_READINESS_GATE=PASS"
 
-      - name: Authenticated subscription read smoke
+      - name: Authenticated read remains healthy
         shell: bash
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
         run: |
           set -euo pipefail
           response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/subscriptions" -H "Authorization: Bearer ${TOKEN}")"
-          echo "$response" | jq '{ok, status, dataType: ((.data // []) | type)}'
           echo "$response" | jq -e 'type == "object"' >/dev/null
           echo "SUBSCRIPTION_READ_SMOKE=PASS"
