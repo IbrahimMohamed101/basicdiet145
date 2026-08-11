@@ -17,6 +17,11 @@ require("./services/installSubscriptionStackingCheckoutPreflight");
 require("./services/installSubscriptionStackingWriteRouter");
 require("./services/installSubscriptionStackingSelectionRouter");
 require("./services/installSubscriptionStackingEntitlementRouter");
+// The backend repair composition has already installed Pickup recovery and
+// authenticated ownership wrappers. Add the stacking wallet projection after
+// those wrappers and before createApp loads controllers/routes, so Flutter sees
+// the final read surface while non-rollout users remain byte-for-byte legacy.
+require("./services/installSubscriptionStackingPickupAvailabilityProjection");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
 
