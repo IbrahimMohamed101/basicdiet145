@@ -37,6 +37,20 @@ async function withTransaction(fn) {
   }
 }
 
+function flutterSelectedPickupItems() {
+  return [1, 2].map((index) => ({
+    itemId: `slot_${index}`,
+    itemType: "meal",
+    source: "mealSlot",
+    sourceId: `slot_${index}`,
+    slotId: `slot_${index}`,
+    slotKey: `slot_${index}`,
+    slotIndex: index,
+    selectionType: "standard_meal",
+    quantity: 1,
+  }));
+}
+
 async function main() {
   const replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" },
@@ -133,9 +147,13 @@ async function main() {
       userId,
       date: "2026-08-10",
       mealCount: 2,
-      selectionMode: "slot_ids",
+      // Flutter posts selectedPickupItemIds. The canonical client service
+      // resolves those to the persisted pickup_item_ids shape below before
+      // the balance service claims the exact base-meal allocations.
+      selectionMode: "pickup_item_ids",
       selectedMealSlotIds: ["slot_1", "slot_2"],
       selectedPickupItemIds: ["slot_1", "slot_2"],
+      selectedPickupItems: flutterSelectedPickupItems(),
       status: "in_preparation",
       creditsReserved: false,
       snapshot: {
@@ -157,6 +175,7 @@ async function main() {
     ));
 
     assert.strictEqual(reservation.reserved, true);
+    assert.strictEqual(reservation.pickupRequest.selectionMode, "pickup_item_ids");
     assert.strictEqual(reservation.pickupRequest.baseAllocationMode, "linked_day");
     assert.deepStrictEqual(
       [...reservation.pickupRequest.baseAllocationKeys].sort(),
@@ -197,9 +216,10 @@ async function main() {
       userId,
       date: "2026-08-10",
       mealCount: 2,
-      selectionMode: "slot_ids",
+      selectionMode: "pickup_item_ids",
       selectedMealSlotIds: ["slot_1", "slot_2"],
       selectedPickupItemIds: ["slot_1", "slot_2"],
+      selectedPickupItems: flutterSelectedPickupItems(),
       status: "in_preparation",
       creditsReserved: false,
       snapshot: { mealSlots: [{ slotKey: "slot_1" }, { slotKey: "slot_2" }] },
