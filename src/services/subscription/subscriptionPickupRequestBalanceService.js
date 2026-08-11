@@ -2,10 +2,11 @@
 
 const Subscription = require("../../models/Subscription");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
+const SubscriptionEntitlementAllocation = require("../../models/SubscriptionEntitlementAllocation");
+const subscriptionMealEntitlementService = require("./subscriptionMealEntitlementService");
 const {
-  reservePickupEntitlements,
-  transitionPickupEntitlements,
-} = require("./subscriptionMealEntitlementService");
+  reservePlannedStackingPickupEntitlements,
+} = require("./subscriptionStackingPlannedPickupRouterService");
 const {
   applyLegacyPickupRelease,
 } = require("./subscriptionLegacyMealBalanceOperationService");
@@ -90,6 +91,28 @@ async function releaseLinkedDayAllocationClaims({
         "allocation.pickupRequestId": pickupRequestId,
       }],
     }, session)
+  );
+}
+
+async function releaseStackingPickupAllocationClaims({
+  subscriptionId,
+  pickupRequestId,
+  allocationKeys,
+  session = null,
+} = {}) {
+  const keys = Array.isArray(allocationKeys)
+    ? allocationKeys.map((key) => String(key || "")).filter(Boolean)
+    : [];
+  if (!keys.length) return { modifiedCount: 0 };
+  return SubscriptionEntitlementAllocation.updateMany(
+    {
+      containerSubscriptionId: subscriptionId,
+      allocationKey: { $in: keys },
+      state: "reserved",
+      pickupRequestId,
+    },
+    { $set: { pickupRequestId: null } },
+    withOptionalSession({}, session)
   );
 }
 
@@ -209,12 +232,13 @@ async function cleanupReservationAttempt({
   pickupRequestId,
   newlyReservedKeys = [],
   newlyClaimedKeys = [],
+  newlyStackingClaimedKeys = [],
   session = null,
 } = {}) {
   let firstError = null;
   for (const allocationKey of newlyReservedKeys) {
     try {
-      await transitionPickupEntitlements({
+      await subscriptionMealEntitlementService.transitionPickupEntitlements({
         subscriptionId,
         allocationKeys: [allocationKey],
         toState: "released",
@@ -229,6 +253,16 @@ async function cleanupReservationAttempt({
       subscriptionId,
       pickupRequestId,
       allocationKeys: newlyClaimedKeys,
+      session,
+    });
+  } catch (err) {
+    firstError = firstError || err;
+  }
+  try {
+    await releaseStackingPickupAllocationClaims({
+      subscriptionId,
+      pickupRequestId,
+      allocationKeys: newlyStackingClaimedKeys,
       session,
     });
   } catch (err) {
@@ -296,26 +330,43 @@ async function reserveSubscriptionMealsForPickupRequest({
     allocationKeys: [],
     newlyClaimedKeys: [],
   };
+  let stackingReservation = { handled: false, reservation: null };
   let reservation;
   try {
-    linkedDayClaim = await claimLinkedDayAllocations({
+    stackingReservation = await reservePlannedStackingPickupEntitlements({
       subscriptionId,
       pickupRequest,
-      mealCount: resolvedMealCount,
       session,
     });
-    reservation = linkedDayClaim.hasLinkedDayAllocations
-      ? { allocationKeys: linkedDayClaim.allocationKeys, newlyReservedKeys: [] }
-      : await reservePickupEntitlements({
+
+    if (stackingReservation.handled) {
+      reservation = stackingReservation.reservation;
+    } else {
+      linkedDayClaim = await claimLinkedDayAllocations({
         subscriptionId,
         pickupRequest,
+        mealCount: resolvedMealCount,
         session,
       });
+      reservation = linkedDayClaim.hasLinkedDayAllocations
+        ? { allocationKeys: linkedDayClaim.allocationKeys, newlyReservedKeys: [] }
+        : await subscriptionMealEntitlementService.reservePickupEntitlements({
+          subscriptionId,
+          pickupRequest,
+          session,
+        });
+    }
   } catch (err) {
     await releaseLinkedDayAllocationClaims({
       subscriptionId,
       pickupRequestId: pickupRequest._id,
       allocationKeys: linkedDayClaim.newlyClaimedKeys,
+      session,
+    }).catch(() => {});
+    await releaseStackingPickupAllocationClaims({
+      subscriptionId,
+      pickupRequestId: pickupRequest._id,
+      allocationKeys: stackingReservation.reservation && stackingReservation.reservation.newlyClaimedKeys,
       session,
     }).catch(() => {});
     throw err;
@@ -331,6 +382,9 @@ async function reserveSubscriptionMealsForPickupRequest({
           creditsReserved: true,
           creditsReservedAt: now,
           baseAllocationKeys: reservation.allocationKeys,
+          baseAllocationMode: stackingReservation.handled || linkedDayClaim.hasLinkedDayAllocations
+            ? "linked_day"
+            : "standalone",
         },
       },
       withOptionalSession({ new: true }, session)
@@ -341,6 +395,7 @@ async function reserveSubscriptionMealsForPickupRequest({
       pickupRequestId: pickupRequest._id,
       newlyReservedKeys: reservation.newlyReservedKeys,
       newlyClaimedKeys: linkedDayClaim.newlyClaimedKeys,
+      newlyStackingClaimedKeys: reservation.newlyClaimedKeys,
       session,
     }).catch(() => {});
     throw err;
@@ -360,6 +415,7 @@ async function reserveSubscriptionMealsForPickupRequest({
         pickupRequestId: pickupRequest._id,
         newlyReservedKeys: reservation.newlyReservedKeys,
         newlyClaimedKeys: linkedDayClaim.newlyClaimedKeys,
+        newlyStackingClaimedKeys: reservation.newlyClaimedKeys,
         session,
       });
     }
@@ -394,7 +450,7 @@ async function consumeReservedPickupMeals({
     return buildZeroMealResult("consumed", existing);
   }
   if (Array.isArray(existing.baseAllocationKeys) && existing.baseAllocationKeys.length > 0) {
-    await transitionPickupEntitlements({
+    await subscriptionMealEntitlementService.transitionPickupEntitlements({
       subscriptionId: existing.subscriptionId,
       allocationKeys: existing.baseAllocationKeys,
       toState: entitlementState,
@@ -466,7 +522,7 @@ async function releaseReservedPickupMeals({
   const hasAllocationKeys = Array.isArray(existing.baseAllocationKeys)
     && existing.baseAllocationKeys.length > 0;
   if (hasAllocationKeys) {
-    await transitionPickupEntitlements({
+    await subscriptionMealEntitlementService.transitionPickupEntitlements({
       subscriptionId,
       allocationKeys: existing.baseAllocationKeys,
       toState: "released",
