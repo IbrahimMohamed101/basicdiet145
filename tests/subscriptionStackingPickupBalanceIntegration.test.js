@@ -9,6 +9,11 @@ const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
+// This integration test validates transaction behavior, not index creation.
+// Prevent Mongoose from starting background createIndexes while the first
+// transaction is claiming allocations in the fresh in-memory replica set.
+mongoose.set("autoIndex", false);
+
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const SubscriptionEntitlementBatch = require("../src/models/SubscriptionEntitlementBatch");
@@ -38,7 +43,10 @@ async function main() {
   });
 
   try {
-    await mongoose.connect(replSet.getUri(), { serverSelectionTimeoutMS: 10000 });
+    await mongoose.connect(replSet.getUri(), {
+      serverSelectionTimeoutMS: 10000,
+      autoIndex: false,
+    });
 
     const userId = new mongoose.Types.ObjectId();
     const subscriptionId = new mongoose.Types.ObjectId();
