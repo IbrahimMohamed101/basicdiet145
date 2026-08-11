@@ -5,12 +5,16 @@ on:
     branches:
       - feat/subscription-stacking-phase-0-1-20260806
     paths:
+      - "src/index.js"
       - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
+      - "src/services/installSubscriptionStackingPickupAvailabilityProjection.js"
       - "src/services/subscription/subscriptionStackingPlannedPickupRouterService.js"
+      - "src/services/subscription/subscriptionStackingPickupAvailabilityReadService.js"
       - "src/services/subscription/subscriptionPickupRequestBalanceService.js"
       - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
       - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
       - "tests/subscriptionStackingPlannedPickupRouter.test.js"
+      - "tests/subscriptionStackingPickupAvailabilityRead.test.js"
       - "tests/subscriptionStackingPickupBalanceIntegration.test.js"
       - "tests/subscriptionStackingEntitlementRouter.test.js"
       - "tests/subscriptionStackingFulfillmentLedger.test.js"
@@ -19,12 +23,16 @@ on:
     branches:
       - main
     paths:
+      - "src/index.js"
       - "src/services/installSubscriptionStackingPlannedPickupRouter.js"
+      - "src/services/installSubscriptionStackingPickupAvailabilityProjection.js"
       - "src/services/subscription/subscriptionStackingPlannedPickupRouterService.js"
+      - "src/services/subscription/subscriptionStackingPickupAvailabilityReadService.js"
       - "src/services/subscription/subscriptionPickupRequestBalanceService.js"
       - "src/services/subscription/subscriptionStackingEntitlementRouterService.js"
       - "src/services/subscription/subscriptionStackingFulfillmentLedgerService.js"
       - "tests/subscriptionStackingPlannedPickupRouter.test.js"
+      - "tests/subscriptionStackingPickupAvailabilityRead.test.js"
       - "tests/subscriptionStackingPickupBalanceIntegration.test.js"
       - "tests/subscriptionStackingEntitlementRouter.test.js"
       - "tests/subscriptionStackingFulfillmentLedger.test.js"
@@ -58,6 +66,9 @@ jobs:
 
       - name: Planned pickup router contracts
         run: NODE_ENV=test node tests/subscriptionStackingPlannedPickupRouter.test.js
+
+      - name: Pickup wallet read projection
+        run: NODE_ENV=test node tests/subscriptionStackingPickupAvailabilityRead.test.js
 
       - name: Pickup balance integration
         run: NODE_ENV=test node tests/subscriptionStackingPickupBalanceIntegration.test.js
