@@ -8,6 +8,7 @@ const PRODUCTION_HOSTS = new Set([
 ]);
 const SAFE_PAYMENT_MODES = new Set(["sandbox", "mock", "test"]);
 const PRODUCTION_ENVIRONMENT_NAMES = new Set(["production", "prod", "live"]);
+const SAFE_STAGING_DATABASE_NAME = /^[A-Za-z0-9_-]+$/;
 const UNUSED_ROLLOUT_VARIABLES = [
   "SUBSCRIPTION_STACKING_READ_USER_IDS",
   "SUBSCRIPTION_STACKING_WRITE_USER_IDS",
@@ -53,17 +54,44 @@ function parseUrl(value, fieldName) {
 function safeMongoIdentity(uri) {
   const raw = String(uri || "").trim();
   if (!raw) return null;
+
+  const schemeMatch = raw.match(/^mongodb(?:\+srv)?:\/\/(.+)$/i);
+  if (!schemeMatch) return null;
+
   try {
-    const withoutQuery = raw.split("?")[0];
-    const databaseName = withoutQuery.split("/").pop() || "";
-    const atIndex = withoutQuery.lastIndexOf("@");
-    const hostAndPath = atIndex >= 0
-      ? withoutQuery.slice(atIndex + 1)
-      : withoutQuery.replace(/^mongodb(?:\+srv)?:\/\//, "");
-    const host = (hostAndPath.split("/")[0] || "").toLowerCase();
+    const remainder = schemeMatch[1];
+    const slashIndex = remainder.indexOf("/");
+    const authority = slashIndex >= 0 ? remainder.slice(0, slashIndex) : remainder;
+    const pathAndQuery = slashIndex >= 0 ? remainder.slice(slashIndex + 1) : "";
+
+    const atIndex = authority.lastIndexOf("@");
+    const host = (atIndex >= 0 ? authority.slice(atIndex + 1) : authority)
+      .trim()
+      .toLowerCase();
+
+    if (!host || /\s/.test(host)) return null;
+
+    const encodedDatabaseName = pathAndQuery.split("?")[0].split("#")[0];
+    let databaseName = "";
+    try {
+      databaseName = decodeURIComponent(encodedDatabaseName).trim();
+    } catch (_err) {
+      return null;
+    }
+
+    if (databaseName && !SAFE_STAGING_DATABASE_NAME.test(databaseName)) {
+      return {
+        host,
+        databaseName: "",
+        databaseNameValid: false,
+        fingerprint: `${host}/<invalid>`,
+      };
+    }
+
     return {
       host,
       databaseName,
+      databaseNameValid: true,
       fingerprint: `${host}/${databaseName}`,
     };
   } catch (_err) {
@@ -159,6 +187,11 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
   if (!mongoIdentity) {
     violations.push({
       code: "STAGING_DATABASE_URI_INVALID",
+      field: "MONGODB_URI",
+    });
+  } else if (!mongoIdentity.databaseNameValid) {
+    violations.push({
+      code: "STAGING_DATABASE_NAME_INVALID",
       field: "MONGODB_URI",
     });
   } else {
@@ -309,6 +342,7 @@ if (require.main === module) {
 module.exports = {
   PRODUCTION_HOSTS,
   SAFE_PAYMENT_MODES,
+  SAFE_STAGING_DATABASE_NAME,
   UNUSED_ROLLOUT_VARIABLES,
   parseCsv,
   resolveProductionLikeEnvironment,

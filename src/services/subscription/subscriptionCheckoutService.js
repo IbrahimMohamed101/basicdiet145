@@ -536,6 +536,7 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
           }
           : null,
         breakdown,
+        stackingFinalization: runtime.stackingFinalizationIntent || undefined,
         ...canonicalFields,
       };
 

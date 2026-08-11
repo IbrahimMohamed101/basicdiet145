@@ -184,6 +184,12 @@ const asyncHandler = require("../middleware/asyncHandler");
 const {
   dashboardSubscriptionMealBalanceProjection,
 } = require("../middleware/dashboardSubscriptionMealBalanceProjection");
+const {
+  dashboardSubscriptionStackingWriteGuard,
+} = require("../middleware/dashboardSubscriptionStackingWriteGuard");
+const {
+  dashboardSubscriptionStackingReadModel,
+} = require("../middleware/dashboardSubscriptionStackingReadModel");
 
 const webhookRoutes = require("./webhooks");
 
@@ -228,6 +234,14 @@ router.use("/dashboard/operations", dashboardOpsRoutes);
 router.use(
   "/dashboard/subscriptions",
   dashboardSubscriptionMealBalanceProjection
+);
+router.use(
+  "/dashboard/subscriptions",
+  dashboardSubscriptionStackingReadModel
+);
+router.use(
+  "/dashboard/subscriptions",
+  dashboardSubscriptionStackingWriteGuard
 );
 router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);

@@ -54,10 +54,34 @@ function testNoStartupFlagMutation() {
   }
 }
 
+function testActivationConsumersResolveInstalledExportsDynamically() {
+  const runtimeSource = fs.readFileSync(
+    path.join(repositoryRoot, "src", "services", "subscription", "runtime.js"),
+    "utf8"
+  );
+  const paymentSource = fs.readFileSync(
+    path.join(repositoryRoot, "src", "services", "paymentApplicationService.js"),
+    "utf8"
+  );
+  const controllerSource = fs.readFileSync(
+    path.join(repositoryRoot, "src", "controllers", "subscriptionController.js"),
+    "utf8"
+  );
+
+  assert.strictEqual(
+    /const\s*\{[^}]*finalizeSubscriptionDraftPaymentFlow[^}]*\}\s*=\s*require\(/s.test(
+      `${runtimeSource}\n${paymentSource}\n${controllerSource}`
+    ),
+    false,
+    "activation consumers must not destructure a replaceable finalizer export"
+  );
+}
+
 function testFreshProcessReachesDatabaseBoundaryWithoutCompositionFailure() {
   const dbPath = require.resolve(path.join(repositoryRoot, "src", "db.js"));
   const validateEnvPath = require.resolve(path.join(repositoryRoot, "src", "utils", "validateEnv.js"));
   const marker = "STARTUP_COMPOSITION_PROBE_COMPLETE";
+  const runtimeMarker = "STARTUP_STACKING_RUNTIME_PROBE_COMPLETE";
 
   const childScript = `
     "use strict";
@@ -89,6 +113,12 @@ function testFreshProcessReachesDatabaseBoundaryWithoutCompositionFailure() {
       paths: [],
     };
     require(${JSON.stringify(indexPath)});
+    const activationService = require("./src/services/subscription/subscriptionActivationService");
+    const runtime = require("./src/services/subscription/runtime").sliceBDefaultRuntime();
+    if (runtime.finalizeSubscriptionDraftPaymentFlow !== activationService.finalizeSubscriptionDraftPaymentFlow) {
+      throw new Error("subscription checkout runtime captured a stale activation finalizer");
+    }
+    process.stderr.write(${JSON.stringify(`${runtimeMarker}\n`)});
   `;
 
   const env = {
@@ -122,6 +152,10 @@ function testFreshProcessReachesDatabaseBoundaryWithoutCompositionFailure() {
     output.includes(marker),
     `src/index.js did not reach the database boundary in a clean process: ${output}`
   );
+  assert(
+    output.includes(runtimeMarker),
+    `checkout runtime did not resolve the installed stacking finalizer: ${output}`
+  );
   assert.strictEqual(
     output.includes("SUBSCRIPTION_REPAIR_COMPOSITION_INCOMPLETE"),
     false,
@@ -138,6 +172,7 @@ function run() {
   testSafetyRunsBeforeInstallers();
   testIncompleteRoutersRemainDisconnected();
   testNoStartupFlagMutation();
+  testActivationConsumersResolveInstalledExportsDynamically();
   testFreshProcessReachesDatabaseBoundaryWithoutCompositionFailure();
   console.log("subscription stacking startup isolation tests passed");
 }

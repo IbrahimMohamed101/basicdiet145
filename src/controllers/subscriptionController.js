@@ -38,11 +38,6 @@ const {
   buildCanonicalDraftPersistenceFields,
 } = require("../services/subscription/subscriptionContractService");
 const {
-  finalizeSubscriptionDraftPaymentFlow,
-  activateSubscriptionFromCanonicalDraft,
-} = require("../services/subscription/subscriptionActivationService");
-
-const {
   applyPaymentSideEffects,
   SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
 } = require("../services/paymentApplicationService");
@@ -1554,7 +1549,7 @@ async function activateSubscription(req, res) {
     await paymentInSession.save({ session });
 
     // Run the real canonical activation
-    const result = await finalizeSubscriptionDraftPaymentFlow(
+    const result = await sliceBDefaultRuntime().finalizeSubscriptionDraftPaymentFlow(
       { draft: draftInSession, payment: paymentInSession, session }
     );
 

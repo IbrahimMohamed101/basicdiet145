@@ -96,6 +96,42 @@ function testProductionLikeDatabaseNameIsRejected() {
   }
 }
 
+function testMissingDatabaseNameIsRejected() {
+  const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+    MONGODB_URI: "mongodb://user:super-secret@staging.mongo.local:27017",
+  })));
+  assert(codes.includes("STAGING_DATABASE_NAME_REQUIRED"));
+
+  const identity = safeMongoIdentity(
+    "mongodb://user:super-secret@staging.mongo.local:27017"
+  );
+  assert.strictEqual(identity.host, "staging.mongo.local:27017");
+  assert.strictEqual(identity.databaseName, "");
+  assert.strictEqual(JSON.stringify(identity).includes("super-secret"), false);
+  assert.strictEqual(JSON.stringify(identity).includes("user"), false);
+}
+
+function testCredentialLikeDatabaseNameIsRejectedWithoutLeakingIt() {
+  const leakedCredentialLikePath = "mongo:private-password@mongodb.railway.internal:27017";
+  const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+    MONGODB_URI: `mongodb://mongo:private-password@mongodb.railway.internal:27017/${leakedCredentialLikePath}`,
+  })));
+  assert(codes.includes("STAGING_DATABASE_NAME_INVALID"));
+
+  const identity = safeMongoIdentity(
+    `mongodb://mongo:private-password@mongodb.railway.internal:27017/${leakedCredentialLikePath}`
+  );
+  assert.deepStrictEqual(identity, {
+    host: "mongodb.railway.internal:27017",
+    databaseName: "",
+    databaseNameValid: false,
+    fingerprint: "mongodb.railway.internal:27017/<invalid>",
+  });
+  const serialized = JSON.stringify(identity);
+  assert.strictEqual(serialized.includes("private-password"), false);
+  assert.strictEqual(serialized.includes("mongo:"), false);
+}
+
 function testWriteRequiresShadowReadAndExactlyOneRuntimeUser() {
   const codes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_SHADOW_ENABLED: "false",
@@ -156,6 +192,7 @@ function testHelpersNeverExposeCredentials() {
   assert.deepStrictEqual(identity, {
     host: "cluster.example.net",
     databaseName: "basicdiet_staging",
+    databaseNameValid: true,
     fingerprint: "cluster.example.net/basicdiet_staging",
   });
   assert.strictEqual(JSON.stringify(identity).includes("private-password"), false);
@@ -168,6 +205,8 @@ function run() {
   testProductionEnvironmentAndPaymentModeAreRejected();
   testExplicitIsolationConfirmationsAreRequired();
   testProductionLikeDatabaseNameIsRejected();
+  testMissingDatabaseNameIsRejected();
+  testCredentialLikeDatabaseNameIsRejectedWithoutLeakingIt();
   testWriteRequiresShadowReadAndExactlyOneRuntimeUser();
   testWildcardAndMissingShadowRelationshipAreRejected();
   testUnusedLegacyVariablesAreRejected();

@@ -194,6 +194,57 @@ function testChainedFulfillmentConflictsResolveMonotonically() {
   );
 }
 
+function testSameBranchPickupIgnoresCarriedCustomerAddress() {
+  const existingPickup = deliverySnapshot({
+    mode: "pickup",
+    pickupLocationId: "main",
+  });
+  existingPickup.address = {};
+
+  const newPickup = deliverySnapshot({
+    mode: "pickup",
+    pickupLocationId: "main",
+  });
+  // Canonical checkout snapshots may retain the customer's saved delivery
+  // address even when fulfillment is pickup. That data must not turn the same
+  // branch into a false fulfillment conflict.
+  newPickup.address = {
+    line1: "H4GX+JF7",
+    district: "As Salamah",
+    city: "Jeddah",
+  };
+
+  const oldBatch = batch({
+    start: "2026-08-01",
+    end: "2026-08-26",
+    validityEnd: "2026-08-26",
+    mealsPerDay: 3,
+    grams: 200,
+    delivery: existingPickup,
+  });
+  const newPurchase = purchase({
+    start: "2026-08-12",
+    end: "2026-09-06",
+    validityEnd: "2026-09-06",
+    mealsPerDay: 2,
+    grams: 150,
+    delivery: newPickup,
+  });
+
+  const resolution = resolveStackingPurchaseSchedule({
+    purchase: newPurchase,
+    existingBatches: [oldBatch],
+    businessDate: "2026-08-11",
+  });
+
+  assert.strictEqual(resolution.adjusted, false);
+  assert.strictEqual(resolution.effectiveStartDate, "2026-08-12");
+  assert.strictEqual(resolution.endDate, "2026-09-06");
+  assert.strictEqual(resolution.overlapsExistingBatches, true);
+  assert.strictEqual(resolution.mixedProteinGrams, true);
+  assert.strictEqual(resolution.shouldExposeBalanceNow, false);
+}
+
 function testSameFulfillmentDifferentAddressIsTreatedAsConflict() {
   const first = batch({
     end: "2026-08-09",
@@ -219,6 +270,7 @@ function run() {
   testCommittedTodayMovesStartToTomorrowAndPreservesDuration();
   testFulfillmentConflictMovesPurchaseAfterConflict();
   testChainedFulfillmentConflictsResolveMonotonically();
+  testSameBranchPickupIgnoresCarriedCustomerAddress();
   testSameFulfillmentDifferentAddressIsTreatedAsConflict();
 
   console.log("subscription stacking schedule policy tests passed");

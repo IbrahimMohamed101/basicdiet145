@@ -11,6 +11,10 @@ const {
 const {
   isWriteStackingEnabledForUser,
 } = require("./subscriptionStackingRolloutPolicyService");
+const {
+  buildAdditiveFinalizationIntent,
+  buildStandardInitialFinalizationIntent,
+} = require("./subscriptionStackingFinalizationAuthorityService");
 
 function preflightError(code, message, status = 422, details = {}) {
   const err = new Error(message);
@@ -84,7 +88,9 @@ function defaultRuntime() {
       if (!idempotencyKey) return Promise.resolve(null);
       return CheckoutDraft.findOne({ userId, idempotencyKey })
         .sort({ createdAt: -1 })
-        .select("_id status subscriptionId providerInvoiceId paymentId")
+        .select(
+          "_id status subscriptionId providerInvoiceId paymentId stackingFinalization"
+        )
         .lean();
     },
   };
@@ -117,6 +123,7 @@ async function assertStackingCheckoutSupported({
       reason: "completed_idempotent_checkout",
       activeContainer: null,
       existingDraft,
+      finalizationIntent: existingDraft.stackingFinalization || null,
     };
   }
 
@@ -127,6 +134,7 @@ async function assertStackingCheckoutSupported({
       reason: "first_subscription_uses_standard_activation",
       activeContainer: null,
       existingDraft,
+      finalizationIntent: buildStandardInitialFinalizationIntent(),
     };
   }
 
@@ -150,6 +158,9 @@ async function assertStackingCheckoutSupported({
     reason: "base_meal_additive_checkout_supported",
     activeContainer,
     existingDraft,
+    finalizationIntent: buildAdditiveFinalizationIntent({
+      expectedParentSubscriptionId: activeContainer._id,
+    }),
   };
 }
 
@@ -189,7 +200,7 @@ function createStackingCheckoutPreflightWrapper(
       : runtime.resolveQuote;
     const quote = await quoteResolver(body, { lang, userId });
 
-    await assertStackingCheckoutSupported({
+    const preflight = await assertStackingCheckoutSupported({
       userId,
       idempotencyKey,
       quote,
@@ -202,6 +213,7 @@ function createStackingCheckoutPreflightWrapper(
     const resolvedRuntime = {
       ...callerRuntime,
       resolveCheckoutQuoteOrThrow: async () => quote,
+      stackingFinalizationIntent: preflight.finalizationIntent,
     };
     return originalCheckout(
       userId,

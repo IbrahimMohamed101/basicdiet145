@@ -10,7 +10,8 @@
 Do not start a remote write test until all conditions are true:
 
 - The deployment uses the feature branch:
-  `feat/subscription-stacking-phase-0-1-20260806`.
+  `fix/subscription-stacking-release-safety-v2-20260809`.
+- The dashboard deployment uses the matching reviewed dashboard repair branch.
 - MongoDB is a dedicated staging database and is not the production database.
 - A fresh database backup/snapshot exists.
 - Payment mode is `sandbox`, `mock`, or `test` only.
@@ -24,6 +25,9 @@ Do not start a remote write test until all conditions are true:
 - Direct pickup reservation, freeze, cancellation, and skip range are not used.
 - `STAGING_DATABASE_ISOLATION_CONFIRMED=true` is set only after database separation is verified.
 - `STAGING_PAYMENT_SANDBOX_CONFIRMED=true` is set only after provider sandbox/mock mode is verified.
+- No unfinished checkout draft for the staging user predates
+  `subscription_stacking.finalization.v1`. Use a fresh test user or finish the
+  old legacy checkout before enabling write; never patch a draft by hand.
 
 Stop immediately if database isolation or payment mode cannot be proven.
 
@@ -131,6 +135,18 @@ node scripts/validate-subscription-stacking-staging-env.js
 
 Do not continue unless it returns `"ok": true`.
 
+Before initiating payment, inspect the created checkout draft and require:
+
+```text
+stackingFinalization.version = subscription_stacking.finalization.v1
+stackingFinalization.mode = additive_existing_parent
+stackingFinalization.expectedParentSubscriptionId = <KNOWN_PARENT_ID>
+```
+
+Stop if the intent is missing or points to any other parent. Closing the write
+flag after checkout must fail this additive finalization closed; it must never
+fall back to legacy replacement.
+
 ## 6. Acceptance scenario A — overlapping packages
 
 Initial state:
@@ -211,30 +227,31 @@ Expected:
 - It never exposes three slots and then fails during confirmation.
 - Historical timeline continues to show the purchased 3-meal daily shape.
 
-## 9. Acceptance scenario D — skip and unskip
+## 9. Acceptance scenario D — replay and Dashboard safety
 
-For an overlapping, unprocessed future day:
+Replay the same paid event once, twice, and ten times, then race the verify
+endpoint with the webhook. Required state after every run:
 
-Skip:
+- one purchase batch,
+- one applied payment,
+- one activation effect,
+- the same parent subscription ID,
+- the same aggregate remaining balance.
 
-- Existing day allocations move from `reserved` to `released`.
-- One compensation token is created per contributing batch.
-- Every contributing batch is extended by exactly one day.
-- Parent `skipDaysUsed` increments once.
-- Day becomes `skipped`.
-- Repeating the same request does not add another token/day or usage count.
+Open the repaired Dashboard list, quick view, and details page. Require:
 
-Unskip:
+- the parent is labelled as an operational container,
+- legacy and new packages are independently visible,
+- each package shows its own grams, meals/day, start, validity, and balance,
+- the new purchase has its own payment transaction,
+- aggregate remaining balance is 72,
+- no single grams or date value is presented as covering both packages.
 
-- Released allocations are reacquired from their original batches.
-- Compensation tokens are revoked.
-- Batch validity returns to the immutable baseline plus remaining active tokens.
-- Parent `skipDaysUsed` decrements once.
-- Day becomes `open`.
-- The whole operation rolls back if credits were reused or later planning blocks
-  validity shrink.
-
-Skip range remains blocked.
+Attempt manual deduction, cancellation, freeze, unfreeze, extension, delivery
+edit, add-on edit, and a second dashboard-created subscription. Every request
+must return `STACKING_DASHBOARD_MUTATION_NOT_READY`, write no document, and
+leave all batch and parent balances unchanged. Repeat a rejected request to
+prove the failure is mutation-free.
 
 ## 10. Explicitly blocked scenarios
 
@@ -245,8 +262,12 @@ Do not attempt these in the current staging write phase:
 - Bulk planning.
 - Direct pickup reservation, including the experimental planned-pickup adapter.
 - Freeze or unfreeze.
+- Skip or unskip.
 - Skip range.
 - Cancellation or refund of one batch.
+- Dashboard manual deduction, extension, balance edits, delivery edits, add-on
+  edits, lifecycle mutations, and additional subscription creation for the
+  rollout user.
 - Wildcard user rollout.
 - Any production Shadow, Read, or Write activation.
 
