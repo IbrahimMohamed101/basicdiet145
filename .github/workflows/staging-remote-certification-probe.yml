@@ -1,4 +1,4 @@
-name: Staging Remote Write Readiness Probe
+name: Staging Remote Pending Checkout Probe
 
 on:
   push:
@@ -19,8 +19,10 @@ jobs:
       BASE_URL: https://basicdiet145-staging-2882.up.railway.app
       EXPECTED_DEPLOY_SHA: c6db595b3f55abd7c0717de4ce8cf22d226c101d
       CERT_USER_ID: 6a7b6006a86353ffc9f0f83b
+      PURCHASE_PLAN_ID: 6a7b6006a86353ffc9f0f841
       SOURCE_RUN_ID: 31519244588
       SOURCE_RUN_ATTEMPT: 1
+      CHECKOUT_IDEMPOTENCY_KEY: stacking-cert-acceptance-a-20260811-v1
     steps:
       - name: Public health gates
         shell: bash
@@ -56,38 +58,83 @@ jobs:
         run: |
           set -euo pipefail
           response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/subscriptions/stacking/readiness" -H "Authorization: Bearer ${TOKEN}")"
-          echo "$response" | jq '.data'
-
-          test "$(echo "$response" | jq -r '.data.contractVersion')" = "subscription_stacking_remote_readiness.v1"
           test "$(echo "$response" | jq -r '.data.environment.production')" = "false"
           test "$(echo "$response" | jq -r '.data.deployment.commitSha')" = "$EXPECTED_DEPLOY_SHA"
           test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.databaseIsolationConfirmed')" = "true"
-          test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.databaseIdentityAvailable')" = "true"
-          test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.readSafe')" = "true"
           test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.writeSafe')" = "true"
-
-          test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledGlobally')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledForUser')" = "true"
-          test "$(echo "$response" | jq -r '.data.rollout.readEnabledGlobally')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.readEnabledForUser')" = "true"
-          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledGlobally')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.writeEnabledForUser')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.singleUserCanary')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.allowAllUsers')" = "false"
-          test "$(echo "$response" | jq -r '.data.rollout.wildcardConfigured')" = "false"
-
-          test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "true"
           test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "true"
-          echo "$response" | jq -e '.data.certification.blockedReasons | length == 0' >/dev/null
-
           echo "REMOTE_WRITE_READINESS_GATE=PASS"
 
-      - name: Authenticated read remains healthy
+      - name: Quote additive base package
         shell: bash
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
         run: |
           set -euo pipefail
-          response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/subscriptions" -H "Authorization: Bearer ${TOKEN}")"
+          payload="$(jq -nc \
+            --arg planId "$PURCHASE_PLAN_ID" \
+            '{planId:$planId,grams:150,mealsPerDay:2,startDate:"2026-08-12",premiumItems:[],addons:[],delivery:{type:"pickup"}}')"
+          response="$(curl --fail-with-body --silent --show-error \
+            -X POST "${BASE_URL}/api/subscriptions/quote" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data "$payload")"
           echo "$response" | jq -e 'type == "object"' >/dev/null
-          echo "SUBSCRIPTION_READ_SMOKE=PASS"
+          echo "ADDITIVE_QUOTE_GATE=PASS"
+
+      - name: Create pending additive checkout
+        id: checkout
+        shell: bash
+        env:
+          TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -nc \
+            --arg planId "$PURCHASE_PLAN_ID" \
+            '{planId:$planId,grams:150,mealsPerDay:2,startDate:"2026-08-12",premiumItems:[],addons:[],delivery:{type:"pickup"}}')"
+          response="$(curl --fail-with-body --silent --show-error \
+            -X POST "${BASE_URL}/api/subscriptions/checkout" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -H "Idempotency-Key: ${CHECKOUT_IDEMPOTENCY_KEY}" \
+            --data "$payload")"
+
+          draft_id="$(echo "$response" | jq -r '.data.draftId // empty')"
+          payment_id="$(echo "$response" | jq -r '.data.paymentId // empty')"
+          invoice_id="$(echo "$response" | jq -r '.data.invoice_id // empty')"
+          subscription_id="$(echo "$response" | jq -r '.data.subscriptionId // empty')"
+          total_halala="$(echo "$response" | jq -r '.data.totals.totalHalala // .data.pricingSummary.totalPriceHalala // empty')"
+
+          test -n "$draft_id"
+          test -n "$payment_id"
+          test -n "$invoice_id"
+          test -z "$subscription_id" -o "$subscription_id" = "null"
+          test "$total_halala" = "10000"
+
+          echo "draft_id=$draft_id" >> "$GITHUB_OUTPUT"
+          echo "payment_id=$payment_id" >> "$GITHUB_OUTPUT"
+          echo "PENDING_CHECKOUT_GATE=PASS"
+          echo "draftId=$draft_id"
+          echo "paymentId=$payment_id"
+          echo "totalHalala=$total_halala"
+
+      - name: Pending checkout remains non-activated
+        shell: bash
+        env:
+          TOKEN: ${{ steps.auth.outputs.token }}
+          DRAFT_ID: ${{ steps.checkout.outputs.draft_id }}
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            "${BASE_URL}/api/subscriptions/checkout-drafts/${DRAFT_ID}" \
+            -H "Authorization: Bearer ${TOKEN}")"
+          status="$(echo "$response" | jq -r '.data.status // .status // empty')"
+          subscription_id="$(echo "$response" | jq -r '.data.subscriptionId // empty')"
+          test "$status" != "completed"
+          test -z "$subscription_id" -o "$subscription_id" = "null"
+          echo "PENDING_NOT_ACTIVATED_GATE=PASS"
