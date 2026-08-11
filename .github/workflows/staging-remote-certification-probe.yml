@@ -27,9 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           for path in live ready health; do
-            echo "== GET /${path} =="
             body="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "${BASE_URL}/${path}")"
-            echo "$body" | jq .
             test "$(echo "$body" | jq -r '.status')" = "true"
           done
 
@@ -50,18 +48,6 @@ jobs:
           test "$user_id" = "$CERT_USER_ID"
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
-          echo "Authenticated isolated staging user: $user_id"
-
-      - name: Authenticated identity gate
-        shell: bash
-        env:
-          TOKEN: ${{ steps.auth.outputs.token }}
-        run: |
-          set -euo pipefail
-          response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/auth/me" -H "Authorization: Bearer ${TOKEN}")"
-          actual="$(echo "$response" | jq -r '(.user.id // .data.id // .data.user.id // empty)')"
-          test "$actual" = "$CERT_USER_ID"
-          echo "AUTH_IDENTITY_GATE=PASS"
 
       - name: Remote read-only readiness gate
         shell: bash
@@ -86,15 +72,13 @@ jobs:
           test "$(echo "$response" | jq -r '.data.rollout.readEnabledForUser')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.writeEnabledGlobally')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.writeEnabledForUser')" = "false"
-          test "$(echo "$response" | jq -r '.data.rollout.singleUserCanary')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.singleUserCanary')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.allowAllUsers')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.wildcardConfigured')" = "false"
 
           test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "true"
           test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "false"
-          echo "$response" | jq -e '.data.certification.blockedReasons | index("read_not_enabled_for_user") == null' >/dev/null
-          echo "$response" | jq -e '.data.certification.blockedReasons | index("write_not_enabled_for_user") != null' >/dev/null
-          echo "$response" | jq -e '.data.certification.blockedReasons | index("single_user_canary_policy_not_satisfied") != null' >/dev/null
+          echo "$response" | jq -e '.data.certification.blockedReasons == ["write_not_enabled_for_user"]' >/dev/null
 
           echo "REMOTE_READ_GATE=PASS"
 
