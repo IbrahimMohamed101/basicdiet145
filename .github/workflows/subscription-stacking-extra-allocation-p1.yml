@@ -1,0 +1,85 @@
+name: Subscription Stacking Extra Allocation P1
+
+on:
+  push:
+    branches:
+      - feat/stacking-premium-addon-allocation-p1-20260812
+    paths:
+      - "src/models/SubscriptionExtraEntitlementAllocation.js"
+      - "src/services/subscription/subscriptionExtraEntitlementAllocationService.js"
+      - "tests/subscriptionExtraEntitlementAllocationLifecycle.test.js"
+      - ".github/workflows/subscription-stacking-extra-allocation-p1.yml"
+  pull_request:
+    branches:
+      - feat/stacking-premium-addon-wallet-20260811
+    paths:
+      - "src/models/SubscriptionExtraEntitlementAllocation.js"
+      - "src/services/subscription/subscriptionExtraEntitlementAllocationService.js"
+      - "tests/subscriptionExtraEntitlementAllocationLifecycle.test.js"
+      - ".github/workflows/subscription-stacking-extra-allocation-p1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-extra-allocation-p1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extra-allocation-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check P1 allocation files
+        run: |
+          node --check src/models/SubscriptionExtraEntitlementAllocation.js
+          node --check src/services/subscription/subscriptionExtraEntitlementAllocationService.js
+          node --check tests/subscriptionExtraEntitlementAllocationLifecycle.test.js
+
+      - name: Premium and add-on allocation lifecycle
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementAllocationLifecycle.test.js
+
+      - name: P0 extra wallet regression
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementBucket.test.js
+
+      - name: Prove P1 remains infrastructure only and fail-closed
+        shell: bash
+        run: |
+          grep -q 'STACKING_PREMIUM_ADDON_WRITE_NOT_READY' src/services/subscription/subscriptionStackingActivationService.js
+          grep -q 'STACKING_PREMIUM_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          grep -q 'STACKING_ADDON_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          if grep -R --line-number --fixed-strings \
+            --exclude='subscriptionExtraEntitlementAllocationService.js' \
+            'subscriptionExtraEntitlementAllocationService' src; then
+            echo 'P1 allocation infrastructure must not be imported by runtime source yet.' >&2
+            exit 1
+          fi
+
+      - name: Stacking activation regression
+        run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+
+      - name: Selection write guards
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionWriteGuards.test.js
+
+      - name: Selection router contracts
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionRouter.test.js
+
+      - name: Checkout preflight fail-closed contracts
+        run: NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
+
+      - name: Subscription lifecycle regression gate
+        run: npm run test:subscriptions
