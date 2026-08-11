@@ -1,4 +1,4 @@
-name: Staging Remote Certification Probe
+name: Staging Remote Shadow Certification Probe
 
 on:
   push:
@@ -18,6 +18,9 @@ jobs:
     env:
       BASE_URL: https://basicdiet145-staging-2882.up.railway.app
       EXPECTED_DEPLOY_SHA: c6db595b3f55abd7c0717de4ce8cf22d226c101d
+      CERT_USER_ID: 6a7b6006a86353ffc9f0f83b
+      SOURCE_RUN_ID: 31519244588
+      SOURCE_RUN_ATTEMPT: 1
     steps:
       - name: Public health gates
         shell: bash
@@ -30,42 +33,40 @@ jobs:
             test "$(echo "$body" | jq -r '.status')" = "true"
           done
 
-      - name: Register isolated staging certification user
+      - name: Login isolated staging certification user
         id: auth
         shell: bash
         run: |
           set -euo pipefail
-          tail="$(printf '%07d' $(((GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT * 7919) % 10000000)))"
+          tail="$(printf '%07d' $(((SOURCE_RUN_ID + SOURCE_RUN_ATTEMPT * 7919) % 10000000)))"
           phone="+96655${tail}"
-          password="StagingCert!${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}Aa9"
-          payload="$(jq -nc --arg phone "$phone" --arg password "$password" '{phone:$phone,password:$password,confirmPassword:$password,fullName:"Stacking Remote Certification"}')"
-          response="$(curl --fail-with-body --silent --show-error -X POST "${BASE_URL}/api/auth/register" -H 'Content-Type: application/json' --data "$payload")"
+          password="StagingCert!${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}Aa9"
+          echo "::add-mask::$password"
+          payload="$(jq -nc --arg phone "$phone" --arg password "$password" '{phoneE164:$phone,password:$password}')"
+          response="$(curl --fail-with-body --silent --show-error -X POST "${BASE_URL}/api/auth/login" -H 'Content-Type: application/json' --data "$payload")"
           token="$(echo "$response" | jq -r '.accessToken // empty')"
           user_id="$(echo "$response" | jq -r '.user.id // empty')"
           test -n "$token"
-          test -n "$user_id"
+          test "$user_id" = "$CERT_USER_ID"
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
-          echo "user_id=$user_id" >> "$GITHUB_OUTPUT"
-          echo "Registered isolated staging user: $user_id"
+          echo "Authenticated isolated staging user: $user_id"
 
       - name: Authenticated identity gate
         shell: bash
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
-          USER_ID: ${{ steps.auth.outputs.user_id }}
         run: |
           set -euo pipefail
           response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/auth/me" -H "Authorization: Bearer ${TOKEN}")"
-          echo "$response" | jq '{status, ok, user: (.user // .data // {})}'
+          echo "$response" | jq '{ok, user: (.user // .data // {})}'
           actual="$(echo "$response" | jq -r '(.user.id // .data.id // .data.user.id // empty)')"
-          if [ -n "$actual" ]; then test "$actual" = "$USER_ID"; fi
+          test "$actual" = "$CERT_USER_ID"
 
-      - name: Remote readiness with rollout closed
+      - name: Remote shadow-only readiness gate
         shell: bash
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
-          USER_ID: ${{ steps.auth.outputs.user_id }}
         run: |
           set -euo pipefail
           response="$(curl --fail-with-body --silent --show-error "${BASE_URL}/api/subscriptions/stacking/readiness" -H "Authorization: Bearer ${TOKEN}")"
@@ -77,17 +78,20 @@ jobs:
           test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.databaseIsolationConfirmed')" = "true"
           test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.databaseIdentityAvailable')" = "true"
           test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.readSafe')" = "true"
+          test "$(echo "$response" | jq -r '.data.deployment.safetyAttestation.writeSafe')" = "true"
 
-          test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledGlobally')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledGlobally')" = "true"
+          test "$(echo "$response" | jq -r '.data.rollout.shadowEnabledForUser')" = "true"
           test "$(echo "$response" | jq -r '.data.rollout.readEnabledGlobally')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.readEnabledForUser')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.writeEnabledGlobally')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.writeEnabledForUser')" = "false"
+          test "$(echo "$response" | jq -r '.data.rollout.singleUserCanary')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.allowAllUsers')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.wildcardConfigured')" = "false"
           test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "false"
           test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "false"
 
-          test "$(echo "$response" | jq -r '.data.runtime.skipRouterConnected')" = "false"
-          test "$(echo "$response" | jq -r '.data.runtime.plannedPickupRouterConnected')" = "false"
           test "$(echo "$response" | jq -r '.data.runtime.baseMealCheckoutSupported')" = "true"
           test "$(echo "$response" | jq -r '.data.runtime.premiumStackingSupported')" = "false"
           test "$(echo "$response" | jq -r '.data.runtime.addonStackingSupported')" = "false"
@@ -95,5 +99,5 @@ jobs:
           test "$(echo "$response" | jq -r '.data.runtime.cancellationSupported')" = "false"
           test "$(echo "$response" | jq -r '.data.runtime.directPickupSupported')" = "false"
 
-          echo "REMOTE_FLAGS_OFF_GATE=PASS"
-          echo "CERT_TEST_USER_ID=$USER_ID"
+          echo "REMOTE_SHADOW_GATE=PASS"
+          echo "CERT_TEST_USER_ID=$CERT_USER_ID"
