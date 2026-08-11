@@ -48,17 +48,19 @@ async function main() {
     const secondPickupId = new mongoose.Types.ObjectId();
     process.env.SUBSCRIPTION_STACKING_USER_IDS = String(userId);
 
+    const batchStart = new Date("2026-08-10T00:00:00+03:00");
+    const batchEnd = new Date("2026-09-04T23:59:59+03:00");
     await SubscriptionEntitlementBatch.create({
       _id: batchId,
       sourceKey: `pickup-integration-${batchId}`,
       sourceType: "checkout",
-      sourceId: new mongoose.Types.ObjectId(),
       userId,
       containerSubscriptionId: subscriptionId,
       planId: new mongoose.Types.ObjectId(),
-      effectiveStartDate: new Date("2026-08-10T00:00:00+03:00"),
-      endDate: new Date("2026-09-04T23:59:59+03:00"),
-      validityEndDate: new Date("2026-09-04T23:59:59+03:00"),
+      requestedStartDate: batchStart,
+      effectiveStartDate: batchStart,
+      endDate: batchEnd,
+      validityEndDate: batchEnd,
       daysCount: 26,
       mealsPerDay: 2,
       proteinGrams: 150,
