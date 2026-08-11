@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BASE_URL: https://basicdiet145-staging.up.railway.app
+      BASE_URL: https://basicdiet145-staging-2882.up.railway.app
       EXPECTED_DEPLOY_SHA: 71cea27c9313151945d873ac746512d9c779aeef
     steps:
       - name: Public health gates
