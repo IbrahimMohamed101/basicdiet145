@@ -35,9 +35,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tail="$(printf '%07d' $((GITHUB_RUN_ID % 10000000)))"
+          tail="$(printf '%07d' $(((GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT * 7919) % 10000000)))"
           phone="+96655${tail}"
-          password="StagingCert!${GITHUB_RUN_ID}Aa9"
+          password="StagingCert!${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}Aa9"
           payload="$(jq -nc --arg phone "$phone" --arg password "$password" '{phone:$phone,password:$password,confirmPassword:$password,fullName:"Stacking Remote Certification"}')"
           response="$(curl --fail-with-body --silent --show-error -X POST "${BASE_URL}/api/auth/register" -H 'Content-Type: application/json' --data "$payload")"
           token="$(echo "$response" | jq -r '.accessToken // empty')"
