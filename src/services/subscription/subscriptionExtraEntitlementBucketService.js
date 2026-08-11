@@ -159,6 +159,8 @@ function buildCommonPayload(batch = {}, kind, walletKey, row = {}) {
     entitlementBatchId: batch._id,
     sourceKey: String(batch.sourceKey),
     sourceType: String(batch.sourceType || ""),
+    paymentId: batch.paymentId || null,
+    checkoutDraftId: batch.checkoutDraftId || null,
     effectiveStartDate,
     validityEndDate,
     applicationState: String(batch.applicationState || "pending"),
@@ -235,6 +237,7 @@ function buildAddonBucketPayload(batch, sourceRow) {
     ...buildCommonPayload(batch, "addon", walletKey, row),
     addonId: row.addonId || entitlement.addonId || null,
     addonPlanId: row.addonPlanId || entitlement.addonPlanId || null,
+    balanceBucketId: row.balanceBucketId || row._id || null,
     entitlementKey: normalizeText(row.entitlementKey || entitlement.entitlementKey),
     category: normalizeText(row.category || entitlement.category),
     allowanceCategory: normalizeText(row.allowanceCategory || entitlement.allowanceCategory),
@@ -342,9 +345,12 @@ function immutableBucketMatches(expected, actual) {
   if (!expected || !actual) return false;
   return String(actual.bucketKey || "") === String(expected.bucketKey || "")
     && String(actual.sourceKey || "") === String(expected.sourceKey || "")
+    && id(actual.paymentId) === id(expected.paymentId)
+    && id(actual.checkoutDraftId) === id(expected.checkoutDraftId)
     && id(actual.userId) === id(expected.userId)
     && id(actual.containerSubscriptionId) === id(expected.containerSubscriptionId)
     && id(actual.entitlementBatchId) === id(expected.entitlementBatchId)
+    && id(actual.balanceBucketId) === id(expected.balanceBucketId)
     && String(actual.kind || "") === String(expected.kind || "")
     && String(actual.walletKey || "") === String(expected.walletKey || "")
     && count(actual.purchasedQty) === count(expected.purchasedQty)

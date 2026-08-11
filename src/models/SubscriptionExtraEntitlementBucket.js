@@ -35,6 +35,18 @@ const SubscriptionExtraEntitlementBucketSchema = new mongoose.Schema(
     },
     sourceKey: { type: String, required: true, trim: true, immutable: true },
     sourceType: { type: String, default: "", trim: true, immutable: true },
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+      immutable: true,
+    },
+    checkoutDraftId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CheckoutDraft",
+      default: null,
+      immutable: true,
+    },
 
     premiumKey: { type: String, default: "", trim: true, immutable: true },
     configId: {
@@ -60,6 +72,11 @@ const SubscriptionExtraEntitlementBucketSchema = new mongoose.Schema(
     addonPlanId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Addon",
+      default: null,
+      immutable: true,
+    },
+    balanceBucketId: {
+      type: mongoose.Schema.Types.ObjectId,
       default: null,
       immutable: true,
     },
