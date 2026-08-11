@@ -89,8 +89,10 @@ jobs:
           test "$(echo "$response" | jq -r '.data.rollout.singleUserCanary')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.allowAllUsers')" = "false"
           test "$(echo "$response" | jq -r '.data.rollout.wildcardConfigured')" = "false"
-          test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "false"
+          test "$(echo "$response" | jq -r '.data.certification.readProbeReady')" = "true"
           test "$(echo "$response" | jq -r '.data.certification.baseMealCanaryReady')" = "false"
+          echo "$response" | jq -e '.data.certification.blockedReasons | index("read_not_enabled_for_user") != null' >/dev/null
+          echo "$response" | jq -e '.data.certification.blockedReasons | index("write_not_enabled_for_user") != null' >/dev/null
 
           test "$(echo "$response" | jq -r '.data.runtime.baseMealCheckoutSupported')" = "true"
           test "$(echo "$response" | jq -r '.data.runtime.premiumStackingSupported')" = "false"
