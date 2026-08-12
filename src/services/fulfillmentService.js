@@ -6,7 +6,9 @@ const { resolveMealsPerDay, resolveDayWalletSelections } = require("../utils/sub
 const { isPhase2CanonicalDayPlanningEnabled } = require("../utils/featureFlags");
 const { buildScopedCanonicalPlanningSnapshot } = require("./subscription/subscriptionDayPlanningService");
 const { consumeSubscriptionDayCredits, resolveDayMealsToDeduct } = require("./subscription/subscriptionDayConsumptionService");
-const { consumeReservedPickupMeals } = require("./subscription/subscriptionPickupRequestBalanceService");
+// Keep fulfillment on the final composed Pickup balance authority even though
+// backend repair and stacking installers are applied in separate startup steps.
+const pickupRequestBalanceService = require("./subscription/subscriptionPickupRequestBalanceService");
 const { transitionDayEntitlements } = require("./subscription/subscriptionMealEntitlementService");
 const {
   consumeDayExtraSelectionsTransactional,
@@ -143,7 +145,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
       creditsReleasedAt: null,
     }).session(session);
     if (pickupRequest) {
-      pickupSettlement = await consumeReservedPickupMeals({
+      pickupSettlement = await pickupRequestBalanceService.consumeReservedPickupMeals({
         pickupRequestId: pickupRequest._id,
         session,
       });
@@ -246,6 +248,42 @@ async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, ses
     return { ok: false, code: "NOT_FOUND", message: "Pickup request not found" };
   }
 
+  const linkedDay = pickupRequest.subscriptionDayId
+    ? await SubscriptionDay.findById(pickupRequest.subscriptionDayId).session(session)
+    : null;
+
+  // A P3 day carries a multi-document extra ledger. Establish the transaction
+  // before consuming either the Pickup base claim or Premium/Add-on selection
+  // reservations when this service is invoked outside the dashboard transaction.
+  if (linkedDay && linkedDay.stackingExtraSelectionState && !session) {
+    let failedResult = null;
+    try {
+      return await runExtraEntitlementTransaction(async (transactionSession) => {
+        const result = await fulfillSubscriptionPickupRequest({
+          requestId,
+          actorId,
+          session: transactionSession,
+        });
+        if (!result || result.ok !== true) {
+          failedResult = result;
+          const err = new Error("Stacked Pickup fulfillment did not complete");
+          err.code = "STACKING_EXTRA_PICKUP_FULFILLMENT_ABORT";
+          throw err;
+        }
+        return result;
+      });
+    } catch (err) {
+      if (
+        err
+        && err.code === "STACKING_EXTRA_PICKUP_FULFILLMENT_ABORT"
+        && failedResult
+      ) {
+        return failedResult;
+      }
+      throw err;
+    }
+  }
+
   if (pickupRequest.status === "fulfilled" && pickupRequest.creditsConsumedAt) {
     return {
       ok: true,
@@ -269,7 +307,7 @@ async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, ses
   // request projection without ever exposing a fulfilled request with unpaid debt.
   let consumption;
   try {
-    consumption = await consumeReservedPickupMeals({
+    consumption = await pickupRequestBalanceService.consumeReservedPickupMeals({
       pickupRequestId: pickupRequest._id,
       session,
     });
@@ -279,6 +317,23 @@ async function fulfillSubscriptionPickupRequest({ requestId, actorId = null, ses
       code: err.code || "CONSUMPTION_FAILED",
       message: err.message || "Pickup request consumption failed",
     };
+  }
+
+  if (linkedDay && linkedDay.stackingExtraSelectionState) {
+    try {
+      await consumeDayExtraSelectionsTransactional({
+        userId: pickupRequest.userId,
+        containerSubscriptionId: pickupRequest.subscriptionId,
+        day: linkedDay,
+        session,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        code: err.code || "STACKING_EXTRA_CONSUMPTION_FAILED",
+        message: err.message || "Pickup extra entitlement consumption failed",
+      };
+    }
   }
 
   const now = new Date();

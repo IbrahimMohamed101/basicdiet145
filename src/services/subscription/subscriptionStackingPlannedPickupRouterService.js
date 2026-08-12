@@ -1,6 +1,7 @@
 "use strict";
 
 const SubscriptionDay = require("../../models/SubscriptionDay");
+const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const SubscriptionEntitlementAllocation = require("../../models/SubscriptionEntitlementAllocation");
 const {
@@ -158,6 +159,60 @@ function defaultRuntime() {
       return SubscriptionEntitlementAllocation.findById(allocationId)
         .session(session)
         .lean();
+    },
+    findPickupRequest({ pickupRequestId, session }) {
+      return SubscriptionPickupRequest.findById(pickupRequestId).session(session);
+    },
+    markPickupReserved({ pickupRequestId, allocationKeys, now, session }) {
+      return SubscriptionPickupRequest.findOneAndUpdate(
+        { _id: pickupRequestId, creditsReserved: { $ne: true } },
+        {
+          $set: {
+            creditsReserved: true,
+            creditsReservedAt: now,
+            baseAllocationKeys: allocationKeys,
+            baseAllocationMode: "linked_day",
+          },
+        },
+        { new: true, session }
+      );
+    },
+    findPickupAllocationsByKeys({ subscriptionId, userId, allocationKeys, session }) {
+      return SubscriptionEntitlementAllocation.find({
+        containerSubscriptionId: subscriptionId,
+        userId,
+        allocationKey: { $in: allocationKeys },
+      }).sort({ allocationKey: 1 }).session(session).lean();
+    },
+    releasePickupClaims({ subscriptionId, userId, pickupRequestId, allocationKeys, session }) {
+      return SubscriptionEntitlementAllocation.updateMany(
+        {
+          containerSubscriptionId: subscriptionId,
+          userId,
+          pickupRequestId,
+          allocationKey: { $in: allocationKeys },
+          state: "reserved",
+        },
+        { $set: { pickupRequestId: null } },
+        { session }
+      );
+    },
+    markPickupReleased({ pickupRequestId, now, session }) {
+      return SubscriptionPickupRequest.findOneAndUpdate(
+        {
+          _id: pickupRequestId,
+          creditsReserved: true,
+          creditsConsumedAt: null,
+          creditsReleasedAt: null,
+        },
+        {
+          $set: {
+            creditsReleasedAt: now,
+            baseAllocationMode: "linked_day",
+          },
+        },
+        { new: true, session }
+      );
     },
   };
 }
@@ -468,11 +523,199 @@ function createStackingPlannedPickupWrapper(originalReservePickup, runtimeOverri
   };
 }
 
+function createStackingPlannedPickupBalanceWrapper(
+  originalReservePickupRequest,
+  runtimeOverrides = null
+) {
+  if (typeof originalReservePickupRequest !== "function") {
+    throw new TypeError("originalReservePickupRequest must be a function");
+  }
+  const runtime = resolveRuntime(runtimeOverrides);
+  return async function reservePlannedStackingPickupRequest(args = {}) {
+    const pickupRequest = await runtime.findPickupRequest({
+      pickupRequestId: args.pickupRequestId,
+      session: args.session,
+    });
+    if (!pickupRequest || Number(pickupRequest.mealCount || 0) === 0) {
+      return originalReservePickupRequest(args);
+    }
+    if (
+      args.mealCount != null
+      && Number(args.mealCount) !== Number(pickupRequest.mealCount || 0)
+    ) {
+      throw pickupError(
+        "MEAL_COUNT_MISMATCH",
+        "mealCount does not match pickup request mealCount",
+        400
+      );
+    }
+    if (pickupRequest.creditsReserved) {
+      return {
+        reserved: false,
+        alreadyReserved: true,
+        pickupRequest,
+        mealCount: Number(pickupRequest.mealCount || 0),
+      };
+    }
+
+    const planned = await reservePlannedStackingPickupEntitlements({
+      subscriptionId: args.subscriptionId,
+      pickupRequest,
+      session: args.session,
+      runtime,
+    });
+    if (!planned.handled) return originalReservePickupRequest(args);
+
+    const reservation = planned.reservation;
+    const updated = await runtime.markPickupReserved({
+      pickupRequestId: pickupRequest._id,
+      allocationKeys: reservation.allocationKeys,
+      now: new Date(),
+      session: args.session,
+    });
+    if (!updated) {
+      const current = await runtime.findPickupRequest({
+        pickupRequestId: pickupRequest._id,
+        session: args.session,
+      });
+      const currentKeys = new Set(
+        (current && Array.isArray(current.baseAllocationKeys)
+          ? current.baseAllocationKeys
+          : []).map(String)
+      );
+      const ownsReservation = Boolean(current && current.creditsReserved)
+        && reservation.allocationKeys.every((allocationKey) => (
+          currentKeys.has(String(allocationKey))
+        ));
+      if (!ownsReservation) {
+        throw pickupError(
+          "STACKING_PICKUP_REQUEST_RESERVATION_CONFLICT",
+          "Pickup request changed while confirmed allocations were being claimed",
+          409
+        );
+      }
+      return {
+        reserved: false,
+        alreadyReserved: true,
+        pickupRequest: current,
+        mealCount: Number(current.mealCount || 0),
+        allocationMode: "linked_day",
+      };
+    }
+
+    return {
+      reserved: true,
+      alreadyReserved: false,
+      pickupRequest: updated,
+      mealCount: Number(updated.mealCount || 0),
+      allocationMode: "linked_day",
+      plannedStackingPickup: true,
+    };
+  };
+}
+
+function createStackingPlannedPickupReleaseBalanceWrapper(
+  originalReleasePickupRequest,
+  runtimeOverrides = null
+) {
+  if (typeof originalReleasePickupRequest !== "function") {
+    throw new TypeError("originalReleasePickupRequest must be a function");
+  }
+  const runtime = resolveRuntime(runtimeOverrides);
+  return async function releasePlannedStackingPickupRequest(args = {}) {
+    const pickupRequest = await runtime.findPickupRequest({
+      pickupRequestId: args.pickupRequestId,
+      session: args.session,
+    });
+    if (!pickupRequest) return originalReleasePickupRequest(args);
+    const route = await resolvePlannedPickupRoute({
+      subscriptionId: args.subscriptionId,
+      session: args.session,
+      runtime,
+    });
+    if (!route.enabled || String(pickupRequest.baseAllocationMode || "") !== "linked_day") {
+      return originalReleasePickupRequest(args);
+    }
+    assertTransactionalSession(args.session);
+    if (pickupRequest.creditsReleasedAt) {
+      return {
+        released: false,
+        alreadyReleased: true,
+        pickupRequest,
+        mealCount: Number(pickupRequest.mealCount || 0),
+        allocationMode: "linked_day",
+      };
+    }
+    if (pickupRequest.creditsConsumedAt) {
+      throw pickupError("CREDITS_CONSUMED", "Reserved pickup meals were already consumed", 409);
+    }
+    if (!pickupRequest.creditsReserved) {
+      throw pickupError("CREDITS_NOT_RESERVED", "Pickup request meals are not reserved", 409);
+    }
+
+    const allocationKeys = normalizeKeys(pickupRequest.baseAllocationKeys);
+    const allocations = await runtime.findPickupAllocationsByKeys({
+      subscriptionId: args.subscriptionId,
+      userId: route.ownerId,
+      allocationKeys,
+      session: args.session,
+    });
+    if (
+      allocations.length !== allocationKeys.length
+      || allocations.some((row) => (
+        row.state !== "reserved"
+        || String(row.pickupRequestId || "") !== String(pickupRequest._id)
+      ))
+    ) {
+      throw pickupError(
+        "STACKING_PICKUP_ALLOCATION_RELEASE_CONFLICT",
+        "Pickup allocation claims are missing or no longer releasable",
+        409
+      );
+    }
+    const releasedClaims = await runtime.releasePickupClaims({
+      subscriptionId: args.subscriptionId,
+      userId: route.ownerId,
+      pickupRequestId: pickupRequest._id,
+      allocationKeys,
+      session: args.session,
+    });
+    if (Number(releasedClaims.modifiedCount || 0) !== allocationKeys.length) {
+      throw pickupError(
+        "STACKING_PICKUP_ALLOCATION_RELEASE_CONFLICT",
+        "Pickup allocation claims changed concurrently",
+        409
+      );
+    }
+    const updated = await runtime.markPickupReleased({
+      pickupRequestId: pickupRequest._id,
+      now: new Date(),
+      session: args.session,
+    });
+    if (!updated) {
+      throw pickupError(
+        "STACKING_PICKUP_REQUEST_RELEASE_CONFLICT",
+        "Pickup request changed while allocation claims were being released",
+        409
+      );
+    }
+    return {
+      released: true,
+      alreadyReleased: false,
+      pickupRequest: updated,
+      mealCount: Number(updated.mealCount || 0),
+      allocationMode: "linked_day",
+    };
+  };
+}
+
 module.exports = {
   assertPickupIdentity,
   assertPlannedPickupAllocations,
   choosePickupAllocations,
   collectExplicitPickupSlotKeys,
+  createStackingPlannedPickupBalanceWrapper,
+  createStackingPlannedPickupReleaseBalanceWrapper,
   createStackingPlannedPickupWrapper,
   normalizeKeys,
   reservePlannedStackingPickupEntitlements,

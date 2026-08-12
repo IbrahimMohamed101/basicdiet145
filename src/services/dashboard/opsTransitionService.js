@@ -17,9 +17,10 @@ const {
   shouldBlockOneTimeOrderDelivery,
   createOneTimeOrderDeliveryDisabledError,
 } = require("../../utils/oneTimeOrderDeliveryGate");
-const {
-  releaseReservedPickupMeals,
-} = require("../subscription/subscriptionPickupRequestBalanceService");
+// Resolve the final startup-composed balance authority at action time. The
+// stacking planned-Pickup installer is intentionally loaded after the backend
+// repair composition that imports this service.
+const pickupRequestBalanceService = require("../subscription/subscriptionPickupRequestBalanceService");
 const {
   settlePickupRequestAsUncollected,
 } = require("../subscription/subscriptionPickupCycleAuthorityService");
@@ -702,7 +703,7 @@ async function handleCancel({ entityId, entityType, payload, userId, role, sessi
     }
     const fromStatus = doc.status;
     validateTransition(entityType, fromStatus, "canceled");
-    await releaseReservedPickupMeals({
+    await pickupRequestBalanceService.releaseReservedPickupMeals({
       subscriptionId: doc.subscriptionId,
       pickupRequestId: doc._id,
       session,

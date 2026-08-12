@@ -607,12 +607,30 @@ function patchOpsTransitionService(dailyAddonService) {
   wrapExport(service, "executeAction", (original) => async function dailyAddonAwareAction(actionId, context = {}) {
     const action = normalizeAction(actionId);
     let day = await resolveActionDay(context);
-    if (day && ["prepare", "ready_for_pickup", "ready_for_delivery", "dispatch", "fulfill"].includes(action)) {
+    let p3PickupAction = Boolean(
+      day
+      && context.entityType === "subscription_pickup_request"
+      && day.stackingExtraSelectionState
+    );
+    if (
+      day
+      && !p3PickupAction
+      && ["prepare", "ready_for_pickup", "ready_for_delivery", "dispatch", "fulfill"].includes(action)
+    ) {
       await dailyAddonService.ensureDailyAddonDefaultsForDay({ dayId: day._id });
     }
     const result = await original(actionId, context);
     day = await resolveActionDay(context);
     if (!day) return result;
+    p3PickupAction = Boolean(
+      context.entityType === "subscription_pickup_request"
+      && day.stackingExtraSelectionState
+    );
+    // P3 owns Premium/Add-on reservations for a stacked day. Pickup only
+    // claims/releases the already-confirmed base slots; fulfillment consumes
+    // P3 extras atomically inside fulfillmentService. Do not run the legacy
+    // daily Add-on hook a second time for this combined path.
+    if (p3PickupAction) return result;
     if (action === "fulfill") {
       await dailyAddonService.consumeDailyAddonReservationsForDay({ dayId: day._id, reason: "fulfilled" });
     } else if (["no_show", "cancel"].includes(action)) {
