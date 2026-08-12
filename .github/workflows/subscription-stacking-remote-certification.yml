@@ -43,6 +43,7 @@ on:
           - read
           - initiate
           - verify
+          - extras
         default: read
       checkout_draft_id:
         description: Draft ID produced by initiate; required for verify
@@ -135,7 +136,12 @@ jobs:
       SUBSCRIPTION_STACKING_SHADOW_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
       SUBSCRIPTION_STACKING_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
       SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "false"
+      SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true"
+      SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
+      SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true"
+      SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
       STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
+      STAGING_DASHBOARD_TOKEN: ${{ secrets.STACKING_STAGING_DASHBOARD_TOKEN }}
       STAGING_SUBSCRIPTION_ID: ${{ secrets.STACKING_STAGING_PARENT_SUBSCRIPTION_ID }}
       STAGING_CHECKOUT_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_CHECKOUT_PAYLOAD_JSON }}
       STAGING_EXPECTED_DEPLOYMENT_COMMIT_SHA: ${{ github.sha }}
@@ -145,6 +151,7 @@ jobs:
       STAGING_EXPECTED_REMAINING_MEALS: ${{ inputs.expected_remaining_meals }}
       STAGING_TARGET_DATE: ${{ inputs.target_date }}
       STAGING_EXPECTED_REQUIRED_MEALS: ${{ inputs.expected_required_meals }}
+      STAGING_EXTRA_E2E_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_EXTRA_E2E_PAYLOAD_JSON }}
       STAGING_CERTIFICATION_OUTPUT: artifacts/subscription-stacking-remote-certification.json
       STAGING_REQUEST_TIMEOUT_MS: "20000"
 

@@ -8,7 +8,7 @@ const {
   validateSubscriptionStackingStagingEnv,
 } = require("./validate-subscription-stacking-staging-env");
 
-const WRITE_PHASES = new Set(["initiate", "verify"]);
+const WRITE_PHASES = new Set(["initiate", "verify", "extras"]);
 
 function readinessError(code, message, details = {}) {
   const err = new Error(message);
@@ -47,7 +47,7 @@ async function assertRemoteDeploymentReadiness(env = process.env, runtime = {}) 
       "A valid staging MongoDB identity is required"
     );
   }
-  if (!["read", "initiate", "verify"].includes(phase)) {
+  if (!["read", "initiate", "verify", "extras"].includes(phase)) {
     throw readinessError("DEPLOYMENT_READINESS_PHASE_INVALID", "Certification phase is invalid");
   }
 
@@ -167,6 +167,13 @@ async function assertRemoteDeploymentReadiness(env = process.env, runtime = {}) 
         throw readinessError("DEPLOYMENT_READINESS_WRITE_NOT_READY", "Remote write canary is not ready", {
           blockedReasons: certification.blockedReasons || [],
         });
+      }
+      if (phase === "extras" && certification.extraEntitlementCanaryReady !== true) {
+        throw readinessError(
+          "DEPLOYMENT_READINESS_EXTRA_CANARY_NOT_READY",
+          "Remote Premium/Add-on canary is not ready",
+          { blockedReasons: certification.extraEntitlementBlockedReasons || [] }
+        );
       }
     }
 

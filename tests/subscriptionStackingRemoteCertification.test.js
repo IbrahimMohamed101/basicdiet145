@@ -5,6 +5,9 @@ process.env.NODE_ENV = "test";
 const assert = require("node:assert");
 const {
   assertBaseMealOnly,
+  assertExtraCertificationReady,
+  exerciseExtraRuntime,
+  hasExtraCheckoutPayload,
   runRemoteCertification,
 } = require("../scripts/run-subscription-stacking-remote-certification");
 
@@ -40,16 +43,22 @@ function response(payload, status = 200, requestId = "req-test") {
   };
 }
 
-function readinessPayload() {
+function readinessPayload({ extraReady = false } = {}) {
   return {
     status: true,
     data: {
       contractVersion: "subscription_stacking_remote_readiness.v1",
       environment: { production: false, value: "staging" },
       deployment: { commitSha: "abc123" },
+      runtime: {
+        premiumStackingSupported: extraReady,
+        addonStackingSupported: extraReady,
+      },
       certification: {
         readProbeReady: true,
         baseMealCanaryReady: true,
+        extraEntitlementCanaryReady: extraReady,
+        extraEntitlementBlockedReasons: extraReady ? [] : ["extra_activation_disabled"],
         blockedReasons: [],
       },
     },
@@ -142,6 +151,55 @@ async function testVerifyPhaseBalanceAndTimeline() {
   assert.strictEqual(evidence.after.requiredMeals, 5);
 }
 
+async function testPremiumAddonInitiateUsesFullCanaryReadiness() {
+  const queue = createFetchQueue([
+    response({ status: true }),
+    response(readinessPayload({ extraReady: true })),
+    response({ status: true, data: { subscriptionId: "sub-1", remainingMeals: 20 } }),
+    response({ status: true, data: { days: [] } }),
+    response({ status: true, data: { breakdown: { totalHalala: 12000 } } }),
+    response({ status: true, data: { draftId: "draft-extra", payment_url: "https://sandbox.moyasar.com/pay/extra" } }),
+    response({ status: true, data: { draftId: "draft-extra", payment_url: "https://sandbox.moyasar.com/pay/extra" } }),
+  ]);
+  const evidence = await runRemoteCertification(buildEnv({
+    STAGING_CERTIFICATION_PHASE: "initiate",
+    STAGING_CHECKOUT_PAYLOAD_JSON: JSON.stringify({
+      planId: "plan-1",
+      premiumItems: [{ premiumKey: "shrimp", qty: 1 }],
+      addons: [{ addonPlanId: "addon-1", qty: 1 }],
+    }),
+  }), { fetchImpl: queue.fetchImpl });
+  assert.strictEqual(evidence.passed, true);
+  assert.strictEqual(evidence.mutation.extraEntitlements, true);
+}
+
+async function testExtraPublicRuntimeOrchestration() {
+  const queue = createFetchQueue(Array.from({ length: 8 }, (_, index) => response({
+    status: true,
+    data: index === 4 || index === 5 ? { pickupRequestId: "pickup-1" } : {},
+  }, 200, `req-extra-${index}`)));
+  const result = await exerciseExtraRuntime({
+    fetchImpl: queue.fetchImpl,
+    baseUrl: "https://basicdiet-staging.example.com",
+    token: "client-token",
+    timeoutMs: 2000,
+  }, {
+    subscriptionId: "sub-1",
+    config: {
+      date: "2026-08-12",
+      selectionBody: { mealSlots: [{ slotKey: "slot_1", premiumKey: "shrimp" }] },
+      pickupBody: { selectedPickupItemIds: ["slot_1"], idempotencyKey: "pickup-fixed" },
+    },
+    dashboardToken: "dashboard-token",
+  });
+  assert.strictEqual(result.pickupRequestId, "***");
+  assert.strictEqual(queue.remaining(), 0);
+  assert.strictEqual(queue.calls[0].method, "PUT");
+  assert(queue.calls[0].url.endsWith("/api/subscriptions/sub-1/days/2026-08-12/selection"));
+  assert.strictEqual(queue.calls[6].headers.Authorization, "Bearer dashboard-token");
+  assert(queue.calls[6].url.endsWith("/api/kitchen/subscriptions/sub-1/days/2026-08-12/fulfill-pickup"));
+}
+
 function testPremiumAndAddonPayloadsAreBlockedLocally() {
   assert.throws(
     () => assertBaseMealOnly({ premiumItems: [{ premiumKey: "shrimp", qty: 1 }] }),
@@ -151,12 +209,23 @@ function testPremiumAndAddonPayloadsAreBlockedLocally() {
     () => assertBaseMealOnly({ addons: [{ addonPlanId: "addon-1" }] }),
     (err) => err && err.code === "CERTIFICATION_BASE_MEAL_ONLY_REQUIRED"
   );
+  assert.strictEqual(hasExtraCheckoutPayload({ premiumItems: [{ qty: 1 }] }), true);
+  assert.strictEqual(hasExtraCheckoutPayload({ addons: [] }), false);
+  assert.throws(
+    () => assertExtraCertificationReady(readinessPayload().data),
+    (err) => err && err.code === "CERTIFICATION_EXTRA_CANARY_NOT_READY"
+  );
+  assert.doesNotThrow(
+    () => assertExtraCertificationReady(readinessPayload({ extraReady: true }).data)
+  );
 }
 
 async function run() {
   await testReadPhase();
   await testInitiatePhaseIdempotency();
   await testVerifyPhaseBalanceAndTimeline();
+  await testPremiumAddonInitiateUsesFullCanaryReadiness();
+  await testExtraPublicRuntimeOrchestration();
   testPremiumAndAddonPayloadsAreBlockedLocally();
   console.log("subscription stacking remote certification tests passed");
 }

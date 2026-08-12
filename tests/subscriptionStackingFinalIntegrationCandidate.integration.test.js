@@ -4,7 +4,11 @@ process.env.NODE_ENV = "test";
 process.env.SUBSCRIPTION_STACKING_READ_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_WRITE_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS = "false";
+process.env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED = "true";
+process.env.STAGING_DATABASE_ISOLATION_CONFIRMED = "true";
+process.env.STAGING_PAYMENT_SANDBOX_CONFIRMED = "true";
+process.env.STAGING_PAYMENT_MODE = "test";
 
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
@@ -54,10 +58,7 @@ const {
   applyPaymentSideEffects,
 } = require("../src/services/paymentApplicationService");
 const {
-  activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
-} = require("../src/services/subscription/subscriptionStackingActivationService");
-const {
-  applyPinnedExtrasPaidDraftToSubscriptionStackTransactional,
+  applyPaidDraftToSubscriptionStackTransactional,
 } = require(
   "../src/services/subscription/subscriptionStackingPaidDraftOrchestratorService"
 );
@@ -289,6 +290,7 @@ async function createPurchaseFixture() {
   };
 
   process.env.SUBSCRIPTION_STACKING_USER_IDS = String(userId);
+  process.env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS = String(userId);
   process.env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS = String(userId);
   return {
     userId,
@@ -316,9 +318,6 @@ async function finalizePayment(source, channel = "webhook") {
         buildActivationPayload: async () => ({
           subscriptionPayload: source.subscriptionPayload,
         }),
-        activateIntoContainer: (args) => (
-          activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(args)
-        ),
       },
     };
     return applyPaymentSideEffects(
@@ -326,7 +325,7 @@ async function finalizePayment(source, channel = "webhook") {
       {
         findDraftById: async () => draft,
         finalizeSubscriptionDraftPaymentFlow: () => (
-          applyPinnedExtrasPaidDraftToSubscriptionStackTransactional(serviceArgs)
+          applyPaidDraftToSubscriptionStackTransactional(serviceArgs)
         ),
       }
     );
@@ -493,10 +492,26 @@ async function testPaymentSelectionPickupLifecycle() {
   await clearDatabase();
   const source = await createPurchaseFixture();
   await finalizePayment(source, "webhook");
+  let current = await snapshot(source);
+  assert.strictEqual(current.batches.length, 2);
+  assert.strictEqual(current.buckets.length, 2);
+  assert.strictEqual(current.baseAllocations.length, 0);
+  assert.strictEqual(current.extraAllocations.length, 0);
+
+  const activationRace = await Promise.all(Array.from({ length: 20 }, (_, index) => (
+    finalizePayment(source, index % 2 === 0 ? "webhook" : "api_verify")
+  )));
+  assert.strictEqual(activationRace.length, 20);
+  current = await snapshot(source);
+  assert.strictEqual(current.batches.length, 2);
+  assert.strictEqual(current.buckets.length, 2);
+  assert.strictEqual(current.baseAllocations.length, 0);
+  assert.strictEqual(current.extraAllocations.length, 0);
+
   const catalog = await createCatalog();
 
   await Promise.all(Array.from({ length: 20 }, () => saveDay(source, catalog)));
-  let current = await snapshot(source);
+  current = await snapshot(source);
   assert.strictEqual(await Subscription.countDocuments({ userId: source.userId, status: "active" }), 1);
   assert.strictEqual(current.batches.length, 2);
   assert.strictEqual(current.buckets.length, 2);

@@ -6,7 +6,11 @@ const {
 const {
   activatePaidDraftIntoExistingContainerTransactional,
   activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
+  hasPaidPurchaseExtras,
 } = require("./subscriptionStackingActivationService");
+const {
+  isExtraActivationCanaryEnabledForUser,
+} = require("./subscriptionStackingRolloutPolicyService");
 const {
   materializeStackingSubscriptionDaysTransactional,
 } = require("./subscriptionStackingDayMaterializationService");
@@ -30,6 +34,13 @@ function defaultRuntime() {
     activateIntoContainer: (args) => (
       activatePaidDraftIntoExistingContainerTransactional(args)
     ),
+    activatePinnedExtrasIntoContainer: (args) => (
+      activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(args)
+    ),
+    extraActivationEnabledForUser: (userId) => (
+      isExtraActivationCanaryEnabledForUser(userId)
+    ),
+    forcePinnedExtrasActivation: false,
     materializeDays: (args) => (
       materializeStackingSubscriptionDaysTransactional(args)
     ),
@@ -41,7 +52,18 @@ function resolveRuntime(runtimeOverrides = null, runtimeDefaults = null) {
   if (!runtimeOverrides || typeof runtimeOverrides !== "object" || Array.isArray(runtimeOverrides)) {
     return runtime;
   }
-  return { ...runtime, ...runtimeOverrides };
+  const resolved = { ...runtime, ...runtimeOverrides };
+  if (
+    runtime.forcePinnedExtrasActivation === true
+    && Object.prototype.hasOwnProperty.call(runtimeOverrides, "activateIntoContainer")
+    && !Object.prototype.hasOwnProperty.call(
+      runtimeOverrides,
+      "activatePinnedExtrasIntoContainer"
+    )
+  ) {
+    resolved.activatePinnedExtrasIntoContainer = runtimeOverrides.activateIntoContainer;
+  }
+  return resolved;
 }
 
 async function applyPaidDraftToSubscriptionStackCoreTransactional({
@@ -90,7 +112,17 @@ async function applyPaidDraftToSubscriptionStackCoreTransactional({
     );
   }
 
-  const activation = await runtime.activateIntoContainer({
+  const paidExtrasPresent = hasPaidPurchaseExtras(
+    activationPayload.subscriptionPayload
+  );
+  const usePinnedExtrasActivation = paidExtrasPresent && Boolean(
+    runtime.forcePinnedExtrasActivation
+    || runtime.extraActivationEnabledForUser(String(draft.userId))
+  );
+  const activateIntoContainer = usePinnedExtrasActivation
+    ? runtime.activatePinnedExtrasIntoContainer
+    : runtime.activateIntoContainer;
+  const activation = await activateIntoContainer({
     draft,
     payment,
     subscriptionPayload: activationPayload.subscriptionPayload,
@@ -155,18 +187,15 @@ async function applyPaidDraftToSubscriptionStackTransactional(args = {}) {
   return applyPaidDraftToSubscriptionStackCoreTransactional(args);
 }
 
-// Dark-wired P2 boundary. Runtime dispatch continues to call the guarded
-// function above; only direct internal callers can exercise wallet seeding.
+// Retained P2 internal boundary. P4 runtime reaches the same pinned activation
+// only through the attested single-user decision above; direct integration
+// callers can still force the boundary without changing production routing.
 async function applyPinnedExtrasPaidDraftToSubscriptionStackTransactional(args = {}) {
   return applyPaidDraftToSubscriptionStackCoreTransactional({
     ...args,
     runtimeDefaults: {
       ...defaultRuntime(),
-      activateIntoContainer: (activationArgs) => (
-        activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(
-          activationArgs
-        )
-      ),
+      forcePinnedExtrasActivation: true,
     },
   });
 }

@@ -59,6 +59,10 @@ function payload(overrides = {}) {
       certification: {
         readProbeReady: overrides.readReady !== false,
         baseMealCanaryReady: overrides.writeReady !== false,
+        extraEntitlementCanaryReady: overrides.extraReady !== false,
+        extraEntitlementBlockedReasons: overrides.extraReady === false
+          ? ["extra_activation_disabled"]
+          : [],
         blockedReasons: [],
       },
     },
@@ -82,6 +86,23 @@ async function run() {
   assert.strictEqual(success.databaseIsolationConfirmed, true);
   assert.strictEqual(success.databaseIdentityVerified, true);
   assert.strictEqual(success.paymentSandboxConfirmed, true);
+
+  const extrasSuccess = await assertRemoteDeploymentReadiness(env({
+    STAGING_CERTIFICATION_PHASE: "extras",
+  }), {
+    fetchImpl: async () => response(payload()),
+  });
+  assert.strictEqual(extrasSuccess.ok, true);
+  assert.strictEqual(extrasSuccess.phase, "extras");
+
+  await assert.rejects(
+    () => assertRemoteDeploymentReadiness(env({
+      STAGING_CERTIFICATION_PHASE: "extras",
+    }), {
+      fetchImpl: async () => response(payload({ extraReady: false })),
+    }),
+    (err) => err && err.code === "DEPLOYMENT_READINESS_EXTRA_CANARY_NOT_READY"
+  );
 
   await assert.rejects(
     () => assertRemoteDeploymentReadiness(env(), {
