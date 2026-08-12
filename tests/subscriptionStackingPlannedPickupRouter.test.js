@@ -2,17 +2,51 @@
 
 process.env.NODE_ENV = "test";
 
-const assert = require("assert");
+const assert = require("node:assert/strict");
 const {
-  assertPlannedPickupAllocations,
+  choosePickupAllocations,
+  collectExplicitPickupSlotKeys,
   createStackingPlannedPickupWrapper,
+  reservePlannedStackingPickupEntitlements,
   resolvePickupDate,
   resolveRequestedMealCount,
 } = require("../src/services/subscription/subscriptionStackingPlannedPickupRouterService");
 
+function transactionalSession() {
+  return {
+    supportsTransactions: true,
+    inTransaction: () => true,
+  };
+}
+
+function pickupRequest(overrides = {}) {
+  return {
+    _id: "pickup-1",
+    subscriptionId: "stack-sub",
+    subscriptionDayId: "day-1",
+    userId: "allowed",
+    date: "2026-08-10",
+    mealCount: 2,
+    selectionMode: "slot_ids",
+    selectedMealSlotIds: ["slot_1", "slot_2"],
+    snapshot: {
+      mealSlots: [
+        { slotKey: "slot_1", slotIndex: 1 },
+        { slotKey: "slot_2", slotIndex: 2 },
+      ],
+    },
+    ...overrides,
+  };
+}
+
 function allocation(index, overrides = {}) {
   return {
+    _id: `row-${index}`,
     allocationKey: `allocation-${index}`,
+    containerSubscriptionId: "stack-sub",
+    userId: "allowed",
+    subscriptionDayId: "day-1",
+    pickupRequestId: null,
     slotKey: `slot_${index}`,
     date: "2026-08-10",
     state: "reserved",
@@ -20,188 +54,224 @@ function allocation(index, overrides = {}) {
   };
 }
 
-async function testDisabledIsExactLegacyNoOp() {
-  let ownerLookups = 0;
-  let originalCalls = 0;
-  const wrapper = createStackingPlannedPickupWrapper(
-    async (args) => {
-      originalCalls += 1;
-      return { source: "legacy", args };
-    },
-    {
-      globallyEnabled: () => false,
-      writeEnabledForUser: () => true,
-      findBatchOwner: async () => {
-        ownerLookups += 1;
-        throw new Error("must not query while disabled");
-      },
-    }
-  );
-
-  const result = await wrapper({ subscriptionId: "sub-1", mealCount: 5 });
-  assert.strictEqual(result.source, "legacy");
-  assert.strictEqual(originalCalls, 1);
-  assert.strictEqual(ownerLookups, 0);
+function buildRuntime(overrides = {}) {
+  return {
+    globallyEnabled: () => true,
+    writeEnabledForUser: (userId) => userId === "allowed",
+    findBatchOwner: async () => ({
+      userId: "allowed",
+      containerSubscriptionId: "stack-sub",
+    }),
+    findConfirmedDay: async () => ({
+      _id: "day-1",
+      subscriptionId: "stack-sub",
+      date: "2026-08-10",
+      plannerState: "confirmed",
+    }),
+    findAllocations: async () => [allocation(1), allocation(2)],
+    claimAllocation: async ({ allocationId, pickupRequestId }) => ({
+      ...allocation(Number(String(allocationId).replace("row-", ""))),
+      pickupRequestId,
+    }),
+    findAllocationById: async () => null,
+    ...overrides,
+  };
 }
 
 async function testNonStackedSubscriptionUsesLegacy() {
-  let originalCalls = 0;
+  let legacyCalls = 0;
   const wrapper = createStackingPlannedPickupWrapper(
     async () => {
-      originalCalls += 1;
+      legacyCalls += 1;
       return { source: "legacy" };
     },
-    {
-      globallyEnabled: () => true,
-      writeEnabledForUser: () => true,
-      findBatchOwner: async () => null,
-    }
-  );
-  const result = await wrapper({ subscriptionId: "standard-sub" });
-  assert.strictEqual(result.source, "legacy");
-  assert.strictEqual(originalCalls, 1);
-}
-
-async function testConfirmedDayReturnsExistingAllocationKeys() {
-  const rows = [1, 2, 3, 4, 5].map(allocation);
-  let originalCalls = 0;
-  const wrapper = createStackingPlannedPickupWrapper(
-    async () => {
-      originalCalls += 1;
-      return { source: "legacy" };
-    },
-    {
-      globallyEnabled: () => true,
-      writeEnabledForUser: (userId) => userId === "allowed",
-      findBatchOwner: async () => ({
-        userId: "allowed",
-        containerSubscriptionId: "stack-sub",
-      }),
-      findAllocations: async (args) => {
-        assert.strictEqual(args.subscriptionId, "stack-sub");
-        assert.strictEqual(args.date, "2026-08-10");
-        return rows;
-      },
-    }
+    buildRuntime({ findBatchOwner: async () => null })
   );
 
   const result = await wrapper({
-    subscriptionId: "stack-sub",
-    date: "2026-08-10",
-    mealCount: 5,
+    subscriptionId: "standard-sub",
+    pickupRequest: pickupRequest({ subscriptionId: "standard-sub" }),
+    session: transactionalSession(),
   });
-  assert.strictEqual(result.plannedStackingPickup, true);
-  assert.deepStrictEqual(result.allocationKeys, rows.map((row) => row.allocationKey));
-  assert.deepStrictEqual(result.newlyReservedKeys, []);
-  assert.strictEqual(originalCalls, 0);
+  assert.strictEqual(result.source, "legacy");
+  assert.strictEqual(legacyCalls, 1);
 }
 
-async function testExplicitAllocationKeysMustBeComplete() {
+async function testExistingStackFailsClosedWhenWriteDisabled() {
   const wrapper = createStackingPlannedPickupWrapper(
     async () => ({ source: "legacy" }),
-    {
-      globallyEnabled: () => true,
-      writeEnabledForUser: () => true,
-      findBatchOwner: async () => ({ userId: "allowed" }),
-      findAllocations: async () => [allocation(1)],
-    }
+    buildRuntime({ globallyEnabled: () => false })
   );
+
   await assert.rejects(
     () => wrapper({
       subscriptionId: "stack-sub",
-      allocationKeys: ["allocation-1", "allocation-2"],
+      pickupRequest: pickupRequest(),
+      session: transactionalSession(),
+    }),
+    (err) => Boolean(err && err.code === "STACKING_PICKUP_WRITE_DISABLED" && err.status === 503)
+  );
+}
+
+async function testOwnershipIsBoundToBatchOwner() {
+  await assert.rejects(
+    () => reservePlannedStackingPickupEntitlements({
+      subscriptionId: "stack-sub",
+      pickupRequest: pickupRequest({ userId: "attacker" }),
+      session: transactionalSession(),
+      runtime: buildRuntime(),
+    }),
+    (err) => Boolean(err && err.code === "STACKING_PICKUP_OWNER_MISMATCH" && err.status === 403)
+  );
+}
+
+async function testConfirmedSelectedSlotsAreClaimedExactlyOnce() {
+  const claimCalls = [];
+  const runtime = buildRuntime({
+    claimAllocation: async (args) => {
+      claimCalls.push(args);
+      const index = Number(String(args.allocationId).replace("row-", ""));
+      return { ...allocation(index), pickupRequestId: args.pickupRequestId };
+    },
+  });
+
+  const result = await reservePlannedStackingPickupEntitlements({
+    subscriptionId: "stack-sub",
+    pickupRequest: pickupRequest(),
+    session: transactionalSession(),
+    runtime,
+  });
+
+  assert.strictEqual(result.handled, true);
+  assert.strictEqual(result.reservation.plannedStackingPickup, true);
+  assert.deepStrictEqual(result.reservation.allocationKeys, ["allocation-1", "allocation-2"]);
+  assert.deepStrictEqual(result.reservation.newlyClaimedKeys, ["allocation-1", "allocation-2"]);
+  assert.deepStrictEqual(result.reservation.newlyReservedKeys, []);
+  assert.strictEqual(claimCalls.length, 2);
+  assert.ok(claimCalls.every((call) => call.pickupRequestId === "pickup-1"));
+}
+
+async function testReplayOfSamePickupRequestDoesNotClaimAgain() {
+  let claimCalls = 0;
+  const rows = [
+    allocation(1, { pickupRequestId: "pickup-1" }),
+    allocation(2, { pickupRequestId: "pickup-1" }),
+  ];
+  const result = await reservePlannedStackingPickupEntitlements({
+    subscriptionId: "stack-sub",
+    pickupRequest: pickupRequest(),
+    session: transactionalSession(),
+    runtime: buildRuntime({
+      findAllocations: async () => rows,
+      claimAllocation: async () => {
+        claimCalls += 1;
+        return null;
+      },
+    }),
+  });
+
+  assert.strictEqual(result.handled, true);
+  assert.deepStrictEqual(result.reservation.allocationKeys, ["allocation-1", "allocation-2"]);
+  assert.deepStrictEqual(result.reservation.newlyClaimedKeys, []);
+  assert.strictEqual(claimCalls, 0);
+}
+
+async function testConcurrentClaimFailsClosed() {
+  await assert.rejects(
+    () => reservePlannedStackingPickupEntitlements({
+      subscriptionId: "stack-sub",
+      pickupRequest: pickupRequest({ mealCount: 1, selectedMealSlotIds: ["slot_1"], snapshot: { mealSlots: [{ slotKey: "slot_1" }] } }),
+      session: transactionalSession(),
+      runtime: buildRuntime({
+        findAllocations: async () => [allocation(1)],
+        claimAllocation: async () => null,
+        findAllocationById: async () => allocation(1, { pickupRequestId: "pickup-2" }),
+      }),
+    }),
+    (err) => Boolean(err && err.code === "STACKING_PICKUP_ALLOCATION_CLAIM_CONFLICT")
+  );
+}
+
+async function testLegacyMealCountUsesOnlyUnclaimedSlots() {
+  const request = pickupRequest({
+    _id: "pickup-2",
+    mealCount: 2,
+    selectionMode: "legacy_meal_count",
+    selectedMealSlotIds: [],
+    snapshot: { mealSlots: [
+      { slotKey: "slot_1" },
+      { slotKey: "slot_2" },
+      { slotKey: "slot_3" },
+    ] },
+  });
+  const selected = choosePickupAllocations({
+    allocations: [
+      allocation(1, { pickupRequestId: "pickup-2" }),
+      allocation(2),
+      allocation(3),
+    ],
+    pickupRequest: request,
+    mealCount: 2,
+  });
+  assert.deepStrictEqual(selected.map((row) => row.allocationKey), ["allocation-1", "allocation-2"]);
+  assert.deepStrictEqual(collectExplicitPickupSlotKeys(request), []);
+}
+
+async function testConfirmedDayAndTransactionAreMandatory() {
+  await assert.rejects(
+    () => reservePlannedStackingPickupEntitlements({
+      subscriptionId: "stack-sub",
+      pickupRequest: pickupRequest(),
+      session: transactionalSession(),
+      runtime: buildRuntime({ findConfirmedDay: async () => null }),
+    }),
+    (err) => Boolean(err && err.code === "STACKING_PICKUP_REQUIRES_CONFIRMED_DAY" && err.status === 422)
+  );
+
+  await assert.rejects(
+    () => reservePlannedStackingPickupEntitlements({
+      subscriptionId: "stack-sub",
+      pickupRequest: pickupRequest(),
+      session: { supportsTransactions: true, inTransaction: () => false },
+      runtime: buildRuntime(),
+    }),
+    (err) => Boolean(err && err.code === "SUBSCRIPTION_STACKING_TRANSACTION_REQUIRED" && err.status === 503)
+  );
+}
+
+async function testExplicitSelectionCannotSilentlyShrink() {
+  await assert.rejects(
+    () => reservePlannedStackingPickupEntitlements({
+      subscriptionId: "stack-sub",
+      pickupRequest: pickupRequest(),
+      session: transactionalSession(),
+      runtime: buildRuntime({ findAllocations: async () => [allocation(1)] }),
     }),
     (err) => Boolean(err && err.code === "STACKING_PICKUP_ALLOCATION_SET_INCOMPLETE")
-  );
-}
-
-async function testMealCountMismatchFailsClosed() {
-  const wrapper = createStackingPlannedPickupWrapper(
-    async () => ({ source: "legacy" }),
-    {
-      globallyEnabled: () => true,
-      writeEnabledForUser: () => true,
-      findBatchOwner: async () => ({ userId: "allowed" }),
-      findAllocations: async () => [allocation(1), allocation(2)],
-    }
-  );
-  await assert.rejects(
-    () => wrapper({
-      subscriptionId: "stack-sub",
-      date: "2026-08-10",
-      mealCount: 5,
-    }),
-    (err) => Boolean(err && err.code === "STACKING_PICKUP_ALLOCATION_COUNT_MISMATCH")
-  );
-}
-
-async function testUnconfirmedDayFailsBeforeCreatingCredits() {
-  let originalCalls = 0;
-  const wrapper = createStackingPlannedPickupWrapper(
-    async () => {
-      originalCalls += 1;
-      return { source: "legacy" };
-    },
-    {
-      globallyEnabled: () => true,
-      writeEnabledForUser: () => true,
-      findBatchOwner: async () => ({ userId: "allowed" }),
-      findAllocations: async () => [],
-    }
-  );
-  await assert.rejects(
-    () => wrapper({
-      subscriptionId: "stack-sub",
-      date: "2026-08-10",
-      mealCount: 5,
-    }),
-    (err) => Boolean(
-      err
-      && err.code === "STACKING_PICKUP_REQUIRES_CONFIRMED_DAY"
-      && err.status === 503
-    )
-  );
-  assert.strictEqual(originalCalls, 0);
-}
-
-function testAllocationValidationRules() {
-  assert.throws(
-    () => assertPlannedPickupAllocations({
-      allocations: [allocation(1, { state: "consumed" })],
-      requestedKeys: [],
-      requestedMealCount: 1,
-      subscriptionId: "sub-1",
-      date: "2026-08-10",
-    }),
-    (err) => Boolean(err && err.code === "STACKING_PICKUP_ALLOCATION_STATE_CONFLICT")
-  );
-  assert.throws(
-    () => assertPlannedPickupAllocations({
-      allocations: [allocation(1, { date: "2026-08-11" })],
-      requestedKeys: [],
-      requestedMealCount: 1,
-      subscriptionId: "sub-1",
-      date: "2026-08-10",
-    }),
-    (err) => Boolean(err && err.code === "STACKING_PICKUP_DATE_MISMATCH")
   );
 }
 
 function testInputResolvers() {
   assert.strictEqual(resolveRequestedMealCount({ mealCount: 5 }), 5);
   assert.strictEqual(resolveRequestedMealCount({ pickupRequest: { mealCount: 3 } }), 3);
-  assert.strictEqual(resolvePickupDate({ day: { date: "2026-08-10" } }), "2026-08-10");
+  assert.strictEqual(resolvePickupDate({ pickupRequest: { date: "2026-08-10" } }), "2026-08-10");
   assert.strictEqual(resolvePickupDate({ pickupDate: "bad" }), "");
+  assert.deepStrictEqual(
+    collectExplicitPickupSlotKeys(pickupRequest()),
+    ["slot_1", "slot_2"]
+  );
 }
 
 async function run() {
-  await testDisabledIsExactLegacyNoOp();
   await testNonStackedSubscriptionUsesLegacy();
-  await testConfirmedDayReturnsExistingAllocationKeys();
-  await testExplicitAllocationKeysMustBeComplete();
-  await testMealCountMismatchFailsClosed();
-  await testUnconfirmedDayFailsBeforeCreatingCredits();
-  testAllocationValidationRules();
+  await testExistingStackFailsClosedWhenWriteDisabled();
+  await testOwnershipIsBoundToBatchOwner();
+  await testConfirmedSelectedSlotsAreClaimedExactlyOnce();
+  await testReplayOfSamePickupRequestDoesNotClaimAgain();
+  await testConcurrentClaimFailsClosed();
+  await testLegacyMealCountUsesOnlyUnclaimedSlots();
+  await testConfirmedDayAndTransactionAreMandatory();
+  await testExplicitSelectionCannotSilentlyShrink();
   testInputResolvers();
   console.log("subscription stacking planned pickup router tests passed");
 }
