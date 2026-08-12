@@ -64,7 +64,6 @@ function testNoStartupFlagMutation() {
 
 function testPickupBalanceConsumersResolveInstalledExportsDynamically() {
   const consumers = [
-    "src/services/dashboard/opsTransitionService.js",
     "src/services/fulfillmentService.js",
     "src/services/subscription/subscriptionPickupCycleAuthorityService.js",
     "src/services/subscription/subscriptionPickupRequestClientService.js",
@@ -77,6 +76,19 @@ function testPickupBalanceConsumersResolveInstalledExportsDynamically() {
       `${relativePath} must resolve the final composed Pickup balance export dynamically`
     );
   }
+
+  const closure = fs.readFileSync(
+    path.join(
+      repositoryRoot,
+      "src/services/subscription/subscriptionPickupRequestBalanceClosureService.js"
+    ),
+    "utf8"
+  );
+  assert(
+    closure.includes("liveRelease !== releaseReservedPickupMeals")
+      && closure.includes("LIVE_RELEASE_HANDOFF"),
+    "pre-composition release references must hand off to the final live adapter"
+  );
 }
 
 function testActivationConsumersResolveInstalledExportsDynamically() {

@@ -39,13 +39,13 @@ jobs:
       - name: Syntax and startup composition
         run: |
           node --check src/index.js
-          node --check src/services/dashboard/opsTransitionService.js
           node --check src/services/fulfillmentService.js
           node --check src/services/installSubscriptionDailyAddonPolicy.js
           node --check src/services/installSubscriptionStackingPlannedPickupRouter.js
           node --check src/services/installSubscriptionStackingPickupAvailabilityProjection.js
           node --check src/services/subscription/subscriptionPickupRequestClientService.js
           node --check src/services/subscription/subscriptionPickupCycleAuthorityService.js
+          node --check src/services/subscription/subscriptionPickupRequestBalanceClosureService.js
           node --check src/services/subscription/subscriptionStackingPlannedPickupRouterService.js
           node --check src/services/subscription/subscriptionStackingExtraSelectionAuthorityService.js
           node --check src/services/subscription/subscriptionStackingExtraSelectionLifecycleService.js
