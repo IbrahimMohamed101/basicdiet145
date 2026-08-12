@@ -8,6 +8,12 @@ const { buildScopedCanonicalPlanningSnapshot } = require("./subscription/subscri
 const { consumeSubscriptionDayCredits, resolveDayMealsToDeduct } = require("./subscription/subscriptionDayConsumptionService");
 const { consumeReservedPickupMeals } = require("./subscription/subscriptionPickupRequestBalanceService");
 const { transitionDayEntitlements } = require("./subscription/subscriptionMealEntitlementService");
+const {
+  consumeDayExtraSelectionsTransactional,
+} = require("./subscription/subscriptionStackingExtraSelectionLifecycleService");
+const {
+  runExtraEntitlementTransaction,
+} = require("./subscription/subscriptionExtraEntitlementAllocationService");
 
 async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) {
   const dayQuery = dayId ? { _id: dayId } : { subscriptionId, date };
@@ -15,6 +21,34 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
 
   if (!day) {
     return { ok: false, code: "NOT_FOUND", message: "Day not found" };
+  }
+
+  // P3 extra wallets are multi-document ledgers. When their internal marker is
+  // present, establish the rollback boundary before any base/day transition.
+  if (day.stackingExtraSelectionState && !session) {
+    let failedResult = null;
+    try {
+      return await runExtraEntitlementTransaction(async (transactionSession) => {
+        const result = await fulfillSubscriptionDay({
+          subscriptionId,
+          date,
+          dayId: day._id,
+          session: transactionSession,
+        });
+        if (!result || result.ok !== true) {
+          failedResult = result;
+          const err = new Error("Stacked extra fulfillment did not complete");
+          err.code = "STACKING_EXTRA_FULFILLMENT_ABORT";
+          throw err;
+        }
+        return result;
+      });
+    } catch (err) {
+      if (err && err.code === "STACKING_EXTRA_FULFILLMENT_ABORT" && failedResult) {
+        return failedResult;
+      }
+      throw err;
+    }
   }
 
   if (day.status === "skipped") {
@@ -142,6 +176,23 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
         return { ok: false, code: "INSUFFICIENT_CREDITS", message: "Not enough credits" };
       }
       throw err;
+    }
+  }
+
+  if (day.stackingExtraSelectionState) {
+    try {
+      await consumeDayExtraSelectionsTransactional({
+        userId: sub.userId,
+        containerSubscriptionId: day.subscriptionId,
+        day,
+        session,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        code: err.code || "STACKING_EXTRA_CONSUMPTION_FAILED",
+        message: err.message || "Extra entitlement consumption failed",
+      };
     }
   }
 

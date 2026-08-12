@@ -5,8 +5,10 @@ const {
 assertSubscriptionStackingProductionSafety(process.env);
 const {
   assertSubscriptionStackingRolloutConfiguration,
+  assertExtraSelectionCanaryConfiguration,
 } = require("./services/subscription/subscriptionStackingRolloutPolicyService");
 assertSubscriptionStackingRolloutConfiguration(process.env);
+assertExtraSelectionCanaryConfiguration(process.env);
 // The legacy backend repair composition installs the canonical add-on pricing
 // and client contract. It must complete before any stacking installer can load
 // cancellation -> selection -> allocation services and capture stale exports.

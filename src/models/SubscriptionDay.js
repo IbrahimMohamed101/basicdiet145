@@ -355,6 +355,8 @@ const SubscriptionDaySchema = new mongoose.Schema(
     baseAllocationKeys: { type: [String], default: undefined },
     entitlementTransitionState: { type: String, default: undefined, trim: true },
     premiumReservationMode: { type: String, enum: ["deferred"], default: undefined },
+    // Internal P3 ledger projection. Never serialized to mobile clients.
+    stackingExtraSelectionState: { type: mongoose.Schema.Types.Mixed, default: undefined },
     addonCreditsReleased: { type: Boolean, default: false },
     premiumCreditsReleased: { type: Boolean, default: false },
     autoLocked: { type: Boolean, default: false },

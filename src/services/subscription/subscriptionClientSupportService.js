@@ -55,6 +55,7 @@ function serializeSubscriptionDayForClient(subscription, day, runtimeOverrides =
   delete serializedDay.baseAllocationKeys;
   delete serializedDay.entitlementTransitionState;
   delete serializedDay.premiumReservationMode;
+  delete serializedDay.stackingExtraSelectionState;
 
   const actionType = day.canonicalDayActionType;
   if (actionType !== undefined && actionType !== null) {
@@ -167,6 +168,7 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
   delete shaped.baseAllocationKeys;
   delete shaped.entitlementTransitionState;
   delete shaped.premiumReservationMode;
+  delete shaped.stackingExtraSelectionState;
   const commercialStateLabel = resolveReadLabel("commercialStates", shaped.commercialState, lang);
   const premiumExtraPaymentStatus = (shaped.premiumExtraPayment && shaped.premiumExtraPayment.status) || "none";
   const premiumExtraPaymentStatusLabel = resolveReadLabel("premiumExtraPaymentStatuses", premiumExtraPaymentStatus, lang);
