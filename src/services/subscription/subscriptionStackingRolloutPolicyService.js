@@ -106,11 +106,66 @@ function isWriteStackingEnabledForUser(userId, env = process.env) {
     && isUserAllowedForStacking(userId, env);
 }
 
+function resolveExtraSelectionCanaryState(env = process.env) {
+  const enabled = isEnabled(env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED);
+  const allowlist = parseIdAllowlist(
+    env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS
+  );
+  const wildcardPresent = allowlist.has("*");
+  return { enabled, allowlist, wildcardPresent };
+}
+
+function assertExtraSelectionCanaryConfiguration(env = process.env) {
+  const state = resolveExtraSelectionCanaryState(env);
+  if (state.wildcardPresent) {
+    throw policyError(
+      "STACKING_EXTRA_SELECTION_WILDCARD_BLOCKED",
+      "Extra selection canary never accepts wildcard rollout",
+      { wildcard: true }
+    );
+  }
+  if (state.enabled && state.allowlist.size === 0) {
+    throw policyError(
+      "STACKING_EXTRA_SELECTION_ALLOWLIST_REQUIRED",
+      "Extra selection canary requires an explicit user allowlist"
+    );
+  }
+  if (
+    state.enabled
+    && (!isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED)
+      || !isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED))
+  ) {
+    throw policyError(
+      "STACKING_EXTRA_SELECTION_REQUIRES_STACKING_READ_WRITE",
+      "Extra selection canary requires stacking read and write eligibility"
+    );
+  }
+  return {
+    ok: true,
+    enabled: state.enabled,
+    userCount: state.allowlist.size,
+    wildcardAllowed: false,
+  };
+}
+
+function isExtraSelectionCanaryEnabledForUser(userId, env = process.env) {
+  const userIdValue = String(userId || "").trim();
+  if (!userIdValue) return false;
+  const state = resolveExtraSelectionCanaryState(env);
+  if (!state.enabled || state.wildcardPresent) return false;
+  return isReadStackingEnabledForUser(userIdValue, env)
+    && isWriteStackingEnabledForUser(userIdValue, env)
+    && state.allowlist.has(userIdValue);
+}
+
 module.exports = {
+  assertExtraSelectionCanaryConfiguration,
   assertSubscriptionStackingRolloutConfiguration,
+  isExtraSelectionCanaryEnabledForUser,
   isReadStackingEnabledForUser,
   isUserAllowedForStacking,
   isWriteStackingEnabledForUser,
   parseIdAllowlist,
+  resolveExtraSelectionCanaryState,
   resolveSubscriptionStackingRolloutState,
 };
