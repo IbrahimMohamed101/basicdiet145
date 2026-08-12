@@ -44,6 +44,7 @@ jobs:
           node --check src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js
           node --check src/services/subscription/subscriptionStackingRemoteReadinessService.js
           node --check scripts/run-subscription-stacking-remote-certification.js
+          node --check scripts/bootstrap-subscription-stacking-staging-fixture.js
           node --check tests/subscriptionStackingExtraRuntimeCanaryP4.test.js
           node --check tests/subscriptionStackingExtraRuntimeCanaryReadinessP4.test.js
           node --check tests/subscriptionStackingExtraRuntimeCanaryP4.integration.test.js
