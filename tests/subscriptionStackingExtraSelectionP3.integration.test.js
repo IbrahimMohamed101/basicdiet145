@@ -57,6 +57,29 @@ const {
 let replSet;
 let sequence = 0;
 
+const KSA_TIMEZONE = "Asia/Riyadh";
+
+function ksaDateStringOffset(days = 0) {
+  const target = new Date(Date.now() + (days * 24 * 60 * 60 * 1000));
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: KSA_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(target);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+const BUSINESS_DATE = ksaDateStringOffset(0);
+const DAY_DATE = ksaDateStringOffset(2);
+const SECOND_DAY_DATE = ksaDateStringOffset(3);
+const SUBSCRIPTION_START_DATE = ksaDateStringOffset(-5);
+const SUBSCRIPTION_END_DATE = ksaDateStringOffset(30);
+const SOON_END_DATE = ksaDateStringOffset(3);
+const FUTURE_START_DATE = ksaDateStringOffset(3);
+const EXPIRED_END_DATE = ksaDateStringOffset(1);
+
 function oid() {
   return new mongoose.Types.ObjectId();
 }
@@ -114,9 +137,9 @@ async function fixture() {
     userId,
     planId: oid(),
     status: "active",
-    startDate: ksaDate("2026-08-01"),
-    endDate: ksaDate("2026-08-31"),
-    validityEndDate: ksaDate("2026-08-31"),
+    startDate: ksaDate(SUBSCRIPTION_START_DATE),
+    endDate: ksaDate(SUBSCRIPTION_END_DATE),
+    validityEndDate: ksaDate(SUBSCRIPTION_END_DATE),
     totalMeals: 26,
     remainingMeals: 26,
     selectedMealsPerDay: 1,
@@ -126,7 +149,7 @@ async function fixture() {
   });
   const day = await SubscriptionDay.create({
     subscriptionId: subscription._id,
-    date: "2026-08-12",
+    date: DAY_DATE,
     status: "open",
     plannerState: "draft",
     planningState: "draft",
@@ -138,10 +161,10 @@ async function fixture() {
     planId: subscription.planId,
     sourceKey: `checkout:p3:${sequence}`,
     sourceType: "checkout",
-    requestedStartDate: ksaDate("2026-08-01"),
-    effectiveStartDate: ksaDate("2026-08-01"),
-    endDate: ksaDate("2026-08-31"),
-    validityEndDate: ksaDate("2026-08-31"),
+    requestedStartDate: ksaDate(SUBSCRIPTION_START_DATE),
+    effectiveStartDate: ksaDate(SUBSCRIPTION_START_DATE),
+    endDate: ksaDate(SUBSCRIPTION_END_DATE),
+    validityEndDate: ksaDate(SUBSCRIPTION_END_DATE),
     daysCount: 26,
     mealsPerDay: 1,
     proteinGrams: 150,
@@ -169,8 +192,8 @@ async function bucket(source, {
   addonPlanId = null,
   entitlementKey = "",
   category = "",
-  start = "2026-08-01",
-  end = "2026-08-31",
+  start = SUBSCRIPTION_START_DATE,
+  end = SUBSCRIPTION_END_DATE,
   createdAt = new Date(),
 } = {}) {
   const walletKey = kind === "premium"
@@ -321,13 +344,13 @@ async function testMultiBucketPartialFinalFutureExpiredAndCrossAddon() {
     kind: "premium",
     qty: 1,
     premiumKey: "salmon",
-    end: "2026-08-15",
+    end: SOON_END_DATE,
   });
   const newer = await bucket(source, {
     kind: "premium",
     qty: 2,
     premiumKey: "salmon",
-    end: "2026-08-31",
+    end: SUBSCRIPTION_END_DATE,
   });
   await reconcile(source, [premium("salmon", 3)]);
   let current = await state(source);
@@ -361,13 +384,13 @@ async function testMultiBucketPartialFinalFutureExpiredAndCrossAddon() {
     kind: "premium",
     qty: 1,
     premiumKey: "future",
-    start: "2026-08-13",
+    start: FUTURE_START_DATE,
   });
   await bucket(dates, {
     kind: "premium",
     qty: 1,
     premiumKey: "expired",
-    end: "2026-08-11",
+    end: EXPIRED_END_DATE,
   });
   for (const premiumKey of ["future", "expired"]) {
     await assert.rejects(
@@ -501,7 +524,7 @@ async function testConcurrencyAndCompetingDays() {
   await bucket(competing, { kind: "premium", qty: 1, premiumKey: "last" });
   const secondDay = await SubscriptionDay.create({
     subscriptionId: competing.subscription._id,
-    date: "2026-08-13",
+    date: SECOND_DAY_DATE,
     status: "open",
     plannerState: "draft",
     mealSlots: [],
@@ -714,7 +737,7 @@ async function testInternalStackingSelectionServiceBoundary() {
       carbs: [{ carbId: carb._id, grams: 150 }],
     }],
     extraSelectionEnabled: true,
-    getBusinessDate: async () => source.day.date,
+    getBusinessDate: async () => BUSINESS_DATE,
   });
   assert.strictEqual(result.day.premiumUpgradeSelections.length, 1);
   assert.strictEqual(result.day.premiumUpgradeSelections[0].premiumKey, "shrimp");
@@ -738,7 +761,7 @@ async function testInternalStackingSelectionServiceBoundary() {
       carbs: [{ carbId: carb._id, grams: 150 }],
     }],
     extraSelectionEnabled: true,
-    getBusinessDate: async () => source.day.date,
+    getBusinessDate: async () => BUSINESS_DATE,
   });
   assert(replay.day);
   assert.strictEqual(await SubscriptionExtraEntitlementAllocation.countDocuments({
@@ -751,14 +774,14 @@ async function testInternalStackingSelectionServiceBoundary() {
       subscriptionId: source.subscription._id,
       date: source.day.date,
       extraSelectionEnabled: true,
-      getBusinessDate: async () => source.day.date,
+      getBusinessDate: async () => BUSINESS_DATE,
     }),
     performStackingDayPlanningConfirmation({
       userId: source.userId,
       subscriptionId: source.subscription._id,
       date: source.day.date,
       extraSelectionEnabled: true,
-      getBusinessDate: async () => source.day.date,
+      getBusinessDate: async () => BUSINESS_DATE,
     }),
   ]);
   assert.strictEqual(confirmations.filter((row) => row.idempotent).length, 1);
@@ -786,7 +809,7 @@ async function testInternalStackingSelectionServiceBoundary() {
       carbs: [{ carbId: carb._id, grams: 150 }],
     }],
     extraSelectionEnabled: true,
-    getBusinessDate: async () => raceSource.day.date,
+    getBusinessDate: async () => BUSINESS_DATE,
   });
   const race = await Promise.allSettled([
     performStackingDayPlanningConfirmation({
@@ -794,7 +817,7 @@ async function testInternalStackingSelectionServiceBoundary() {
       subscriptionId: raceSource.subscription._id,
       date: raceSource.day.date,
       extraSelectionEnabled: true,
-      getBusinessDate: async () => raceSource.day.date,
+      getBusinessDate: async () => BUSINESS_DATE,
     }),
     performStackingDaySelectionUpdate({
       userId: raceSource.userId,
@@ -802,7 +825,7 @@ async function testInternalStackingSelectionServiceBoundary() {
       date: raceSource.day.date,
       mealSlots: [],
       extraSelectionEnabled: true,
-      getBusinessDate: async () => raceSource.day.date,
+      getBusinessDate: async () => BUSINESS_DATE,
     }),
   ]);
   assert.strictEqual(race.filter((row) => row.status === "fulfilled").length, 1);
@@ -866,7 +889,7 @@ async function testConcurrentConfirmCancelLeavesOneConsistentOutcome() {
       carbs: [{ carbId: carb._id, grams: 150 }],
     }],
     extraSelectionEnabled: true,
-    getBusinessDate: async () => source.day.date,
+    getBusinessDate: async () => BUSINESS_DATE,
   });
 
   const outcomes = await Promise.allSettled([
@@ -875,7 +898,7 @@ async function testConcurrentConfirmCancelLeavesOneConsistentOutcome() {
       subscriptionId: source.subscription._id,
       date: source.day.date,
       extraSelectionEnabled: true,
-      getBusinessDate: async () => source.day.date,
+      getBusinessDate: async () => BUSINESS_DATE,
     }),
     cancelSubscriptionDomain({
       subscriptionId: source.subscription._id,
