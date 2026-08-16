@@ -9,6 +9,13 @@ function toNonNegativeInteger(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : null;
 }
 
+function sumHalala(rows, field = "totalHalala") {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const value = toNonNegativeInteger(row && row[field]);
+    return sum + (value || 0);
+  }, 0);
+}
+
 function toIso(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -30,10 +37,10 @@ function localizedName(value) {
 
 function buildInvoiceNumber(subscription) {
   const createdAt = new Date(subscription.createdAt || subscription.startDate || Date.now());
-  const year = Number.isFinite(createdAt.getTime()) ? createdAt.getUTCFullYear() : new Date().getUTCFullYear();
-  const month = Number.isFinite(createdAt.getTime())
-    ? String(createdAt.getUTCMonth() + 1).padStart(2, "0")
-    : String(new Date().getUTCMonth() + 1).padStart(2, "0");
+  const fallback = new Date();
+  const source = Number.isFinite(createdAt.getTime()) ? createdAt : fallback;
+  const year = source.getUTCFullYear();
+  const month = String(source.getUTCMonth() + 1).padStart(2, "0");
   const suffix = String(subscription._id || "").slice(-8).toUpperCase();
   return `INV-${year}${month}-${suffix}`;
 }
@@ -73,6 +80,33 @@ async function findPrimaryPayment(subscriptionId) {
     .sort({ paidAt: 1, createdAt: 1 })
     .populate("collectedBy", "email role")
     .lean();
+}
+
+function buildPersistedLineItems(subscription) {
+  const planHalala =
+    toNonNegativeInteger(subscription.basePlanPriceHalala) ||
+    toNonNegativeInteger(subscription.basePlanGrossHalala) ||
+    0;
+  const premiumHalala = sumHalala(subscription.premiumBalance);
+  const addonsHalala = sumHalala(subscription.addonSubscriptions);
+  const deliveryHalala = toNonNegativeInteger(subscription.deliveryFeeHalala) || 0;
+  const discountHalala = toNonNegativeInteger(subscription.discountHalala) || 0;
+  const vatHalala = toNonNegativeInteger(subscription.vatHalala) || 0;
+
+  const rows = [
+    { kind: "plan", labelAr: "الاشتراك الأساسي", amountHalala: planHalala },
+    { kind: "premium", labelAr: "الوجبات المميزة", amountHalala: premiumHalala },
+    { kind: "addons", labelAr: "اشتراكات الإضافات", amountHalala: addonsHalala },
+    { kind: "delivery", labelAr: "رسوم التوصيل", amountHalala: deliveryHalala },
+  ].filter((row) => row.amountHalala > 0);
+
+  if (discountHalala > 0) {
+    rows.push({ kind: "discount", labelAr: "الخصم", amountHalala: -discountHalala });
+  }
+  if (vatHalala > 0) {
+    rows.push({ kind: "vat", labelAr: "ضريبة القيمة المضافة", amountHalala: vatHalala });
+  }
+  return rows;
 }
 
 async function getSubscriptionInvoice(req, res) {
@@ -132,6 +166,17 @@ async function getSubscriptionInvoice(req, res) {
 
   const paidAt = payment ? toIso(payment.paidAt || payment.createdAt) : null;
   const issuedAt = paidAt || toIso(subscription.createdAt) || toIso(subscription.startDate);
+  const lineItems = buildPersistedLineItems(subscription);
+
+  // Some very old rows predate line-item snapshots. Never reconstruct those from
+  // today's plan catalog; use the historical paid/stored total as one explicit row.
+  if (lineItems.length === 0 && authoritativeTotalHalala !== null) {
+    lineItems.push({
+      kind: "legacy_subscription_total",
+      labelAr: "قيمة الاشتراك التاريخية",
+      amountHalala: authoritativeTotalHalala,
+    });
+  }
 
   return res.json({
     status: true,
@@ -168,6 +213,7 @@ async function getSubscriptionInvoice(req, res) {
             : "unavailable",
         financialDataComplete,
         reconciliationStatus: totalsMismatch ? "payment_authoritative_mismatch" : "balanced_or_single_source",
+        lineItems,
         basePlanGrossHalala: toNonNegativeInteger(subscription.basePlanGrossHalala),
         basePlanNetHalala: toNonNegativeInteger(subscription.basePlanNetHalala),
         discountHalala: toNonNegativeInteger(subscription.discountHalala) || 0,
