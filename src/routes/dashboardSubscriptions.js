@@ -5,6 +5,7 @@ const controller = require("../controllers/dashboard/subscriptionManualDeduction
 const fulfillmentListController = require("../controllers/dashboard/subscriptionFulfillmentListController");
 const auditController = require("../controllers/dashboard/subscriptionAuditController");
 const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentRecordingController");
+const subscriptionInvoiceController = require("../controllers/dashboard/subscriptionInvoiceController");
 const subscriptionTrackingController = require("../controllers/subscriptionTrackingController");
 const adminController = require("../controllers/adminController");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -18,6 +19,10 @@ const subscriptionStaffAccess = dashboardRoleMiddleware([
   "kitchen",
 ]);
 const subscriptionTrackingReadAccess = dashboardRoleMiddleware([
+  "admin",
+  "cashier",
+]);
+const invoiceReadAccess = dashboardRoleMiddleware([
   "admin",
   "cashier",
 ]);
@@ -53,6 +58,13 @@ router.post(
   dashboardAuthMiddleware,
   subscriptionStaffAccess,
   asyncHandler(subscriptionPaymentController.createSubscriptionAdmin)
+);
+
+router.get(
+  "/:subscriptionId/invoice",
+  dashboardAuthMiddleware,
+  invoiceReadAccess,
+  asyncHandler(subscriptionInvoiceController.getSubscriptionInvoice)
 );
 
 router.get(
