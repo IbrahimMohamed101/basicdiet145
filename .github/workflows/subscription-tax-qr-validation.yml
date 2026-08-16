@@ -1,0 +1,39 @@
+name: Subscription tax QR validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/controllers/dashboard/subscriptionInvoiceController.js"
+      - "src/config/businessTaxIdentity.js"
+      - "src/config/vat.js"
+      - "tests/subscriptionInvoiceTaxQr.test.js"
+      - ".github/workflows/subscription-tax-qr-validation.yml"
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/subscriptionInvoiceController.js"
+      - "src/config/businessTaxIdentity.js"
+      - "src/config/vat.js"
+      - "tests/subscriptionInvoiceTaxQr.test.js"
+      - ".github/workflows/subscription-tax-qr-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate ZATCA TLV Base64 QR payload
+        run: NODE_ENV=test node tests/subscriptionInvoiceTaxQr.test.js
+      - name: Syntax check invoice controller
+        run: node --check src/controllers/dashboard/subscriptionInvoiceController.js
