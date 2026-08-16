@@ -1,0 +1,51 @@
+name: Subscription tax invoice validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/controllers/dashboard/subscriptionInvoiceController.js"
+      - "src/config/businessTaxIdentity.js"
+      - "src/config/vat.js"
+      - "tests/subscriptionTaxInvoiceQr.test.js"
+      - ".github/workflows/subscription-tax-invoice-validation.yml"
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/subscriptionInvoiceController.js"
+      - "src/config/businessTaxIdentity.js"
+      - "src/config/vat.js"
+      - "tests/subscriptionTaxInvoiceQr.test.js"
+      - ".github/workflows/subscription-tax-invoice-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate invoice controller syntax
+        run: node --check src/controllers/dashboard/subscriptionInvoiceController.js
+      - name: Verify tax invoice TLV QR payload
+        run: NODE_ENV=test node tests/subscriptionTaxInvoiceQr.test.js
+      - name: Smoke deployed invoice route authentication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://basicdiet145-production-51e9.up.railway.app/api/dashboard/subscriptions/000000000000000000000000/invoice"
+          status="$(curl --silent --show-error --location --output /tmp/invoice-smoke.json --write-out '%{http_code}' --max-time 20 "$url")"
+          echo "invoice route unauthenticated status=$status"
+          if [[ "$status" != "401" && "$status" != "403" ]]; then
+            cat /tmp/invoice-smoke.json || true
+            exit 1
+          fi
