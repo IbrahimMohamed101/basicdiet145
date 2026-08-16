@@ -3,6 +3,11 @@
 const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const Payment = require("../../models/Payment");
+const {
+  calculateVatBreakdownFromInclusiveTotal,
+  getSystemVatPercentage,
+} = require("../../config/vat");
+const { BUSINESS_TAX_IDENTITY } = require("../../config/businessTaxIdentity");
 
 function toNonNegativeInteger(value) {
   const parsed = Number(value);
@@ -91,7 +96,6 @@ function buildPersistedLineItems(subscription) {
   const addonsHalala = sumHalala(subscription.addonSubscriptions);
   const deliveryHalala = toNonNegativeInteger(subscription.deliveryFeeHalala) || 0;
   const discountHalala = toNonNegativeInteger(subscription.discountHalala) || 0;
-  const vatHalala = toNonNegativeInteger(subscription.vatHalala) || 0;
 
   const rows = [
     { kind: "plan", labelAr: "الاشتراك الأساسي", amountHalala: planHalala },
@@ -103,10 +107,40 @@ function buildPersistedLineItems(subscription) {
   if (discountHalala > 0) {
     rows.push({ kind: "discount", labelAr: "الخصم", amountHalala: -discountHalala });
   }
-  if (vatHalala > 0) {
-    rows.push({ kind: "vat", labelAr: "ضريبة القيمة المضافة", amountHalala: vatHalala });
-  }
   return rows;
+}
+
+function formatSarFromHalala(amountHalala) {
+  const normalized = toNonNegativeInteger(amountHalala) || 0;
+  return (normalized / 100).toFixed(2);
+}
+
+function encodeTlvField(tag, value) {
+  const valueBuffer = Buffer.from(String(value), "utf8");
+  if (valueBuffer.length > 255) {
+    throw new Error(`QR TLV field ${tag} exceeds 255 bytes`);
+  }
+  return Buffer.concat([Buffer.from([tag, valueBuffer.length]), valueBuffer]);
+}
+
+function buildLocalTaxQrPayload({ sellerName, vatNumber, issuedAt, totalHalala, vatHalala }) {
+  return Buffer.concat([
+    encodeTlvField(1, sellerName),
+    encodeTlvField(2, vatNumber),
+    encodeTlvField(3, issuedAt),
+    encodeTlvField(4, formatSarFromHalala(totalHalala)),
+    encodeTlvField(5, formatSarFromHalala(vatHalala)),
+  ]).toString("base64");
+}
+
+function isTaxRegistrationEffectiveAt(issuedAt) {
+  if (!issuedAt) return false;
+  const issueDate = new Date(issuedAt);
+  const effectiveDate = new Date(BUSINESS_TAX_IDENTITY.vatEffectiveAt);
+  if (!Number.isFinite(issueDate.getTime()) || !Number.isFinite(effectiveDate.getTime())) {
+    return false;
+  }
+  return issueDate.getTime() >= effectiveDate.getTime();
 }
 
 async function getSubscriptionInvoice(req, res) {
@@ -178,12 +212,66 @@ async function getSubscriptionInvoice(req, res) {
     });
   }
 
+  const taxRegistrationEffective = isTaxRegistrationEffectiveAt(issuedAt);
+  const taxInvoiceEligible = financialDataComplete && taxRegistrationEffective && currency === "SAR";
+  const vatBreakdown = taxInvoiceEligible
+    ? calculateVatBreakdownFromInclusiveTotal(authoritativeTotalHalala)
+    : null;
+  const vatPercentage = vatBreakdown ? vatBreakdown.vatPercentage : getSystemVatPercentage();
+  const vatHalala = vatBreakdown ? vatBreakdown.vatHalala : 0;
+  const subtotalExcludingVatHalala = vatBreakdown
+    ? vatBreakdown.subtotalExcludingVatHalala
+    : null;
+  const qrPayloadBase64 = taxInvoiceEligible
+    ? buildLocalTaxQrPayload({
+        sellerName: BUSINESS_TAX_IDENTITY.legalNameAr,
+        vatNumber: BUSINESS_TAX_IDENTITY.vatRegistrationNumber,
+        issuedAt,
+        totalHalala: authoritativeTotalHalala,
+        vatHalala,
+      })
+    : null;
+
   return res.json({
     status: true,
     data: {
       invoiceNumber: buildInvoiceNumber(subscription),
       issuedAt,
       historical: true,
+      invoiceType: taxInvoiceEligible ? "simplified_tax_invoice" : "subscription_invoice",
+      seller: {
+        legalNameAr: BUSINESS_TAX_IDENTITY.legalNameAr,
+        legalNameEn: BUSINESS_TAX_IDENTITY.legalNameEn,
+        vatRegistrationNumber: BUSINESS_TAX_IDENTITY.vatRegistrationNumber,
+        crNumber: BUSINESS_TAX_IDENTITY.crNumber,
+        addressAr: BUSINESS_TAX_IDENTITY.addressAr,
+        addressEn: BUSINESS_TAX_IDENTITY.addressEn,
+      },
+      tax: {
+        taxInvoiceEligible,
+        registrationEffective: taxRegistrationEffective,
+        registrationEffectiveAt: BUSINESS_TAX_IDENTITY.vatEffectiveAt,
+        vatPercentage,
+        priceIncludesVat: true,
+        subtotalExcludingVatHalala,
+        vatHalala,
+        totalIncludingVatHalala: taxInvoiceEligible ? authoritativeTotalHalala : null,
+        qr: qrPayloadBase64
+          ? {
+              payloadBase64: qrPayloadBase64,
+              encoding: "TLV_BASE64",
+              generatedLocally: true,
+              zatcaIntegration: false,
+              fields: [
+                "seller_name",
+                "vat_registration_number",
+                "invoice_timestamp",
+                "invoice_total_including_vat",
+                "vat_total",
+              ],
+            }
+          : null,
+      },
       customer: {
         id: user._id ? String(user._id) : String(subscription.userId || ""),
         name: text(user.name),
@@ -217,13 +305,12 @@ async function getSubscriptionInvoice(req, res) {
         basePlanGrossHalala: toNonNegativeInteger(subscription.basePlanGrossHalala),
         basePlanNetHalala: toNonNegativeInteger(subscription.basePlanNetHalala),
         discountHalala: toNonNegativeInteger(subscription.discountHalala) || 0,
-        subtotalHalala: toNonNegativeInteger(subscription.subtotalHalala),
-        subtotalBeforeVatHalala: toNonNegativeInteger(subscription.subtotalBeforeVatHalala),
+        subtotalHalala: subtotalExcludingVatHalala,
+        subtotalBeforeVatHalala: subtotalExcludingVatHalala,
         deliveryFeeHalala: toNonNegativeInteger(subscription.deliveryFeeHalala) || 0,
-        vatPercentage: Number.isFinite(Number(subscription.vatPercentage))
-          ? Number(subscription.vatPercentage)
-          : null,
-        vatHalala: toNonNegativeInteger(subscription.vatHalala) || 0,
+        vatPercentage,
+        vatHalala,
+        priceIncludesVat: taxInvoiceEligible,
         subscriptionTotalHalala: hasStoredSubscriptionTotal ? subscriptionTotalHalala : null,
         paidAmountHalala: paymentAmountHalala,
         totalHalala: authoritativeTotalHalala,
@@ -252,6 +339,12 @@ async function getSubscriptionInvoice(req, res) {
         ...(totalsMismatch
           ? [{ code: "PAYMENT_TOTAL_MISMATCH", messageAr: "يوجد اختلاف بين إجمالي الاشتراك التاريخي والمبلغ المدفوع؛ تم اعتماد سجل الدفع في الفاتورة." }]
           : []),
+        ...(!taxRegistrationEffective
+          ? [{
+              code: "PRE_VAT_EFFECTIVE_DATE",
+              messageAr: "تاريخ هذه الفاتورة يسبق تاريخ نفاذ التسجيل في ضريبة القيمة المضافة؛ لذلك لا يتم إصدارها كفاتورة ضريبية ولا يتم توليد QR ضريبي لها.",
+            }]
+          : []),
       ],
     },
   });
@@ -259,4 +352,5 @@ async function getSubscriptionInvoice(req, res) {
 
 module.exports = {
   getSubscriptionInvoice,
+  buildLocalTaxQrPayload,
 };
