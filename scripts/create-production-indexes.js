@@ -6,6 +6,7 @@ const User = require("../src/models/User");
 const Addon = require("../src/models/Addon");
 const BuilderProtein = require("../src/models/BuilderProtein");
 const ActivityLog = require("../src/models/ActivityLog");
+const EmailOtpChallenge = require("../src/models/EmailOtpChallenge");
 
 const INDEX_DEFINITIONS = [
   {
@@ -57,6 +58,33 @@ const INDEX_DEFINITIONS = [
       },
     },
   },
+  {
+    model: EmailOtpChallenge,
+    name: "challengeId_1",
+    key: { challengeId: 1 },
+    options: { unique: true },
+  },
+  {
+    model: EmailOtpChallenge,
+    name: "lookupKey_1",
+    key: { lookupKey: 1 },
+    options: { unique: true },
+  },
+  {
+    model: EmailOtpChallenge,
+    name: "cleanupAt_1",
+    key: { cleanupAt: 1 },
+    options: { expireAfterSeconds: 0 },
+  },
+  {
+    model: EmailOtpChallenge,
+    name: "resetTokenHash_1",
+    key: { resetTokenHash: 1 },
+    options: {
+      unique: true,
+      partialFilterExpression: { resetTokenHash: { $type: "string", $gt: "" } },
+    },
+  },
 ];
 
 async function ensureProductionIndexes() {
@@ -77,7 +105,14 @@ async function ensureProductionIndexes() {
     const modelName = def.model.modelName;
 
     try {
-      const existingIndexes = await collection.indexes();
+      let existingIndexes = [];
+      try {
+        existingIndexes = await collection.indexes();
+      } catch (err) {
+        // The new OTP collection does not exist before first deployment.
+        // createIndex below creates it atomically; all other errors still fail.
+        if (err.code !== 26) throw err;
+      }
       const existing = existingIndexes.find((idx) => idx.name === def.name);
 
       if (existing) {

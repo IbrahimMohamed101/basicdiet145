@@ -17,6 +17,8 @@ function serializeCoreUser(user) {
     fullName: user.name || null,
     phone: user.phone,
     email: user.email || null,
+    emailVerified: Boolean(user.emailVerified),
+    emailVerifiedAt: user.emailVerifiedAt || null,
     role: "client",
     createdAt: user.createdAt,
   };
@@ -215,9 +217,16 @@ async function updateProfile(req, res) {
       const normalizedEmail = normalizeOptionalEmail(email);
       if (normalizedEmail === null) {
         coreUser.email = undefined;
+        coreUser.emailVerified = false;
+        coreUser.emailVerifiedAt = null;
       } else {
         await ensureRegistrationEmailAvailable(normalizedEmail, coreUser.phone);
+        const emailChanged = String(coreUser.email || "").toLowerCase() !== normalizedEmail;
         coreUser.email = normalizedEmail;
+        if (emailChanged) {
+          coreUser.emailVerified = false;
+          coreUser.emailVerifiedAt = null;
+        }
       }
     }
 

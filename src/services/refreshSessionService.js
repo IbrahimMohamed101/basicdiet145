@@ -47,12 +47,12 @@ function isWithinRotationGrace(session, now = Date.now()) {
     && now - revokedAtMs <= graceMs;
 }
 
-async function createRefreshSession({ userId, req, deviceId, deviceName }) {
+async function createRefreshSession({ userId, req, deviceId, deviceName, session = null }) {
   const refreshToken = generateRefreshToken();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + getRefreshExpiresInSeconds() * 1000);
 
-  await RefreshSession.create({
+  const payload = {
     userId,
     refreshTokenHash: hashRefreshToken(refreshToken),
     deviceId: deviceId ? String(deviceId).trim() : null,
@@ -61,7 +61,12 @@ async function createRefreshSession({ userId, req, deviceId, deviceName }) {
     ipAddress: req ? resolveClientIp(req) : null,
     expiresAt,
     lastUsedAt: now,
-  });
+  };
+  if (session) {
+    await RefreshSession.create([payload], { session });
+  } else {
+    await RefreshSession.create(payload);
+  }
 
   return { refreshToken, expiresAt, refreshExpiresIn: getRefreshExpiresInSeconds() };
 }
@@ -120,10 +125,11 @@ async function rotateRefreshSession({ session, req, deviceId, deviceName }) {
   });
 }
 
-async function revokeAllUserSessions(userId, reason = "logout_all") {
+async function revokeAllUserSessions(userId, reason = "logout_all", session = null) {
   await RefreshSession.updateMany(
     { userId, revokedAt: null },
-    { $set: { revokedAt: new Date(), revokedReason: reason } }
+    { $set: { revokedAt: new Date(), revokedReason: reason } },
+    session ? { session } : undefined
   );
 }
 

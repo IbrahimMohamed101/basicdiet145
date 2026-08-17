@@ -18,6 +18,15 @@ const {
   updateDeviceToken,
   deleteDeviceToken,
 } = require("../controllers/authController");
+const {
+  confirmExistingEmailVerification,
+  requestEmailPasswordReset,
+  requestExistingEmailVerification,
+  resetPasswordWithEmail,
+  startEmailRegistration,
+  verifyEmailPasswordReset,
+  verifyEmailRegistration,
+} = require("../controllers/emailAuthController");
 const { authMiddleware } = require("../middleware/auth");
 const { otpLimiter, otpVerifyLimiter, mobileLoginLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -70,6 +79,22 @@ router.post("/otp/verify", otpVerifyLimiter, asyncHandler(verifyOtp));
 router.post("/register/request-otp", otpLimiter, asyncHandler(requestRegisterOtp));
 router.post("/register/verify", otpVerifyLimiter, asyncHandler(verifyRegister));
 router.post("/register", mobileLoginLimiter, asyncHandler(register));
+// Email-auth v2 is additive and default-off. Existing mobile builds continue to
+// use the legacy registration/password endpoints unchanged.
+router.post("/email/register/start", otpLimiter, asyncHandler(startEmailRegistration));
+router.post("/email/register/verify", otpVerifyLimiter, asyncHandler(verifyEmailRegistration));
+router.post(
+  "/email/verification/request",
+  authMiddleware,
+  otpLimiter,
+  asyncHandler(requestExistingEmailVerification)
+);
+router.post(
+  "/email/verification/confirm",
+  authMiddleware,
+  otpVerifyLimiter,
+  asyncHandler(confirmExistingEmailVerification)
+);
 /**
  * @openapi
  * /auth/login:
@@ -93,6 +118,9 @@ router.post("/logout", authMiddleware, asyncHandler(logout));
 router.post("/logout-all", authMiddleware, asyncHandler(logoutAll));
 router.post("/password/forgot", otpLimiter, asyncHandler(forgotPassword));
 router.post("/password/reset", otpVerifyLimiter, asyncHandler(resetPassword));
+router.post("/password/email/request", otpLimiter, asyncHandler(requestEmailPasswordReset));
+router.post("/password/email/verify", otpVerifyLimiter, asyncHandler(verifyEmailPasswordReset));
+router.post("/password/email/reset", mobileLoginLimiter, asyncHandler(resetPasswordWithEmail));
 /**
  * @openapi
  * /auth/change-password:
