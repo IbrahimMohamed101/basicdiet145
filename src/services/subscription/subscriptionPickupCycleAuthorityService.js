@@ -19,10 +19,9 @@ const {
   reserveDayEntitlements,
   transitionAllocation,
 } = require("./subscriptionMealEntitlementService");
-const {
-  consumeReservedPickupMeals,
-  releaseReservedPickupMeals,
-} = require("./subscriptionPickupRequestBalanceService");
+// Startup can add canary-bound stacking adapters after this legacy authority is
+// loaded, so balance operations must be resolved from the live module export.
+const pickupRequestBalanceService = require("./subscriptionPickupRequestBalanceService");
 const {
   clearLinkedClaims,
 } = require("./pickupEntitlementLinkService");
@@ -403,7 +402,7 @@ async function releaseExpiredReservationsForSubscription({
       .map(clean)
       .filter(Boolean);
     if (!requestKeys.length && request.creditsReserved && !request.creditsReleasedAt) {
-      const legacyRelease = await releaseReservedPickupMeals({
+      const legacyRelease = await pickupRequestBalanceService.releaseReservedPickupMeals({
         subscriptionId,
         pickupRequestId: request._id,
       });
@@ -512,7 +511,7 @@ async function settlePickupRequestAsUncollected({
       allocationKeys: keys,
       session,
     })
-    : await releaseReservedPickupMeals({
+    : await pickupRequestBalanceService.releaseReservedPickupMeals({
       subscriptionId: request.subscriptionId,
       pickupRequestId: request._id,
       session,

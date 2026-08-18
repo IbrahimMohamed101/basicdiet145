@@ -1,8 +1,10 @@
 "use strict";
 
 const {
+  isExtraSelectionCanaryEnabledForUser,
   isWriteStackingEnabledForUser,
 } = require("./subscriptionStackingRolloutPolicyService");
+const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const {
   performStackingDayPlanningConfirmation,
   performStackingDaySelectionUpdate,
@@ -20,6 +22,12 @@ function routerError(code, message, status = 503, details = {}) {
 function defaultRuntime() {
   return {
     writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
+    extraCanaryEnabledForUser: (userId) => isExtraSelectionCanaryEnabledForUser(userId),
+    hasPersistedStackingBatch: (subscriptionId) => SubscriptionEntitlementBatch.exists({
+      containerSubscriptionId: subscriptionId,
+      sourceType: { $ne: "legacy_seed" },
+      applicationState: "applied",
+    }),
     stackingUpdate: (args) => performStackingDaySelectionUpdate(args),
     stackingValidation: (args) => performStackingDaySelectionValidation(args),
     stackingConfirmation: (args) => performStackingDayPlanningConfirmation(args),
@@ -40,6 +48,10 @@ function createStackingSelectionWrappers(originals = {}, runtimeOverrides = null
   const originalValidation = originals.performDaySelectionValidation;
   const originalBulk = originals.performBulkDaySelectionPlanningBalanceValidation;
   const originalConfirmation = originals.performDayPlanningConfirmation;
+  async function extraSelectionEnabled(args = {}) {
+    if (!runtime.extraCanaryEnabledForUser(args.userId)) return false;
+    return Boolean(await runtime.hasPersistedStackingBatch(args.subscriptionId));
+  }
 
   for (const [name, fn] of Object.entries({
     performDaySelectionUpdate: originalUpdate,
@@ -57,14 +69,20 @@ function createStackingSelectionWrappers(originals = {}, runtimeOverrides = null
       if (!runtime.writeEnabledForUser(args.userId)) {
         return originalUpdate(args);
       }
-      return runtime.stackingUpdate(args);
+      return runtime.stackingUpdate({
+        ...args,
+        extraSelectionEnabled: await extraSelectionEnabled(args),
+      });
     },
 
     async performDaySelectionValidation(args = {}) {
       if (!runtime.writeEnabledForUser(args.userId)) {
         return originalValidation(args);
       }
-      return runtime.stackingValidation(args);
+      return runtime.stackingValidation({
+        ...args,
+        extraSelectionEnabled: await extraSelectionEnabled(args),
+      });
     },
 
     async performBulkDaySelectionPlanningBalanceValidation(args = {}) {
@@ -82,7 +100,10 @@ function createStackingSelectionWrappers(originals = {}, runtimeOverrides = null
       if (!runtime.writeEnabledForUser(args.userId)) {
         return originalConfirmation(args);
       }
-      return runtime.stackingConfirmation(args);
+      return runtime.stackingConfirmation({
+        ...args,
+        extraSelectionEnabled: await extraSelectionEnabled(args),
+      });
     },
   };
 }

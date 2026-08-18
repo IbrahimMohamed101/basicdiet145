@@ -31,17 +31,38 @@ function assertSubscriptionStackingProductionSafety(env = process.env) {
   const shadowEnabled = isEnabled(env.SUBSCRIPTION_STACKING_SHADOW_ENABLED);
   const readEnabled = isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED);
   const writeEnabled = isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED);
+  const extraActivationEnabled = isEnabled(
+    env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED
+  );
+  const extraSelectionEnabled = isEnabled(
+    env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED
+  );
 
-  if (environment.production && (shadowEnabled || readEnabled || writeEnabled)) {
+  if (
+    environment.production
+    && (
+      shadowEnabled
+      || readEnabled
+      || writeEnabled
+      || extraActivationEnabled
+      || extraSelectionEnabled
+    )
+  ) {
     const enabledModes = [
       shadowEnabled ? "shadow" : null,
       readEnabled ? "read" : null,
       writeEnabled ? "write" : null,
+      extraActivationEnabled ? "extra_activation" : null,
+      extraSelectionEnabled ? "extra_selection" : null,
     ].filter(Boolean);
     const err = new Error(
       "Subscription stacking is not production-ready and all rollout modes must remain disabled"
     );
-    err.code = writeEnabled
+    err.code = extraActivationEnabled
+      ? "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED"
+      : extraSelectionEnabled
+      ? "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED"
+      : writeEnabled
       ? "SUBSCRIPTION_STACKING_PRODUCTION_WRITE_BLOCKED"
       : (readEnabled
         ? "SUBSCRIPTION_STACKING_PRODUCTION_READ_BLOCKED"
@@ -54,6 +75,8 @@ function assertSubscriptionStackingProductionSafety(env = process.env) {
         SUBSCRIPTION_STACKING_SHADOW_ENABLED: "false",
         SUBSCRIPTION_STACKING_READ_ENABLED: "false",
         SUBSCRIPTION_STACKING_WRITE_ENABLED: "false",
+        SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "false",
+        SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "false",
       },
     };
     throw err;
@@ -66,6 +89,8 @@ function assertSubscriptionStackingProductionSafety(env = process.env) {
     shadowEnabled,
     readEnabled,
     writeEnabled,
+    extraActivationEnabled,
+    extraSelectionEnabled,
     productionRolloutBlocked: true,
   };
 }

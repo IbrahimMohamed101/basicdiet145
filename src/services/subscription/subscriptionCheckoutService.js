@@ -34,6 +34,9 @@ const {
 } = require("./subscriptionCheckoutHelpers");
 const { resolveReadLabel } = require("../../utils/subscription/subscriptionReadLocalization");
 const { buildMenuProductsSnapshot } = require("./subscriptionOwnedAddonSnapshotService");
+const {
+  attachPinnedExtraActivationSnapshot,
+} = require("./subscriptionStackingExtraActivationAuthorityService");
 
 // ---------------------------------------------------------------------------
 // Premium normalization helpers
@@ -472,21 +475,8 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
       // ----------------------------------------------------------------
       // STEP 5: Persist the new draft.
       // ----------------------------------------------------------------
-      const draftPayload = {
-        userId,
-        planId: quote.plan._id,
-        idempotencyKey,
-        requestHash,
-        daysCount: quote.plan.daysCount,
-        grams: quote.grams,
-        mealsPerDay: quote.mealsPerDay,
-        startDate: quote.startDate || undefined,
-        delivery: normalizedDelivery,
-        premiumItems: normalizedPremiumItems,
-        premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
-        premiumCount: Number(quote.premiumCount || 0),
-        premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
-        addonSubscriptions: await Promise.all((quote.addonSubscriptions || []).map(async (sub) => {
+      const normalizedAddonSubscriptions = await Promise.all(
+        (quote.addonSubscriptions || []).map(async (sub) => {
           let menuProductsSnapshot = [];
           if (Array.isArray(sub.menuProductIds) && sub.menuProductIds.length > 0) {
             menuProductsSnapshot = await buildMenuProductsSnapshot(sub.menuProductIds);
@@ -521,7 +511,31 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
             sourceRequestShape: sub.sourceRequestShape || null,
             menuProductsSnapshot,
           };
-        })),
+        })
+      );
+      const stackingFinalization = attachPinnedExtraActivationSnapshot(
+        runtime.stackingFinalizationIntent || undefined,
+        {
+          premiumItems: normalizedPremiumItems,
+          addonSubscriptions: normalizedAddonSubscriptions,
+          daysCount: quote.plan.daysCount,
+        }
+      );
+      const draftPayload = {
+        userId,
+        planId: quote.plan._id,
+        idempotencyKey,
+        requestHash,
+        daysCount: quote.plan.daysCount,
+        grams: quote.grams,
+        mealsPerDay: quote.mealsPerDay,
+        startDate: quote.startDate || undefined,
+        delivery: normalizedDelivery,
+        premiumItems: normalizedPremiumItems,
+        premiumUpgradeLimit: quote.premiumUpgradeLimit || null,
+        premiumCount: Number(quote.premiumCount || 0),
+        premiumUnitPriceHalala: Number(quote.premiumUnitPriceHalala || 0),
+        addonSubscriptions: normalizedAddonSubscriptions,
         promo: quote.promoCode
           ? {
             promoCodeId: quote.promoCode.promoCodeId || null,
@@ -536,7 +550,7 @@ async function performSubscriptionCheckout(userId, idempotencyKey, body, lang, r
           }
           : null,
         breakdown,
-        stackingFinalization: runtime.stackingFinalizationIntent || undefined,
+        stackingFinalization: stackingFinalization || undefined,
         ...canonicalFields,
       };
 

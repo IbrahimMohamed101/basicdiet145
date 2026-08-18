@@ -14,9 +14,9 @@ const Sandwich = require("../../models/Sandwich");
 require("../../models/Plan");
 const dateUtils = require("../../utils/date");
 const { validateDayBeforeLockOrPrepare } = require("./subscriptionDayExecutionValidationService");
-const {
-  reserveSubscriptionMealsForPickupRequest,
-} = require("./subscriptionPickupRequestBalanceService");
+// Resolve the final composed balance export at call time. Startup installs the
+// repair closure first and the stacking planned-Pickup adapter afterwards.
+const pickupRequestBalanceService = require("./subscriptionPickupRequestBalanceService");
 const {
   assertDateInsideSubscriptionRange,
   assertFulfillmentMethodAllowed,
@@ -742,7 +742,7 @@ async function _createSubscriptionPickupRequestForClientInternal({
 
   try {
     if (normalizedMealCount > 0) {
-      const reservation = await reserveSubscriptionMealsForPickupRequest({
+      const reservation = await pickupRequestBalanceService.reserveSubscriptionMealsForPickupRequest({
         subscriptionId: subscription._id,
         pickupRequestId: pickupRequest._id,
         mealCount: normalizedMealCount,

@@ -29,11 +29,19 @@ function testSafetyRunsBeforeInstallers() {
   );
 }
 
-function testIncompleteRoutersRemainDisconnected() {
-  assert.strictEqual(
-    source.includes("installSubscriptionStackingPlannedPickupRouter"),
-    false,
-    "planned pickup must remain disconnected until ownership binding is approved"
+function testIncompleteRoutersRemainFailClosed() {
+  const entitlementRouter = positionOf(
+    'require("./services/installSubscriptionStackingEntitlementRouter")'
+  );
+  const plannedPickup = positionOf(
+    'require("./services/installSubscriptionStackingPlannedPickupRouter")'
+  );
+  const pickupAvailability = positionOf(
+    'require("./services/installSubscriptionStackingPickupAvailabilityProjection")'
+  );
+  assert(
+    entitlementRouter < plannedPickup && plannedPickup < pickupAvailability,
+    "planned Pickup closed-state registration must follow entitlement routing and precede reads"
   );
   assert.strictEqual(
     source.includes("installSubscriptionStackingSkipRouter"),
@@ -52,6 +60,35 @@ function testNoStartupFlagMutation() {
   for (const pattern of forbiddenAssignments) {
     assert.strictEqual(pattern.test(source), false, `startup must not mutate rollout flags: ${pattern}`);
   }
+}
+
+function testPickupBalanceConsumersResolveInstalledExportsDynamically() {
+  const consumers = [
+    "src/services/fulfillmentService.js",
+    "src/services/subscription/subscriptionPickupCycleAuthorityService.js",
+    "src/services/subscription/subscriptionPickupRequestClientService.js",
+  ];
+  for (const relativePath of consumers) {
+    const consumer = fs.readFileSync(path.join(repositoryRoot, relativePath), "utf8");
+    assert.strictEqual(
+      /const\s*\{[^}]*\b(?:reserveSubscriptionMealsForPickupRequest|releaseReservedPickupMeals|consumeReservedPickupMeals)\b[^}]*\}\s*=\s*require\([^)]*subscriptionPickupRequestBalanceService/.test(consumer),
+      false,
+      `${relativePath} must resolve the final composed Pickup balance export dynamically`
+    );
+  }
+
+  const closure = fs.readFileSync(
+    path.join(
+      repositoryRoot,
+      "src/services/subscription/subscriptionPickupRequestBalanceClosureService.js"
+    ),
+    "utf8"
+  );
+  assert(
+    closure.includes("liveRelease !== releaseReservedPickupMeals")
+      && closure.includes("LIVE_RELEASE_HANDOFF"),
+    "pre-composition release references must hand off to the final live adapter"
+  );
 }
 
 function testActivationConsumersResolveInstalledExportsDynamically() {
@@ -170,8 +207,9 @@ function testFreshProcessReachesDatabaseBoundaryWithoutCompositionFailure() {
 
 function run() {
   testSafetyRunsBeforeInstallers();
-  testIncompleteRoutersRemainDisconnected();
+  testIncompleteRoutersRemainFailClosed();
   testNoStartupFlagMutation();
+  testPickupBalanceConsumersResolveInstalledExportsDynamically();
   testActivationConsumersResolveInstalledExportsDynamically();
   testFreshProcessReachesDatabaseBoundaryWithoutCompositionFailure();
   console.log("subscription stacking startup isolation tests passed");

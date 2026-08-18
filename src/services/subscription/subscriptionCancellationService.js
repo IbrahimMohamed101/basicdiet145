@@ -13,6 +13,9 @@ const {
   releasePremiumBalanceAtomically,
 } = require("./subscriptionSelectionService");
 const { transitionDayEntitlements } = require("./subscriptionMealEntitlementService");
+const {
+  releaseDayExtraSelectionsTransactional,
+} = require("./subscriptionStackingExtraSelectionLifecycleService");
 
 const CANCELABLE_STATUSES = new Set(["active", "pending_payment"]);
 const COMMITTED_DAY_STATUSES = ["locked", "in_preparation", "out_for_delivery", "ready_for_pickup"];
@@ -196,7 +199,15 @@ async function cancelSubscriptionDomain({
           toState: "released",
           session,
         });
-        if (!day.addonCreditsReleased && Array.isArray(day.addonSelections)) {
+        const stackingExtraRelease = day.stackingExtraSelectionState
+          ? await releaseDayExtraSelectionsTransactional({
+            userId: subscription.userId,
+            containerSubscriptionId: subscription._id,
+            day,
+            session,
+          })
+          : null;
+        if (!stackingExtraRelease && !day.addonCreditsReleased && Array.isArray(day.addonSelections)) {
           for (const sel of day.addonSelections) {
             if (sel.source === "subscription") {
               const releaseResult = await releaseAddonBalanceAtomically({
@@ -214,7 +225,12 @@ async function cancelSubscriptionDomain({
           }
         }
 
-        if (!entitlementRelease.handled && !day.premiumCreditsReleased && Array.isArray(day.premiumUpgradeSelections)) {
+        if (
+          !stackingExtraRelease
+          && !entitlementRelease.handled
+          && !day.premiumCreditsReleased
+          && Array.isArray(day.premiumUpgradeSelections)
+        ) {
           for (const sel of day.premiumUpgradeSelections) {
             if (sel.premiumSource === "balance") {
               const releaseResult = await releasePremiumBalanceAtomically({

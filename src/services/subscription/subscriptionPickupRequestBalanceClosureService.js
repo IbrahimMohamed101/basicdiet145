@@ -14,6 +14,8 @@ const {
   applyLegacyPickupRelease,
 } = require("./subscriptionLegacyMealBalanceOperationService");
 
+const LIVE_RELEASE_HANDOFF = Symbol("subscriptionPickupRequest.liveReleaseHandoff");
+
 function serviceError(code, message, status = 400, details = undefined) {
   const err = new Error(message);
   err.code = code;
@@ -213,11 +215,27 @@ async function reserveSubscriptionMealsForPickupRequest({
   };
 }
 
-async function releaseReservedPickupMeals({
-  subscriptionId,
-  pickupRequestId,
-  session = null,
-} = {}) {
+async function releaseReservedPickupMeals(input = {}) {
+  // The operations service is composed before the stacking installer and keeps
+  // this function reference. Once startup installs a final release adapter,
+  // hand off to that live export so the old reference cannot bypass P1 claims.
+  // The symbol prevents the adapter's legacy fallback from delegating forever.
+  const liveRelease = require("./subscriptionPickupRequestBalanceService")
+    .releaseReservedPickupMeals;
+  if (!input[LIVE_RELEASE_HANDOFF] && liveRelease !== releaseReservedPickupMeals) {
+    const delegatedInput = { ...input };
+    Object.defineProperty(delegatedInput, LIVE_RELEASE_HANDOFF, {
+      value: true,
+      enumerable: true,
+    });
+    return liveRelease(delegatedInput);
+  }
+
+  const {
+    subscriptionId,
+    pickupRequestId,
+    session = null,
+  } = input;
   if (!subscriptionId) throw serviceError("INVALID_ARGUMENTS", "subscriptionId is required", 400);
 
   const pickupRequest = await findPickupRequestOrThrow(pickupRequestId, session);

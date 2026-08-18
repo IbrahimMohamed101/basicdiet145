@@ -1,5 +1,10 @@
 "use strict";
 
+const {
+  releaseDayExtraSelectionsTransactional,
+  reopenDayExtraSelectionsTransactional,
+} = require("./subscriptionStackingExtraSelectionLifecycleService");
+
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const dateUtils = require("../../utils/date");
@@ -182,6 +187,8 @@ function defaultRuntime() {
     },
     releaseDay: (args) => transitionStackingDayEntitlementsTransactional(args),
     reopenDay: (args) => reopenStackingDayEntitlementsTransactional(args),
+    releaseExtras: (args) => releaseDayExtraSelectionsTransactional(args),
+    reopenExtras: (args) => reopenDayExtraSelectionsTransactional(args),
     applyCompensation: (args) => applyStackingCompensationTransactional(args),
     revokeCompensation: (args) => revokeStackingCompensationTransactional(args),
     incrementSkipUsage({ subscription, maxDays, session }) {
@@ -289,6 +296,14 @@ async function performStackingSkipDay({
         businessDate,
         session,
       });
+      const extrasReleased = day.stackingExtraSelectionState
+        ? await runtime.releaseExtras({
+          userId,
+          containerSubscriptionId: subscriptionId,
+          day,
+          session,
+        })
+        : null;
       const compensation = await runtime.applyCompensation({
         containerSubscriptionId: subscriptionId,
         userId,
@@ -307,7 +322,7 @@ async function performStackingSkipDay({
         subscription: mergeLifecycleSubscription(compensation.lifecycle, subscription),
         compensatedDaysAdded: 0,
         idempotent: true,
-        stacking: { released, compensation },
+        stacking: { released, extrasReleased, compensation },
       };
     }
 
@@ -320,6 +335,14 @@ async function performStackingSkipDay({
       businessDate,
       session,
     });
+    const extrasReleased = day && day.stackingExtraSelectionState
+      ? await runtime.releaseExtras({
+        userId,
+        containerSubscriptionId: subscriptionId,
+        day,
+        session,
+      })
+      : null;
     const compensation = await runtime.applyCompensation({
       containerSubscriptionId: subscriptionId,
       userId,
@@ -362,7 +385,7 @@ async function performStackingSkipDay({
       subscription: mergeLifecycleSubscription(compensation.lifecycle, subscription),
       compensatedDaysAdded: 1,
       idempotent: false,
-      stacking: { released, compensation },
+      stacking: { released, extrasReleased, compensation },
     };
   } catch (err) {
     if (session.inTransaction()) await session.abortTransaction();
@@ -398,6 +421,15 @@ async function performStackingUnskipDay({
       businessDate,
       session,
     });
+    const extrasReopened = day.stackingExtraSelectionState
+      ? await runtime.reopenExtras({
+        userId,
+        containerSubscriptionId: subscriptionId,
+        day,
+        businessDate: targetDate,
+        session,
+      })
+      : null;
     const compensation = await runtime.revokeCompensation({
       containerSubscriptionId: subscriptionId,
       userId,
@@ -442,7 +474,7 @@ async function performStackingUnskipDay({
       day: updatedDay,
       subscription: mergeLifecycleSubscription(compensation.lifecycle, subscription),
       idempotent: false,
-      stacking: { reopened, compensation },
+      stacking: { reopened, extrasReopened, compensation },
     };
   } catch (err) {
     if (session.inTransaction()) await session.abortTransaction();

@@ -1,0 +1,148 @@
+name: Subscription Stacking Final Integration Candidate
+
+on:
+  push:
+    branches:
+      - cert/stacking-full-integration-candidate-20260812
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-final-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  final-integration-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax and startup composition
+        run: |
+          node --check src/index.js
+          node --check src/services/fulfillmentService.js
+          node --check src/services/installSubscriptionDailyAddonPolicy.js
+          node --check src/services/installSubscriptionStackingPlannedPickupRouter.js
+          node --check src/services/installSubscriptionStackingPickupAvailabilityProjection.js
+          node --check src/services/subscription/subscriptionPickupRequestClientService.js
+          node --check src/services/subscription/subscriptionPickupCycleAuthorityService.js
+          node --check src/services/subscription/subscriptionPickupRequestBalanceClosureService.js
+          node --check src/services/subscription/subscriptionStackingPlannedPickupRouterService.js
+          node --check src/services/subscription/subscriptionStackingExtraSelectionAuthorityService.js
+          node --check src/services/subscription/subscriptionStackingExtraSelectionLifecycleService.js
+          node --check tests/subscriptionStackingFinalIntegrationCandidate.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
+      - name: P0 wallet
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementBucket.test.js
+
+      - name: P1 allocation lifecycle
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementAllocationLifecycle.test.js
+
+      - name: P2 activation and payment replay
+        run: NODE_ENV=test node tests/subscriptionStackingExtraActivationP2.integration.test.js
+
+      - name: P3 selection lifecycle
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingExtraSelectionP3.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingExtraSelectionP3Contracts.test.js
+
+      - name: Pickup planned reservation and availability
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingPlannedPickupRouter.test.js
+          NODE_ENV=test node tests/subscriptionStackingPickupAvailabilityRead.test.js
+          NODE_ENV=test node tests/subscriptionStackingPickupBalanceIntegration.test.js
+
+      - name: Combined P3 and Pickup integration
+        run: NODE_ENV=test node tests/subscriptionStackingFinalIntegrationCandidate.integration.test.js
+
+      - name: Concurrent finalization and authority
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingConcurrentPurchases.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingFinalizationAuthority.test.js
+
+      - name: Stacking entitlement and balance conservation
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+          NODE_ENV=test node tests/subscriptionStackingFulfillmentLedger.test.js
+          NODE_ENV=test node tests/subscriptionBalancePolicy.test.js
+
+      - name: Cancellation skip and fulfillment
+        run: |
+          NODE_ENV=test node tests/subscriptionCancellationBalancePolicy.test.js
+          NODE_ENV=test node tests/subscriptionStackingSkipService.test.js
+          NODE_ENV=test node tests/subscriptionStackingSkipRouter.test.js
+          NODE_ENV=test node tests/subscriptionFulfillmentConcurrency.test.js
+
+      - name: Legacy Premium and Add-on lifecycle
+        run: |
+          NODE_ENV=test node tests/premiumBaseMealCreditLifecycle.integration.test.js
+          NODE_ENV=test node tests/addonBalanceReleaseIdempotency.test.js
+          NODE_ENV=test node tests/subscriptionDailyAddonReservationLifecycle.test.js
+          NODE_ENV=test node tests/subscriptionDailyAddonReopen.test.js
+
+      - name: Flutter contract regressions
+        run: |
+          NODE_ENV=test node tests/flutterMobileResponseContract.test.js
+          NODE_ENV=test node tests/flutterMobileStrictScalarContract.test.js
+          NODE_ENV=test node tests/flutterMealPlannerPayloadCompatibility.test.js
+          NODE_ENV=test node tests/mobileApiContracts.test.js
+
+      - name: Production and rollout safety
+        shell: bash
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingSecurityMatrix.test.js
+          NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
+          NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
+          grep -q 'STACKING_PREMIUM_ADDON_WRITE_NOT_READY' src/services/subscription/subscriptionStackingActivationService.js
+          grep -q 'STACKING_PREMIUM_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          grep -q 'STACKING_ADDON_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          grep -q 'SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED' src/services/subscription/subscriptionStackingProductionSafetyService.js
+          grep -q 'STACKING_EXTRA_SELECTION_WILDCARD_BLOCKED' src/services/subscription/subscriptionStackingRolloutPolicyService.js
+
+      - name: Candidate scope and secret audit
+        shell: bash
+        run: |
+          changed_files="$(git diff --name-only origin/main...HEAD)"
+          if printf '%s\n' "$changed_files" | grep -Ei '(^|/)(flutter|dashboard)(/|$)'; then
+            echo 'Candidate must not change Flutter or Dashboard files.' >&2
+            exit 1
+          fi
+          if git diff origin/main...HEAD -- src tests | grep -E '^\+.*(mongodb(\+srv)?://|MOYASAR_[A-Z_]*[=:][[:space:]]*[^$])'; then
+            echo 'Potential credential or Mongo URI found in candidate diff.' >&2
+            exit 1
+          fi
+          if git diff origin/main...HEAD -- src tests | grep -E '^\+.*(test[-_ ]only.*bypass|allowAll[[:space:]]*[:=][[:space:]]*true)'; then
+            echo 'Candidate diff contains a forbidden bypass or allowAll pattern.' >&2
+            exit 1
+          fi
+          if git diff origin/main...HEAD -- .github/workflows/subscription-stacking-final-integration-candidate.yml \
+            | grep -E '^\+[[:space:]]*continue-on-error:'; then
+            echo 'Final integration workflow cannot allow failures.' >&2
+            exit 1
+          fi
+
+      - name: Full subscription suite
+        run: npm run test:subscriptions
+
+      - name: Diff whitespace check
+        run: git diff --check

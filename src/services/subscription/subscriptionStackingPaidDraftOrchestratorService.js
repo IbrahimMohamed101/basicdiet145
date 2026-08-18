@@ -5,7 +5,12 @@ const {
 } = require("./subscriptionActivationService");
 const {
   activatePaidDraftIntoExistingContainerTransactional,
+  activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
+  hasPaidPurchaseExtras,
 } = require("./subscriptionStackingActivationService");
+const {
+  isExtraActivationCanaryEnabledForUser,
+} = require("./subscriptionStackingRolloutPolicyService");
 const {
   materializeStackingSubscriptionDaysTransactional,
 } = require("./subscriptionStackingDayMaterializationService");
@@ -29,21 +34,39 @@ function defaultRuntime() {
     activateIntoContainer: (args) => (
       activatePaidDraftIntoExistingContainerTransactional(args)
     ),
+    activatePinnedExtrasIntoContainer: (args) => (
+      activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(args)
+    ),
+    extraActivationEnabledForUser: (userId) => (
+      isExtraActivationCanaryEnabledForUser(userId)
+    ),
+    forcePinnedExtrasActivation: false,
     materializeDays: (args) => (
       materializeStackingSubscriptionDaysTransactional(args)
     ),
   };
 }
 
-function resolveRuntime(runtimeOverrides = null) {
-  const runtime = defaultRuntime();
+function resolveRuntime(runtimeOverrides = null, runtimeDefaults = null) {
+  const runtime = runtimeDefaults || defaultRuntime();
   if (!runtimeOverrides || typeof runtimeOverrides !== "object" || Array.isArray(runtimeOverrides)) {
     return runtime;
   }
-  return { ...runtime, ...runtimeOverrides };
+  const resolved = { ...runtime, ...runtimeOverrides };
+  if (
+    runtime.forcePinnedExtrasActivation === true
+    && Object.prototype.hasOwnProperty.call(runtimeOverrides, "activateIntoContainer")
+    && !Object.prototype.hasOwnProperty.call(
+      runtimeOverrides,
+      "activatePinnedExtrasIntoContainer"
+    )
+  ) {
+    resolved.activatePinnedExtrasIntoContainer = runtimeOverrides.activateIntoContainer;
+  }
+  return resolved;
 }
 
-async function applyPaidDraftToSubscriptionStackTransactional({
+async function applyPaidDraftToSubscriptionStackCoreTransactional({
   draft,
   payment,
   businessDate,
@@ -51,6 +74,7 @@ async function applyPaidDraftToSubscriptionStackTransactional({
   expectedParentSubscriptionId = null,
   now = new Date(),
   runtime: runtimeOverrides = null,
+  runtimeDefaults = null,
 } = {}) {
   assertTransactionalSession(session);
   if (!draft || !draft._id || !draft.userId) {
@@ -75,7 +99,7 @@ async function applyPaidDraftToSubscriptionStackTransactional({
     );
   }
 
-  const runtime = resolveRuntime(runtimeOverrides);
+  const runtime = resolveRuntime(runtimeOverrides, runtimeDefaults);
   const activationPayload = await runtime.buildActivationPayload({ draft });
   if (
     !activationPayload
@@ -88,7 +112,17 @@ async function applyPaidDraftToSubscriptionStackTransactional({
     );
   }
 
-  const activation = await runtime.activateIntoContainer({
+  const paidExtrasPresent = hasPaidPurchaseExtras(
+    activationPayload.subscriptionPayload
+  );
+  const usePinnedExtrasActivation = paidExtrasPresent && Boolean(
+    runtime.forcePinnedExtrasActivation
+    || runtime.extraActivationEnabledForUser(String(draft.userId))
+  );
+  const activateIntoContainer = usePinnedExtrasActivation
+    ? runtime.activatePinnedExtrasIntoContainer
+    : runtime.activateIntoContainer;
+  const activation = await activateIntoContainer({
     draft,
     payment,
     subscriptionPayload: activationPayload.subscriptionPayload,
@@ -149,6 +183,24 @@ async function applyPaidDraftToSubscriptionStackTransactional({
   };
 }
 
+async function applyPaidDraftToSubscriptionStackTransactional(args = {}) {
+  return applyPaidDraftToSubscriptionStackCoreTransactional(args);
+}
+
+// Retained P2 internal boundary. P4 runtime reaches the same pinned activation
+// only through the attested single-user decision above; direct integration
+// callers can still force the boundary without changing production routing.
+async function applyPinnedExtrasPaidDraftToSubscriptionStackTransactional(args = {}) {
+  return applyPaidDraftToSubscriptionStackCoreTransactional({
+    ...args,
+    runtimeDefaults: {
+      ...defaultRuntime(),
+      forcePinnedExtrasActivation: true,
+    },
+  });
+}
+
 module.exports = {
   applyPaidDraftToSubscriptionStackTransactional,
+  applyPinnedExtrasPaidDraftToSubscriptionStackTransactional,
 };

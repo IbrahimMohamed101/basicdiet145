@@ -35,6 +35,9 @@ const {
 const {
   projectClientMealBalance,
 } = require("./subscriptionClientMealBalanceProjectionService");
+const {
+  serializeMealSlotsForClient,
+} = require("./subscriptionStackingClientContractService");
 const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
@@ -55,6 +58,14 @@ function serializeSubscriptionDayForClient(subscription, day, runtimeOverrides =
   delete serializedDay.baseAllocationKeys;
   delete serializedDay.entitlementTransitionState;
   delete serializedDay.premiumReservationMode;
+  delete serializedDay.stackingExtraSelectionState;
+
+  if (Array.isArray(day.mealSlots)) {
+    serializedDay.mealSlots = serializeMealSlotsForClient(
+      day.mealSlots,
+      subscription && subscription.selectedGrams
+    );
+  }
 
   const actionType = day.canonicalDayActionType;
   if (actionType !== undefined && actionType !== null) {
@@ -167,6 +178,7 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
   delete shaped.baseAllocationKeys;
   delete shaped.entitlementTransitionState;
   delete shaped.premiumReservationMode;
+  delete shaped.stackingExtraSelectionState;
   const commercialStateLabel = resolveReadLabel("commercialStates", shaped.commercialState, lang);
   const premiumExtraPaymentStatus = (shaped.premiumExtraPayment && shaped.premiumExtraPayment.status) || "none";
   const premiumExtraPaymentStatusLabel = resolveReadLabel("premiumExtraPaymentStatuses", premiumExtraPaymentStatus, lang);

@@ -34,6 +34,62 @@ const {
 const {
   reconcileSubscriptionStackingLifecycleTransactional,
 } = require("./subscriptionStackingLifecycleService");
+const {
+  resolveStackingExtraSelectionAuthority,
+} = require("./subscriptionStackingExtraSelectionAuthorityService");
+const {
+  assertDayExtraReservationsTransactional,
+  normalizeDesiredSelections,
+  normalizePersistedState,
+  reconcileDayExtraSelectionsTransactional,
+} = require("./subscriptionStackingExtraSelectionLifecycleService");
+const {
+  runExtraEntitlementTransaction,
+} = require("./subscriptionExtraEntitlementAllocationService");
+
+function extraSelectionStateMatches(day, desiredSelections) {
+  const desired = normalizeDesiredSelections(desiredSelections);
+  if (!desired.length && !(day && day.stackingExtraSelectionState)) return true;
+  const state = normalizePersistedState(day && day.stackingExtraSelectionState);
+  if (state.lifecycleStatus !== "reserved" || state.entries.length !== desired.length) return false;
+  return state.entries.every((entry, index) => (
+    entry.identityKey === desired[index].identityKey
+    && entry.quantity === desired[index].quantity
+    && entry.reservationKeys.length === desired[index].quantity
+  ));
+}
+
+function applyExtraAuthorityToDraft(draft, authority) {
+  const premiumBySlot = new Map(
+    (authority && Array.isArray(authority.premiumSelections)
+      ? authority.premiumSelections
+      : []).map((row) => [String(row.baseSlotKey || ""), row])
+  );
+  for (const slot of Array.isArray(draft && draft.processedSlots) ? draft.processedSlots : []) {
+    const selection = premiumBySlot.get(String(slot && slot.slotKey || ""));
+    if (!selection) continue;
+    slot.premiumSource = "balance";
+    slot.premiumKey = selection.premiumKey;
+    slot.balanceBucketId = selection.balanceBucketId || null;
+    slot.premiumWalletRowId = selection.premiumWalletRowId || null;
+    slot.configId = selection.configId || null;
+    slot.revision = Number(selection.revision || 0);
+    slot.coveredQty = 1;
+    slot.paidQty = 0;
+    slot.payableTotalHalala = 0;
+    slot.premiumExtraFeeHalala = Number(selection.unitExtraFeeHalala || 0);
+    slot.source = "subscription";
+  }
+  for (const meal of Array.isArray(draft && draft.materializedMeals) ? draft.materializedMeals : []) {
+    const selection = premiumBySlot.get(String(meal && meal.slotKey || ""));
+    if (!selection) continue;
+    meal.premiumSource = "balance";
+    meal.premiumKey = selection.premiumKey;
+    meal.premiumExtraFeeHalala = Number(selection.unitExtraFeeHalala || 0);
+  }
+  if (draft) draft.premiumUpgradeSelections = authority.premiumSelections || [];
+  return draft;
+}
 
 function selectionError(code, message, status = 422, details = {}) {
   const err = new Error(message);
@@ -190,14 +246,21 @@ async function validateDraftAgainstContext({
   return draft;
 }
 
-function buildDraftCommercialState({ day, draft, subscriptionView }) {
+function buildDraftCommercialState({
+  day,
+  draft,
+  subscriptionView,
+  premiumSelections = [],
+  addonSelections = [],
+}) {
   const shapedInput = {
     ...(day ? clonePlain(day) : {}),
     status: day && day.status ? day.status : "open",
     plannerState: "draft",
     mealSlots: draft.processedSlots,
     plannerMeta: draft.plannerMeta,
-    addonSelections: [],
+    premiumUpgradeSelections: premiumSelections,
+    addonSelections,
     premiumExtraPayment: null,
   };
   return buildDayCommercialState(shapedInput, {
@@ -205,7 +268,12 @@ function buildDraftCommercialState({ day, draft, subscriptionView }) {
   });
 }
 
-function buildSelectionUpdate({ draft, commercialState }) {
+function buildSelectionUpdate({
+  draft,
+  commercialState,
+  premiumSelections = [],
+  addonSelections = [],
+}) {
   return {
     mealSlots: draft.processedSlots,
     plannerMeta: draft.plannerMeta,
@@ -216,10 +284,10 @@ function buildSelectionUpdate({ draft, commercialState }) {
     premiumExtraPayment: commercialState.premiumExtraPayment,
     materializedMeals: draft.materializedMeals,
     selections: draft.selections,
-    premiumUpgradeSelections: [],
+    premiumUpgradeSelections: premiumSelections,
     premiumReservationMode: "deferred",
     baseMealSlots: draft.baseMealSlots,
-    addonSelections: [],
+    addonSelections,
   };
 }
 
@@ -230,6 +298,7 @@ async function loadInitialContext({
   mealSlots,
   requestedOneTimeAddonIds,
   getBusinessDate,
+  extraSelectionEnabled = false,
 } = {}) {
   const targetDate = normalizeDate(date);
   const subscription = await Subscription.findById(subscriptionId).lean();
@@ -258,11 +327,13 @@ async function loadInitialContext({
   if (existingDay && String(existingDay.plannerState || "") === "confirmed") {
     throw selectionError("LOCKED", "Planner is already confirmed for this day", 409);
   }
-  assertBaseMealsOnly({
-    mealSlots,
-    requestedOneTimeAddonIds,
-    existingDay,
-  });
+  if (!extraSelectionEnabled) {
+    assertBaseMealsOnly({
+      mealSlots,
+      requestedOneTimeAddonIds,
+      existingDay,
+    });
+  }
   const context = await resolveStackingPlanningContext({
     userId,
     subscription,
@@ -289,6 +360,7 @@ async function performStackingDaySelectionValidation({
   contractVersion,
   requestedOneTimeAddonIds,
   getBusinessDate = getRestaurantBusinessDate,
+  extraSelectionEnabled = false,
 } = {}) {
   const loaded = await loadInitialContext({
     userId,
@@ -297,22 +369,37 @@ async function performStackingDaySelectionValidation({
     mealSlots,
     requestedOneTimeAddonIds,
     getBusinessDate,
+    extraSelectionEnabled,
   });
   const draft = await validateDraftAgainstContext({
     context: loaded.context,
     mealSlots,
     contractVersion,
   });
-  assertBaseMealsOnly({
-    mealSlots: draft.processedSlots,
-    draft,
-    requestedOneTimeAddonIds,
-    existingDay: loaded.existingDay,
-  });
+  let extraAuthority = { desiredSelections: [], premiumSelections: [], addonSelections: [] };
+  if (extraSelectionEnabled) {
+    extraAuthority = await resolveStackingExtraSelectionAuthority({
+      userId,
+      containerSubscriptionId: subscriptionId,
+      businessDate: loaded.targetDate,
+      draft,
+      requestedOneTimeAddonIds,
+    });
+    applyExtraAuthorityToDraft(draft, extraAuthority);
+  } else {
+    assertBaseMealsOnly({
+      mealSlots: draft.processedSlots,
+      draft,
+      requestedOneTimeAddonIds,
+      existingDay: loaded.existingDay,
+    });
+  }
   const commercialState = buildDraftCommercialState({
     day: loaded.existingDay,
     draft,
     subscriptionView: loaded.context.subscriptionView,
+    premiumSelections: extraAuthority.premiumSelections,
+    addonSelections: extraAuthority.addonSelections,
   });
 
   return {
@@ -320,7 +407,7 @@ async function performStackingDaySelectionValidation({
     plannerState: "draft",
     mealSlots: draft.processedSlots,
     plannerMeta: draft.plannerMeta,
-    addonSelections: [],
+    addonSelections: extraAuthority.addonSelections,
     plannerRevisionHash: commercialState.plannerRevisionHash,
     premiumSummary: commercialState.premiumSummary,
     addonSummary: commercialState.addonSummary,
@@ -343,7 +430,25 @@ async function performStackingDaySelectionUpdate({
   contractVersion,
   requestedOneTimeAddonIds,
   getBusinessDate = getRestaurantBusinessDate,
+  extraSelectionEnabled = false,
+  _transactionSession = null,
 } = {}) {
+  if (extraSelectionEnabled && !_transactionSession) {
+    return runExtraEntitlementTransaction(
+      (session) => performStackingDaySelectionUpdate({
+        userId,
+        subscriptionId,
+        date,
+        mealSlots,
+        contractVersion,
+        requestedOneTimeAddonIds,
+        getBusinessDate,
+        extraSelectionEnabled,
+        _transactionSession: session,
+      }),
+      { maxRetries: 30, baseDelayMs: 2 }
+    );
+  }
   const loaded = await loadInitialContext({
     userId,
     subscriptionId,
@@ -351,21 +456,25 @@ async function performStackingDaySelectionUpdate({
     mealSlots,
     requestedOneTimeAddonIds,
     getBusinessDate,
+    extraSelectionEnabled,
   });
   const previewDraft = await validateDraftAgainstContext({
     context: loaded.context,
     mealSlots,
     contractVersion,
   });
-  assertBaseMealsOnly({
-    mealSlots: previewDraft.processedSlots,
-    draft: previewDraft,
-    requestedOneTimeAddonIds,
-    existingDay: loaded.existingDay,
-  });
+  if (!extraSelectionEnabled) {
+    assertBaseMealsOnly({
+      mealSlots: previewDraft.processedSlots,
+      draft: previewDraft,
+      requestedOneTimeAddonIds,
+      existingDay: loaded.existingDay,
+    });
+  }
 
-  const session = await startSafeSession();
-  session.startTransaction();
+  const session = _transactionSession || await startSafeSession();
+  const ownsSession = !_transactionSession;
+  if (ownsSession) session.startTransaction();
   try {
     const subscription = await Subscription.findById(subscriptionId).session(session);
     assertContainerOwnedAndActive(subscription, userId, loaded.targetDate);
@@ -385,11 +494,13 @@ async function performStackingDaySelectionUpdate({
     if (existingDay && String(existingDay.plannerState || "") === "confirmed") {
       throw selectionError("LOCKED", "Planner is already confirmed for this day", 409);
     }
-    assertBaseMealsOnly({
-      mealSlots,
-      requestedOneTimeAddonIds,
-      existingDay,
-    });
+    if (!extraSelectionEnabled) {
+      assertBaseMealsOnly({
+        mealSlots,
+        requestedOneTimeAddonIds,
+        existingDay,
+      });
+    }
 
     const context = await resolveStackingPlanningContext({
       userId,
@@ -407,30 +518,51 @@ async function performStackingDaySelectionUpdate({
       contractVersion,
       session,
     });
-    assertBaseMealsOnly({
-      mealSlots: draft.processedSlots,
-      draft,
-      requestedOneTimeAddonIds,
-      existingDay,
-    });
+    let extraAuthority = { desiredSelections: [], premiumSelections: [], addonSelections: [] };
+    if (extraSelectionEnabled) {
+      extraAuthority = await resolveStackingExtraSelectionAuthority({
+        userId,
+        containerSubscriptionId: subscriptionId,
+        businessDate: loaded.targetDate,
+        draft,
+        requestedOneTimeAddonIds,
+        session,
+      });
+      applyExtraAuthorityToDraft(draft, extraAuthority);
+    } else {
+      assertBaseMealsOnly({
+        mealSlots: draft.processedSlots,
+        draft,
+        requestedOneTimeAddonIds,
+        existingDay,
+      });
+    }
     const commercialState = buildDraftCommercialState({
       day: existingDay,
       draft,
       subscriptionView: context.subscriptionView,
+      premiumSelections: extraAuthority.premiumSelections,
+      addonSelections: extraAuthority.addonSelections,
     });
 
     if (
       existingDay
       && String(existingDay.plannerRevisionHash || "") === String(commercialState.plannerRevisionHash || "")
       && Array.isArray(existingDay.mealSlots)
+      && (!extraSelectionEnabled || extraSelectionStateMatches(
+        existingDay,
+        extraAuthority.desiredSelections
+      ))
       && existingDay.mealSlots.every((slot) => Boolean(
         slot
           && slot.entitlementSnapshot
           && Number(slot.entitlementSnapshot.proteinGrams || 0) > 0
       ))
     ) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (ownsSession) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       return {
         subscription,
         day: existingDay,
@@ -438,7 +570,12 @@ async function performStackingDaySelectionUpdate({
       };
     }
 
-    const update = buildSelectionUpdate({ draft, commercialState });
+    const update = buildSelectionUpdate({
+      draft,
+      commercialState,
+      premiumSelections: extraAuthority.premiumSelections,
+      addonSelections: extraAuthority.addonSelections,
+    });
     const day = await SubscriptionDay.findOneAndUpdate(
       {
         subscriptionId,
@@ -458,26 +595,43 @@ async function performStackingDaySelectionUpdate({
       );
     }
 
+    let persistedDay = day;
+    if (extraSelectionEnabled) {
+      const extraReconciliation = await reconcileDayExtraSelectionsTransactional({
+        userId,
+        containerSubscriptionId: subscriptionId,
+        businessDate: loaded.targetDate,
+        day,
+        desiredSelections: extraAuthority.desiredSelections,
+        session,
+      });
+      persistedDay = extraReconciliation.day;
+    }
+
     applyCanonicalDraftPlanningToDay({
       subscription: context.subscriptionView,
-      day,
+      day: persistedDay,
       selections: draft.selections,
-      premiumSelections: [],
+      premiumSelections: extraAuthority.premiumSelections,
       now: new Date(),
     });
-    day.mealSlots = draft.processedSlots;
-    day.plannerMeta = draft.plannerMeta;
-    day.plannerRevisionHash = commercialState.plannerRevisionHash;
-    day.premiumExtraPayment = commercialState.premiumExtraPayment;
-    await day.save({ session });
+    persistedDay.mealSlots = draft.processedSlots;
+    persistedDay.plannerMeta = draft.plannerMeta;
+    persistedDay.plannerRevisionHash = commercialState.plannerRevisionHash;
+    persistedDay.premiumExtraPayment = commercialState.premiumExtraPayment;
+    persistedDay.premiumUpgradeSelections = extraAuthority.premiumSelections;
+    persistedDay.addonSelections = extraAuthority.addonSelections;
+    await persistedDay.save({ session });
 
-    await session.commitTransaction();
-    await session.endSession();
+    if (ownsSession) {
+      await session.commitTransaction();
+      await session.endSession();
+    }
     return {
       subscription,
-      day,
+      day: persistedDay,
       idempotent: false,
-      plannerRevisionHash: day.plannerRevisionHash,
+      plannerRevisionHash: persistedDay.plannerRevisionHash,
       premiumSummary: commercialState.premiumSummary,
       addonSummary: commercialState.addonSummary,
       addonCategoryAllowances: commercialState.addonCategoryAllowances,
@@ -487,8 +641,8 @@ async function performStackingDaySelectionUpdate({
       commercialState: commercialState.commercialState,
     };
   } catch (err) {
-    if (session.inTransaction()) await session.abortTransaction();
-    await session.endSession();
+    if (ownsSession && session.inTransaction()) await session.abortTransaction();
+    if (ownsSession) await session.endSession();
     throw err;
   }
 }
@@ -498,7 +652,22 @@ async function performStackingDayPlanningConfirmation({
   subscriptionId,
   date,
   getBusinessDate = getRestaurantBusinessDate,
+  extraSelectionEnabled = false,
+  _transactionSession = null,
 } = {}) {
+  if (extraSelectionEnabled && !_transactionSession) {
+    return runExtraEntitlementTransaction(
+      (session) => performStackingDayPlanningConfirmation({
+        userId,
+        subscriptionId,
+        date,
+        getBusinessDate,
+        extraSelectionEnabled,
+        _transactionSession: session,
+      }),
+      { maxRetries: 30, baseDelayMs: 2 }
+    );
+  }
   const targetDate = normalizeDate(date);
   const businessDate = await getBusinessDate();
   if (!businessDate) {
@@ -509,8 +678,9 @@ async function performStackingDayPlanningConfirmation({
     );
   }
 
-  const session = await startSafeSession();
-  session.startTransaction();
+  const session = _transactionSession || await startSafeSession();
+  const ownsSession = !_transactionSession;
+  if (ownsSession) session.startTransaction();
   try {
     let subscription = await Subscription.findById(subscriptionId).session(session);
     assertContainerOwnedAndActive(subscription, userId, targetDate);
@@ -532,14 +702,28 @@ async function performStackingDayPlanningConfirmation({
       String(day.plannerState || "") === "confirmed"
       || String(day.planningState || "") === "confirmed"
     ) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (extraSelectionEnabled) {
+        await assertDayExtraReservationsTransactional({
+          userId,
+          containerSubscriptionId: subscriptionId,
+          day,
+          expectedPremiumSelections: day.premiumUpgradeSelections || [],
+          expectedAddonSelections: day.addonSelections || [],
+          session,
+        });
+      }
+      if (ownsSession) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       return { subscription, day, idempotent: true };
     }
-    assertBaseMealsOnly({
-      mealSlots: day.mealSlots,
-      existingDay: day,
-    });
+    if (!extraSelectionEnabled) {
+      assertBaseMealsOnly({
+        mealSlots: day.mealSlots,
+        existingDay: day,
+      });
+    }
 
     const context = await resolveStackingPlanningContext({
       userId,
@@ -561,11 +745,27 @@ async function performStackingDayPlanningConfirmation({
       contractVersion,
       session,
     });
-    assertBaseMealsOnly({
-      mealSlots: draft.processedSlots,
-      draft,
-      existingDay: day,
-    });
+    if (extraSelectionEnabled) {
+      applyExtraAuthorityToDraft(draft, {
+        premiumSelections: day.premiumUpgradeSelections || [],
+      });
+    }
+    if (!extraSelectionEnabled) {
+      assertBaseMealsOnly({
+        mealSlots: draft.processedSlots,
+        draft,
+        existingDay: day,
+      });
+    } else {
+      await assertDayExtraReservationsTransactional({
+        userId,
+        containerSubscriptionId: subscriptionId,
+        day,
+        expectedPremiumSelections: day.premiumUpgradeSelections || [],
+        expectedAddonSelections: day.addonSelections || [],
+        session,
+      });
+    }
 
     const requiredSlotCount = Number(context.blueprint.requiredSlotCount || 0);
     const plannerMeta = draft.plannerMeta || {};
@@ -592,7 +792,8 @@ async function performStackingDayPlanningConfirmation({
       plannerState: "draft",
       mealSlots: draft.processedSlots,
       plannerMeta,
-      addonSelections: [],
+      premiumUpgradeSelections: day.premiumUpgradeSelections || [],
+      addonSelections: day.addonSelections || [],
       premiumExtraPayment: null,
     }, { subscription: context.subscriptionView });
     if (commercialState.paymentRequirement.requiresPayment) {
@@ -652,7 +853,7 @@ async function performStackingDayPlanningConfirmation({
           mealSlots: draft.processedSlots,
           materializedMeals: draft.materializedMeals,
           selections: draft.selections,
-          premiumUpgradeSelections: [],
+          premiumUpgradeSelections: day.premiumUpgradeSelections || [],
           baseMealSlots: draft.baseMealSlots,
           plannerMeta: confirmedPlannerMeta,
           plannerState: "confirmed",
@@ -660,8 +861,11 @@ async function performStackingDayPlanningConfirmation({
           plannerRevisionHash,
           planningMeta: {
             requiredMealCount: requiredSlotCount,
-            selectedBaseMealCount: requiredSlotCount,
-            selectedPremiumMealCount: 0,
+            selectedBaseMealCount: Math.max(
+              0,
+              requiredSlotCount - Number(plannerMeta.premiumSlotCount || 0)
+            ),
+            selectedPremiumMealCount: Number(plannerMeta.premiumSlotCount || 0),
             isExactCountSatisfied: true,
             confirmedAt,
           },
@@ -685,8 +889,10 @@ async function performStackingDayPlanningConfirmation({
     });
     subscription = lifecycle.container || subscription;
 
-    await session.commitTransaction();
-    await session.endSession();
+    if (ownsSession) {
+      await session.commitTransaction();
+      await session.endSession();
+    }
     return {
       subscription,
       day: confirmedDay,
@@ -697,8 +903,8 @@ async function performStackingDayPlanningConfirmation({
       },
     };
   } catch (err) {
-    if (session.inTransaction()) await session.abortTransaction();
-    await session.endSession();
+    if (ownsSession && session.inTransaction()) await session.abortTransaction();
+    if (ownsSession) await session.endSession();
     throw err;
   }
 }

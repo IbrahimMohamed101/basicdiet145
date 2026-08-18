@@ -1,0 +1,95 @@
+name: Subscription Stacking Extra Wallet Foundation
+
+on:
+  push:
+    branches:
+      - feat/stacking-premium-addon-wallet-20260811
+    paths:
+      - "src/models/SubscriptionExtraEntitlementBucket.js"
+      - "src/services/subscription/subscriptionExtraEntitlementBucketService.js"
+      - "tests/subscriptionExtraEntitlementBucket.test.js"
+      - "src/services/subscription/subscriptionStackingActivationService.js"
+      - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
+      - ".github/workflows/subscription-stacking-extra-wallet.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/models/SubscriptionExtraEntitlementBucket.js"
+      - "src/services/subscription/subscriptionExtraEntitlementBucketService.js"
+      - "tests/subscriptionExtraEntitlementBucket.test.js"
+      - "src/services/subscription/subscriptionStackingActivationService.js"
+      - "src/services/subscription/subscriptionStackingSelectionWriteService.js"
+      - ".github/workflows/subscription-stacking-extra-wallet.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-extra-wallet-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extra-wallet-foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check new wallet files
+        run: |
+          node --check src/models/SubscriptionExtraEntitlementBucket.js
+          node --check src/services/subscription/subscriptionExtraEntitlementBucketService.js
+          node --check tests/subscriptionExtraEntitlementBucket.test.js
+
+      - name: Extra wallet conservation and replica-set persistence
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementBucket.test.js
+
+      - name: Prove runtime writes remain closed while activation seeding stays internal
+        shell: bash
+        run: |
+          grep -q 'STACKING_PREMIUM_ADDON_WRITE_NOT_READY' src/services/subscription/subscriptionStackingActivationService.js
+          grep -q 'STACKING_PREMIUM_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          grep -q 'STACKING_ADDON_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          grep -q --fixed-strings 'subscriptionExtraEntitlementBucketService' \
+            src/services/subscription/subscriptionStackingActivationService.js
+          if grep -q --fixed-strings 'subscriptionExtraEntitlementBucketService' \
+            src/services/subscription/subscriptionStackingSelectionWriteService.js; then
+            echo 'The normal selection runtime must not mint or seed extra wallets.' >&2
+            exit 1
+          fi
+
+      - name: Existing stacking activation regression
+        run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+
+      - name: Existing stacking selection regression
+        run: NODE_ENV=test node tests/subscriptionStackingSelectionWriteGuards.test.js
+
+      - name: Subscription lifecycle regression gate
+        shell: bash
+        run: |
+          set +e
+          npm run test:subscriptions 2>&1 | tee /tmp/subscription-regression.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q "Unable to acquire IX lock" /tmp/subscription-regression.log; then
+            echo "Transient MongoDB lock detected; retrying the full regression gate once."
+            npm run test:subscriptions
+            exit $?
+          fi
+          exit "$status"

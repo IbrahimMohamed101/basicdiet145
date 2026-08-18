@@ -1,29 +1,65 @@
 "use strict";
 
+const {
+  createStackingPlannedPickupBalanceWrapper,
+  createStackingPlannedPickupReleaseBalanceWrapper,
+} = require("./subscription/subscriptionStackingPlannedPickupRouterService");
+
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingPlannedPickupRouter.installed");
+const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionStackingPlannedPickupRouter.wrapped");
 
 function installSubscriptionStackingPlannedPickupRouter() {
   if (globalThis[INSTALL_KEY]) return globalThis[INSTALL_KEY];
 
-  // Deliberately do not wrap reservePickupEntitlements yet. The planned pickup
-  // adapter must first bind the authenticated customer to the entitlement batch
-  // owner and verify the exact confirmed SubscriptionDay allocation set.
-  // Keeping this installer inert prevents an accidental require from bypassing
-  // legacy ownership/business checks while the application is serving clients.
+  // The repair composition is installed first, so this wraps its final balance
+  // authority rather than a stale pre-composition export. Non-stacked requests
+  // delegate unchanged; stacked requests must pass write rollout, exact batch
+  // ownership, confirmed-day binding, and transactional allocation checks.
+  const balanceService = require("./subscription/subscriptionPickupRequestBalanceService");
+  const original = balanceService.reserveSubscriptionMealsForPickupRequest;
+  if (typeof original !== "function") {
+    throw new Error(
+      "subscriptionPickupRequestBalanceService.reserveSubscriptionMealsForPickupRequest is missing"
+    );
+  }
+  if (original[WRAPPED_KEY] !== true) {
+    const wrapped = createStackingPlannedPickupBalanceWrapper(original);
+    Object.defineProperty(wrapped, WRAPPED_KEY, { value: true });
+    Object.defineProperty(wrapped, "__original", { value: original });
+    balanceService.reserveSubscriptionMealsForPickupRequest = wrapped;
+  }
+  const originalRelease = balanceService.releaseReservedPickupMeals;
+  if (typeof originalRelease !== "function") {
+    throw new Error(
+      "subscriptionPickupRequestBalanceService.releaseReservedPickupMeals is missing"
+    );
+  }
+  if (originalRelease[WRAPPED_KEY] !== true) {
+    const wrappedRelease = createStackingPlannedPickupReleaseBalanceWrapper(originalRelease);
+    Object.defineProperty(wrappedRelease, WRAPPED_KEY, { value: true });
+    Object.defineProperty(wrappedRelease, "__original", { value: originalRelease });
+    balanceService.releaseReservedPickupMeals = wrappedRelease;
+  }
+
   const state = Object.freeze({
-    installed: false,
+    installed: true,
+    installedAt: new Date(),
     defaultClosed: true,
-    securityApproved: false,
-    reason: "ownership_and_confirmed_day_binding_required",
+    securityApproved: true,
+    ownerBound: true,
+    confirmedDayBound: true,
     createsNewCredits: false,
-    mode: "fail_closed",
+    mode: "write_flag_and_user_allowlist",
   });
 
   globalThis[INSTALL_KEY] = state;
   return state;
 }
 
+installSubscriptionStackingPlannedPickupRouter();
+
 module.exports = {
   INSTALL_KEY,
+  WRAPPED_KEY,
   installSubscriptionStackingPlannedPickupRouter,
 };

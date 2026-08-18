@@ -5,8 +5,12 @@ const {
 assertSubscriptionStackingProductionSafety(process.env);
 const {
   assertSubscriptionStackingRolloutConfiguration,
+  assertExtraActivationCanaryConfiguration,
+  assertExtraSelectionCanaryConfiguration,
 } = require("./services/subscription/subscriptionStackingRolloutPolicyService");
 assertSubscriptionStackingRolloutConfiguration(process.env);
+assertExtraActivationCanaryConfiguration(process.env);
+assertExtraSelectionCanaryConfiguration(process.env);
 // The legacy backend repair composition installs the canonical add-on pricing
 // and client contract. It must complete before any stacking installer can load
 // cancellation -> selection -> allocation services and capture stale exports.
@@ -17,6 +21,15 @@ require("./services/installSubscriptionStackingCheckoutPreflight");
 require("./services/installSubscriptionStackingWriteRouter");
 require("./services/installSubscriptionStackingSelectionRouter");
 require("./services/installSubscriptionStackingEntitlementRouter");
+// Install the planned Pickup adapter after the authenticated repair composition
+// and stacking entitlement router. It reuses confirmed-day allocations only for
+// the exact canary owner; global-off and non-allowlisted writes stay fail-closed.
+require("./services/installSubscriptionStackingPlannedPickupRouter");
+// The backend repair composition has already installed Pickup recovery and
+// authenticated ownership wrappers. Add the stacking wallet projection after
+// those wrappers and before createApp loads controllers/routes, so Flutter sees
+// the final read surface while non-rollout users remain byte-for-byte legacy.
+require("./services/installSubscriptionStackingPickupAvailabilityProjection");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
 

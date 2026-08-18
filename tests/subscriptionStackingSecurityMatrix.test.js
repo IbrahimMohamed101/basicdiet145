@@ -16,7 +16,6 @@ const {
   withTransactionIfNeeded,
 } = require("../src/services/subscription/subscriptionStackingEntitlementRouterService");
 const {
-  INSTALL_KEY: PLANNED_PICKUP_INSTALL_KEY,
   installSubscriptionStackingPlannedPickupRouter,
 } = require("../src/services/installSubscriptionStackingPlannedPickupRouter");
 
@@ -201,13 +200,15 @@ async function testOwnedSessionAlwaysClosesOnFailure() {
   assert.strictEqual(ended, 1);
 }
 
-function testPlannedPickupInstallerIsInert() {
-  delete globalThis[PLANNED_PICKUP_INSTALL_KEY];
+function testPlannedPickupInstallerIsCanaryBoundAndDefaultClosed() {
   const state = installSubscriptionStackingPlannedPickupRouter();
-  assert.strictEqual(state.installed, false);
+  assert.strictEqual(state.installed, true);
   assert.strictEqual(state.defaultClosed, true);
-  assert.strictEqual(state.securityApproved, false);
-  assert.strictEqual(state.mode, "fail_closed");
+  assert.strictEqual(state.securityApproved, true);
+  assert.strictEqual(state.ownerBound, true);
+  assert.strictEqual(state.confirmedDayBound, true);
+  assert.strictEqual(state.createsNewCredits, false);
+  assert.strictEqual(state.mode, "write_flag_and_user_allowlist");
 }
 
 async function run() {
@@ -217,7 +218,7 @@ async function run() {
   await testDirectPickupRemainsFailClosed();
   await testForeignAllocationCannotEnterStackingLedger();
   await testOwnedSessionAlwaysClosesOnFailure();
-  testPlannedPickupInstallerIsInert();
+  testPlannedPickupInstallerIsCanaryBoundAndDefaultClosed();
   console.log("subscription stacking security matrix tests passed");
 }
 
