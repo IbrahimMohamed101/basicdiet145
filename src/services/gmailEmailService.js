@@ -1,6 +1,11 @@
 const nodemailer = require("nodemailer");
+const dns = require("dns");
+const net = require("net");
 const { ApiError } = require("../utils/apiError");
 const { logger } = require("../utils/logger");
+
+const GMAIL_SMTP_HOST = "smtp.gmail.com";
+const GMAIL_SMTP_PORT = 465;
 
 let cachedTransporter = null;
 let cachedTransporterKey = null;
@@ -23,17 +28,34 @@ function getGmailConfig() {
   return { user, appPassword, fromName };
 }
 
-function getTransporter() {
-  const config = getGmailConfig();
-  const key = `${config.user}:${config.appPassword}`;
-  if (cachedTransporter && cachedTransporterKey === key) {
-    return { transporter: cachedTransporter, config };
+async function resolveGmailIpv4(resolve4 = dns.promises.resolve4.bind(dns.promises)) {
+  const addresses = await resolve4(GMAIL_SMTP_HOST);
+  const ipv4Addresses = (Array.isArray(addresses) ? addresses : [])
+    .filter((address) => net.isIPv4(address));
+
+  if (!ipv4Addresses.length) {
+    const err = new Error("Gmail SMTP did not resolve to an IPv4 address");
+    err.code = "EDNS";
+    throw err;
   }
 
-  cachedTransporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
+  return ipv4Addresses[0];
+}
+
+function buildGmailTransportOptions(config, ipv4Address) {
+  if (!net.isIPv4(ipv4Address)) {
+    throw new TypeError("Gmail SMTP transport requires an IPv4 address");
+  }
+
+  return {
+    // Railway containers may expose an IPv6 interface without an outbound
+    // IPv6 route. Nodemailer otherwise resolves both families and may select
+    // Gmail's AAAA record, which fails with ENETUNREACH. Resolve A records
+    // explicitly while keeping smtp.gmail.com as the TLS/SNI identity.
+    host: ipv4Address,
+    port: GMAIL_SMTP_PORT,
     secure: true,
+    servername: GMAIL_SMTP_HOST,
     auth: {
       user: config.user,
       pass: config.appPassword,
@@ -41,8 +63,23 @@ function getTransporter() {
     connectionTimeout: Number(process.env.EMAIL_SMTP_CONNECTION_TIMEOUT_MS) || 10000,
     greetingTimeout: Number(process.env.EMAIL_SMTP_GREETING_TIMEOUT_MS) || 10000,
     socketTimeout: Number(process.env.EMAIL_SMTP_SOCKET_TIMEOUT_MS) || 15000,
-    tls: { rejectUnauthorized: true },
-  });
+    tls: {
+      rejectUnauthorized: true,
+      servername: GMAIL_SMTP_HOST,
+    },
+  };
+}
+
+async function getTransporter(config = getGmailConfig()) {
+  const key = `${config.user}:${config.appPassword}`;
+  if (cachedTransporter && cachedTransporterKey === key) {
+    return { transporter: cachedTransporter, config };
+  }
+
+  const ipv4Address = await resolveGmailIpv4();
+  cachedTransporter = nodemailer.createTransport(
+    buildGmailTransportOptions(config, ipv4Address)
+  );
   cachedTransporterKey = key;
   return { transporter: cachedTransporter, config };
 }
@@ -72,12 +109,13 @@ function getPurposeCopy(purpose) {
 }
 
 async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
-  const { transporter, config } = getTransporter();
+  const config = getGmailConfig();
   const copy = getPurposeCopy(purpose);
   const safeOtp = escapeHtml(otp);
   const minutes = Number(expiresInMinutes) || 5;
 
   try {
+    const { transporter } = await getTransporter(config);
     const info = await transporter.sendMail({
       disableFileAccess: true,
       disableUrlAccess: true,
@@ -106,6 +144,10 @@ async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
     });
     return { messageId: info.messageId || null };
   } catch (err) {
+    // Re-resolve Gmail's A records on the next request after any connection
+    // failure instead of pinning a failed address in the cached transporter.
+    cachedTransporter = null;
+    cachedTransporterKey = null;
     logger.error("Gmail OTP delivery failed", {
       email: toEmail,
       purpose,
@@ -125,7 +167,9 @@ function resetGmailTransporterForTests() {
 }
 
 module.exports = {
+  buildGmailTransportOptions,
   getGmailConfig,
+  resolveGmailIpv4,
   sendEmailOtp,
   resetGmailTransporterForTests,
 };

@@ -1,6 +1,10 @@
 const assert = require("assert");
 const { assertNoTestFlagsInProduction } = require("../src/utils/security");
-const { getGmailConfig } = require("../src/services/gmailEmailService");
+const {
+  buildGmailTransportOptions,
+  getGmailConfig,
+  resolveGmailIpv4,
+} = require("../src/services/gmailEmailService");
 const { isEmailOtpEnabled } = require("../src/services/emailOtpService");
 
 const MANAGED_KEYS = [
@@ -67,6 +71,42 @@ withEnvironment({
   assert.strictEqual(config.user, "otp.sender@gmail.com");
   assert.strictEqual(config.appPassword, "abcdefghijklmnop");
   assert(!/[\r\n"<>]/.test(config.fromName));
+
+  const transport = buildGmailTransportOptions(config, "142.250.153.108");
+  assert.strictEqual(transport.host, "142.250.153.108");
+  assert.strictEqual(transport.port, 465);
+  assert.strictEqual(transport.secure, true);
+  assert.strictEqual(transport.servername, "smtp.gmail.com");
+  assert.strictEqual(transport.tls.servername, "smtp.gmail.com");
+  assert.strictEqual(transport.tls.rejectUnauthorized, true);
+  assert.strictEqual(transport.auth.user, config.user);
+  assert.strictEqual(transport.auth.pass, config.appPassword);
+});
+
+assert.throws(
+  () => buildGmailTransportOptions(
+    { user: "otp.sender@gmail.com", appPassword: "abcdefghijklmnop" },
+    "2404:6800:4003:c04::6c"
+  ),
+  /requires an IPv4 address/
+);
+
+(async () => {
+  const resolved = await resolveGmailIpv4(async (hostname) => {
+    assert.strictEqual(hostname, "smtp.gmail.com");
+    return ["142.250.153.108", "142.250.153.109"];
+  });
+  assert.strictEqual(resolved, "142.250.153.108");
+
+  await assert.rejects(
+    () => resolveGmailIpv4(async () => ["2404:6800:4003:c04::6c"]),
+    (err) => err && err.code === "EDNS"
+  );
+
+  console.log("Email OTP security config tests passed");
+})().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
 });
 
 withEnvironment({
@@ -83,5 +123,3 @@ withEnvironment({
   assert.strictEqual(result.ok, false);
   assert(result.violations.some((item) => item.includes("EMAIL_OTP_TEST_MODE")));
 });
-
-console.log("Email OTP security config tests passed");
