@@ -264,28 +264,14 @@ async function postGmailApiMessage({ config, raw, fetchImpl = global.fetch, retr
   return { messageId: body.id };
 }
 
-async function sendEmailOtpWithGmailApi({ config, toEmail, copy, otp, safeOtp, minutes }) {
-  const textBody = `${copy.titleEn}: ${otp}. This code expires in ${minutes} minutes. Do not share it with anyone.`;
-  const htmlBody = `
-        <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.7;color:#17211b">
-          <h2>${copy.titleAr}</h2>
-          <p>استخدم الرمز التالي لإكمال العملية في تطبيق Basic Diet:</p>
-          <div dir="ltr" style="font-size:32px;font-weight:700;letter-spacing:8px;margin:24px 0">${safeOtp}</div>
-          <p>صلاحية الرمز ${minutes} دقائق. لا تشارك الرمز مع أي شخص.</p>
-          <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0" />
-          <div dir="ltr">
-            <h3>${copy.titleEn}</h3>
-            <p>This code expires in ${minutes} minutes. Do not share it with anyone.</p>
-          </div>
-        </div>
-      `;
+async function sendEmailOtpWithGmailApi({ config, toEmail, copy, content }) {
   const raw = buildGmailApiRawMessage({
     fromEmail: config.user,
     fromName: config.fromName,
     toEmail,
     subject: copy.subject,
-    textBody,
-    htmlBody,
+    textBody: content.text,
+    htmlBody: content.html,
   });
   return postGmailApiMessage({ config, raw });
 }
@@ -302,16 +288,104 @@ function escapeHtml(value) {
 function getPurposeCopy(purpose) {
   if (purpose === "password_reset") {
     return {
-      subject: "Basic Diet password reset code",
+      subject: "Basic Diet | رمز إعادة تعيين كلمة المرور",
       titleAr: "رمز إعادة تعيين كلمة المرور",
       titleEn: "Password reset code",
+      introAr: "استخدم الرمز التالي لإعادة تعيين كلمة مرور حسابك.",
+      introEn: "Use the following code to reset your account password.",
     };
   }
   return {
-    subject: "Basic Diet email verification code",
+    subject: "Basic Diet | رمز توثيق البريد الإلكتروني",
     titleAr: "رمز توثيق البريد الإلكتروني",
     titleEn: "Email verification code",
+    introAr: "استخدم الرمز التالي لتوثيق بريدك وإكمال إنشاء حسابك.",
+    introEn: "Use the following code to verify your email and finish creating your account.",
   };
+}
+
+function buildOtpEmailContent({ copy, otp, safeOtp, minutes }) {
+  const text = [
+    "Basic Diet",
+    "",
+    copy.titleAr,
+    copy.introAr,
+    `رمز التحقق: ${otp}`,
+    `تنتهي صلاحية هذا الرمز خلال ${minutes} دقائق. لا تشارك الرمز مع أي شخص.`,
+    "إذا لم تطلب هذا الرمز، يمكنك تجاهل هذه الرسالة بأمان.",
+    "",
+    copy.titleEn,
+    copy.introEn,
+    `Verification code: ${otp}`,
+    `This code expires in ${minutes} minutes. Never share it with anyone.`,
+    "If you did not request this code, you can safely ignore this email.",
+  ].join("\n");
+
+  const html = `<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${copy.titleAr}</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f3f6f4;color:#18332a;font-family:Tahoma,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+      ${copy.titleAr} — الرمز صالح لمدة ${minutes} دقائق.
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f3f6f4;">
+      <tr>
+        <td align="center" style="padding:32px 12px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid #dfe8e3;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(20,63,50,0.08);">
+            <tr>
+              <td align="center" style="padding:28px 24px;background-color:#174f3f;color:#ffffff;">
+                <div dir="ltr" style="font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:3px;color:#bfe6d5;">BASIC DIET</div>
+                <div style="margin-top:8px;font-size:22px;font-weight:700;line-height:1.5;">${copy.titleAr}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 18px;text-align:right;">
+                <p style="margin:0 0 20px;font-size:16px;line-height:1.9;color:#29493e;">مرحبًا،</p>
+                <p style="margin:0;font-size:16px;line-height:1.9;color:#29493e;">${copy.introAr}</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:8px 28px 24px;">
+                <div style="font-size:13px;font-weight:700;color:#5c776d;margin-bottom:10px;">رمز التحقق</div>
+                <div dir="ltr" style="display:inline-block;min-width:250px;padding:18px 24px;border:1px solid #b9d8ca;border-radius:14px;background-color:#edf8f3;color:#123f32;font-family:'Courier New',monospace;font-size:34px;font-weight:700;letter-spacing:9px;line-height:1;box-sizing:border-box;">${safeOtp}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 28px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#fff8e8;border:1px solid #f2dca6;border-radius:12px;">
+                  <tr>
+                    <td style="padding:14px 16px;font-size:14px;line-height:1.8;color:#6b5421;text-align:right;">
+                      تنتهي صلاحية الرمز خلال <strong>${minutes} دقائق</strong>. لا تشارك هذا الرمز مع أي شخص، بما في ذلك فريق Basic Diet.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td dir="ltr" style="padding:26px 28px;border-top:1px solid #e8eeeb;text-align:left;">
+                <div style="font-family:Arial,sans-serif;font-size:16px;font-weight:700;line-height:1.5;color:#183f33;">${copy.titleEn}</div>
+                <p style="margin:8px 0 0;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:#667b73;">${copy.introEn} This code expires in ${minutes} minutes.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 28px;background-color:#f8faf9;text-align:center;font-size:12px;line-height:1.8;color:#74877f;">
+                إذا لم تطلب هذا الرمز، تجاهل الرسالة ولن يتم إجراء أي تغيير على حسابك.<br>
+                <span dir="ltr">If you did not request this code, you can safely ignore this email.</span>
+              </td>
+            </tr>
+          </table>
+          <div style="padding:18px 12px 0;font-size:11px;color:#8a9a94;text-align:center;">© Basic Diet — رسالة آلية، يرجى عدم مشاركة رمز التحقق.</div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return { text, html };
 }
 
 async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
@@ -319,6 +393,7 @@ async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
   const copy = getPurposeCopy(purpose);
   const safeOtp = escapeHtml(otp);
   const minutes = Number(expiresInMinutes) || 5;
+  const content = buildOtpEmailContent({ copy, otp, safeOtp, minutes });
 
   try {
     if (config.provider === "gmail_api") {
@@ -326,9 +401,7 @@ async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
         config,
         toEmail,
         copy,
-        otp,
-        safeOtp,
-        minutes,
+        content,
       });
       logger.info("Email OTP accepted by Gmail API", {
         email: toEmail,
@@ -345,20 +418,8 @@ async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
       from: `"${config.fromName}" <${config.user}>`,
       to: toEmail,
       subject: copy.subject,
-      text: `${copy.titleEn}: ${otp}. This code expires in ${minutes} minutes. Do not share it with anyone.`,
-      html: `
-        <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.7;color:#17211b">
-          <h2>${copy.titleAr}</h2>
-          <p>استخدم الرمز التالي لإكمال العملية في تطبيق Basic Diet:</p>
-          <div dir="ltr" style="font-size:32px;font-weight:700;letter-spacing:8px;margin:24px 0">${safeOtp}</div>
-          <p>صلاحية الرمز ${minutes} دقائق. لا تشارك الرمز مع أي شخص.</p>
-          <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0" />
-          <div dir="ltr">
-            <h3>${copy.titleEn}</h3>
-            <p>This code expires in ${minutes} minutes. Do not share it with anyone.</p>
-          </div>
-        </div>
-      `,
+      text: content.text,
+      html: content.html,
     });
     logger.info("Email OTP accepted by Gmail", {
       email: toEmail,
@@ -400,6 +461,7 @@ function resetGmailTransporterForTests() {
 module.exports = {
   buildGmailApiRawMessage,
   buildGmailTransportOptions,
+  buildOtpEmailContent,
   getGmailApiAccessToken,
   getGmailConfig,
   normalizeDeliveryProvider,

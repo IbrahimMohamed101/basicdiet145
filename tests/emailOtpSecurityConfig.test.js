@@ -3,6 +3,7 @@ const { assertNoTestFlagsInProduction } = require("../src/utils/security");
 const {
   buildGmailApiRawMessage,
   buildGmailTransportOptions,
+  buildOtpEmailContent,
   getGmailConfig,
   postGmailApiMessage,
   resetGmailTransporterForTests,
@@ -144,13 +145,34 @@ async function main() {
     assert.strictEqual(config.refreshToken, "1//oauth-refresh-token-long-enough");
     assert(!/[\r\n"<>]/.test(config.fromName));
 
+    const content = buildOtpEmailContent({
+      copy: {
+        titleAr: "رمز توثيق البريد الإلكتروني",
+        titleEn: "Email verification code",
+        introAr: "استخدم الرمز التالي لتوثيق بريدك.",
+        introEn: "Use this code to verify your email.",
+      },
+      otp: "654321",
+      safeOtp: "654321",
+      minutes: 5,
+    });
+    assert(content.text.includes("رمز التحقق: 654321"));
+    assert(content.text.includes("Verification code: 654321"));
+    assert(content.html.startsWith("<!doctype html>"));
+    assert(content.html.includes('<html lang="ar" dir="rtl">'));
+    assert(content.html.includes("BASIC DIET"));
+    assert(content.html.includes(">654321</div>"));
+    assert(content.html.includes("5 دقائق"));
+    assert(!/<script|<img|https?:\/\//i.test(content.html));
+    assert(Buffer.byteLength(content.html, "utf8") < 20000);
+
     const raw = buildGmailApiRawMessage({
       fromEmail: config.user,
       fromName: config.fromName,
       toEmail: "recipient@example.com",
       subject: "Basic Diet verification code",
-      textBody: "Code: 654321",
-      htmlBody: "<strong>654321</strong>",
+      textBody: content.text,
+      htmlBody: content.html,
     });
     assert(/^[A-Za-z0-9_-]+$/.test(raw));
     const mime = Buffer.from(raw, "base64url").toString("utf8");
