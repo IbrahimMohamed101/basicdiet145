@@ -235,6 +235,7 @@ function assertReadiness(readinessPayload, phase) {
   if (
     clientContract.version !== "subscription_stacking_flutter.v1"
     || clientContract.exactMealSlotProteinGrams !== true
+    || clientContract.slotProteinGramsAuthority !== "backend"
     || clientContract.entitlementGroups !== true
     || clientContract.entitlementPackages !== true
   ) {

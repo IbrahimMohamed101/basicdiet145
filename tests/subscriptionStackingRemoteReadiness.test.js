@@ -55,6 +55,7 @@ function run() {
   assert.deepStrictEqual(safe.clientContract, {
     version: "subscription_stacking_flutter.v1",
     exactMealSlotProteinGrams: true,
+    slotProteinGramsAuthority: "backend",
     entitlementGroups: true,
     entitlementPackages: true,
   });

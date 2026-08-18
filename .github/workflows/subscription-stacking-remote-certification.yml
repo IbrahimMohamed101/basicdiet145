@@ -154,6 +154,8 @@ jobs:
       STAGING_TARGET_DATE: ${{ inputs.target_date }}
       STAGING_EXPECTED_REQUIRED_MEALS: ${{ inputs.expected_required_meals }}
       STAGING_EXTRA_E2E_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_EXTRA_E2E_PAYLOAD_JSON }}
+      STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
+      STAGING_SUBSCRIPTION_ID: ${{ secrets.STACKING_STAGING_PARENT_SUBSCRIPTION_ID }}
       STAGING_CERTIFICATION_OUTPUT: artifacts/subscription-stacking-remote-certification.json
       STAGING_REQUEST_TIMEOUT_MS: "20000"
 
@@ -174,6 +176,7 @@ jobs:
         run: node scripts/validate-subscription-stacking-staging-env.js
 
       - name: Bootstrap isolated staging certification fixture
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           for attempt in $(seq 1 30); do

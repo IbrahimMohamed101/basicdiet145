@@ -197,6 +197,7 @@ function buildSubscriptionStackingRemoteReadiness({
     clientContract: {
       version: "subscription_stacking_flutter.v1",
       exactMealSlotProteinGrams: true,
+      slotProteinGramsAuthority: "backend",
       entitlementGroups: true,
       entitlementPackages: true,
     },
