@@ -59,6 +59,10 @@ jobs:
 
       - name: Readiness and remote public runtime orchestration
         run: |
+          NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
+          NODE_ENV=test node tests/subscriptionStackingCurrentOverviewRead.test.js
+          NODE_ENV=test node tests/subscriptionStackingTimelineRead.test.js
+          NODE_ENV=test node tests/subscriptionStackingFlutterContract.test.js
           NODE_ENV=test node tests/subscriptionStackingExtraRuntimeCanaryReadinessP4.test.js
           NODE_ENV=test node tests/subscriptionStackingRemoteReadiness.test.js
           NODE_ENV=test node tests/subscriptionStackingRemoteReadinessRoute.test.js

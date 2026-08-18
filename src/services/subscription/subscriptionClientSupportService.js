@@ -35,6 +35,9 @@ const {
 const {
   projectClientMealBalance,
 } = require("./subscriptionClientMealBalanceProjectionService");
+const {
+  serializeMealSlotsForClient,
+} = require("./subscriptionStackingClientContractService");
 const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
@@ -56,6 +59,13 @@ function serializeSubscriptionDayForClient(subscription, day, runtimeOverrides =
   delete serializedDay.entitlementTransitionState;
   delete serializedDay.premiumReservationMode;
   delete serializedDay.stackingExtraSelectionState;
+
+  if (Array.isArray(day.mealSlots)) {
+    serializedDay.mealSlots = serializeMealSlotsForClient(
+      day.mealSlots,
+      subscription && subscription.selectedGrams
+    );
+  }
 
   const actionType = day.canonicalDayActionType;
   if (actionType !== undefined && actionType !== null) {

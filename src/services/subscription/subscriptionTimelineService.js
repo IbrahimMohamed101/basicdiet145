@@ -31,6 +31,9 @@ const {
   DELIVERY_SELECTION_CUTOFF_HOURS,
 } = require("./subscriptionDayModificationPolicyService");
 const { resolveEffectiveFulfillmentMode } = require("./subscriptionFulfillmentPolicyService");
+const {
+  resolveStoredProteinGrams,
+} = require("./subscriptionStackingKitchenGramsService");
 
 /**
  * @typedef {import("../../types/subscriptionTimeline").TimelineDay} TimelineDay
@@ -272,7 +275,7 @@ function buildTimelineDailyMeals(meals) {
   };
 }
 
-function normalizeTimelineMealSlots(dbDay) {
+function normalizeTimelineMealSlots(dbDay, subscription = null) {
   if (!Array.isArray(dbDay?.mealSlots)) return [];
 
   return dbDay.mealSlots
@@ -286,6 +289,10 @@ function normalizeTimelineMealSlots(dbDay) {
         ? slot.carbs.map((carb) => ({ carbId: carb.carbId ? String(carb.carbId) : null, grams: Number(carb.grams || 0) }))
         : (shouldUseLegacyCarbId && slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
       const salad = slot.salad || (slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
+      const proteinGrams = resolveStoredProteinGrams(
+        slot,
+        subscription && subscription.selectedGrams
+      );
 
       return {
         slotIndex: Number(slot.slotIndex || 0),
@@ -300,6 +307,7 @@ function normalizeTimelineMealSlots(dbDay) {
         premiumKey: slot.premiumKey || null,
         premiumSource: slot.premiumSource ? String(slot.premiumSource) : "none",
         premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
+        proteinGrams,
       };
     });
 }
@@ -728,7 +736,7 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       meals,
       dailyMeals: buildTimelineDailyMeals(meals),
       selectedMealIds: normalizeLegacySelectionIds(dbDay),
-      mealSlots: normalizeTimelineMealSlots(dbDay),
+      mealSlots: normalizeTimelineMealSlots(dbDay, subscription),
       ...commercialState,
       ...planningContract,
       ...fulfillmentState,
@@ -833,6 +841,7 @@ function buildExtensionSourceMap(tokens = [], endDateStr) {
 module.exports = {
   buildSubscriptionTimeline,
   deriveTimelinePlanningContract,
+  normalizeTimelineMealSlots,
   resolveDeliverySelectionCutoffState,
   resolveTimelineLegacyStatus,
 };
