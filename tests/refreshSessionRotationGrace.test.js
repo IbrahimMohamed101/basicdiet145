@@ -9,6 +9,8 @@ const assert = require("assert");
 const RefreshSession = require("../src/models/RefreshSession");
 const {
   findUsableRefreshSession,
+  getRefreshExpiresDays,
+  getRefreshExpiresInSeconds,
   getRefreshRotationGraceMs,
   isWithinRotationGrace,
   revokeRefreshToken,
@@ -39,6 +41,18 @@ function makeSession(overrides = {}) {
 async function run() {
   try {
     assert.strictEqual(getRefreshRotationGraceMs(), 5000);
+    assert.strictEqual(getRefreshExpiresDays(), 30);
+
+    process.env.REFRESH_TOKEN_EXPIRES_DAYS = "60";
+    assert.strictEqual(getRefreshExpiresDays(), 60);
+    assert.strictEqual(getRefreshExpiresInSeconds(), 60 * 24 * 60 * 60);
+
+    process.env.REFRESH_TOKEN_EXPIRES_DAYS = "365";
+    assert.strictEqual(getRefreshExpiresDays(), 90, "configured session TTL must be capped at 90 days");
+
+    process.env.REFRESH_TOKEN_EXPIRES_DAYS = "invalid";
+    assert.strictEqual(getRefreshExpiresDays(), 60, "invalid session TTL must use the safe 60-day default");
+    process.env.REFRESH_TOKEN_EXPIRES_DAYS = "30";
 
     const recentRotation = makeSession({
       revokedAt: new Date(Date.now() - 1000),

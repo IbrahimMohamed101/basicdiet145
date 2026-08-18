@@ -3,10 +3,15 @@ const RefreshSession = require("../models/RefreshSession");
 
 const DEFAULT_ROTATION_GRACE_MS = 5000;
 const MAX_ROTATION_GRACE_MS = 10000;
+const DEFAULT_REFRESH_EXPIRES_DAYS = 60;
+const MAX_REFRESH_EXPIRES_DAYS = 90;
 
 function getRefreshExpiresDays() {
-  const days = Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS || 30);
-  return Number.isFinite(days) && days > 0 ? days : 30;
+  const raw = String(process.env.REFRESH_TOKEN_EXPIRES_DAYS || "").trim();
+  if (!raw) return DEFAULT_REFRESH_EXPIRES_DAYS;
+  const days = Number(raw);
+  if (!Number.isInteger(days) || days <= 0) return DEFAULT_REFRESH_EXPIRES_DAYS;
+  return Math.min(days, MAX_REFRESH_EXPIRES_DAYS);
 }
 
 function getRefreshExpiresInSeconds() {
@@ -139,6 +144,7 @@ module.exports = {
   revokeRefreshToken,
   rotateRefreshSession,
   revokeAllUserSessions,
+  getRefreshExpiresDays,
   getRefreshExpiresInSeconds,
   getRefreshRotationGraceMs,
   hashRefreshToken,
