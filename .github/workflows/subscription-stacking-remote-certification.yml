@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/subscription-stacking-remote-certification-20260806
+      - cert/stacking-extra-runtime-canary-p4-20260812
     paths:
       - "src/services/subscription/subscriptionStackingRemoteReadinessService.js"
       - "src/services/installSubscriptionStackingRemoteReadinessRoute.js"
@@ -119,7 +120,7 @@ jobs:
         run: npm run test:current-subscription
 
   remote-certification:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/cert/stacking-extra-runtime-canary-p4-20260812'
     needs: contract-tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -146,7 +147,7 @@ jobs:
       SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS: "6a7b6006a86353ffc9f0f83b"
       STAGING_CHECKOUT_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_CHECKOUT_PAYLOAD_JSON }}
       STAGING_EXPECTED_DEPLOYMENT_COMMIT_SHA: ${{ github.sha }}
-      STAGING_CERTIFICATION_PHASE: ${{ inputs.phase }}
+      STAGING_CERTIFICATION_PHASE: ${{ inputs.phase || 'read' }}
       STAGING_CHECKOUT_DRAFT_ID: ${{ inputs.checkout_draft_id }}
       STAGING_CHECKOUT_IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
       STAGING_EXPECTED_REMAINING_MEALS: ${{ inputs.expected_remaining_meals }}
@@ -173,7 +174,19 @@ jobs:
         run: node scripts/validate-subscription-stacking-staging-env.js
 
       - name: Bootstrap isolated staging certification fixture
-        run: node scripts/bootstrap-subscription-stacking-staging-fixture.js
+        shell: bash
+        run: |
+          for attempt in $(seq 1 30); do
+            echo "Staging deployment attempt ${attempt}/30"
+            if node scripts/bootstrap-subscription-stacking-staging-fixture.js; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Staging never reached the exact certification commit" >&2
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Assert deployed commit and staging attestation
         run: node scripts/assert-subscription-stacking-deployment-readiness.js
