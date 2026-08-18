@@ -194,6 +194,12 @@ function buildSubscriptionStackingRemoteReadiness({
       cancellationSupported: false,
       directPickupSupported: false,
     },
+    clientContract: {
+      version: "subscription_stacking_flutter.v1",
+      exactMealSlotProteinGrams: true,
+      entitlementGroups: true,
+      entitlementPackages: true,
+    },
     certification: {
       readProbeReady,
       baseMealCanaryReady,

@@ -52,6 +52,12 @@ function run() {
   assert.strictEqual(safe.rollout.singleUserCanary, true);
   assert.strictEqual(safe.certification.readProbeReady, true);
   assert.strictEqual(safe.certification.baseMealCanaryReady, true);
+  assert.deepStrictEqual(safe.clientContract, {
+    version: "subscription_stacking_flutter.v1",
+    exactMealSlotProteinGrams: true,
+    entitlementGroups: true,
+    entitlementPackages: true,
+  });
   assert.deepStrictEqual(safe.certification.blockedReasons, []);
 
   const production = buildSubscriptionStackingRemoteReadiness({

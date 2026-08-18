@@ -54,6 +54,12 @@ function readinessPayload({ extraReady = false } = {}) {
         premiumStackingSupported: extraReady,
         addonStackingSupported: extraReady,
       },
+      clientContract: {
+        version: "subscription_stacking_flutter.v1",
+        exactMealSlotProteinGrams: true,
+        entitlementGroups: true,
+        entitlementPackages: true,
+      },
       certification: {
         readProbeReady: true,
         baseMealCanaryReady: true,

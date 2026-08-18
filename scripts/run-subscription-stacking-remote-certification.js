@@ -231,6 +231,18 @@ function assertReadiness(readinessPayload, phase) {
     });
   }
   if (phase === "extras") assertExtraCertificationReady(readiness);
+  const clientContract = readiness.clientContract || {};
+  if (
+    clientContract.version !== "subscription_stacking_flutter.v1"
+    || clientContract.exactMealSlotProteinGrams !== true
+    || clientContract.entitlementGroups !== true
+    || clientContract.entitlementPackages !== true
+  ) {
+    throw certificationError(
+      "CERTIFICATION_FLUTTER_CONTRACT_NOT_READY",
+      "Remote Flutter stacking contract is not ready"
+    );
+  }
   return readiness;
 }
 
