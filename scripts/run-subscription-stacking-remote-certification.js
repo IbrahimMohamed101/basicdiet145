@@ -7,7 +7,7 @@ const {
   validateSubscriptionStackingStagingEnv,
 } = require("./validate-subscription-stacking-staging-env");
 
-const PHASES = new Set(["read", "initiate", "verify"]);
+const PHASES = new Set(["read", "initiate", "verify", "extras"]);
 
 function certificationError(code, message, details = {}) {
   const err = new Error(message);
@@ -121,6 +121,39 @@ function assertBaseMealOnly(payload) {
   }
 }
 
+function hasExtraCheckoutPayload(payload) {
+  return Boolean(
+    (Array.isArray(payload && payload.premiumItems) && payload.premiumItems.length)
+    || (Array.isArray(payload && payload.addons) && payload.addons.length)
+    || (
+      Array.isArray(payload && payload.addonSubscriptions)
+      && payload.addonSubscriptions.length
+    )
+  );
+}
+
+function assertExtraCertificationReady(readiness) {
+  if (
+    !readiness
+    || !readiness.certification
+    || readiness.certification.extraEntitlementCanaryReady !== true
+    || !readiness.runtime
+    || readiness.runtime.premiumStackingSupported !== true
+    || readiness.runtime.addonStackingSupported !== true
+  ) {
+    throw certificationError(
+      "CERTIFICATION_EXTRA_CANARY_NOT_READY",
+      "Authenticated staging user is not ready for Premium/Add-on runtime certification",
+      {
+        blockedReasons: readiness
+          && readiness.certification
+          && readiness.certification.extraEntitlementBlockedReasons
+          || [],
+      }
+    );
+  }
+}
+
 function buildUrl(baseUrl, pathname) {
   return new URL(pathname, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
 }
@@ -197,7 +230,146 @@ function assertReadiness(readinessPayload, phase) {
       blockedReasons: certification.blockedReasons || [],
     });
   }
+  if (phase === "extras") assertExtraCertificationReady(readiness);
+  const clientContract = readiness.clientContract || {};
+  if (
+    clientContract.version !== "subscription_stacking_flutter.v1"
+    || clientContract.exactMealSlotProteinGrams !== true
+    || clientContract.slotProteinGramsAuthority !== "backend"
+    || clientContract.entitlementGroups !== true
+    || clientContract.entitlementPackages !== true
+  ) {
+    throw certificationError(
+      "CERTIFICATION_FLUTTER_CONTRACT_NOT_READY",
+      "Remote Flutter stacking contract is not ready"
+    );
+  }
   return readiness;
+}
+
+function extractPickupRequestId(payload) {
+  const data = unwrapData(payload);
+  return data.requestId
+    || data.pickupRequestId
+    || data.id
+    || data._id
+    || (data.pickupRequest && (data.pickupRequest.id || data.pickupRequest._id))
+    || null;
+}
+
+async function exerciseExtraRuntime(context, {
+  subscriptionId,
+  config,
+  dashboardToken,
+} = {}) {
+  if (!subscriptionId) {
+    throw certificationError(
+      "CERTIFICATION_SUBSCRIPTION_ID_REQUIRED",
+      "An operational subscription id is required for extra runtime certification"
+    );
+  }
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw certificationError(
+      "CERTIFICATION_EXTRA_EXERCISE_CONFIG_REQUIRED",
+      "STAGING_EXTRA_E2E_PAYLOAD_JSON is required for extras phase"
+    );
+  }
+  const date = String(config.date || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw certificationError(
+      "CERTIFICATION_EXTRA_DATE_INVALID",
+      "Extra runtime certification date must use YYYY-MM-DD"
+    );
+  }
+  if (!config.selectionBody || typeof config.selectionBody !== "object") {
+    throw certificationError(
+      "CERTIFICATION_EXTRA_SELECTION_REQUIRED",
+      "Extra runtime certification requires a canonical selectionBody"
+    );
+  }
+  if (!config.pickupBody || typeof config.pickupBody !== "object") {
+    throw certificationError(
+      "CERTIFICATION_EXTRA_PICKUP_REQUIRED",
+      "Extra runtime certification requires a pickupBody"
+    );
+  }
+  if (!dashboardToken) {
+    throw certificationError(
+      "CERTIFICATION_DASHBOARD_TOKEN_REQUIRED",
+      "STAGING_DASHBOARD_TOKEN is required for real fulfillment"
+    );
+  }
+
+  const selectionPath = `/api/subscriptions/${encodeURIComponent(subscriptionId)}/days/${encodeURIComponent(date)}/selection`;
+  const selection = await requestJson({
+    ...context,
+    method: "PUT",
+    pathname: selectionPath,
+    body: config.selectionBody,
+  });
+  const selectionReplay = await requestJson({
+    ...context,
+    method: "PUT",
+    pathname: selectionPath,
+    body: config.selectionBody,
+  });
+  const confirmation = await requestJson({
+    ...context,
+    method: "POST",
+    pathname: `/api/subscriptions/${encodeURIComponent(subscriptionId)}/days/${encodeURIComponent(date)}/confirm`,
+    body: {},
+  });
+  const availability = await requestJson({
+    ...context,
+    pathname: `/api/subscriptions/${encodeURIComponent(subscriptionId)}/pickup-availability?date=${encodeURIComponent(date)}`,
+  });
+  const pickupBody = {
+    ...config.pickupBody,
+    date,
+    idempotencyKey: String(
+      config.pickupBody.idempotencyKey
+      || `stacking-extra-cert-${crypto.randomUUID()}`
+    ),
+  };
+  const pickup = await requestJson({
+    ...context,
+    method: "POST",
+    pathname: `/api/subscriptions/${encodeURIComponent(subscriptionId)}/pickup-requests`,
+    body: pickupBody,
+  });
+  const pickupReplay = await requestJson({
+    ...context,
+    method: "POST",
+    pathname: `/api/subscriptions/${encodeURIComponent(subscriptionId)}/pickup-requests`,
+    body: pickupBody,
+  });
+  const fulfillmentContext = { ...context, token: dashboardToken };
+  const fulfillmentPath = `/api/kitchen/subscriptions/${encodeURIComponent(subscriptionId)}/days/${encodeURIComponent(date)}/fulfill-pickup`;
+  const fulfillment = await requestJson({
+    ...fulfillmentContext,
+    method: "POST",
+    pathname: fulfillmentPath,
+    body: config.fulfillmentBody || {},
+  });
+  const fulfillmentReplay = await requestJson({
+    ...fulfillmentContext,
+    method: "POST",
+    pathname: fulfillmentPath,
+    body: config.fulfillmentBody || {},
+  });
+
+  return {
+    date,
+    selectionRequestId: selection.requestId,
+    selectionReplayRequestId: selectionReplay.requestId,
+    confirmationRequestId: confirmation.requestId,
+    availabilityRequestId: availability.requestId,
+    pickupRequestId: maskIdentifier(extractPickupRequestId(pickup.payload)),
+    pickupCreateRequestId: pickup.requestId,
+    pickupReplayRequestId: pickupReplay.requestId,
+    fulfillmentRequestId: fulfillment.requestId,
+    fulfillmentReplayRequestId: fulfillmentReplay.requestId,
+  };
 }
 
 async function readClientState(context) {
@@ -226,7 +398,7 @@ async function runRemoteCertification(env = process.env, runtime = {}) {
   const safety = validateSubscriptionStackingStagingEnv(env);
   const phase = String(env.STAGING_CERTIFICATION_PHASE || "read").trim().toLowerCase();
   if (!PHASES.has(phase)) {
-    throw certificationError("CERTIFICATION_PHASE_INVALID", "STAGING_CERTIFICATION_PHASE must be read, initiate, or verify");
+    throw certificationError("CERTIFICATION_PHASE_INVALID", "STAGING_CERTIFICATION_PHASE must be read, initiate, verify, or extras");
   }
   const token = String(env.STAGING_CLIENT_TOKEN || "").trim();
   if (!token) throw certificationError("CERTIFICATION_TOKEN_REQUIRED", "STAGING_CLIENT_TOKEN is required");
@@ -283,7 +455,8 @@ async function runRemoteCertification(env = process.env, runtime = {}) {
 
   if (phase === "initiate") {
     const checkoutPayload = parseJson(env.STAGING_CHECKOUT_PAYLOAD_JSON, "STAGING_CHECKOUT_PAYLOAD_JSON", true);
-    assertBaseMealOnly(checkoutPayload);
+    const extraCheckout = hasExtraCheckoutPayload(checkoutPayload);
+    if (extraCheckout) assertExtraCertificationReady(readiness);
     const idempotencyKey = String(env.STAGING_CHECKOUT_IDEMPOTENCY_KEY || `stacking-cert-${crypto.randomUUID()}`).trim();
 
     const quote = await requestJson({
@@ -324,6 +497,7 @@ async function runRemoteCertification(env = process.env, runtime = {}) {
       maskedCheckoutDraftId: maskIdentifier(firstDraftId),
       paymentUrlOrigin: new URL(firstPaymentUrl).origin,
       idempotencyVerified: true,
+      extraEntitlements: extraCheckout,
     };
     evidence.passed = true;
     return evidence;
@@ -393,6 +567,17 @@ async function runRemoteCertification(env = process.env, runtime = {}) {
     targetDate: targetDate || null,
     requiredMeals: actualRequiredMeals,
   };
+  if (phase === "extras") {
+    evidence.extraRuntime = await exerciseExtraRuntime(context, {
+      subscriptionId: after.subscriptionId,
+      config: parseJson(
+        env.STAGING_EXTRA_E2E_PAYLOAD_JSON,
+        "STAGING_EXTRA_E2E_PAYLOAD_JSON",
+        true
+      ),
+      dashboardToken: String(env.STAGING_DASHBOARD_TOKEN || "").trim(),
+    });
+  }
   evidence.passed = true;
   return evidence;
 }
@@ -434,12 +619,15 @@ if (require.main === module) {
 
 module.exports = {
   assertBaseMealOnly,
+  assertExtraCertificationReady,
+  exerciseExtraRuntime,
   extractCheckoutStatus,
   extractDraftId,
   extractRemainingMeals,
   extractRequiredMeals,
   extractSubscriptionId,
   findTimelineDay,
+  hasExtraCheckoutPayload,
   runRemoteCertification,
   writeEvidence,
 };

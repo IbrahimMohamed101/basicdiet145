@@ -89,7 +89,10 @@ async function testImmediateOverlapProjectsAggregateBalance() {
   const logs = [];
   const wrapped = createCurrentOverviewReadWrapper(async () => response, {
     readEnabledForUser: () => true,
-    writeEnabledForUser: () => false,
+    writeEnabledForUser: () => true,
+    extraActivationEnabledForUser: () => true,
+    extraSelectionEnabledForUser: () => true,
+    findExtraBuckets: async () => [],
     findBatches: async () => [
       batch(),
       batch({
@@ -113,6 +116,22 @@ async function testImmediateOverlapProjectsAggregateBalance() {
   assert.strictEqual(result.data.mealBalance.remainingMeals, 72);
   assert.strictEqual(result.data.mealBalance.maxConsumableMealsNow, 72);
   assert.strictEqual(result.data.mealBalance.dailyMealsDefault, 5);
+  assert.deepStrictEqual(result.data.entitlementGroups, [
+    { proteinGrams: 150, requiredMeals: 2 },
+    { proteinGrams: 200, requiredMeals: 3 },
+  ]);
+  assert.strictEqual(result.data.hasMixedProteinGrams, true);
+  assert.strictEqual(result.data.entitlementPackages.length, 2);
+  assert.strictEqual(result.data.entitlementPackages[0].proteinGrams, 200);
+  assert.strictEqual(result.data.entitlementPackages[1].proteinGrams, 150);
+  assert.strictEqual(result.data.entitlementPackages.every((row) => row.spendableNow), true);
+  assert.deepStrictEqual(result.data.stackingCapabilities, {
+    canAddPackage: true,
+    canStackBaseMeals: true,
+    canStackPremium: true,
+    canStackAddons: true,
+    canScheduleFuture: true,
+  });
   assert.strictEqual(logs.at(-1).meta.mixedProteinGrams, true);
 }
 
@@ -151,6 +170,12 @@ async function testFutureBalanceIsZeroBeforeStartWhenBatchesExist() {
   assert.strictEqual(result.data.selectedMealsPerDay, 0);
   assert.strictEqual(result.data.mealBalance.canConsumeNow, false);
   assert.strictEqual(result.data.mealBalance.maxConsumableMealsNow, 0);
+  assert.strictEqual(result.data.entitlementPackages.length, 2);
+  const scheduled = result.data.entitlementPackages.find((row) => row.status === "paid_scheduled");
+  assert(scheduled);
+  assert.strictEqual(scheduled.proteinGrams, 150);
+  assert.strictEqual(scheduled.effectiveStartDate, "2026-08-11");
+  assert.strictEqual(scheduled.spendableNow, false);
 }
 
 async function testNoBatchesUsesLegacyFallback() {

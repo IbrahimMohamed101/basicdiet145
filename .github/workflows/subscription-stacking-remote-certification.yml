@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/subscription-stacking-remote-certification-20260806
+      - cert/stacking-extra-runtime-canary-p4-20260812
     paths:
       - "src/services/subscription/subscriptionStackingRemoteReadinessService.js"
       - "src/services/installSubscriptionStackingRemoteReadinessRoute.js"
@@ -11,6 +12,7 @@ on:
       - "scripts/run-subscription-stacking-remote-certification.js"
       - "scripts/assert-subscription-stacking-deployment-readiness.js"
       - "scripts/assert-subscription-stacking-parent-identity.js"
+      - "scripts/bootstrap-subscription-stacking-staging-fixture.js"
       - "tests/subscriptionStackingRemoteReadiness.test.js"
       - "tests/subscriptionStackingRemoteReadinessRoute.test.js"
       - "tests/subscriptionStackingRemoteCertification.test.js"
@@ -27,6 +29,7 @@ on:
       - "scripts/run-subscription-stacking-remote-certification.js"
       - "scripts/assert-subscription-stacking-deployment-readiness.js"
       - "scripts/assert-subscription-stacking-parent-identity.js"
+      - "scripts/bootstrap-subscription-stacking-staging-fixture.js"
       - "tests/subscriptionStackingRemoteReadiness.test.js"
       - "tests/subscriptionStackingRemoteReadinessRoute.test.js"
       - "tests/subscriptionStackingRemoteCertification.test.js"
@@ -43,6 +46,7 @@ on:
           - read
           - initiate
           - verify
+          - extras
         default: read
       checkout_draft_id:
         description: Draft ID produced by initiate; required for verify
@@ -108,6 +112,7 @@ jobs:
           node --check scripts/run-subscription-stacking-remote-certification.js
           node --check scripts/assert-subscription-stacking-deployment-readiness.js
           node --check scripts/assert-subscription-stacking-parent-identity.js
+          node --check scripts/bootstrap-subscription-stacking-staging-fixture.js
           node --check src/index.js
           NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
 
@@ -115,7 +120,7 @@ jobs:
         run: npm run test:current-subscription
 
   remote-certification:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/cert/stacking-extra-runtime-canary-p4-20260812'
     needs: contract-tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -124,27 +129,33 @@ jobs:
     env:
       NODE_ENV: staging
       APP_ENV: staging
-      STAGING_BASE_URL: ${{ secrets.STACKING_STAGING_BASE_URL }}
-      STAGING_PAYMENT_MODE: ${{ secrets.STACKING_STAGING_PAYMENT_MODE }}
-      STAGING_DATABASE_ISOLATION_CONFIRMED: ${{ secrets.STACKING_STAGING_DATABASE_ISOLATION_CONFIRMED }}
-      STAGING_PAYMENT_SANDBOX_CONFIRMED: ${{ secrets.STACKING_STAGING_PAYMENT_SANDBOX_CONFIRMED }}
+      STAGING_BASE_URL: "https://basicdiet145-staging-2882.up.railway.app"
+      STAGING_PAYMENT_MODE: "sandbox"
+      STAGING_DATABASE_ISOLATION_CONFIRMED: "true"
+      STAGING_PAYMENT_SANDBOX_CONFIRMED: "true"
       MONGODB_URI: ${{ secrets.STACKING_STAGING_MONGODB_URI }}
+      STAGING_CERTIFICATION_USER_ID: "6a7b6006a86353ffc9f0f83b"
       SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true"
       SUBSCRIPTION_STACKING_READ_ENABLED: "true"
       SUBSCRIPTION_STACKING_WRITE_ENABLED: "true"
-      SUBSCRIPTION_STACKING_SHADOW_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
-      SUBSCRIPTION_STACKING_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
+      SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "6a7b6006a86353ffc9f0f83b"
+      SUBSCRIPTION_STACKING_USER_IDS: "6a7b6006a86353ffc9f0f83b"
       SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "false"
-      STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
-      STAGING_SUBSCRIPTION_ID: ${{ secrets.STACKING_STAGING_PARENT_SUBSCRIPTION_ID }}
+      SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true"
+      SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS: "6a7b6006a86353ffc9f0f83b"
+      SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true"
+      SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS: "6a7b6006a86353ffc9f0f83b"
       STAGING_CHECKOUT_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_CHECKOUT_PAYLOAD_JSON }}
       STAGING_EXPECTED_DEPLOYMENT_COMMIT_SHA: ${{ github.sha }}
-      STAGING_CERTIFICATION_PHASE: ${{ inputs.phase }}
+      STAGING_CERTIFICATION_PHASE: ${{ inputs.phase || 'read' }}
       STAGING_CHECKOUT_DRAFT_ID: ${{ inputs.checkout_draft_id }}
       STAGING_CHECKOUT_IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
       STAGING_EXPECTED_REMAINING_MEALS: ${{ inputs.expected_remaining_meals }}
       STAGING_TARGET_DATE: ${{ inputs.target_date }}
       STAGING_EXPECTED_REQUIRED_MEALS: ${{ inputs.expected_required_meals }}
+      STAGING_EXTRA_E2E_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_EXTRA_E2E_PAYLOAD_JSON }}
+      STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
+      STAGING_SUBSCRIPTION_ID: ${{ secrets.STACKING_STAGING_PARENT_SUBSCRIPTION_ID }}
       STAGING_CERTIFICATION_OUTPUT: artifacts/subscription-stacking-remote-certification.json
       STAGING_REQUEST_TIMEOUT_MS: "20000"
 
@@ -163,6 +174,22 @@ jobs:
 
       - name: Reject unsafe staging configuration
         run: node scripts/validate-subscription-stacking-staging-env.js
+
+      - name: Bootstrap isolated staging certification fixture
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          for attempt in $(seq 1 30); do
+            echo "Staging deployment attempt ${attempt}/30"
+            if node scripts/bootstrap-subscription-stacking-staging-fixture.js; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Staging never reached the exact certification commit" >&2
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Assert deployed commit and staging attestation
         run: node scripts/assert-subscription-stacking-deployment-readiness.js

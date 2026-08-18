@@ -128,6 +128,15 @@ function testHistoricalExpiredAndOverlappingRequirements() {
   assert.strictEqual(result.mealBalance.totalMeals, 52);
   assert.strictEqual(result.mealBalance.remainingMeals, 52);
   assert.strictEqual(result.mealBalance.dailyMealsDefault, 2);
+  assert.deepStrictEqual(
+    result.days.find((day) => day.date === "2026-08-05").entitlementGroups,
+    [
+      { proteinGrams: 150, requiredMeals: 2 },
+      { proteinGrams: 200, requiredMeals: 3 },
+    ]
+  );
+  assert.strictEqual(result.days.find((day) => day.date === "2026-08-05").hasMixedProteinGrams, true);
+  assert.strictEqual(result.entitlementPackages.length, 2);
 }
 
 function testFutureScheduledPeriodHiddenUntilStartDate() {
@@ -158,6 +167,12 @@ function testFutureScheduledPeriodHiddenUntilStartDate() {
   assert.strictEqual(beforeStart.days.at(-1).date, "2026-08-09");
   assert.strictEqual(beforeStart.days.some((day) => day.date === "2026-08-11"), false);
   assert.strictEqual(beforeStart.mealBalance.remainingMeals, 0);
+  const scheduledPackage = beforeStart.entitlementPackages.find(
+    (row) => row.status === "paid_scheduled"
+  );
+  assert(scheduledPackage);
+  assert.strictEqual(scheduledPackage.effectiveStartDate, "2026-08-11");
+  assert.strictEqual(scheduledPackage.spendableNow, false);
 
   const onStart = applyProjectionToTimelineResult(
     timeline(),

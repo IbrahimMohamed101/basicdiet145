@@ -203,7 +203,12 @@ function testFlutterContractHidesInternalLedgerState() {
       subscriptionId,
       date: "2026-08-12",
       status: "open",
-      mealSlots: [],
+      mealSlots: [{
+        slotIndex: 1,
+        slotKey: "slot_1",
+        fulfillmentSnapshot: { proteinGrams: 150, internal: "hidden" },
+        entitlementSnapshot: { proteinGrams: 150, blueprintSourceHash: "secret-hash" },
+      }],
       addonSelections: [],
       stackingExtraSelectionState: {
         version: "subscription_stacking.extra_selection.v1",
@@ -214,6 +219,10 @@ function testFlutterContractHidesInternalLedgerState() {
   assert.strictEqual(String(shaped.subscriptionId), String(subscriptionId));
   assert.strictEqual(shaped.stackingExtraSelectionState, undefined);
   assert.strictEqual(JSON.stringify(shaped).includes("secret-internal-key"), false);
+  assert.strictEqual(shaped.mealSlots[0].proteinGrams, 150);
+  assert.strictEqual(shaped.mealSlots[0].fulfillmentSnapshot, undefined);
+  assert.strictEqual(shaped.mealSlots[0].entitlementSnapshot, undefined);
+  assert.strictEqual(JSON.stringify(shaped).includes("secret-hash"), false);
 }
 
 function testStackingReadProjectsExactExtraBalances() {

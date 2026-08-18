@@ -7,13 +7,20 @@ const {
   resolveProductionEnvironment,
 } = require("./subscriptionStackingProductionSafetyService");
 const {
+  isExtraActivationCanaryEnabledForUser,
+  isExtraSelectionCanaryEnabledForUser,
   isReadStackingEnabledForUser,
   isWriteStackingEnabledForUser,
+  resolveExtraActivationCanaryState,
+  resolveExtraSelectionCanaryState,
   resolveSubscriptionStackingRolloutState,
 } = require("./subscriptionStackingRolloutPolicyService");
 
 const SKIP_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingSkipRouter.installed");
 const PLANNED_PICKUP_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingPlannedPickupRouter.installed");
+const WRITE_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingWriteRouter.installed");
+const SELECTION_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingSelectionRouter.installed");
+const ENTITLEMENT_INSTALL_KEY = Symbol.for("basicdiet.subscriptionStackingEntitlementRouter.installed");
 const SAFE_STAGING_PAYMENT_MODES = new Set(["sandbox", "mock", "test"]);
 
 function isEnabled(value) {
@@ -79,12 +86,22 @@ function buildSubscriptionStackingRemoteReadiness({
 
   const environment = resolveProductionEnvironment(env);
   const rollout = resolveSubscriptionStackingRolloutState(env);
+  const extraActivation = resolveExtraActivationCanaryState(env);
+  const extraSelection = resolveExtraSelectionCanaryState(env);
   const deploymentSafety = resolveDeploymentSafetyAttestation(env);
   const deploymentCommitSha = resolveDeploymentCommit(env);
   const shadowEnabledForUser = rollout.shadowEnabled
     && isAllowlisted(rollout.shadowAllowlist, subject);
   const readEnabledForUser = isReadStackingEnabledForUser(subject, env);
   const writeEnabledForUser = isWriteStackingEnabledForUser(subject, env);
+  const extraActivationEnabledForUser = isExtraActivationCanaryEnabledForUser(
+    subject,
+    env
+  );
+  const extraSelectionEnabledForUser = isExtraSelectionCanaryEnabledForUser(
+    subject,
+    env
+  );
   const hasWildcard = rollout.shadowAllowlist.has("*")
     || rollout.rolloutAllowlist.has("*");
   const singleUserCanary = rollout.rolloutAllowlist.size === 1
@@ -97,6 +114,27 @@ function buildSubscriptionStackingRemoteReadiness({
   const plannedPickupRouterConnected = Boolean(
     globalObject && globalObject[PLANNED_PICKUP_INSTALL_KEY]
   );
+  const writeRouterConnected = Boolean(globalObject && globalObject[WRITE_INSTALL_KEY]);
+  const selectionRouterConnected = Boolean(
+    globalObject && globalObject[SELECTION_INSTALL_KEY]
+  );
+  const entitlementRouterConnected = Boolean(
+    globalObject && globalObject[ENTITLEMENT_INSTALL_KEY]
+  );
+  const extraWildcardConfigured = extraActivation.wildcardPresent
+    || extraSelection.wildcardPresent;
+  const singleExtraCanary = extraActivation.enabled
+    && extraSelection.enabled
+    && extraActivation.allowlist.size === 1
+    && extraSelection.allowlist.size === 1
+    && !extraWildcardConfigured
+    && !rollout.allowAllUsers
+    && extraActivation.allowlist.has(subject)
+    && extraSelection.allowlist.has(subject);
+  const requiredExtraRoutersConnected = writeRouterConnected
+    && selectionRouterConnected
+    && entitlementRouterConnected
+    && plannedPickupRouterConnected;
 
   const readProbeReady = !environment.production
     && Boolean(deploymentCommitSha)
@@ -107,9 +145,15 @@ function buildSubscriptionStackingRemoteReadiness({
     && readEnabledForUser
     && writeEnabledForUser
     && singleUserCanary;
+  const extraEntitlementCanaryReady = baseMealCanaryReady
+    && extraActivationEnabledForUser
+    && extraSelectionEnabledForUser
+    && singleExtraCanary
+    && requiredExtraRoutersConnected;
 
   return {
     contractVersion: "subscription_stacking_remote_readiness.v1",
+    capabilityContractVersion: "subscription_stacking_extra_canary_readiness.v2",
     environment: {
       production: environment.production,
       source: environment.source || null,
@@ -129,21 +173,49 @@ function buildSubscriptionStackingRemoteReadiness({
       singleUserCanary,
       wildcardConfigured: hasWildcard,
       allowAllUsers: rollout.allowAllUsers,
+      extraActivationEnabledGlobally: extraActivation.enabled,
+      extraSelectionEnabledGlobally: extraSelection.enabled,
+      extraActivationEnabledForUser,
+      extraSelectionEnabledForUser,
+      singleExtraCanary,
+      extraWildcardConfigured,
     },
     runtime: {
       skipRouterConnected,
       plannedPickupRouterConnected,
+      writeRouterConnected,
+      selectionRouterConnected,
+      entitlementRouterConnected,
       baseMealCheckoutSupported: true,
-      premiumStackingSupported: false,
-      addonStackingSupported: false,
+      premiumStackingSupported: extraEntitlementCanaryReady,
+      addonStackingSupported: extraEntitlementCanaryReady,
       bulkPlanningSupported: false,
       freezeSupported: false,
       cancellationSupported: false,
       directPickupSupported: false,
     },
+    clientContract: {
+      version: "subscription_stacking_flutter.v1",
+      exactMealSlotProteinGrams: true,
+      slotProteinGramsAuthority: "backend",
+      entitlementGroups: true,
+      entitlementPackages: true,
+    },
     certification: {
       readProbeReady,
       baseMealCanaryReady,
+      extraEntitlementCanaryReady,
+      extraEntitlementBlockedReasons: [
+        !baseMealCanaryReady ? "base_meal_canary_not_ready" : null,
+        !extraActivation.enabled ? "extra_activation_disabled" : null,
+        !extraSelection.enabled ? "extra_selection_disabled" : null,
+        extraWildcardConfigured ? "extra_wildcard_configured" : null,
+        rollout.allowAllUsers ? "allow_all_users_forbidden" : null,
+        !singleExtraCanary ? "single_extra_canary_policy_not_satisfied" : null,
+        !extraActivationEnabledForUser ? "extra_activation_not_enabled_for_user" : null,
+        !extraSelectionEnabledForUser ? "extra_selection_not_enabled_for_user" : null,
+        !requiredExtraRoutersConnected ? "required_extra_routers_not_connected" : null,
+      ].filter(Boolean),
       blockedReasons: [
         environment.production ? "production_environment" : null,
         !deploymentCommitSha ? "deployment_commit_not_exposed" : null,
@@ -161,9 +233,12 @@ function buildSubscriptionStackingRemoteReadiness({
 }
 
 module.exports = {
+  ENTITLEMENT_INSTALL_KEY,
   PLANNED_PICKUP_INSTALL_KEY,
   SAFE_STAGING_PAYMENT_MODES,
+  SELECTION_INSTALL_KEY,
   SKIP_INSTALL_KEY,
+  WRITE_INSTALL_KEY,
   buildSubscriptionStackingRemoteReadiness,
   resolveDeploymentCommit,
   resolveDeploymentSafetyAttestation,

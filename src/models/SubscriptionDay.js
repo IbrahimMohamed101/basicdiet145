@@ -75,6 +75,7 @@ const MealSlotSchema = new mongoose.Schema(
       default: undefined,
     },
     pricingSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    entitlementSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
     displaySnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
     fulfillmentSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
     confirmationSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },

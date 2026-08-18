@@ -14,6 +14,10 @@ const {
   normalizeDateString,
   projectSubscriptionEntitlements,
 } = require("./subscriptionEntitlementProjectionService");
+const {
+  buildPublicEntitlementGroups,
+  buildPublicEntitlementPackages,
+} = require("./subscriptionStackingClientContractService");
 
 const TIMELINE_READ_EVENT = "subscription_stacking_timeline_read";
 
@@ -61,6 +65,8 @@ function applyProjectionToTimelineDay(day, projection) {
     selectedMeals: selected,
     requiredMeals: required,
     requiredMealCount: required,
+    entitlementGroups: buildPublicEntitlementGroups(projection),
+    hasMixedProteinGrams: Boolean(projection && projection.hasMixedProteinGrams),
     specifiedMealCount: specified,
     unspecifiedMealCount: Math.max(0, required - specified),
     meals: {
@@ -175,6 +181,9 @@ function applyProjectionToTimelineResult(timeline, batches, businessDate) {
         : {}),
       required: currentRequired,
     },
+    entitlementGroups: buildPublicEntitlementGroups(currentProjection),
+    hasMixedProteinGrams: Boolean(currentProjection.hasMixedProteinGrams),
+    entitlementPackages: buildPublicEntitlementPackages(batches, businessDate),
     mealBalance: {
       ...(timeline.mealBalance && typeof timeline.mealBalance === "object"
         ? timeline.mealBalance

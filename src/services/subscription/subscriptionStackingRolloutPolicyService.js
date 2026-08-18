@@ -1,5 +1,11 @@
 "use strict";
 
+const {
+  resolveProductionEnvironment,
+} = require("./subscriptionStackingProductionSafetyService");
+
+const SAFE_EXTRA_ACTIVATION_PAYMENT_MODES = new Set(["sandbox", "mock", "test"]);
+
 function isEnabled(rawValue) {
   return String(rawValue || "").trim().toLowerCase() === "true";
 }
@@ -115,6 +121,133 @@ function resolveExtraSelectionCanaryState(env = process.env) {
   return { enabled, allowlist, wildcardPresent };
 }
 
+function resolveExtraActivationCanaryState(env = process.env) {
+  const enabled = isEnabled(env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED);
+  const allowlist = parseIdAllowlist(
+    env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS
+  );
+  const wildcardPresent = allowlist.has("*");
+  return { enabled, allowlist, wildcardPresent };
+}
+
+function extraActivationSafetyState(env = process.env) {
+  const environment = resolveProductionEnvironment(env);
+  const paymentMode = String(env.STAGING_PAYMENT_MODE || "").trim().toLowerCase();
+  return {
+    production: environment.production,
+    databaseIsolationConfirmed: isEnabled(
+      env.STAGING_DATABASE_ISOLATION_CONFIRMED
+    ),
+    paymentSandboxConfirmed: isEnabled(
+      env.STAGING_PAYMENT_SANDBOX_CONFIRMED
+    ),
+    safePaymentMode: SAFE_EXTRA_ACTIVATION_PAYMENT_MODES.has(paymentMode),
+    paymentMode,
+  };
+}
+
+function assertExtraActivationCanaryConfiguration(env = process.env) {
+  const state = resolveExtraActivationCanaryState(env);
+  if (state.wildcardPresent) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_WILDCARD_BLOCKED",
+      "Extra activation canary never accepts wildcard rollout",
+      { wildcard: true }
+    );
+  }
+  if (!state.enabled) {
+    return {
+      ok: true,
+      enabled: false,
+      userCount: state.allowlist.size,
+      wildcardAllowed: false,
+    };
+  }
+  if (state.allowlist.size !== 1) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_REQUIRES_EXACTLY_ONE_USER",
+      "Extra activation canary requires exactly one explicit user",
+      { count: state.allowlist.size }
+    );
+  }
+  if (
+    !isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED)
+    || !isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED)
+  ) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_REQUIRES_STACKING_READ_WRITE",
+      "Extra activation canary requires stacking read and write eligibility"
+    );
+  }
+  if (isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS)) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_ALLOW_ALL_BLOCKED",
+      "Extra activation canary requires an explicit single-user rollout"
+    );
+  }
+
+  const activationUserId = Array.from(state.allowlist)[0];
+  const baseAllowlist = parseIdAllowlist(env.SUBSCRIPTION_STACKING_USER_IDS);
+  if (baseAllowlist.has("*") || !baseAllowlist.has(activationUserId)) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_BASE_ALLOWLIST_REQUIRED",
+      "Extra activation canary user must be explicitly present in the base stacking allowlist"
+    );
+  }
+
+  const safety = extraActivationSafetyState(env);
+  if (safety.production) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_PRODUCTION_BLOCKED",
+      "Extra activation canary cannot run in production"
+    );
+  }
+  if (!safety.databaseIsolationConfirmed) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_DATABASE_ISOLATION_REQUIRED",
+      "Extra activation canary requires isolated staging database attestation"
+    );
+  }
+  if (!safety.paymentSandboxConfirmed || !safety.safePaymentMode) {
+    throw policyError(
+      "STACKING_EXTRA_ACTIVATION_PAYMENT_SANDBOX_REQUIRED",
+      "Extra activation canary requires an attested sandbox payment mode",
+      { paymentMode: safety.paymentMode || null }
+    );
+  }
+
+  return {
+    ok: true,
+    enabled: true,
+    userCount: 1,
+    wildcardAllowed: false,
+    databaseIsolationRequired: true,
+    paymentSandboxRequired: true,
+  };
+}
+
+function isExtraActivationCanaryEnabledForUser(userId, env = process.env) {
+  const userIdValue = String(userId || "").trim();
+  if (!userIdValue) return false;
+  const state = resolveExtraActivationCanaryState(env);
+  const safety = extraActivationSafetyState(env);
+  if (
+    !state.enabled
+    || state.wildcardPresent
+    || state.allowlist.size !== 1
+    || safety.production
+    || !safety.databaseIsolationConfirmed
+    || !safety.paymentSandboxConfirmed
+    || !safety.safePaymentMode
+    || isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS)
+  ) {
+    return false;
+  }
+  return isReadStackingEnabledForUser(userIdValue, env)
+    && isWriteStackingEnabledForUser(userIdValue, env)
+    && state.allowlist.has(userIdValue);
+}
+
 function assertExtraSelectionCanaryConfiguration(env = process.env) {
   const state = resolveExtraSelectionCanaryState(env);
   if (state.wildcardPresent) {
@@ -130,6 +263,13 @@ function assertExtraSelectionCanaryConfiguration(env = process.env) {
       "Extra selection canary requires an explicit user allowlist"
     );
   }
+  if (state.enabled && state.allowlist.size !== 1) {
+    throw policyError(
+      "STACKING_EXTRA_SELECTION_REQUIRES_EXACTLY_ONE_USER",
+      "Extra selection canary requires exactly one explicit user",
+      { count: state.allowlist.size }
+    );
+  }
   if (
     state.enabled
     && (!isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED)
@@ -139,6 +279,22 @@ function assertExtraSelectionCanaryConfiguration(env = process.env) {
       "STACKING_EXTRA_SELECTION_REQUIRES_STACKING_READ_WRITE",
       "Extra selection canary requires stacking read and write eligibility"
     );
+  }
+  if (state.enabled && isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS)) {
+    throw policyError(
+      "STACKING_EXTRA_SELECTION_ALLOW_ALL_BLOCKED",
+      "Extra selection canary requires an explicit single-user rollout"
+    );
+  }
+  if (state.enabled) {
+    const selectionUserId = Array.from(state.allowlist)[0];
+    const baseAllowlist = parseIdAllowlist(env.SUBSCRIPTION_STACKING_USER_IDS);
+    if (baseAllowlist.has("*") || !baseAllowlist.has(selectionUserId)) {
+      throw policyError(
+        "STACKING_EXTRA_SELECTION_BASE_ALLOWLIST_REQUIRED",
+        "Extra selection canary user must be explicitly present in the base stacking allowlist"
+      );
+    }
   }
   return {
     ok: true,
@@ -152,20 +308,30 @@ function isExtraSelectionCanaryEnabledForUser(userId, env = process.env) {
   const userIdValue = String(userId || "").trim();
   if (!userIdValue) return false;
   const state = resolveExtraSelectionCanaryState(env);
-  if (!state.enabled || state.wildcardPresent) return false;
+  if (
+    !state.enabled
+    || state.wildcardPresent
+    || state.allowlist.size !== 1
+    || isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS)
+    || resolveProductionEnvironment(env).production
+  ) return false;
   return isReadStackingEnabledForUser(userIdValue, env)
     && isWriteStackingEnabledForUser(userIdValue, env)
     && state.allowlist.has(userIdValue);
 }
 
 module.exports = {
+  SAFE_EXTRA_ACTIVATION_PAYMENT_MODES,
+  assertExtraActivationCanaryConfiguration,
   assertExtraSelectionCanaryConfiguration,
   assertSubscriptionStackingRolloutConfiguration,
+  isExtraActivationCanaryEnabledForUser,
   isExtraSelectionCanaryEnabledForUser,
   isReadStackingEnabledForUser,
   isUserAllowedForStacking,
   isWriteStackingEnabledForUser,
   parseIdAllowlist,
+  resolveExtraActivationCanaryState,
   resolveExtraSelectionCanaryState,
   resolveSubscriptionStackingRolloutState,
 };

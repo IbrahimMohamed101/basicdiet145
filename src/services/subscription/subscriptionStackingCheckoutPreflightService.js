@@ -9,6 +9,8 @@ const {
   resolveCheckoutQuoteOrThrow,
 } = require("./subscriptionQuoteService");
 const {
+  isExtraActivationCanaryEnabledForUser,
+  isExtraSelectionCanaryEnabledForUser,
   isWriteStackingEnabledForUser,
 } = require("./subscriptionStackingRolloutPolicyService");
 const {
@@ -77,6 +79,12 @@ function defaultRuntime() {
   return {
     globallyEnabled: () => isSubscriptionStackingWriteEnabled(),
     writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
+    extraActivationEnabledForUser: (userId) => (
+      isExtraActivationCanaryEnabledForUser(userId)
+    ),
+    extraSelectionEnabledForUser: (userId) => (
+      isExtraSelectionCanaryEnabledForUser(userId)
+    ),
     resolveQuote: (body, context) => resolveCheckoutQuoteOrThrow(body, context),
     findActiveContainer(userId) {
       return Subscription.findOne({ userId, status: "active" })
@@ -140,22 +148,30 @@ async function assertStackingCheckoutSupported({
 
   const unsupported = buildUnsupportedExtrasDetails(quote);
   if (unsupported.premium || unsupported.addons) {
-    throw preflightError(
-      "STACKING_PURCHASE_EXTRAS_NOT_READY",
-      "Premium and add-on purchases are temporarily unavailable while adding a package to an active subscription",
-      409,
-      {
-        activeSubscriptionId: String(activeContainer._id),
-        premiumNotSupported: unsupported.premium,
-        addonsNotSupported: unsupported.addons,
-        blockedBeforeInvoice: true,
-      }
-    );
+    const activationEligible = runtime.extraActivationEnabledForUser(userId);
+    const selectionEligible = runtime.extraSelectionEnabledForUser(userId);
+    if (!activationEligible || !selectionEligible) {
+      throw preflightError(
+        "STACKING_PURCHASE_EXTRAS_NOT_READY",
+        "Premium and add-on purchases are temporarily unavailable while adding a package to an active subscription",
+        409,
+        {
+          activeSubscriptionId: String(activeContainer._id),
+          premiumNotSupported: unsupported.premium,
+          addonsNotSupported: unsupported.addons,
+          activationEligible,
+          selectionEligible,
+          blockedBeforeInvoice: true,
+        }
+      );
+    }
   }
 
   return {
     allowed: true,
-    reason: "base_meal_additive_checkout_supported",
+    reason: unsupported.premium || unsupported.addons
+      ? "extra_entitlement_additive_checkout_supported"
+      : "base_meal_additive_checkout_supported",
     activeContainer,
     existingDraft,
     finalizationIntent: buildAdditiveFinalizationIntent({

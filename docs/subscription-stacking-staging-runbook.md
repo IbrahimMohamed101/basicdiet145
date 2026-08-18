@@ -21,7 +21,7 @@ Do not start a remote write test until all conditions are true:
   - `clientdashbourd-production.up.railway.app`
 - A dedicated staging mobile user is available.
 - The user ID is known before configuring the allowlists.
-- Premium items and add-ons are removed from the staging purchase scenario.
+- Premium items and add-ons are limited to the single fully allowlisted P4 canary user.
 - Direct pickup reservation, freeze, cancellation, and skip range are not used.
 - `STAGING_DATABASE_ISOLATION_CONFIRMED=true` is set only after database separation is verified.
 - `STAGING_PAYMENT_SANDBOX_CONFIRMED=true` is set only after provider sandbox/mock mode is verified.
@@ -257,8 +257,8 @@ prove the failure is mutation-free.
 
 Do not attempt these in the current staging write phase:
 
-- Additive package containing premium entitlements.
-- Additive package containing add-on entitlements.
+- Premium/Add-on additive checkout for any user who is not eligible for both
+  the P4 extra-activation and extra-selection canaries.
 - Bulk planning.
 - Direct pickup reservation, including the experimental planned-pickup adapter.
 - Freeze or unfreeze.

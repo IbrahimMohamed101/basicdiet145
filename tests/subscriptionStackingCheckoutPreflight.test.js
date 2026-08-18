@@ -163,38 +163,64 @@ async function testBaseOnlyAdditiveCheckoutUsesSameResolvedQuote() {
   assert.strictEqual(originalCalls, 1);
 }
 
-async function testPremiumIsRejectedBeforeOriginalCheckout() {
+async function testPremiumIsAllowedForFullExtraCanary() {
   let originalCalls = 0;
   const quote = baseQuote({
     premiumItems: [{ premiumKey: "salmon", qty: 1 }],
   });
   const wrapper = createStackingCheckoutPreflightWrapper(
-    async () => { originalCalls += 1; return { ok: true }; },
+    async (_userId, _key, _body, _lang, runtime) => {
+      originalCalls += 1;
+      assert.strictEqual(runtime.stackingFinalizationIntent.mode, "additive_existing_parent");
+      return { ok: true };
+    },
     {
       globallyEnabled: () => true,
       writeEnabledForUser: () => true,
       resolveQuote: async () => quote,
       findExistingDraft: async () => null,
       findActiveContainer: async () => activeContainer(),
+      extraActivationEnabledForUser: () => true,
+      extraSelectionEnabledForUser: () => true,
     }
   );
 
-  await assert.rejects(
-    () => wrapper("user-1", "premium-key", {}, "ar"),
-    (err) => Boolean(
-      err
-      && err.code === "STACKING_PURCHASE_EXTRAS_NOT_READY"
-      && err.status === 409
-      && err.details.premiumNotSupported === true
-      && err.details.blockedBeforeInvoice === true
-    )
-  );
-  assert.strictEqual(originalCalls, 0);
+  const result = await wrapper("user-1", "premium-key", {}, "ar");
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(originalCalls, 1);
 }
 
-async function testAddonIsRejectedBeforeOriginalCheckout() {
+async function testAddonIsAllowedForFullExtraCanary() {
   let originalCalls = 0;
   const quote = baseQuote({
+    addonSubscriptions: [{ addonPlanId: "addon-1", quantityPerDay: 1 }],
+  });
+  const wrapper = createStackingCheckoutPreflightWrapper(
+    async (_userId, _key, _body, _lang, runtime) => {
+      originalCalls += 1;
+      assert.strictEqual(runtime.stackingFinalizationIntent.mode, "additive_existing_parent");
+      return { ok: true };
+    },
+    {
+      globallyEnabled: () => true,
+      writeEnabledForUser: () => true,
+      resolveQuote: async () => quote,
+      findExistingDraft: async () => null,
+      findActiveContainer: async () => activeContainer(),
+      extraActivationEnabledForUser: () => true,
+      extraSelectionEnabledForUser: () => true,
+    }
+  );
+
+  const result = await wrapper("user-1", "addon-key", {}, "ar");
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(originalCalls, 1);
+}
+
+async function testExtrasRemainBlockedUnlessBothCanariesAreEligible() {
+  let originalCalls = 0;
+  const quote = baseQuote({
+    premiumItems: [{ premiumKey: "salmon", qty: 1 }],
     addonSubscriptions: [{ addonPlanId: "addon-1", quantityPerDay: 1 }],
   });
   const wrapper = createStackingCheckoutPreflightWrapper(
@@ -205,15 +231,20 @@ async function testAddonIsRejectedBeforeOriginalCheckout() {
       resolveQuote: async () => quote,
       findExistingDraft: async () => null,
       findActiveContainer: async () => activeContainer(),
+      extraActivationEnabledForUser: () => true,
+      extraSelectionEnabledForUser: () => false,
     }
   );
 
   await assert.rejects(
-    () => wrapper("user-1", "addon-key", {}, "ar"),
+    () => wrapper("user-1", "blocked-extra-key", {}, "ar"),
     (err) => Boolean(
       err
       && err.code === "STACKING_PURCHASE_EXTRAS_NOT_READY"
+      && err.details.premiumNotSupported === true
       && err.details.addonsNotSupported === true
+      && err.details.activationEligible === true
+      && err.details.selectionEligible === false
       && err.details.blockedBeforeInvoice === true
     )
   );
@@ -265,8 +296,9 @@ async function run() {
   await testNonAllowlistedUserIsExactNoOp();
   await testFirstSubscriptionMayUseStandardPremiumFlow();
   await testBaseOnlyAdditiveCheckoutUsesSameResolvedQuote();
-  await testPremiumIsRejectedBeforeOriginalCheckout();
-  await testAddonIsRejectedBeforeOriginalCheckout();
+  await testPremiumIsAllowedForFullExtraCanary();
+  await testAddonIsAllowedForFullExtraCanary();
+  await testExtrasRemainBlockedUnlessBothCanariesAreEligible();
   await testCompletedIdempotentDraftStillReadsNormally();
   testUnsupportedExtraDetectionUsesCanonicalTotalsToo();
   console.log("subscription stacking checkout preflight tests passed");

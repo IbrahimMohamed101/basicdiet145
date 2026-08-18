@@ -6,6 +6,7 @@ const { logger } = require("../../utils/logger");
 const {
   isReadStackingEnabledForUser,
   isWriteStackingEnabledForUser,
+  isExtraActivationCanaryEnabledForUser,
   isExtraSelectionCanaryEnabledForUser,
 } = require("./subscriptionStackingRolloutPolicyService");
 const {
@@ -15,6 +16,10 @@ const {
   bucketEligibleOnDate,
   projectExtraEntitlements,
 } = require("./subscriptionExtraEntitlementBucketService");
+const {
+  buildPublicEntitlementGroups,
+  buildPublicEntitlementPackages,
+} = require("./subscriptionStackingClientContractService");
 
 const READ_EVENT = "subscription_stacking_current_overview_read";
 
@@ -32,7 +37,11 @@ function normalizeNonNegativeInteger(value) {
   return Math.floor(parsed);
 }
 
-function applyProjectionToCurrentOverviewResponse(response, projection) {
+function applyProjectionToCurrentOverviewResponse(
+  response,
+  projection,
+  { batches = null, businessDate = "" } = {}
+) {
   if (!response || typeof response !== "object" || !response.data) return response;
   if (!projection || typeof projection !== "object") return response;
 
@@ -55,6 +64,11 @@ function applyProjectionToCurrentOverviewResponse(response, projection) {
       totalMeals,
       remainingMeals,
       selectedMealsPerDay: requiredMealsPerDay,
+      entitlementGroups: buildPublicEntitlementGroups(projection),
+      hasMixedProteinGrams: Boolean(projection.hasMixedProteinGrams),
+      ...(Array.isArray(batches)
+        ? { entitlementPackages: buildPublicEntitlementPackages(batches, businessDate) }
+        : {}),
       mealBalance: {
         ...sourceBalance,
         totalMeals,
@@ -189,12 +203,13 @@ function defaultRuntime() {
   return {
     readEnabledForUser: (userId) => isReadStackingEnabledForUser(userId),
     writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
+    extraActivationEnabledForUser: (userId) => isExtraActivationCanaryEnabledForUser(userId),
     extraSelectionEnabledForUser: (userId) => isExtraSelectionCanaryEnabledForUser(userId),
     async findBatches({ userId, containerSubscriptionId }) {
       return SubscriptionEntitlementBatch.find({
         userId,
         containerSubscriptionId,
-        status: { $in: ["paid_scheduled", "active", "exhausted", "expired"] },
+        status: { $in: ["paid_scheduled", "active", "exhausted", "expired", "canceled"] },
       }).sort({ effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
     },
     findExtraBuckets({ userId, containerSubscriptionId }) {
@@ -267,10 +282,13 @@ function createCurrentOverviewReadWrapper(original, runtimeOverrides = null) {
       });
       const projectedResponse = applyProjectionToCurrentOverviewResponse(
         response,
-        projection
+        projection,
+        { batches, businessDate }
       );
       const hasPersistedPurchaseBatch = batches.some((row) => row.sourceType !== "legacy_seed");
-      const finalResponse = runtime.extraSelectionEnabledForUser(userId)
+      const extraSelectionEnabled = runtime.extraSelectionEnabledForUser(userId);
+      const extraActivationEnabled = runtime.extraActivationEnabledForUser(userId);
+      const responseWithExtras = extraSelectionEnabled
         && hasPersistedPurchaseBatch
         ? applyExtraProjectionToCurrentOverviewResponse(
           projectedResponse,
@@ -278,6 +296,23 @@ function createCurrentOverviewReadWrapper(original, runtimeOverrides = null) {
           businessDate
         )
         : projectedResponse;
+      const canAddPackage = runtime.writeEnabledForUser(userId);
+      const canStackExtras = canAddPackage
+        && extraActivationEnabled
+        && extraSelectionEnabled;
+      const finalResponse = {
+        ...responseWithExtras,
+        data: {
+          ...responseWithExtras.data,
+          stackingCapabilities: {
+            canAddPackage,
+            canStackBaseMeals: canAddPackage,
+            canStackPremium: canStackExtras,
+            canStackAddons: canStackExtras,
+            canScheduleFuture: canAddPackage,
+          },
+        },
+      };
       runtime.info(READ_EVENT, {
         outcome: "projection_applied",
         userId,

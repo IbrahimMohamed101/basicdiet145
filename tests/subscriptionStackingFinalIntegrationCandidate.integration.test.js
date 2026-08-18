@@ -4,7 +4,11 @@ process.env.NODE_ENV = "test";
 process.env.SUBSCRIPTION_STACKING_READ_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_WRITE_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS = "false";
+process.env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED = "true";
 process.env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED = "true";
+process.env.STAGING_DATABASE_ISOLATION_CONFIRMED = "true";
+process.env.STAGING_PAYMENT_SANDBOX_CONFIRMED = "true";
+process.env.STAGING_PAYMENT_MODE = "test";
 
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
@@ -54,10 +58,7 @@ const {
   applyPaymentSideEffects,
 } = require("../src/services/paymentApplicationService");
 const {
-  activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
-} = require("../src/services/subscription/subscriptionStackingActivationService");
-const {
-  applyPinnedExtrasPaidDraftToSubscriptionStackTransactional,
+  applyPaidDraftToSubscriptionStackTransactional,
 } = require(
   "../src/services/subscription/subscriptionStackingPaidDraftOrchestratorService"
 );
@@ -75,6 +76,27 @@ const {
 
 let replSet;
 let sequence = 0;
+
+const KSA_TIMEZONE = "Asia/Riyadh";
+
+function ksaDateStringOffset(days = 0) {
+  const target = new Date(Date.now() + (days * 24 * 60 * 60 * 1000));
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: KSA_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(target);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+const BUSINESS_DATE = ksaDateStringOffset(0);
+const TEST_DATE = ksaDateStringOffset(2);
+const OLD_START_DATE = ksaDateStringOffset(-5);
+const OLD_END_DATE = ksaDateStringOffset(30);
+const NEW_START_DATE = BUSINESS_DATE;
+const NEW_END_DATE = ksaDateStringOffset(25);
 
 function oid() {
   return new mongoose.Types.ObjectId();
@@ -162,9 +184,9 @@ async function createPurchaseFixture() {
     userId,
     planId: oldPlanId,
     status: "active",
-    startDate: ksaDate("2026-08-01"),
-    endDate: ksaDate("2026-08-26"),
-    validityEndDate: ksaDate("2026-08-26"),
+    startDate: ksaDate(OLD_START_DATE),
+    endDate: ksaDate(OLD_END_DATE),
+    validityEndDate: ksaDate(OLD_END_DATE),
     totalMeals: 78,
     remainingMeals: 20,
     selectedMealsPerDay: 3,
@@ -211,8 +233,8 @@ async function createPurchaseFixture() {
     addonSubscriptions: addons,
     daysCount: 26,
   });
-  const startDate = ksaDate("2026-08-06");
-  const endDate = ksaDate("2026-08-31");
+  const startDate = ksaDate(NEW_START_DATE);
+  const endDate = ksaDate(NEW_END_DATE);
   const draft = await CheckoutDraft.create({
     userId,
     planId: newPlanId,
@@ -289,6 +311,7 @@ async function createPurchaseFixture() {
   };
 
   process.env.SUBSCRIPTION_STACKING_USER_IDS = String(userId);
+  process.env.SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS = String(userId);
   process.env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS = String(userId);
   return {
     userId,
@@ -309,16 +332,13 @@ async function finalizePayment(source, channel = "webhook") {
     const serviceArgs = {
       draft,
       payment,
-      businessDate: "2026-08-12",
+      businessDate: BUSINESS_DATE,
       expectedParentSubscriptionId: source.container._id,
       session,
       runtime: {
         buildActivationPayload: async () => ({
           subscriptionPayload: source.subscriptionPayload,
         }),
-        activateIntoContainer: (args) => (
-          activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(args)
-        ),
       },
     };
     return applyPaymentSideEffects(
@@ -326,7 +346,7 @@ async function finalizePayment(source, channel = "webhook") {
       {
         findDraftById: async () => draft,
         finalizeSubscriptionDraftPaymentFlow: () => (
-          applyPinnedExtrasPaidDraftToSubscriptionStackTransactional(serviceArgs)
+          applyPaidDraftToSubscriptionStackTransactional(serviceArgs)
         ),
       }
     );
@@ -398,10 +418,10 @@ async function saveDay(source, catalog) {
   return selectionService.performDaySelectionUpdate({
     userId: source.userId,
     subscriptionId: source.container._id,
-    date: "2026-08-12",
+    date: TEST_DATE,
     mealSlots: mealSlots(catalog),
     requestedOneTimeAddonIds: [source.addonId],
-    getBusinessDate: async () => "2026-08-12",
+    getBusinessDate: async () => BUSINESS_DATE,
   });
 }
 
@@ -409,8 +429,8 @@ async function confirmDay(source) {
   return selectionService.performDayPlanningConfirmation({
     userId: source.userId,
     subscriptionId: source.container._id,
-    date: "2026-08-12",
-    getBusinessDate: async () => "2026-08-12",
+    date: TEST_DATE,
+    getBusinessDate: async () => BUSINESS_DATE,
   });
 }
 
@@ -482,7 +502,7 @@ async function snapshot(source) {
     SubscriptionExtraEntitlementAllocation.find({
       containerSubscriptionId: source.container._id,
     }).sort({ reservationKey: 1 }).lean(),
-    SubscriptionDay.findOne({ subscriptionId: source.container._id, date: "2026-08-12" }).lean(),
+    SubscriptionDay.findOne({ subscriptionId: source.container._id, date: TEST_DATE }).lean(),
     Payment.findById(source.payment._id).lean(),
     CheckoutDraft.findById(source.draft._id).lean(),
   ]);
@@ -493,10 +513,26 @@ async function testPaymentSelectionPickupLifecycle() {
   await clearDatabase();
   const source = await createPurchaseFixture();
   await finalizePayment(source, "webhook");
+  let current = await snapshot(source);
+  assert.strictEqual(current.batches.length, 2);
+  assert.strictEqual(current.buckets.length, 2);
+  assert.strictEqual(current.baseAllocations.length, 0);
+  assert.strictEqual(current.extraAllocations.length, 0);
+
+  const activationRace = await Promise.all(Array.from({ length: 20 }, (_, index) => (
+    finalizePayment(source, index % 2 === 0 ? "webhook" : "api_verify")
+  )));
+  assert.strictEqual(activationRace.length, 20);
+  current = await snapshot(source);
+  assert.strictEqual(current.batches.length, 2);
+  assert.strictEqual(current.buckets.length, 2);
+  assert.strictEqual(current.baseAllocations.length, 0);
+  assert.strictEqual(current.extraAllocations.length, 0);
+
   const catalog = await createCatalog();
 
   await Promise.all(Array.from({ length: 20 }, () => saveDay(source, catalog)));
-  let current = await snapshot(source);
+  current = await snapshot(source);
   assert.strictEqual(await Subscription.countDocuments({ userId: source.userId, status: "active" }), 1);
   assert.strictEqual(current.batches.length, 2);
   assert.strictEqual(current.buckets.length, 2);
