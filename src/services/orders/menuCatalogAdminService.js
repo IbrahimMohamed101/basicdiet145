@@ -199,6 +199,7 @@ function createMenuCatalogAdminService(deps) {
         errors: [],
       })),
     ]);
+    const catalogItemsById = await loadCatalogItemsByIdForDocs(products, options);
 
     const categoryIds = new Set(categories.map((category) => String(category._id)));
     const categoriesById = new Map(categories.map((category) => [String(category._id), category]));
@@ -227,7 +228,9 @@ function createMenuCatalogAdminService(deps) {
         .map((optionRelation) => {
           const option = optionsById.get(String(optionRelation.optionId));
           if (!option) return null;
-          return serializeDashboardPreviewOption(optionRelation, option, lang);
+          return serializeDashboardPreviewOption(optionRelation, option, lang, {
+            catalogItem: catalogItemsById.get(String(option.catalogItemId || "")) || null,
+          });
         })
         .filter(Boolean)
         .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -245,7 +248,13 @@ function createMenuCatalogAdminService(deps) {
       const groupsForProduct = Array.isArray(product._publicGroups)
         ? product._publicGroups.sort((a, b) => a.sortOrder - b.sortOrder)
         : [];
-      productsByCategory.get(categoryId).push(serializeDashboardPreviewProduct(product, lang, groupsForProduct, category._id));
+      productsByCategory.get(categoryId).push(serializeDashboardPreviewProduct(
+        product,
+        lang,
+        groupsForProduct,
+        category._id,
+        { catalogItem: catalogItemsById.get(String(product.catalogItemId || "")) || null }
+      ));
     });
 
     const serializedCategories = categories

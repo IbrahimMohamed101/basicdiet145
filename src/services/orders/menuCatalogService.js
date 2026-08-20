@@ -370,7 +370,9 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
           return null;
         }
         if (!option || !isCustomerVisibleOption(option, group, product)) return null;
-        return serializePublicOption(optionRelation, option, lang);
+        return serializePublicOption(optionRelation, option, lang, {
+          catalogItem: catalogItemsById.get(String(option.catalogItemId || "")) || null,
+        });
       })
       .filter(Boolean)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -392,7 +394,13 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     const groupsForProduct = Array.isArray(product._publicGroups)
       ? product._publicGroups.sort((a, b) => a.sortOrder - b.sortOrder)
       : [];
-    productsByCategory.get(categoryId).push(serializePublicProduct(product, lang, groupsForProduct, publicCategory._id));
+    productsByCategory.get(categoryId).push(serializePublicProduct(
+      product,
+      lang,
+      groupsForProduct,
+      publicCategory._id,
+      { catalogItem: catalogItemsById.get(String(product.catalogItemId || "")) || null }
+    ));
   });
 
   const serializedCategories = categories

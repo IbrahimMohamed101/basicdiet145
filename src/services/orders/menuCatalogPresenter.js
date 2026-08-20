@@ -57,11 +57,31 @@ function serializePublicCategory(category, lang, products, { includeUi = false }
   return payload;
 }
 
-function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId, { includePresentationUi = false } = {}) {
+function normalizeNutrition(nutrition) {
+  const source = nutrition && typeof nutrition === "object" ? nutrition : {};
+  const carbGrams = source.carbGrams ?? source.carbsGrams;
+  return {
+    calories: Number(source.calories || 0),
+    proteinGrams: Number(source.proteinGrams || 0),
+    carbGrams: Number(carbGrams || 0),
+    fatGrams: Number(source.fatGrams || 0),
+  };
+}
+
+function resolveNutrition(doc, catalogItem) {
+  if (catalogItem && catalogItem.nutrition) return normalizeNutrition(catalogItem.nutrition);
+  return normalizeNutrition(doc && doc.nutrition);
+}
+
+function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId, {
+  includePresentationUi = false,
+  catalogItem = null,
+} = {}) {
   const hasOptionGroups = Array.isArray(optionGroups) && optionGroups.length > 0;
   const isCustomizable = Boolean(product.isCustomizable) && (product.pricingModel === "per_100g" || hasOptionGroups);
   const requiresBuilder = isCustomizable;
   const canAddDirectly = product.pricingModel === "fixed" && !requiresBuilder && !hasOptionGroups;
+  const nutrition = resolveNutrition(product, catalogItem);
   return {
     id: String(product._id),
     key: product.key,
@@ -80,6 +100,9 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
     minWeightGrams: Number(product.minWeightGrams || 0),
     maxWeightGrams: Number(product.maxWeightGrams || 0),
     weightStepGrams: Number(product.weightStepGrams || 50),
+    calories: nutrition.calories,
+    nutrition,
+    nutritionBasis: product.pricingModel === "per_100g" ? "per_100g" : "per_serving",
     sortOrder: Number(product.sortOrder || 0),
     ui: includePresentationUi
       ? buildPublicProductUi(product)
@@ -112,13 +135,14 @@ function serializePublicGroup(relation, group, options, lang) {
   return payload;
 }
 
-function serializePublicOption(relation, option, lang) {
+function serializePublicOption(relation, option, lang, { catalogItem = null } = {}) {
   const extraPriceHalala = relation.extraPriceHalala === null || relation.extraPriceHalala === undefined
     ? Number(option.extraPriceHalala || 0) : Number(relation.extraPriceHalala || 0);
   const extraWeightUnitGrams = relation.extraWeightUnitGrams === null || relation.extraWeightUnitGrams === undefined
     ? Number(option.extraWeightUnitGrams || 0) : Number(relation.extraWeightUnitGrams || 0);
   const extraWeightPriceHalala = relation.extraWeightPriceHalala === null || relation.extraWeightPriceHalala === undefined
     ? Number(option.extraWeightPriceHalala || 0) : Number(relation.extraWeightPriceHalala || 0);
+  const nutrition = resolveNutrition(option, catalogItem);
   const payload = {
     id: String(option._id),
     optionId: String(option._id),
@@ -133,7 +157,9 @@ function serializePublicOption(relation, option, lang) {
     extraFeeHalala: extraPriceHalala,
     extraWeightUnitGrams,
     extraWeightPriceHalala,
-    calories: Number(option.nutrition?.calories || 0),
+    calories: nutrition.calories,
+    nutrition,
+    nutritionBasis: "per_serving",
     displayCategoryKey: option.displayCategoryKey || "",
     premiumKey: option.premiumKey || "",
     selectionType: option.selectionType || "",
@@ -182,9 +208,9 @@ function serializeDashboardPreviewCategory(category, lang, products) {
   };
 }
 
-function serializeDashboardPreviewProduct(product, lang, optionGroups, categoryId = product.categoryId) {
+function serializeDashboardPreviewProduct(product, lang, optionGroups, categoryId = product.categoryId, options = {}) {
   return {
-    ...serializePublicProduct(product, lang, optionGroups, categoryId, { includePresentationUi: true }),
+    ...serializePublicProduct(product, lang, optionGroups, categoryId, { ...options, includePresentationUi: true }),
     productId: String(product._id),
     categoryId: String(categoryId),
     status: serializeStatus(product),
@@ -207,9 +233,9 @@ function serializeDashboardPreviewGroup(relation, group, options, lang) {
   };
 }
 
-function serializeDashboardPreviewOption(relation, option, lang) {
+function serializeDashboardPreviewOption(relation, option, lang, options = {}) {
   return {
-    ...serializePublicOption(relation, option, lang),
+    ...serializePublicOption(relation, option, lang, options),
     productOptionId: String(relation._id),
     optionId: String(option._id),
     groupId: String(relation.groupId),
@@ -248,6 +274,8 @@ module.exports = {
   localizeName,
   localizedPair,
   truthyByDefault,
+  normalizeNutrition,
+  resolveNutrition,
   serializePublicCategory,
   serializePublicProduct,
   serializePublicGroup,
