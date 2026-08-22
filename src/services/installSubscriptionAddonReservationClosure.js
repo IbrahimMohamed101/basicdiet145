@@ -4,6 +4,9 @@ const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionDailyAddonOperation = require("../models/SubscriptionDailyAddonOperation");
 const dailyAddonService = require("./subscription/subscriptionDailyAddonService");
+const {
+  isPersistedStackingSelectionEnabled,
+} = require("./subscription/subscriptionStackingSelectionEligibilityService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionAddonReservationClosure.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionAddonReservationClosure.wrapped");
@@ -631,6 +634,13 @@ function patchPlanningService() {
   if (typeof original !== "function" || original[WRAPPED_KEY]) return;
 
   const wrapped = async function reservationAwareDaySelectionUpdate(args = {}) {
+    if (await isPersistedStackingSelectionEnabled({
+      userId: args.userId,
+      subscriptionId: args.subscriptionId,
+      requireExtraSelection: true,
+    })) {
+      return original(args);
+    }
     const body = args.body || {};
     const explicitSubmitted = hasExplicitAddonPayload(body);
     let previousSelections = [];

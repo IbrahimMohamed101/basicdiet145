@@ -104,8 +104,8 @@ function buildPaidPurchase(container, overrides = {}) {
   return { draft, payment, subscriptionPayload };
 }
 
-function createRuntime({ container, requestedStartDay = null } = {}) {
-  const batches = [];
+function createRuntime({ container, requestedStartDay = null, initialBatches = [] } = {}) {
+  const batches = initialBatches.map((batch) => ({ ...batch }));
   const calls = {
     requestedDates: [],
     containerUpdates: [],
@@ -239,6 +239,48 @@ async function testFuturePurchaseExtendsHorizonButDoesNotExposeBalanceEarly() {
   assert.strictEqual(mirror.remainingMeals, 20);
   assert.strictEqual(mirror.selectedMealsPerDay, 3);
   assert.strictEqual(dateUtils.toKSADateString(mirror.validityEndDate), "2026-09-04");
+}
+
+async function testExistingInitialPurchaseBatchDoesNotCreateLegacySeed() {
+  const container = buildContainer();
+  const initialBatch = {
+    _id: new mongoose.Types.ObjectId(),
+    userId: container.userId,
+    containerSubscriptionId: container._id,
+    planId: container.planId,
+    sourceKey: `payment:${new mongoose.Types.ObjectId()}`,
+    sourceType: "checkout",
+    applicationState: "applied",
+    status: "active",
+    effectiveStartDate: container.startDate,
+    endDate: container.endDate,
+    validityEndDate: container.validityEndDate,
+    totalMeals: 78,
+    remainingMeals: 20,
+    reservedMeals: 0,
+    consumedMeals: 58,
+    forfeitedMeals: 0,
+    mealsPerDay: 3,
+    proteinGrams: 200,
+    deliverySnapshot: {},
+  };
+  const purchase = buildPaidPurchase(container);
+  const { runtime, batches } = createRuntime({
+    container,
+    initialBatches: [initialBatch],
+  });
+
+  const result = await activatePaidDraftIntoExistingContainerTransactional({
+    ...purchase,
+    businessDate: "2026-08-06",
+    session: transactionalSession(),
+    runtime,
+  });
+
+  assert.strictEqual(result.legacyBatch, null);
+  assert.strictEqual(batches.length, 2);
+  assert.strictEqual(batches.some((batch) => batch.sourceType === "legacy_seed"), false);
+  assert.strictEqual(batches.some((batch) => batch.sourceKey === `payment:${purchase.payment._id}`), true);
 }
 
 async function testCommittedTodayShiftsPurchaseUsingKsaDate() {
@@ -384,6 +426,7 @@ function testMirrorProjectionAndExtrasDetection() {
 async function run() {
   await testImmediateMixedGramPurchaseStacksWithoutCancelingContainer();
   await testFuturePurchaseExtendsHorizonButDoesNotExposeBalanceEarly();
+  await testExistingInitialPurchaseBatchDoesNotCreateLegacySeed();
   await testCommittedTodayShiftsPurchaseUsingKsaDate();
   await testNoActiveContainerDelegatesToStandardActivation();
   await testExpectedParentCannotDisappearOrChange();

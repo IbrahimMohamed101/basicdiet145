@@ -315,27 +315,36 @@ async function activatePaidDraftIntoExistingContainerCoreTransactional({
     );
   }
 
-  const legacyPayload = buildLegacyEntitlementBatchPayload({
-    subscription: container,
-    businessDate,
-    now,
-  });
-  const legacyResult = await runtime.ensureBatchByPayload({
-    payload: legacyPayload,
-    session,
-  });
-
   let existingBatches = await runtime.findBatches({
     containerSubscriptionId: container._id,
     session,
   });
-  if (!existingBatches.some((batch) => batch.sourceKey === legacyPayload.sourceKey)) {
-    existingBatches = [
-      ...existingBatches,
-      legacyResult.batch && typeof legacyResult.batch.toObject === "function"
-        ? legacyResult.batch.toObject()
-        : legacyResult.batch,
-    ];
+  // New initial activations already have an applied checkout batch. Only seed
+  // a legacy snapshot for subscriptions that genuinely predate the stacking
+  // ledger; otherwise the initial purchase would be counted twice.
+  const hasAppliedPurchaseBatch = existingBatches.some((batch) => (
+    String(batch.sourceType || "") !== "legacy_seed"
+    && String(batch.applicationState || "") === "applied"
+  ));
+  let legacyResult = { batch: null, created: false, idempotent: true };
+  if (!hasAppliedPurchaseBatch) {
+    const legacyPayload = buildLegacyEntitlementBatchPayload({
+      subscription: container,
+      businessDate,
+      now,
+    });
+    legacyResult = await runtime.ensureBatchByPayload({
+      payload: legacyPayload,
+      session,
+    });
+    if (!existingBatches.some((batch) => batch.sourceKey === legacyPayload.sourceKey)) {
+      existingBatches = [
+        ...existingBatches,
+        legacyResult.batch && typeof legacyResult.batch.toObject === "function"
+          ? legacyResult.batch.toObject()
+          : legacyResult.batch,
+      ];
+    }
   }
 
   const purchasePayload = buildPurchaseEntitlementBatchPayload({

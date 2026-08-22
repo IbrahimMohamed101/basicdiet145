@@ -312,14 +312,30 @@ async function testInitialAuthorityUsesLegacyOnlyWhenNoParentExists() {
   markInitial(draft);
   let originalCalls = 0;
   let stackCalls = 0;
+  let seedCalls = 0;
+  const subscriptionId = new mongoose.Types.ObjectId();
+  const finalDraft = { ...draft, status: "completed", subscriptionId };
   const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
     async () => {
       originalCalls += 1;
-      return { applied: true, subscriptionId: "initial-subscription" };
+      return { applied: true, subscriptionId: String(subscriptionId) };
     },
     {
       writeEnabledForUser: () => true,
       findActiveContainer: async () => null,
+      findDraftById: async () => finalDraft,
+      findPaymentById: async () => payment,
+      findSubscriptionById: async () => ({ _id: subscriptionId }),
+      getBusinessDate: async () => "2026-08-06",
+      seedInitialEntitlements: async (args) => {
+        seedCalls += 1;
+        assert.strictEqual(args.draft, finalDraft);
+        assert.strictEqual(args.payment, payment);
+        assert.strictEqual(String(args.containerSubscriptionId), String(subscriptionId));
+        assert.strictEqual(args.businessDate, "2026-08-06");
+        assert.strictEqual(args.session.inTransaction(), true);
+        return { batch: { _id: new mongoose.Types.ObjectId() }, idempotent: false };
+      },
       applyStack: async () => {
         stackCalls += 1;
         return null;
@@ -331,9 +347,37 @@ async function testInitialAuthorityUsesLegacyOnlyWhenNoParentExists() {
     payment,
     session: transactionalSession(),
   });
-  assert.strictEqual(result.subscriptionId, "initial-subscription");
+  assert.strictEqual(result.subscriptionId, String(subscriptionId));
   assert.strictEqual(originalCalls, 1);
+  assert.strictEqual(seedCalls, 1);
   assert.strictEqual(stackCalls, 0);
+  assert.strictEqual(result.stacking.initialBatchCreated, true);
+}
+
+async function testInitialBatchFailureRejectsInsideCallerTransaction() {
+  const { draft, payment } = ids();
+  markInitial(draft);
+  const subscriptionId = new mongoose.Types.ObjectId();
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => ({ applied: true, subscriptionId: String(subscriptionId) }),
+    {
+      writeEnabledForUser: () => true,
+      findActiveContainer: async () => null,
+      findDraftById: async () => ({ ...draft, status: "completed", subscriptionId }),
+      findPaymentById: async () => payment,
+      findSubscriptionById: async () => ({ _id: subscriptionId }),
+      getBusinessDate: async () => "2026-08-06",
+      seedInitialEntitlements: async () => {
+        const err = new Error("seed failed");
+        err.code = "SEED_FAILED";
+        throw err;
+      },
+    }
+  );
+  await assert.rejects(
+    () => wrapper({ draft, payment, session: transactionalSession() }),
+    (err) => Boolean(err && err.code === "SEED_FAILED")
+  );
 }
 
 async function testInitialAuthorityCannotReplaceNewlyActiveParent() {
@@ -372,6 +416,7 @@ async function run() {
   await testAllowlistedDraftWithoutAuthorityFailsClosed();
   await testAdditiveDraftCannotBecomeLegacyAfterKillSwitch();
   await testInitialAuthorityUsesLegacyOnlyWhenNoParentExists();
+  await testInitialBatchFailureRejectsInsideCallerTransaction();
   await testInitialAuthorityCannotReplaceNewlyActiveParent();
   console.log("subscription stacking finalize router tests passed");
 }

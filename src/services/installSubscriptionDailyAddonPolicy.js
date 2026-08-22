@@ -21,6 +21,9 @@ const {
 const {
   transitionAllocation,
 } = require("./subscription/subscriptionMealEntitlementService");
+const {
+  isPersistedStackingSelectionEnabled,
+} = require("./subscription/subscriptionStackingSelectionEligibilityService");
 
 const INSTALL_KEY = Symbol.for("basicdiet.subscriptionDailyAddonPolicy.installed");
 const WRAPPED_KEY = Symbol.for("basicdiet.subscriptionDailyAddonPolicy.wrapped");
@@ -504,6 +507,13 @@ function patchPlanningService(dailyAddonService, authority) {
   const pickupAppend = planningService.appendDayMealsForClient;
 
   wrapExport(planningService, "updateDaySelectionForClient", () => async function dailyAddonAwareUpdate(args = {}) {
+    if (await isPersistedStackingSelectionEnabled({
+      userId: args.userId,
+      subscriptionId: args.subscriptionId,
+      requireExtraSelection: true,
+    })) {
+      return baseUpdate(args);
+    }
     const body = args.body || {};
     const explicitlySubmittedAddons = Object.prototype.hasOwnProperty.call(body, "addonsOneTime")
       || Object.prototype.hasOwnProperty.call(body, "oneTimeAddonSelections");
@@ -525,6 +535,13 @@ function patchPlanningService(dailyAddonService, authority) {
   });
 
   wrapExport(planningService, "confirmDayPlanningForClient", (original) => async function dailyAddonAwareConfirm(args = {}) {
+    if (await isPersistedStackingSelectionEnabled({
+      userId: args.userId,
+      subscriptionId: args.subscriptionId,
+      requireExtraSelection: true,
+    })) {
+      return original(args);
+    }
     const result = await original(args);
     if (!result || result.ok !== true) return result;
     const day = await SubscriptionDay.findOne({ subscriptionId: args.subscriptionId, date: args.date }).lean();

@@ -4,7 +4,9 @@ const {
   isExtraSelectionCanaryEnabledForUser,
   isWriteStackingEnabledForUser,
 } = require("./subscriptionStackingRolloutPolicyService");
-const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
+const {
+  hasPersistedStackingPurchaseBatch,
+} = require("./subscriptionStackingSelectionEligibilityService");
 const {
   performStackingDayPlanningConfirmation,
   performStackingDaySelectionUpdate,
@@ -23,11 +25,7 @@ function defaultRuntime() {
   return {
     writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
     extraCanaryEnabledForUser: (userId) => isExtraSelectionCanaryEnabledForUser(userId),
-    hasPersistedStackingBatch: (subscriptionId) => SubscriptionEntitlementBatch.exists({
-      containerSubscriptionId: subscriptionId,
-      sourceType: { $ne: "legacy_seed" },
-      applicationState: "applied",
-    }),
+    hasPersistedStackingBatch: (subscriptionId) => hasPersistedStackingPurchaseBatch(subscriptionId),
     stackingUpdate: (args) => performStackingDaySelectionUpdate(args),
     stackingValidation: (args) => performStackingDaySelectionValidation(args),
     stackingConfirmation: (args) => performStackingDayPlanningConfirmation(args),

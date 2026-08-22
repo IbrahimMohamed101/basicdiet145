@@ -8,11 +8,11 @@ const {
   serializeSubscriptionDayForClient,
   shapeMealPlannerReadFields,
 } = require("./subscriptionClientSupportService");
-const {
-  performDaySelectionUpdate,
-  performDaySelectionValidation,
-  performDayPlanningConfirmation,
-} = require("./subscriptionSelectionService");
+// Keep the module object instead of destructuring its functions. The stacking
+// installer replaces these exports after the legacy repair composition loads
+// this client service; resolving the property at call time prevents HTTP
+// handlers from retaining stale legacy selection functions.
+const subscriptionSelectionService = require("./subscriptionSelectionService");
 const { localizePolicyErrorMessage } = require("./subscriptionDayModificationPolicyService");
 
 function buildErrorResult(status, code, message, details) {
@@ -325,7 +325,7 @@ async function updateDaySelectionForClient({
   if (shapeError) return shapeError;
 
   try {
-    const result = await performDaySelectionUpdate({
+    const result = await subscriptionSelectionService.performDaySelectionUpdate({
       userId,
       subscriptionId,
       date,
@@ -415,7 +415,7 @@ async function appendDayMealsForClient({
   if (shapeError) return shapeError;
 
   try {
-    const result = await performDaySelectionUpdate({
+    const result = await subscriptionSelectionService.performDaySelectionUpdate({
       userId,
       subscriptionId,
       date,
@@ -500,7 +500,7 @@ async function validateDaySelectionForClient({
       return buildErrorResult(403, "FORBIDDEN", "Forbidden");
     }
 
-    const result = await performDaySelectionValidation({
+    const result = await subscriptionSelectionService.performDaySelectionValidation({
       userId,
       subscriptionId,
       date,
@@ -547,7 +547,7 @@ async function confirmDayPlanningForClient({
   }
 
   try {
-    const result = await performDayPlanningConfirmation({
+    const result = await subscriptionSelectionService.performDayPlanningConfirmation({
       userId,
       subscriptionId,
       date,

@@ -12,6 +12,9 @@ const {
   applyPaidDraftToSubscriptionStackTransactional,
 } = require("./subscriptionStackingPaidDraftOrchestratorService");
 const {
+  seedInitialPaidPurchaseEntitlementsTransactional,
+} = require("./subscriptionStackingInitialActivationService");
+const {
   FINALIZATION_ROUTES,
   resolveFinalizationAuthority,
 } = require("./subscriptionStackingFinalizationAuthorityService");
@@ -30,11 +33,13 @@ function defaultRuntime() {
     startSession: () => startSafeSession(),
     findDraftById: (draftId, session) => CheckoutDraft.findById(draftId).session(session),
     findPaymentById: (paymentId, session) => Payment.findById(paymentId).session(session),
+    findSubscriptionById: (subscriptionId, session) => Subscription.findById(subscriptionId).session(session),
     findActiveContainer: (userId, session) => Subscription.findOne({
       userId,
       status: "active",
     }).select("_id userId status").session(session),
     getBusinessDate: () => getRestaurantBusinessDate(),
+    seedInitialEntitlements: (args) => seedInitialPaidPurchaseEntitlementsTransactional(args),
     applyStack: (args) => applyPaidDraftToSubscriptionStackTransactional(args),
   };
 }
@@ -153,7 +158,55 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
           { activeSubscriptionId: String(activeContainer._id || "") }
         );
       }
-      return originalFinalize(args, originalRuntimeOverrides);
+      const standardResult = await originalFinalize(args, originalRuntimeOverrides);
+      if (!standardResult || !standardResult.applied || !standardResult.subscriptionId) {
+        return standardResult;
+      }
+      const businessDate = await runtime.getBusinessDate();
+      if (!businessDate) {
+        throw routerError(
+          "STACKING_BUSINESS_DATE_UNAVAILABLE",
+          "Restaurant business date is unavailable"
+        );
+      }
+      const [finalDraft, finalPayment, subscription] = await Promise.all([
+        runtime.findDraftById(draft._id, session),
+        runtime.findPaymentById(payment._id, session),
+        runtime.findSubscriptionById(standardResult.subscriptionId, session),
+      ]);
+      if (!finalDraft || !finalPayment || !subscription) {
+        throw routerError(
+          "STACKING_INITIAL_FINALIZED_DOCUMENT_MISSING",
+          "Initial activation completed without all entitlement source documents",
+          409,
+          { subscriptionId: String(standardResult.subscriptionId) }
+        );
+      }
+      const seeded = await runtime.seedInitialEntitlements({
+        draft: finalDraft,
+        payment: finalPayment,
+        subscriptionPayload: typeof subscription.toObject === "function"
+          ? subscription.toObject()
+          : subscription,
+        containerSubscriptionId: subscription._id,
+        businessDate,
+        session,
+      });
+      if (!seeded || !seeded.batch) {
+        throw routerError(
+          "STACKING_INITIAL_ENTITLEMENT_RESULT_INVALID",
+          "Initial activation did not produce an entitlement batch"
+        );
+      }
+      return {
+        ...standardResult,
+        stacking: {
+          applied: true,
+          idempotent: Boolean(seeded.idempotent),
+          route: authority.route,
+          initialBatchCreated: true,
+        },
+      };
     }
 
     const businessDate = await runtime.getBusinessDate();
