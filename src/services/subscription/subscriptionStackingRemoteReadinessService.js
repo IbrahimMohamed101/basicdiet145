@@ -90,8 +90,9 @@ function buildSubscriptionStackingRemoteReadiness({
   const extraSelection = resolveExtraSelectionCanaryState(env);
   const deploymentSafety = resolveDeploymentSafetyAttestation(env);
   const deploymentCommitSha = resolveDeploymentCommit(env);
+  const globalRollout = rollout.allowAllUsers;
   const shadowEnabledForUser = rollout.shadowEnabled
-    && isAllowlisted(rollout.shadowAllowlist, subject);
+    && (globalRollout || isAllowlisted(rollout.shadowAllowlist, subject));
   const readEnabledForUser = isReadStackingEnabledForUser(subject, env);
   const writeEnabledForUser = isWriteStackingEnabledForUser(subject, env);
   const extraActivationEnabledForUser = isExtraActivationCanaryEnabledForUser(
@@ -131,6 +132,9 @@ function buildSubscriptionStackingRemoteReadiness({
     && !rollout.allowAllUsers
     && extraActivation.allowlist.has(subject)
     && extraSelection.allowlist.has(subject);
+  const globalExtraRollout = globalRollout
+    && extraActivation.enabled
+    && extraSelection.enabled;
   const requiredExtraRoutersConnected = writeRouterConnected
     && selectionRouterConnected
     && entitlementRouterConnected
@@ -144,11 +148,11 @@ function buildSubscriptionStackingRemoteReadiness({
     && deploymentSafety.writeSafe
     && readEnabledForUser
     && writeEnabledForUser
-    && singleUserCanary;
+    && (singleUserCanary || globalRollout);
   const extraEntitlementCanaryReady = baseMealCanaryReady
     && extraActivationEnabledForUser
     && extraSelectionEnabledForUser
-    && singleExtraCanary
+    && (singleExtraCanary || globalExtraRollout)
     && requiredExtraRoutersConnected;
 
   return {
@@ -171,6 +175,7 @@ function buildSubscriptionStackingRemoteReadiness({
       readEnabledForUser,
       writeEnabledForUser,
       singleUserCanary,
+      globalRollout,
       wildcardConfigured: hasWildcard,
       allowAllUsers: rollout.allowAllUsers,
       extraActivationEnabledGlobally: extraActivation.enabled,
@@ -178,6 +183,7 @@ function buildSubscriptionStackingRemoteReadiness({
       extraActivationEnabledForUser,
       extraSelectionEnabledForUser,
       singleExtraCanary,
+      globalExtraRollout,
       extraWildcardConfigured,
     },
     runtime: {
@@ -202,16 +208,20 @@ function buildSubscriptionStackingRemoteReadiness({
       entitlementPackages: true,
     },
     certification: {
+      rolloutMode: globalRollout ? "global" : "canary",
       readProbeReady,
       baseMealCanaryReady,
+      baseMealRolloutReady: baseMealCanaryReady,
       extraEntitlementCanaryReady,
+      extraEntitlementRolloutReady: extraEntitlementCanaryReady,
       extraEntitlementBlockedReasons: [
         !baseMealCanaryReady ? "base_meal_canary_not_ready" : null,
         !extraActivation.enabled ? "extra_activation_disabled" : null,
         !extraSelection.enabled ? "extra_selection_disabled" : null,
-        extraWildcardConfigured ? "extra_wildcard_configured" : null,
-        rollout.allowAllUsers ? "allow_all_users_forbidden" : null,
-        !singleExtraCanary ? "single_extra_canary_policy_not_satisfied" : null,
+        extraWildcardConfigured && !globalRollout ? "extra_wildcard_configured" : null,
+        !(singleExtraCanary || globalExtraRollout)
+          ? "extra_rollout_policy_not_satisfied"
+          : null,
         !extraActivationEnabledForUser ? "extra_activation_not_enabled_for_user" : null,
         !extraSelectionEnabledForUser ? "extra_selection_not_enabled_for_user" : null,
         !requiredExtraRoutersConnected ? "required_extra_routers_not_connected" : null,
@@ -226,7 +236,7 @@ function buildSubscriptionStackingRemoteReadiness({
         !shadowEnabledForUser ? "shadow_not_enabled_for_user" : null,
         !readEnabledForUser ? "read_not_enabled_for_user" : null,
         !writeEnabledForUser ? "write_not_enabled_for_user" : null,
-        !singleUserCanary ? "single_user_canary_policy_not_satisfied" : null,
+        !(singleUserCanary || globalRollout) ? "rollout_policy_not_satisfied" : null,
       ].filter(Boolean),
     },
   };

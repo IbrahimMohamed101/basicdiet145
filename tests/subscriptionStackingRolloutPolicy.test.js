@@ -112,6 +112,21 @@ function testPerUserReadAndWriteGates() {
   );
 }
 
+function testGlobalReadAndWriteGatesDoNotRequireAllowlists() {
+  const env = {
+    SUBSCRIPTION_STACKING_READ_ENABLED: "true",
+    SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
+    SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
+  };
+
+  const result = assertSubscriptionStackingRolloutConfiguration(env);
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.allowAllUsers, true);
+  assert.strictEqual(isReadStackingEnabledForUser("user-a", env), true);
+  assert.strictEqual(isWriteStackingEnabledForUser("user-b", env), true);
+  assert.strictEqual(isWriteStackingEnabledForUser("", env), false);
+}
+
 function testStateParsing() {
   const state = resolveSubscriptionStackingRolloutState({
     SUBSCRIPTION_STACKING_SHADOW_ENABLED: " TRUE ",
@@ -135,6 +150,7 @@ function run() {
   testReadAndWriteRequireAllowlist();
   testWildcardWriteRequiresExplicitOverride();
   testPerUserReadAndWriteGates();
+  testGlobalReadAndWriteGatesDoNotRequireAllowlists();
   testStateParsing();
 
   console.log("subscription stacking rollout policy tests passed");

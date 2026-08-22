@@ -21,7 +21,8 @@ Do not start a remote write test until all conditions are true:
   - `clientdashbourd-production.up.railway.app`
 - A dedicated staging mobile user is available.
 - The user ID is known before configuring the allowlists.
-- Premium items and add-ons are limited to the single fully allowlisted P4 canary user.
+- Premium items and add-ons are limited to the single fully allowlisted P4 canary
+  user until the isolated-staging global rollout gate is explicitly enabled.
 - Direct pickup reservation, freeze, cancellation, and skip range are not used.
 - `STAGING_DATABASE_ISOLATION_CONFIRMED=true` is set only after database separation is verified.
 - `STAGING_PAYMENT_SANDBOX_CONFIRMED=true` is set only after provider sandbox/mock mode is verified.
@@ -146,6 +147,33 @@ stackingFinalization.expectedParentSubscriptionId = <KNOWN_PARENT_ID>
 Stop if the intent is missing or points to any other parent. Closing the write
 flag after checkout must fail this additive finalization closed; it must never
 fall back to legacy replacement.
+
+## 5B. Global isolated-staging write
+
+Use this only after the single-user canary passes and only on the isolated
+staging database with sandbox payments. Production remains hard-blocked by the
+runtime safety service.
+
+```text
+NODE_ENV=staging
+STAGING_DATABASE_ISOLATION_CONFIRMED=true
+STAGING_PAYMENT_SANDBOX_CONFIRMED=true
+STAGING_PAYMENT_MODE=sandbox
+SUBSCRIPTION_STACKING_SHADOW_ENABLED=true
+SUBSCRIPTION_STACKING_READ_ENABLED=true
+SUBSCRIPTION_STACKING_WRITE_ENABLED=true
+SUBSCRIPTION_STACKING_ALLOW_ALL_USERS=true
+SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED=true
+SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED=true
+SUBSCRIPTION_STACKING_SHADOW_USER_IDS=
+SUBSCRIPTION_STACKING_USER_IDS=
+SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS=
+SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS=
+```
+
+Run the staging validator before deployment. The readiness response must report
+`rollout.globalRollout=true`, `baseMealRolloutReady=true`, and
+`extraEntitlementRolloutReady=true` for authenticated staging users.
 
 ## 6. Acceptance scenario A — overlapping packages
 

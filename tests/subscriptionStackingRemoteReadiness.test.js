@@ -103,7 +103,7 @@ function run() {
   assert.strictEqual(missingCommit.certification.readProbeReady, false);
   assert(missingCommit.certification.blockedReasons.includes("deployment_commit_not_exposed"));
 
-  const wildcard = buildSubscriptionStackingRemoteReadiness({
+  const global = buildSubscriptionStackingRemoteReadiness({
     userId: USER_ID,
     env: buildEnv({
       SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "*",
@@ -112,8 +112,12 @@ function run() {
     }),
     globalObject: {},
   });
-  assert.strictEqual(wildcard.rollout.singleUserCanary, false);
-  assert.strictEqual(wildcard.certification.baseMealCanaryReady, false);
+  assert.strictEqual(global.rollout.singleUserCanary, false);
+  assert.strictEqual(global.rollout.globalRollout, true);
+  assert.strictEqual(global.rollout.writeEnabledForUser, true);
+  assert.strictEqual(global.certification.rolloutMode, "global");
+  assert.strictEqual(global.certification.baseMealCanaryReady, true);
+  assert.strictEqual(global.certification.baseMealRolloutReady, true);
 
   const differentUser = buildSubscriptionStackingRemoteReadiness({
     userId: "507f1f77bcf86cd799439012",

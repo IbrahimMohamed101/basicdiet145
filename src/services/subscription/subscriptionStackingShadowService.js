@@ -20,7 +20,14 @@ function parseShadowUserAllowlist(rawValue = process.env.SUBSCRIPTION_STACKING_S
   );
 }
 
-function isShadowUserAllowed(userId, rawValue = process.env.SUBSCRIPTION_STACKING_SHADOW_USER_IDS) {
+function isShadowUserAllowed(
+  userId,
+  rawValue = process.env.SUBSCRIPTION_STACKING_SHADOW_USER_IDS,
+  allowAllUsers = process.env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS
+) {
+  if (String(allowAllUsers || "").trim().toLowerCase() === "true") {
+    return Boolean(String(userId || "").trim());
+  }
   const allowlist = parseShadowUserAllowlist(rawValue);
   if (allowlist.has("*")) return true;
   const normalizedUserId = String(userId || "").trim();

@@ -234,26 +234,26 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
       field: "SUBSCRIPTION_STACKING_SHADOW_ENABLED",
     });
   }
-  if ((readEnabled || writeEnabled) && rolloutUsers.length === 0) {
+  if ((readEnabled || writeEnabled) && !allowAllUsers && rolloutUsers.length === 0) {
     violations.push({
       code: "ROLLOUT_ALLOWLIST_REQUIRED",
       field: "SUBSCRIPTION_STACKING_USER_IDS",
     });
   }
-  if (shadowEnabled && shadowUsers.length === 0) {
+  if (shadowEnabled && !allowAllUsers && shadowUsers.length === 0) {
     violations.push({
       code: "SHADOW_ALLOWLIST_REQUIRED",
       field: "SUBSCRIPTION_STACKING_SHADOW_USER_IDS",
     });
   }
-  if (writeEnabled && rolloutUsers.length !== 1) {
+  if (writeEnabled && !allowAllUsers && rolloutUsers.length !== 1) {
     violations.push({
       code: "INITIAL_WRITE_REQUIRES_EXACTLY_ONE_USER",
       field: "SUBSCRIPTION_STACKING_USER_IDS",
       count: rolloutUsers.length,
     });
   }
-  if (rolloutUsers.includes("*") || shadowUsers.includes("*")) {
+  if (!allowAllUsers && (rolloutUsers.includes("*") || shadowUsers.includes("*"))) {
     violations.push({
       code: "WILDCARD_ROLLOUT_FORBIDDEN",
       fields: [
@@ -262,13 +262,12 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
       ],
     });
   }
-  if (allowAllUsers) {
-    violations.push({
-      code: "ALLOW_ALL_USERS_FORBIDDEN",
-      field: "SUBSCRIPTION_STACKING_ALLOW_ALL_USERS",
-    });
-  }
-  if (writeEnabled && rolloutUsers.length === 1 && !shadowUsers.includes(rolloutUsers[0])) {
+  if (
+    writeEnabled
+    && !allowAllUsers
+    && rolloutUsers.length === 1
+    && !shadowUsers.includes(rolloutUsers[0])
+  ) {
     violations.push({
       code: "ROLLOUT_USER_MISSING_FROM_SHADOW_ALLOWLIST",
       userId: rolloutUsers[0],
@@ -305,6 +304,8 @@ function validateSubscriptionStackingStagingEnv(env = process.env) {
     shadowEnabled,
     readEnabled,
     writeEnabled,
+    rolloutMode: allowAllUsers ? "global" : "canary",
+    allowAllUsers,
     rolloutUserCount: rolloutUsers.length,
     rolloutUserId: rolloutUsers.length === 1 ? rolloutUsers[0] : null,
     shadowUserCount: shadowUsers.length,

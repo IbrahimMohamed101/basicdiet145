@@ -30,6 +30,21 @@ function testProductionWriteIsHardBlocked() {
   );
 }
 
+function testProductionGlobalRolloutRemainsHardBlocked() {
+  assertBlocked(
+    {
+      NODE_ENV: "production",
+      SUBSCRIPTION_STACKING_READ_ENABLED: "true",
+      SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
+      SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
+      SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true",
+      SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
+    },
+    "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED",
+    "extra_activation"
+  );
+}
+
 function testProductionReadAndShadowAreHardBlocked() {
   assertBlocked(
     { NODE_ENV: "prod", SUBSCRIPTION_STACKING_READ_ENABLED: "true" },
@@ -87,6 +102,7 @@ function testStagingAllowlistedModesCanBeExercised() {
 
 function run() {
   testProductionWriteIsHardBlocked();
+  testProductionGlobalRolloutRemainsHardBlocked();
   testProductionReadAndShadowAreHardBlocked();
   testRailwayProductionNameCannotBypassKillSwitch();
   testProductionAllModesDisabledIsAllowed();

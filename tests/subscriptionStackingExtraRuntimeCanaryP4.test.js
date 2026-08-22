@@ -106,6 +106,27 @@ async function run() {
     isExtraActivationCanaryEnabledForUser("507f1f77bcf86cd799439012", env()),
     false
   );
+  const globalEnv = env({
+    SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
+    SUBSCRIPTION_STACKING_USER_IDS: "",
+    SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_USER_IDS: "",
+    SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
+    SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS: "",
+  });
+  assert.strictEqual(assertExtraActivationCanaryConfiguration(globalEnv).mode, "global");
+  assert.strictEqual(assertExtraSelectionCanaryConfiguration(globalEnv).mode, "global");
+  assert.strictEqual(isExtraActivationCanaryEnabledForUser(USER_ID, globalEnv), true);
+  assert.strictEqual(
+    isExtraActivationCanaryEnabledForUser("507f1f77bcf86cd799439012", globalEnv),
+    true
+  );
+  assert.throws(
+    () => assertExtraSelectionCanaryConfiguration({
+      ...globalEnv,
+      STAGING_DATABASE_ISOLATION_CONFIRMED: "false",
+    }),
+    (err) => err && err.code === "STACKING_EXTRA_SELECTION_DATABASE_ISOLATION_REQUIRED"
+  );
   assert.strictEqual(
     isExtraActivationCanaryEnabledForUser(
       USER_ID,
@@ -145,10 +166,6 @@ async function run() {
       "STACKING_EXTRA_ACTIVATION_REQUIRES_EXACTLY_ONE_USER",
     ],
     [
-      { SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true" },
-      "STACKING_EXTRA_ACTIVATION_ALLOW_ALL_BLOCKED",
-    ],
-    [
       { SUBSCRIPTION_STACKING_USER_IDS: "507f1f77bcf86cd799439012" },
       "STACKING_EXTRA_ACTIVATION_BASE_ALLOWLIST_REQUIRED",
     ],
@@ -174,14 +191,6 @@ async function run() {
       SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true",
     }),
     (err) => err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED"
-  );
-  assert.throws(
-    () => assertExtraSelectionCanaryConfiguration(env({
-      SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
-      SUBSCRIPTION_STACKING_EXTRA_SELECTION_USER_IDS: USER_ID,
-      SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
-    })),
-    (err) => err && err.code === "STACKING_EXTRA_SELECTION_ALLOW_ALL_BLOCKED"
   );
   assert.throws(
     () => assertExtraSelectionCanaryConfiguration(env({

@@ -69,6 +69,8 @@ function testAllowlistParsingIsClosedByDefault() {
   assert.strictEqual(isShadowUserAllowed("user-1", ""), false);
   assert.strictEqual(isShadowUserAllowed("user-1", " user-1, user-2 "), true);
   assert.strictEqual(isShadowUserAllowed("any-user", "*"), true);
+  assert.strictEqual(isShadowUserAllowed("global-user", "", "true"), true);
+  assert.strictEqual(isShadowUserAllowed("", "", "true"), false);
 }
 
 async function testDisabledShadowDoesNotQueryOrMutate() {

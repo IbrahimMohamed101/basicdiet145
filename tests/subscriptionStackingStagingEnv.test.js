@@ -143,14 +143,15 @@ function testWriteRequiresShadowReadAndExactlyOneRuntimeUser() {
   assert(codes.includes("INITIAL_WRITE_REQUIRES_EXACTLY_ONE_USER"));
 }
 
-function testWildcardAndMissingShadowRelationshipAreRejected() {
-  const wildcardCodes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
+function testGlobalRolloutAndMissingShadowRelationship() {
+  const global = validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "*",
     SUBSCRIPTION_STACKING_USER_IDS: "*",
     SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
-  })));
-  assert(wildcardCodes.includes("WILDCARD_ROLLOUT_FORBIDDEN"));
-  assert(wildcardCodes.includes("ALLOW_ALL_USERS_FORBIDDEN"));
+  }));
+  assert.strictEqual(global.ok, true);
+  assert.strictEqual(global.rolloutMode, "global");
+  assert.strictEqual(global.allowAllUsers, true);
 
   const relationCodes = violationCodes(() => validateSubscriptionStackingStagingEnv(safeEnv({
     SUBSCRIPTION_STACKING_SHADOW_USER_IDS: "other-user",
@@ -208,7 +209,7 @@ function run() {
   testMissingDatabaseNameIsRejected();
   testCredentialLikeDatabaseNameIsRejectedWithoutLeakingIt();
   testWriteRequiresShadowReadAndExactlyOneRuntimeUser();
-  testWildcardAndMissingShadowRelationshipAreRejected();
+  testGlobalRolloutAndMissingShadowRelationship();
   testUnusedLegacyVariablesAreRejected();
   testReadOnlyModeStillRequiresRuntimeAllowlist();
   testHelpersNeverExposeCredentials();
