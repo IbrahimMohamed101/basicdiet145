@@ -575,6 +575,21 @@ function serializePromoCodeForAdmin(promo) {
       ? promo.allowedUserIds.map((id) => String(id))
       : [],
     currency: promo.currency || SYSTEM_CURRENCY,
+    appDisplay: {
+      isVisible: Boolean(promo.appDisplay && promo.appDisplay.isVisible),
+      showOnHome:
+        !promo.appDisplay || promo.appDisplay.showOnHome === undefined
+          ? true
+          : Boolean(promo.appDisplay.showOnHome),
+      showOnPlans:
+        !promo.appDisplay || promo.appDisplay.showOnPlans === undefined
+          ? true
+          : Boolean(promo.appDisplay.showOnPlans),
+      priority: Number(promo.appDisplay && promo.appDisplay.priority || 0),
+      title: normalizeLocalizedText(promo.appDisplay && promo.appDisplay.title),
+      description: normalizeLocalizedText(promo.appDisplay && promo.appDisplay.description),
+      homeMessage: normalizeLocalizedText(promo.appDisplay && promo.appDisplay.homeMessage),
+    },
     metadata: promo.metadata || null,
     deletedAt: promo.deletedAt || null,
     createdAt: promo.createdAt || null,
@@ -588,6 +603,57 @@ function serializePromoCodeForAdmin(promo) {
         promo.isActive && !promo.deletedAt && isStarted && !isExpired && !isUsageExhausted
       ),
     },
+  };
+}
+
+function normalizeLocalizedText(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ar: "", en: "" };
+  }
+  return {
+    ar: String(value.ar || "").trim().slice(0, 240),
+    en: String(value.en || "").trim().slice(0, 240),
+  };
+}
+
+function normalizeAppDisplay(payload = {}, appliesTo = "subscription") {
+  const raw = payload.appDisplay && typeof payload.appDisplay === "object" && !Array.isArray(payload.appDisplay)
+    ? payload.appDisplay
+    : {};
+  const isVisible = Boolean(raw.isVisible);
+  const showOnHome = raw.showOnHome === undefined ? true : Boolean(raw.showOnHome);
+  const showOnPlans = raw.showOnPlans === undefined ? true : Boolean(raw.showOnPlans);
+  const priority = raw.priority === undefined || raw.priority === null || raw.priority === ""
+    ? 0
+    : Number(raw.priority);
+
+  if (!Number.isInteger(priority) || priority < -1000 || priority > 1000) {
+    throw createPromoError(
+      "PROMO_INVALID_CONFIGURATION",
+      "appDisplay.priority must be an integer between -1000 and 1000"
+    );
+  }
+  if (isVisible && !showOnHome && !showOnPlans) {
+    throw createPromoError(
+      "PROMO_INVALID_CONFIGURATION",
+      "A visible app promo must be enabled for Home, Plans, or both"
+    );
+  }
+  if (isVisible && !["subscription", "all"].includes(appliesTo)) {
+    throw createPromoError(
+      "PROMO_INVALID_CONFIGURATION",
+      "Only subscription promo codes can be displayed in the subscription app flow"
+    );
+  }
+
+  return {
+    isVisible,
+    showOnHome,
+    showOnPlans,
+    priority,
+    title: normalizeLocalizedText(raw.title),
+    description: normalizeLocalizedText(raw.description),
+    homeMessage: normalizeLocalizedText(raw.homeMessage),
   };
 }
 
@@ -706,6 +772,7 @@ function normalizePromoPayload(payload = {}) {
         .map((id) => new mongoose.Types.ObjectId(String(id)))
       : [],
     currency: String(payload.currency || SYSTEM_CURRENCY).trim().toUpperCase() || SYSTEM_CURRENCY,
+    appDisplay: normalizeAppDisplay(payload, appliesTo),
     metadata: {
       ...(payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
         ? payload.metadata
@@ -779,6 +846,8 @@ module.exports = {
   consumePromoCodeUsageReservation,
   buildPromoResponseBlock,
   serializePromoCodeForAdmin,
+  normalizeAppDisplay,
+  normalizeLocalizedText,
   normalizePromoPayload,
   resolvePromoCodeOrThrow,
   validatePromoEligibilityOrThrow,

@@ -48,11 +48,29 @@ async function main() {
       expiresAt: "2027-01-01T00:00:00.000Z",
       appliesTo: "subscription",
       isActive: true,
+      appDisplay: {
+        isVisible: true,
+        showOnHome: true,
+        showOnPlans: true,
+        priority: 20,
+        title: { ar: "وفّر على اشتراكك", en: "Save on your subscription" },
+        description: { ar: "انسخ الكود", en: "Copy the code" },
+        homeMessage: { ar: "اعرض الخطط", en: "View plans" },
+      },
     });
     expectStatus(response, 201, "create canonical promo DTO");
     const welcomeId = response.body.data.id;
     assert.strictEqual(response.body.data.usageLimitTotal, 100);
     assert.strictEqual(response.body.data.appliesTo, "subscription");
+    assert.deepStrictEqual(response.body.data.appDisplay, {
+      isVisible: true,
+      showOnHome: true,
+      showOnPlans: true,
+      priority: 20,
+      title: { ar: "وفّر على اشتراكك", en: "Save on your subscription" },
+      description: { ar: "انسخ الكود", en: "Copy the code" },
+      homeMessage: { ar: "اعرض الخطط", en: "View plans" },
+    });
 
     response = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({
       code: "FIXED500",
@@ -65,6 +83,7 @@ async function main() {
     expectStatus(response, 201, "create accepts fixed_amount and endsAt aliases");
     const fixedId = response.body.data.id;
     assert.strictEqual(response.body.data.discountType, "fixed");
+    assert.strictEqual(response.body.data.appDisplay.isVisible, false);
     assert.strictEqual(new Date(response.body.data.expiresAt).toISOString(), "2027-02-01T00:00:00.000Z");
 
     response = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({

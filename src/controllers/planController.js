@@ -5,6 +5,9 @@ const validateObjectId = require("../utils/validateObjectId");
 const errorResponse = require("../utils/errorResponse");
 
 const { logger } = require("../utils/logger");
+const {
+  resolvePublicSubscriptionPromoOffer,
+} = require("../services/subscriptionPromoDisplayService");
 
 async function listPlans(req, res) {
   const lang = getRequestLang(req);
@@ -28,9 +31,22 @@ async function listPlans(req, res) {
     }
   }
 
+  let promoOffer = null;
+  try {
+    promoOffer = await resolvePublicSubscriptionPromoOffer({
+      userId: req.userId || null,
+    });
+  } catch (err) {
+    logger.warn("Subscription promo display lookup failed; returning plans without a promo offer.", {
+      error: err && err.message ? err.message : String(err),
+      userId: req.userId || null,
+    });
+  }
+
   return res.status(200).json({
     status: true,
     data: viablePlans.map((plan) => resolvePlanCatalogEntry(plan, lang)),
+    promoOffer,
   });
 }
 
