@@ -3,9 +3,15 @@ process.env.NODE_ENV = "test";
 const assert = require("assert");
 const {
   buildDiscountLabel,
+  getAppPromoSelectionIssues,
+  readSelectedPromoCodeId,
+  resolvePublicSubscriptionPromoOffer,
+  setSelectedAppPromoCode,
   serializePublicSubscriptionPromoOffer,
   selectPublicSubscriptionPromoOffer,
 } = require("../src/services/subscriptionPromoDisplayService");
+const PromoCode = require("../src/models/PromoCode");
+const Setting = require("../src/models/Setting");
 const {
   normalizePromoPayload,
   serializePromoCodeForAdmin,
@@ -46,6 +52,12 @@ function promo(overrides = {}) {
 }
 
 async function main() {
+  const objectId = "507f1f77bcf86cd799439011";
+  assert.strictEqual(readSelectedPromoCodeId({ value: { promoCodeId: objectId } }), objectId);
+  assert.strictEqual(readSelectedPromoCodeId({ value: objectId }), objectId);
+  assert.strictEqual(readSelectedPromoCodeId({ value: { promoCodeId: null } }), null);
+  assert.strictEqual(readSelectedPromoCodeId({ value: "not-an-id" }), null);
+
   const normalized = normalizePromoPayload({
     code: "save20",
     discountType: "percentage",
@@ -102,6 +114,12 @@ async function main() {
   assert.strictEqual(Object.prototype.hasOwnProperty.call(serialized, "discountValue"), false);
   assert.strictEqual(Object.prototype.hasOwnProperty.call(serialized, "usageLimitTotal"), false);
 
+  assert.deepStrictEqual(getAppPromoSelectionIssues(promo()), []);
+  assert.deepStrictEqual(
+    getAppPromoSelectionIssues(promo({ isActive: false })),
+    ["PROMO_INACTIVE"]
+  );
+
   assert.strictEqual(await selectPublicSubscriptionPromoOffer([]), null);
   assert.strictEqual(
     await selectPublicSubscriptionPromoOffer([promo({ appDisplay: { isVisible: false } })]),
@@ -141,6 +159,74 @@ async function main() {
     },
   });
   assert.strictEqual(exhaustedForUser, null);
+
+  const originalSettingFindOne = Setting.findOne;
+  const originalPromoFindOne = PromoCode.findOne;
+  try {
+    Setting.findOne = () => ({
+      lean: async () => ({ value: { promoCodeId: objectId } }),
+    });
+    PromoCode.findOne = (query) => ({
+      lean: async () => {
+        assert.strictEqual(String(query._id), objectId);
+        assert.strictEqual(query.deletedAt, null);
+        return promo({ _id: objectId, code: "SELECTED20" });
+      },
+    });
+    const selectedOffer = await resolvePublicSubscriptionPromoOffer();
+    assert.strictEqual(selectedOffer.id, objectId);
+    assert.strictEqual(selectedOffer.code, "SELECTED20");
+
+    Setting.findOne = () => ({ lean: async () => null });
+    PromoCode.findOne = () => {
+      throw new Error("Promo lookup must not run without an explicit selection");
+    };
+    assert.strictEqual(await resolvePublicSubscriptionPromoOffer(), null);
+  } finally {
+    Setting.findOne = originalSettingFindOne;
+    PromoCode.findOne = originalPromoFindOne;
+  }
+
+  const originalSelectionSettingFindOne = Setting.findOne;
+  const originalSelectionSettingFindOneAndUpdate = Setting.findOneAndUpdate;
+  const originalSelectionPromoFindById = PromoCode.findById;
+  try {
+    const promoDocument = promo({
+      _id: objectId,
+      appDisplay: {
+        isVisible: false,
+        showOnHome: false,
+        showOnPlans: false,
+      },
+    });
+    promoDocument.save = async () => promoDocument;
+    let storedPromoCodeId = null;
+    let promoLookupCount = 0;
+    PromoCode.findById = () => {
+      promoLookupCount += 1;
+      if (promoLookupCount === 1) return promoDocument;
+      return { lean: async () => ({ ...promoDocument }) };
+    };
+    Setting.findOneAndUpdate = async (_query, update) => {
+      storedPromoCodeId = update.$set.value.promoCodeId;
+      return { value: update.$set.value };
+    };
+    Setting.findOne = () => ({
+      lean: async () => ({ value: { promoCodeId: storedPromoCodeId } }),
+    });
+
+    const selection = await setSelectedAppPromoCode(objectId);
+    assert.strictEqual(storedPromoCodeId, objectId);
+    assert.strictEqual(promoDocument.appDisplay.isVisible, true);
+    assert.strictEqual(promoDocument.appDisplay.showOnHome, true);
+    assert.strictEqual(promoDocument.appDisplay.showOnPlans, true);
+    assert.strictEqual(selection.promoCodeId, objectId);
+    assert.strictEqual(selection.isPubliclyDisplayable, true);
+  } finally {
+    Setting.findOne = originalSelectionSettingFindOne;
+    Setting.findOneAndUpdate = originalSelectionSettingFindOneAndUpdate;
+    PromoCode.findById = originalSelectionPromoFindById;
+  }
 
   console.log("subscriptionPromoDisplayContract.test.js: PASS");
 }
