@@ -411,13 +411,19 @@ async function assertNoIdentityConflict({ userId, appUserId, phone, email, sessi
   }
   if (!userChecks.length) return;
 
-  const [userConflict, appUserConflict] = await Promise.all([
-    User.findOne({ _id: { $ne: userId }, $or: userChecks }).session(session).lean(),
-    AppUser.findOne({
+  let userConflictQuery = User.findOne({ _id: { $ne: userId }, $or: userChecks });
+  let appUserConflictQuery = AppUser.findOne({
       ...(appUserId ? { _id: { $ne: appUserId } } : {}),
       coreUserId: { $ne: userId },
       $or: appUserChecks,
-    }).session(session).lean(),
+    });
+  if (session) {
+    userConflictQuery = userConflictQuery.session(session);
+    appUserConflictQuery = appUserConflictQuery.session(session);
+  }
+  const [userConflict, appUserConflict] = await Promise.all([
+    userConflictQuery.lean(),
+    appUserConflictQuery.lean(),
   ]);
 
   if (userConflict || appUserConflict) {
@@ -431,6 +437,312 @@ async function assertNoIdentityConflict({ userId, appUserId, phone, email, sessi
 
 function changedFields(before, after) {
   return Object.keys(after).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+}
+
+function buildSetUnsetMutation(values) {
+  const $set = {};
+  const $unset = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) $unset[key] = 1;
+    else $set[key] = value;
+  }
+  const mutation = {};
+  if (Object.keys($set).length) mutation.$set = $set;
+  if (Object.keys($unset).length) mutation.$unset = $unset;
+  return mutation;
+}
+
+async function compareAndSetDocument(Model, row, values, extraFilter = {}) {
+  const filter = { _id: row._id, ...extraFilter };
+  if (row.updatedAt) filter.updatedAt = row.updatedAt;
+  return Model.findOneAndUpdate(
+    filter,
+    buildSetUnsetMutation(values),
+    { new: true, runValidators: true }
+  ).lean();
+}
+
+function snapshotUserForRollback(user) {
+  return {
+    phone: user.phone,
+    phoneE164: user.phoneE164,
+    phoneVerified: user.phoneVerified,
+    name: user.name,
+    email: user.email,
+    emailVerified: user.emailVerified,
+    emailVerifiedAt: user.emailVerifiedAt,
+    emailVerificationRequired: user.emailVerificationRequired,
+    isActive: user.isActive,
+    authVersion: user.authVersion,
+  };
+}
+
+function snapshotAppUserForRollback(appUser) {
+  return {
+    coreUserId: appUser.coreUserId,
+    fullName: appUser.fullName,
+    phone: appUser.phone,
+    email: appUser.email,
+  };
+}
+
+async function retryAuditLog(payload) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await ActivityLog.create(payload);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  logger.error("standalone customer management audit log failed", {
+    customerId: String(payload.entityId),
+    error: lastError && lastError.message,
+  });
+}
+
+async function updateCustomerWithoutTransaction({
+  id,
+  payload,
+  actorId,
+  actorRole,
+  reason,
+  normalizedFullName,
+  normalizedEmail,
+  normalizedPhone,
+}) {
+  const managed = await findManagedCustomer(id);
+  if (!managed) {
+    throw customerManagementError(404, "NOT_FOUND", "Customer account was not found");
+  }
+
+  const user = managed.user;
+  const originalAppUser = managed.appUser;
+  const activeSubscription = await findActiveSubscription(user._id);
+  const plan = activeSubscription ? await findPlan(activeSubscription.planId) : null;
+  const deliveryAddress = normalizeDeliveryAddress(
+    payload.deliveryAddress,
+    activeSubscription && activeSubscription.deliveryAddress
+  );
+  if (deliveryAddress !== undefined && (!activeSubscription || activeSubscription.deliveryMode !== "delivery")) {
+    throw customerManagementError(
+      422,
+      "ACTIVE_DELIVERY_SUBSCRIPTION_REQUIRED",
+      "Address changes require an active delivery subscription"
+    );
+  }
+
+  const nextPhone = normalizedPhone === undefined
+    ? (user.phoneE164 || user.phone)
+    : normalizedPhone;
+  const nextEmail = normalizedEmail === undefined
+    ? (user.email || (originalAppUser && originalAppUser.email) || null)
+    : normalizedEmail;
+  await assertNoIdentityConflict({
+    userId: user._id,
+    appUserId: originalAppUser && originalAppUser._id,
+    phone: nextPhone,
+    email: nextEmail,
+    session: null,
+  });
+
+  const before = {
+    fullName: user.name || (originalAppUser && originalAppUser.fullName) || null,
+    phone: user.phoneE164 || user.phone || null,
+    email: user.email || (originalAppUser && originalAppUser.email) || null,
+    isActive: user.isActive !== false,
+    deliveryAddress: activeSubscription ? addressSnapshot(activeSubscription.deliveryAddress) : null,
+  };
+  const after = {
+    fullName: normalizedFullName === undefined ? before.fullName : normalizedFullName,
+    phone: normalizedPhone === undefined ? before.phone : normalizedPhone,
+    email: normalizedEmail === undefined ? before.email : normalizedEmail,
+    isActive: payload.isActive === undefined ? before.isActive : payload.isActive,
+    deliveryAddress: deliveryAddress === undefined ? before.deliveryAddress : deliveryAddress,
+  };
+  const fields = changedFields(before, after);
+  if (!fields.length) {
+    throw customerManagementError(400, "NO_CHANGES", "Submitted data matches the current customer data");
+  }
+
+  const identityChanged = before.phone !== after.phone || before.email !== after.email;
+  const emailChanged = before.email !== after.email;
+  const deactivated = before.isActive === true && after.isActive === false;
+  const sessionsRevoked = identityChanged || deactivated;
+  const userNeedsUpdate = fields.some((field) => ["fullName", "phone", "email", "isActive"].includes(field));
+  const mirrorNeedsUpdate = fields.some((field) => ["fullName", "phone", "email"].includes(field));
+
+  let updatedUser = user;
+  let updatedAppUser = originalAppUser;
+  let updatedSubscription = activeSubscription;
+  let createdAppUser = null;
+  const rollbackSteps = [];
+
+  try {
+    if (userNeedsUpdate) {
+      const userValues = {};
+      if (normalizedFullName !== undefined) userValues.name = normalizedFullName || undefined;
+      if (normalizedPhone !== undefined) {
+        userValues.phone = normalizedPhone;
+        userValues.phoneE164 = normalizedPhone;
+        userValues.phoneVerified = true;
+      }
+      if (normalizedEmail !== undefined) {
+        userValues.email = normalizedEmail || undefined;
+        if (emailChanged) {
+          userValues.emailVerified = false;
+          userValues.emailVerifiedAt = null;
+          userValues.emailVerificationRequired = Boolean(normalizedEmail);
+        }
+      }
+      if (payload.isActive !== undefined) userValues.isActive = payload.isActive;
+      if (sessionsRevoked) userValues.authVersion = Number(user.authVersion || 0) + 1;
+
+      updatedUser = await compareAndSetDocument(User, user, userValues, { role: "client" });
+      if (!updatedUser) {
+        throw customerManagementError(409, "CONCURRENT_UPDATE", "Customer data changed; refresh and try again");
+      }
+      rollbackSteps.push(async () => {
+        const restored = await compareAndSetDocument(User, updatedUser, snapshotUserForRollback(user), { role: "client" });
+        if (!restored) throw new Error("user rollback compare-and-set failed");
+      });
+    }
+
+    if (mirrorNeedsUpdate) {
+      if (!originalAppUser) {
+        createdAppUser = await AppUser.create({
+          coreUserId: user._id,
+          fullName: after.fullName || undefined,
+          phone: after.phone,
+          email: after.email || undefined,
+        });
+        updatedAppUser = createdAppUser.toObject();
+        rollbackSteps.push(async () => {
+          await AppUser.deleteOne({ _id: createdAppUser._id, coreUserId: user._id });
+        });
+      } else {
+        const appUserValues = { coreUserId: user._id };
+        if (normalizedFullName !== undefined) appUserValues.fullName = normalizedFullName || undefined;
+        if (normalizedPhone !== undefined) appUserValues.phone = normalizedPhone;
+        if (normalizedEmail !== undefined) appUserValues.email = normalizedEmail || undefined;
+        updatedAppUser = await compareAndSetDocument(AppUser, originalAppUser, appUserValues);
+        if (!updatedAppUser) {
+          throw customerManagementError(409, "CONCURRENT_UPDATE", "Customer mirror data changed; refresh and try again");
+        }
+        rollbackSteps.push(async () => {
+          const restored = await compareAndSetDocument(
+            AppUser,
+            updatedAppUser,
+            snapshotAppUserForRollback(originalAppUser)
+          );
+          if (!restored) throw new Error("app user rollback compare-and-set failed");
+        });
+      }
+    }
+
+    if (deliveryAddress !== undefined) {
+      updatedSubscription = await compareAndSetDocument(
+        Subscription,
+        activeSubscription,
+        { deliveryAddress },
+        { status: "active" }
+      );
+      if (!updatedSubscription) {
+        throw customerManagementError(409, "CONCURRENT_UPDATE", "Subscription address changed; refresh and try again");
+      }
+      rollbackSteps.push(async () => {
+        const restored = await compareAndSetDocument(
+          Subscription,
+          updatedSubscription,
+          { deliveryAddress: activeSubscription.deliveryAddress || undefined },
+          { status: "active" }
+        );
+        if (!restored) throw new Error("subscription rollback compare-and-set failed");
+      });
+    }
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const rollback of rollbackSteps.reverse()) {
+      try {
+        await rollback();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError.message);
+      }
+    }
+    if (rollbackErrors.length) {
+      logger.error("standalone customer management rollback failed", {
+        customerId: String(user._id),
+        rollbackErrors,
+        originalError: error.message,
+      });
+      throw customerManagementError(
+        500,
+        "ROLLBACK_FAILED",
+        "Customer update could not be completed consistently; manual review is required"
+      );
+    }
+    throw error;
+  }
+
+  const cleanupOperations = [];
+  if (sessionsRevoked) {
+    cleanupOperations.push(RefreshSession.updateMany(
+      { userId: user._id, revokedAt: null },
+      { $set: { revokedAt: new Date(), revokedReason: "security" } }
+    ));
+  }
+  if (normalizedPhone !== undefined && before.phone !== normalizedPhone) {
+    cleanupOperations.push(Otp.deleteMany({ phone: { $in: [before.phone, normalizedPhone].filter(Boolean) } }));
+  }
+  if (emailChanged) {
+    cleanupOperations.push(EmailOtpChallenge.deleteMany({
+      $or: [
+        { userId: user._id },
+        { email: { $in: [before.email, normalizedEmail].filter(Boolean) } },
+      ],
+    }));
+  }
+  if (cleanupOperations.length) {
+    const cleanupResults = await Promise.allSettled(cleanupOperations);
+    cleanupResults.forEach((result, index) => {
+      if (result.status === "rejected") {
+        logger.error("standalone customer management security cleanup failed", {
+          customerId: String(user._id),
+          operationIndex: index,
+          error: result.reason && result.reason.message,
+        });
+      }
+    });
+  }
+
+  await retryAuditLog({
+    entityType: "user",
+    entityId: user._id,
+    action: "customer_profile_updated_by_superadmin",
+    byUserId: actorId,
+    byRole: actorRole,
+    meta: {
+      reason,
+      changedFields: fields,
+      before,
+      after,
+      activeSubscriptionId: updatedSubscription ? String(updatedSubscription._id) : null,
+      sessionsRevoked,
+      persistenceMode: "standalone_compare_and_set",
+    },
+  });
+
+  return {
+    customer: serializeCustomer({
+      user: updatedUser,
+      appUser: updatedAppUser,
+      activeSubscription: updatedSubscription,
+      plan,
+    }),
+    changedFields: fields,
+    sessionsRevoked,
+  };
 }
 
 async function updateCustomerManagementProfile({ id, payload, actorId, actorRole }) {
@@ -466,11 +778,16 @@ async function updateCustomerManagementProfile({ id, payload, actorId, actorRole
   const session = await startSafeSession();
   try {
     if (!session.supportsTransactions) {
-      throw customerManagementError(
-        503,
-        "TRANSACTION_REQUIRED",
-        "Customer identity updates require MongoDB transaction support"
-      );
+      return await updateCustomerWithoutTransaction({
+        id,
+        payload,
+        actorId,
+        actorRole,
+        reason,
+        normalizedFullName,
+        normalizedEmail,
+        normalizedPhone,
+      });
     }
 
     let result;
