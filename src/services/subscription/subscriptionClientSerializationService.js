@@ -26,6 +26,10 @@ const {
   getPickupLocationsSetting,
   repairLegacyPickupSubscriptionReadView,
 } = require("./subscriptionFulfillmentSummaryService");
+const {
+  READ_ERROR_CODE,
+  projectSubscriptionStackingExtrasForRead,
+} = require("./subscriptionStackingExtraReadProjectionService");
 
 const CATALOG_CACHE_TTL = 300000; // 5 minutes
 const catalogCache = {
@@ -216,10 +220,16 @@ function resolveSubscriptionPricingSummary(subscription) {
   });
 }
 
-async function serializeSubscriptionForClient(subscription, lang) {
-  const readSubscription = subscription && subscription.deliveryMode === "pickup"
+async function serializeSubscriptionForClient(subscription, lang, runtimeOverrides = null) {
+  const pickupReadSubscription = subscription && subscription.deliveryMode === "pickup"
     ? repairLegacyPickupSubscriptionReadView(subscription, await getPickupLocationsSetting(), lang)
     : subscription;
+  const businessDate = await getRestaurantBusinessDate();
+  const readSubscription = await projectSubscriptionStackingExtrasForRead(
+    pickupReadSubscription,
+    businessDate,
+    runtimeOverrides
+  );
   const catalog = await loadWalletCatalogMaps({ subscription: readSubscription, lang });
   const contractReadView = getSubscriptionContractReadView(readSubscription, {
     audience: "client",
@@ -234,7 +244,6 @@ async function serializeSubscriptionForClient(subscription, lang) {
       slotId: "",
     };
   const data = { ...readSubscription };
-  const businessDate = await getRestaurantBusinessDate();
   data.status = resolveEffectiveSubscriptionStatus(data, businessDate) || data.status;
   const mealBalance = buildMealBalance(data, businessDate);
   delete data.__v;
@@ -261,13 +270,14 @@ async function serializeSubscriptionForClient(subscription, lang) {
   });
 }
 
-async function serializeSubscriptionForClientWithGuard(subscription, lang) {
+async function serializeSubscriptionForClientWithGuard(subscription, lang, runtimeOverrides = null) {
   const subscriptionId = String(subscription && subscription._id ? subscription._id : "");
   const planId = subscription && subscription.planId ? String(subscription.planId) : null;
 
   try {
-    return await serializeSubscriptionForClient(subscription, lang);
+    return await serializeSubscriptionForClient(subscription, lang, runtimeOverrides);
   } catch (err) {
+    if (err && err.code === READ_ERROR_CODE) throw err;
     logger.error("currentOverview: serializeSubscriptionForClient failed", {
       subscriptionId,
       planId,

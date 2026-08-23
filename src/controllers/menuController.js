@@ -5,6 +5,7 @@ const MealCategory = require("../models/MealCategory");
 const Setting = require("../models/Setting");
 const Zone = require("../models/Zone");
 const { getRequestLang, pickLang } = require("../utils/i18n");
+const errorResponse = require("../utils/errorResponse");
 const { withDefaultMealNutrition } = require("../utils/mealNutrition");
 const {
   buildMealSections,
@@ -30,6 +31,11 @@ const {
   buildAddonCategoryAllowances,
   buildAddonSubscriptionAllowances,
 } = require("../services/subscription/subscriptionAddonBalanceService");
+const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
+const {
+  READ_ERROR_CODE: STACKING_EXTRA_READ_ERROR_CODE,
+  projectSubscriptionStackingExtrasForRead,
+} = require("../services/subscription/subscriptionStackingExtraReadProjectionService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -508,11 +514,31 @@ async function getSubscriptionMealPlannerMenu(req, res) {
     addons,
   });
   const legacyPlannerAddons = mealCatalog?.mealPlanner?.addons || { items: [], totalCount: 0 };
-  const allowanceSubscription = req.userId
+  let allowanceSubscription = req.userId
     ? await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription })
     : null;
+  const businessDate = req.userId ? await getRestaurantBusinessDate() : null;
+  if (allowanceSubscription) {
+    try {
+      allowanceSubscription = await projectSubscriptionStackingExtrasForRead(
+        allowanceSubscription,
+        businessDate
+      );
+    } catch (err) {
+      if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+        return errorResponse(res, 503, err.code, err.message, err.details);
+      }
+      throw err;
+    }
+  }
   const authoritativeAddonChoiceGroups = req.userId
-    ? await buildAddonChoiceGroups({ lang, userId: req.userId, subscription: allowanceSubscription })
+    ? await buildAddonChoiceGroups({
+      lang,
+      userId: req.userId,
+      subscription: allowanceSubscription,
+      businessDate,
+      stackingExtraProjectionApplied: true,
+    })
     : null;
   const authoritativeAddonChoices = authoritativeAddonChoiceGroups
     ? buildAddonChoicesCompatibilityMap(authoritativeAddonChoiceGroups)

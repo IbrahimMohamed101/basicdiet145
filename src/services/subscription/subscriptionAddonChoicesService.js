@@ -42,6 +42,11 @@ const {
 const {
   availableForChannelQuery,
 } = require("./subscriptionMenuEligibilityPolicyService");
+const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const {
+  isStackingExtraReadProjectionEnabledForSubscription,
+  projectSubscriptionStackingExtrasForRead,
+} = require("./subscriptionStackingExtraReadProjectionService");
 
 const SYSTEM_CURRENCY = "SAR";
 const DYNAMIC_CATEGORY_PLURAL_OVERRIDES = Object.freeze({
@@ -984,6 +989,9 @@ async function buildAddonChoiceGroups({
   userId = null,
   subscription: suppliedSubscription = null,
   models = {},
+  businessDate = null,
+  stackingExtraReadRuntime = null,
+  stackingExtraProjectionApplied = false,
 } = {}) {
   const SubscriptionModel = models.SubscriptionModel || mongoose.model("Subscription");
   const AddonModel = models.AddonModel || Addon;
@@ -999,6 +1007,17 @@ async function buildAddonChoiceGroups({
   }
   if (subscription && userId && String(subscription.userId || "") !== String(userId)) {
     throw createServiceError(403, "FORBIDDEN", "Subscription does not belong to the authenticated user");
+  }
+  if (
+    subscription
+    && !stackingExtraProjectionApplied
+    && isStackingExtraReadProjectionEnabledForSubscription(subscription, stackingExtraReadRuntime)
+  ) {
+    subscription = await projectSubscriptionStackingExtrasForRead(
+      subscription,
+      businessDate || await getRestaurantBusinessDate(),
+      stackingExtraReadRuntime
+    );
   }
 
   const { rowsById: planRowsById, entitlements } = await loadDynamicAddonPlans(subscription, { AddonModel });

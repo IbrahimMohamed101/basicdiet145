@@ -156,6 +156,10 @@ const {
   serializeSubscriptionForClient,
 } = require("../services/subscription/subscriptionClientSerializationService");
 const {
+  READ_ERROR_CODE: STACKING_EXTRA_READ_ERROR_CODE,
+  projectSubscriptionStackingExtrasForRead,
+} = require("../services/subscription/subscriptionStackingExtraReadProjectionService");
+const {
   resolveSubscriptionDeliveryDefaultsUpdate,
   performDeliveryDetailsUpdate,
   performDeliveryDetailsUpdateForDate,
@@ -1597,10 +1601,17 @@ async function getSubscription(req, res) {
   }
   const lang = getRequestLang(req);
 
-  return res.status(200).json({
-    status: true,
-    data: await serializeSubscriptionForClient(sub, lang),
-  });
+  try {
+    return res.status(200).json({
+      status: true,
+      data: await serializeSubscriptionForClient(sub, lang),
+    });
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
 }
 
 async function getCurrentSubscriptionOverview(req, res) {
@@ -1619,6 +1630,9 @@ async function getCurrentSubscriptionOverview(req, res) {
       stack: err.stack,
       userId: userId ? String(userId) : undefined,
     });
+    if (err && (err.status === 503 || err.code === STACKING_EXTRA_READ_ERROR_CODE)) {
+      return errorResponse(res, 503, err.code || "STACKING_READ_UNAVAILABLE", err.message, err.details);
+    }
     return errorResponse(res, 500, "INTERNAL_CURRENT_OVERVIEW", "Failed to retrieve current subscription");
   }
 }
@@ -2191,12 +2205,21 @@ async function getSubscriptionDays(req, res) {
   }
   // Settlement on read intentionally removed — meals are not consumed by date passage.
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
-  const serializedDays = days.map((day) => serializeSubscriptionDayForClient(sub, day));
+  const businessDate = await getRestaurantBusinessDate();
+  let readSubscription;
+  try {
+    readSubscription = await projectSubscriptionStackingExtrasForRead(sub, businessDate);
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
+  const serializedDays = days.map((day) => serializeSubscriptionDayForClient(readSubscription, day));
   const catalog = await loadWalletCatalogMaps({ days: serializedDays, lang });
   const pickupLocations = await getPickupLocationsSetting();
-  const businessDate = await getRestaurantBusinessDate();
   const mappedDays = serializedDays.map((day) => shapeMealPlannerReadFields({
-    subscription: sub,
+    subscription: readSubscription,
     day: localizeSubscriptionDayReadPayload(day, {
       lang,
       addonNames: catalog.addonNames,
@@ -2229,7 +2252,16 @@ async function getSubscriptionDay(req, res) {
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found");
   }
-  const serializedDay = serializeSubscriptionDayForClient(sub, day);
+  let readSubscription;
+  try {
+    readSubscription = await projectSubscriptionStackingExtrasForRead(sub, date);
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
+  const serializedDay = serializeSubscriptionDayForClient(readSubscription, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
   const pickupLocations = await getPickupLocationsSetting();
   const localizedDay = localizeSubscriptionDayReadPayload(serializedDay, {
@@ -2239,7 +2271,7 @@ async function getSubscriptionDay(req, res) {
   return res.status(200).json({
     status: true,
     data: shapeMealPlannerReadFields({
-      subscription: sub,
+      subscription: readSubscription,
       day: localizedDay,
       lang,
       pickupLocations,
@@ -2269,7 +2301,16 @@ async function getSubscriptionToday(req, res) {
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found");
   }
-  const serializedDay = serializeSubscriptionDayForClient(sub, day);
+  let readSubscription;
+  try {
+    readSubscription = await projectSubscriptionStackingExtrasForRead(sub, today);
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
+  const serializedDay = serializeSubscriptionDayForClient(readSubscription, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
   const pickupLocations = await getPickupLocationsSetting();
   const localizedDay = localizeSubscriptionDayReadPayload(serializedDay, {
@@ -2279,7 +2320,7 @@ async function getSubscriptionToday(req, res) {
   return res.status(200).json({
     status: true,
     data: shapeMealPlannerReadFields({
-      subscription: sub,
+      subscription: readSubscription,
       day: localizedDay,
       lang,
       pickupLocations,
@@ -2406,11 +2447,20 @@ async function getSubscriptionAddonChoices(req, res) {
     } else if (req.userId) {
       allowanceSubscription = await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription });
     }
+    const businessDate = allowanceSubscription ? await getRestaurantBusinessDate() : null;
+    if (allowanceSubscription) {
+      allowanceSubscription = await projectSubscriptionStackingExtrasForRead(
+        allowanceSubscription,
+        businessDate
+      );
+    }
     const addonChoiceGroups = await buildAddonChoiceGroups({
       lang,
       category: requestedCategory,
       subscription: allowanceSubscription,
       userId: req.userId,
+      businessDate,
+      stackingExtraProjectionApplied: true,
     });
     const responseData = buildAddonChoicesCompatibilityMap(addonChoiceGroups);
     const response = {
