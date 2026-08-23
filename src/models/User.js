@@ -73,6 +73,15 @@ const UserSchema = new mongoose.Schema(
     lastAdminPasswordResetAt: { type: Date, default: null },
     lastAdminPasswordResetBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
     fcmTokens: [{ type: String }],
+    mergedIntoUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    mergedAt: { type: Date, default: null },
+    mergedByDashboardUserId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
+    accountMergeState: {
+      type: String,
+      enum: [null, "in_progress", "completed"],
+      default: null,
+    },
+    accountMergeReason: { type: String, default: null, trim: true },
   },
   { timestamps: true }
 );

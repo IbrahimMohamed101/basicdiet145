@@ -83,7 +83,7 @@
     "test:menu-dashboard-mobile-parity": "NODE_ENV=test node tests/menuDashboardMobileParity.test.js",
     "test:addon-dashboard-mobile-parity": "NODE_ENV=test node tests/addonDashboardMobileParity.test.js",
     "test:dashboard-users-search": "NODE_ENV=test node tests/dashboardUsersSearch.test.js",
-    "test:dashboard-customer-management": "NODE_ENV=test node tests/dashboardCustomerManagement.test.js && NODE_ENV=test node tests/dashboardCustomerManagementStandalone.test.js",
+    "test:dashboard-customer-management": "NODE_ENV=test node tests/dashboardCustomerManagement.test.js && NODE_ENV=test node tests/dashboardCustomerManagementStandalone.test.js && NODE_ENV=test node tests/dashboardCustomerAccountMergeStandalone.test.js",
     "test:kitchen-permissions": "NODE_ENV=test node tests/kitchenReadOnlyPermissions.test.js",
     "test:subscription-selection-policies": "NODE_ENV=test node tests/subscriptionSelectionPolicies.test.js",
     "seed": "node scripts/seed-demo-data.js",

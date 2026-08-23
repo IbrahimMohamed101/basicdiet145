@@ -8,6 +8,8 @@ const AppUserSchema = new mongoose.Schema(
     role: { type: String, enum: ["app_user"], default: "app_user", immutable: true },
     fcmTokens: [{ type: String }],
     coreUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    mergedIntoUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    mergedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: "app_users" }
 );

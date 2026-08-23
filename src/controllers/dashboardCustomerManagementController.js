@@ -7,6 +7,10 @@ const {
   getCustomerManagementProfile,
   updateCustomerManagementProfile,
 } = require("../services/dashboard/customerManagementService");
+const {
+  executeCustomerAccountMerge,
+  previewCustomerAccountMerge,
+} = require("../services/dashboard/customerAccountMergeService");
 
 function respondWithError(res, error, context) {
   if (error && Number.isInteger(error.status) && error.code) {
@@ -75,4 +79,49 @@ async function grantMealCompensation(req, res) {
   }
 }
 
-module.exports = { getCustomer, grantMealCompensation, updateCustomer };
+async function previewAccountMerge(req, res) {
+  try {
+    const data = await previewCustomerAccountMerge({
+      sourceId: req.params.id,
+      targetPhone: (req.body || {}).targetPhone,
+      actorRole: req.dashboardUserRole,
+    });
+    return res.status(200).json({ status: true, data });
+  } catch (error) {
+    return respondWithError(res, error, { customerId: req.params.id, action: "account_merge_preview" });
+  }
+}
+
+async function mergeAccounts(req, res) {
+  try {
+    const result = await executeCustomerAccountMerge({
+      sourceId: req.params.id,
+      payload: req.body || {},
+      actorId: req.dashboardUserId,
+      actorRole: req.dashboardUserRole,
+    });
+    return res.status(result.replayed ? 200 : 201).json({
+      status: true,
+      message: result.replayed ? "Account merge already completed" : "Customer accounts merged successfully",
+      messageAr: result.replayed ? "تم دمج الحسابين مسبقًا" : "تم دمج حسابي العميل بنجاح",
+      data: {
+        operationId: String(result.operation._id),
+        state: result.operation.state,
+        source: result.preview.source,
+        target: result.preview.target,
+        movedCounts: result.operation.previewCounts || result.preview.sourceCounts,
+      },
+      meta: { replayed: result.replayed },
+    });
+  } catch (error) {
+    return respondWithError(res, error, { customerId: req.params.id, action: "account_merge" });
+  }
+}
+
+module.exports = {
+  getCustomer,
+  grantMealCompensation,
+  mergeAccounts,
+  previewAccountMerge,
+  updateCustomer,
+};
