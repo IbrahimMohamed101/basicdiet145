@@ -7,6 +7,13 @@ const Addon = require("../src/models/Addon");
 const BuilderProtein = require("../src/models/BuilderProtein");
 const ActivityLog = require("../src/models/ActivityLog");
 const EmailOtpChallenge = require("../src/models/EmailOtpChallenge");
+const PromoCode = require("../src/models/PromoCode");
+const SubscriptionExtraEntitlementAllocation = require(
+  "../src/models/SubscriptionExtraEntitlementAllocation"
+);
+const SubscriptionExtraEntitlementBucket = require(
+  "../src/models/SubscriptionExtraEntitlementBucket"
+);
 
 const INDEX_DEFINITIONS = [
   {
@@ -86,6 +93,27 @@ const INDEX_DEFINITIONS = [
     },
   },
 ];
+
+function defaultIndexName(key) {
+  return Object.entries(key)
+    .map(([field, direction]) => `${field}_${direction}`)
+    .join("_");
+}
+
+for (const model of [
+  PromoCode,
+  SubscriptionExtraEntitlementAllocation,
+  SubscriptionExtraEntitlementBucket,
+]) {
+  for (const [key, options] of model.schema.indexes()) {
+    INDEX_DEFINITIONS.push({
+      model,
+      name: options.name || defaultIndexName(key),
+      key,
+      options,
+    });
+  }
+}
 
 async function ensureProductionIndexes() {
   const uri = process.env.MONGO_URI || process.env.MONGODB_URI;

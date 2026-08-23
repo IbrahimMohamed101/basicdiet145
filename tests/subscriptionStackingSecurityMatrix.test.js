@@ -48,17 +48,31 @@ function assertProductionModeBlocked(env, code, mode) {
   );
 }
 
-function testProductionRolloutAlwaysBlocked() {
+function productionGlobalEnv(overrides = {}) {
+  return {
+    NODE_ENV: "production",
+    SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMED: "true",
+    SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
+    SUBSCRIPTION_STACKING_READ_ENABLED: "true",
+    SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
+    SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
+    SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true",
+    SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
+    ...overrides,
+  };
+}
+
+function testProductionRolloutRequiresExplicitConfirmation() {
   for (const nodeEnv of ["production", " Production ", "PRODUCTION", "prod", "live"]) {
     assertProductionModeBlocked(
       { NODE_ENV: nodeEnv, SUBSCRIPTION_STACKING_WRITE_ENABLED: " TrUe " },
-      "SUBSCRIPTION_STACKING_PRODUCTION_WRITE_BLOCKED",
+      "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
       "write"
     );
   }
   assertProductionModeBlocked(
     { NODE_ENV: "production", SUBSCRIPTION_STACKING_READ_ENABLED: "true" },
-    "SUBSCRIPTION_STACKING_PRODUCTION_READ_BLOCKED",
+    "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
     "read"
   );
   assertProductionModeBlocked(
@@ -67,7 +81,7 @@ function testProductionRolloutAlwaysBlocked() {
       RAILWAY_ENVIRONMENT_NAME: "production",
       SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
     },
-    "SUBSCRIPTION_STACKING_PRODUCTION_SHADOW_BLOCKED",
+    "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
     "shadow"
   );
   assert.doesNotThrow(() => assertSubscriptionStackingProductionSafety({
@@ -76,6 +90,8 @@ function testProductionRolloutAlwaysBlocked() {
     SUBSCRIPTION_STACKING_READ_ENABLED: "false",
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "false",
   }));
+  const enabled = assertSubscriptionStackingProductionSafety(productionGlobalEnv());
+  assert.strictEqual(enabled.productionRolloutEnabled, true);
 }
 
 function testRolloutPolicyFailsClosed() {
@@ -212,7 +228,7 @@ function testPlannedPickupInstallerIsCanaryBoundAndDefaultClosed() {
 }
 
 async function run() {
-  testProductionRolloutAlwaysBlocked();
+  testProductionRolloutRequiresExplicitConfirmation();
   testRolloutPolicyFailsClosed();
   await testDisabledWrappersPerformNoLookup();
   await testDirectPickupRemainsFailClosed();

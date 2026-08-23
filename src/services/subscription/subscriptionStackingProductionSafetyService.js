@@ -26,8 +26,40 @@ function resolveProductionEnvironment(env = process.env) {
   };
 }
 
+const PRODUCTION_ROLLOUT_FLAG_NAMES = Object.freeze([
+  "SUBSCRIPTION_STACKING_SHADOW_ENABLED",
+  "SUBSCRIPTION_STACKING_READ_ENABLED",
+  "SUBSCRIPTION_STACKING_WRITE_ENABLED",
+  "SUBSCRIPTION_STACKING_ALLOW_ALL_USERS",
+  "SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED",
+  "SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED",
+]);
+
+function resolveProductionRolloutState(env = process.env) {
+  const environment = resolveProductionEnvironment(env);
+  const confirmationProvided = isEnabled(
+    env.SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMED
+  );
+  const missingEnabledFlags = PRODUCTION_ROLLOUT_FLAG_NAMES.filter(
+    (name) => !isEnabled(env[name])
+  );
+  return {
+    production: environment.production,
+    confirmationProvided,
+    missingEnabledFlags,
+    enabled: environment.production
+      && confirmationProvided
+      && missingEnabledFlags.length === 0,
+  };
+}
+
+function isProductionStackingRolloutConfirmed(env = process.env) {
+  return resolveProductionRolloutState(env).enabled;
+}
+
 function assertSubscriptionStackingProductionSafety(env = process.env) {
   const environment = resolveProductionEnvironment(env);
+  const productionRollout = resolveProductionRolloutState(env);
   const shadowEnabled = isEnabled(env.SUBSCRIPTION_STACKING_SHADOW_ENABLED);
   const readEnabled = isEnabled(env.SUBSCRIPTION_STACKING_READ_ENABLED);
   const writeEnabled = isEnabled(env.SUBSCRIPTION_STACKING_WRITE_ENABLED);
@@ -38,45 +70,37 @@ function assertSubscriptionStackingProductionSafety(env = process.env) {
     env.SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED
   );
 
+  const enabledModes = [
+    shadowEnabled ? "shadow" : null,
+    readEnabled ? "read" : null,
+    writeEnabled ? "write" : null,
+    extraActivationEnabled ? "extra_activation" : null,
+    extraSelectionEnabled ? "extra_selection" : null,
+  ].filter(Boolean);
+
   if (
     environment.production
-    && (
-      shadowEnabled
-      || readEnabled
-      || writeEnabled
-      || extraActivationEnabled
-      || extraSelectionEnabled
-    )
+    && (enabledModes.length > 0 || productionRollout.confirmationProvided)
+    && !productionRollout.enabled
   ) {
-    const enabledModes = [
-      shadowEnabled ? "shadow" : null,
-      readEnabled ? "read" : null,
-      writeEnabled ? "write" : null,
-      extraActivationEnabled ? "extra_activation" : null,
-      extraSelectionEnabled ? "extra_selection" : null,
-    ].filter(Boolean);
     const err = new Error(
-      "Subscription stacking is not production-ready and all rollout modes must remain disabled"
+      productionRollout.confirmationProvided
+        ? "Production stacking confirmation requires the complete global rollout configuration"
+        : "Production stacking rollout requires explicit production confirmation"
     );
-    err.code = extraActivationEnabled
-      ? "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED"
-      : extraSelectionEnabled
-      ? "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED"
-      : writeEnabled
-      ? "SUBSCRIPTION_STACKING_PRODUCTION_WRITE_BLOCKED"
-      : (readEnabled
-        ? "SUBSCRIPTION_STACKING_PRODUCTION_READ_BLOCKED"
-        : "SUBSCRIPTION_STACKING_PRODUCTION_SHADOW_BLOCKED");
+    err.code = productionRollout.confirmationProvided
+      ? "SUBSCRIPTION_STACKING_PRODUCTION_GLOBAL_FLAGS_REQUIRED"
+      : "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED";
     err.details = {
       environmentSource: environment.source,
       environmentValue: environment.value,
       enabledModes,
+      missingEnabledFlags: productionRollout.missingEnabledFlags,
       requiredValues: {
-        SUBSCRIPTION_STACKING_SHADOW_ENABLED: "false",
-        SUBSCRIPTION_STACKING_READ_ENABLED: "false",
-        SUBSCRIPTION_STACKING_WRITE_ENABLED: "false",
-        SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "false",
-        SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "false",
+        SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMED: "true",
+        ...Object.fromEntries(
+          PRODUCTION_ROLLOUT_FLAG_NAMES.map((name) => [name, "true"])
+        ),
       },
     };
     throw err;
@@ -91,11 +115,16 @@ function assertSubscriptionStackingProductionSafety(env = process.env) {
     writeEnabled,
     extraActivationEnabled,
     extraSelectionEnabled,
-    productionRolloutBlocked: true,
+    productionRolloutConfirmed: productionRollout.confirmationProvided,
+    productionRolloutEnabled: productionRollout.enabled,
+    productionRolloutBlocked: environment.production && !productionRollout.enabled,
   };
 }
 
 module.exports = {
   assertSubscriptionStackingProductionSafety,
+  isProductionStackingRolloutConfirmed,
+  PRODUCTION_ROLLOUT_FLAG_NAMES,
   resolveProductionEnvironment,
+  resolveProductionRolloutState,
 };

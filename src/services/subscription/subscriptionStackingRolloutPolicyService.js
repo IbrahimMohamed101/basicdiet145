@@ -1,6 +1,7 @@
 "use strict";
 
 const {
+  isProductionStackingRolloutConfirmed,
   resolveProductionEnvironment,
 } = require("./subscriptionStackingProductionSafetyService");
 
@@ -140,6 +141,7 @@ function extraActivationSafetyState(env = process.env) {
   const paymentMode = String(env.STAGING_PAYMENT_MODE || "").trim().toLowerCase();
   return {
     production: environment.production,
+    productionRolloutConfirmed: isProductionStackingRolloutConfirmed(env),
     databaseIsolationConfirmed: isEnabled(
       env.STAGING_DATABASE_ISOLATION_CONFIRMED
     ),
@@ -198,10 +200,21 @@ function assertExtraActivationCanaryConfiguration(env = process.env) {
 
   const safety = extraActivationSafetyState(env);
   if (safety.production) {
-    throw policyError(
-      "STACKING_EXTRA_ACTIVATION_PRODUCTION_BLOCKED",
-      "Extra activation canary cannot run in production"
-    );
+    if (!safety.productionRolloutConfirmed || !globalRollout) {
+      throw policyError(
+        "STACKING_EXTRA_ACTIVATION_PRODUCTION_CONFIRMATION_REQUIRED",
+        "Production extra activation requires the confirmed global stacking rollout"
+      );
+    }
+    return {
+      ok: true,
+      enabled: true,
+      mode: "production_global",
+      userCount: "all",
+      wildcardAllowed: true,
+      databaseIsolationRequired: false,
+      paymentSandboxRequired: false,
+    };
   }
   if (!safety.databaseIsolationConfirmed) {
     throw policyError(
@@ -236,10 +249,10 @@ function isExtraActivationCanaryEnabledForUser(userId, env = process.env) {
   const globalRollout = isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS);
   if (
     !state.enabled
-    || safety.production
-    || !safety.databaseIsolationConfirmed
-    || !safety.paymentSandboxConfirmed
-    || !safety.safePaymentMode
+    || (safety.production && !safety.productionRolloutConfirmed)
+    || (!safety.production && !safety.databaseIsolationConfirmed)
+    || (!safety.production && !safety.paymentSandboxConfirmed)
+    || (!safety.production && !safety.safePaymentMode)
   ) {
     return false;
   }
@@ -299,10 +312,19 @@ function assertExtraSelectionCanaryConfiguration(env = process.env) {
   if (state.enabled && globalRollout) {
     const safety = extraActivationSafetyState(env);
     if (safety.production) {
-      throw policyError(
-        "STACKING_EXTRA_SELECTION_PRODUCTION_BLOCKED",
-        "Global extra selection cannot run before production certification"
-      );
+      if (!safety.productionRolloutConfirmed) {
+        throw policyError(
+          "STACKING_EXTRA_SELECTION_PRODUCTION_CONFIRMATION_REQUIRED",
+          "Production extra selection requires the confirmed global stacking rollout"
+        );
+      }
+      return {
+        ok: true,
+        enabled: true,
+        mode: "production_global",
+        userCount: "all",
+        wildcardAllowed: true,
+      };
     }
     if (!safety.databaseIsolationConfirmed) {
       throw policyError(
@@ -334,14 +356,20 @@ function isExtraSelectionCanaryEnabledForUser(userId, env = process.env) {
   const globalRollout = isEnabled(env.SUBSCRIPTION_STACKING_ALLOW_ALL_USERS);
   if (
     !state.enabled
-    || resolveProductionEnvironment(env).production
+    || (
+      resolveProductionEnvironment(env).production
+      && !isProductionStackingRolloutConfirmed(env)
+    )
   ) return false;
   if (globalRollout) {
     const safety = extraActivationSafetyState(env);
     if (
-      !safety.databaseIsolationConfirmed
-      || !safety.paymentSandboxConfirmed
-      || !safety.safePaymentMode
+      !safety.production
+      && (
+        !safety.databaseIsolationConfirmed
+        || !safety.paymentSandboxConfirmed
+        || !safety.safePaymentMode
+      )
     ) return false;
     return isReadStackingEnabledForUser(userIdValue, env)
       && isWriteStackingEnabledForUser(userIdValue, env);

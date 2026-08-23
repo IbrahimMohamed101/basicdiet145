@@ -190,7 +190,7 @@ async function run() {
       NODE_ENV: "production",
       SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true",
     }),
-    (err) => err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED"
+    (err) => err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED"
   );
   assert.throws(
     () => assertExtraSelectionCanaryConfiguration(env({
@@ -204,7 +204,7 @@ async function run() {
       RAILWAY_ENVIRONMENT_NAME: "production",
       SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
     }),
-    (err) => err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED"
+    (err) => err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED"
   );
   assert.strictEqual(
     assertSubscriptionStackingProductionSafety({

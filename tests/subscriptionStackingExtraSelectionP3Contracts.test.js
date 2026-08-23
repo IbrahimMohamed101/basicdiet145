@@ -83,7 +83,7 @@ function testCanaryNeverAcceptsWildcard() {
       SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
     }),
     (err) => Boolean(
-      err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED"
+      err && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED"
     )
   );
 }

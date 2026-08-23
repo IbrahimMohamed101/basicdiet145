@@ -17,43 +17,57 @@ function assertBlocked(env, expectedCode, expectedMode) {
       && Array.isArray(err.details && err.details.enabledModes)
       && err.details.enabledModes.includes(expectedMode)
       && err.details.requiredValues
-      && err.details.requiredValues.SUBSCRIPTION_STACKING_READ_ENABLED === "false"
+      && err.details.requiredValues.SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMED === "true"
     )
   );
 }
 
-function testProductionWriteIsHardBlocked() {
+function productionGlobalEnv(overrides = {}) {
+  return {
+    NODE_ENV: "production",
+    SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMED: "true",
+    SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true",
+    SUBSCRIPTION_STACKING_READ_ENABLED: "true",
+    SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
+    SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
+    SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true",
+    SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
+    ...overrides,
+  };
+}
+
+function testProductionWriteRequiresExplicitConfirmation() {
   assertBlocked(
     { NODE_ENV: "production", SUBSCRIPTION_STACKING_WRITE_ENABLED: "true" },
-    "SUBSCRIPTION_STACKING_PRODUCTION_WRITE_BLOCKED",
+    "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
     "write"
   );
 }
 
-function testProductionGlobalRolloutRemainsHardBlocked() {
-  assertBlocked(
-    {
-      NODE_ENV: "production",
-      SUBSCRIPTION_STACKING_READ_ENABLED: "true",
-      SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
-      SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "true",
-      SUBSCRIPTION_STACKING_EXTRA_ACTIVATION_ENABLED: "true",
-      SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "true",
-    },
-    "SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED",
-    "extra_activation"
+function testProductionConfirmationRequiresCompleteGlobalFlags() {
+  assert.throws(
+    () => assertSubscriptionStackingProductionSafety(productionGlobalEnv({
+      SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED: "false",
+    })),
+    (err) => Boolean(
+      err
+      && err.code === "SUBSCRIPTION_STACKING_PRODUCTION_GLOBAL_FLAGS_REQUIRED"
+      && err.details.missingEnabledFlags.includes(
+        "SUBSCRIPTION_STACKING_EXTRA_SELECTION_ENABLED"
+      )
+    )
   );
 }
 
-function testProductionReadAndShadowAreHardBlocked() {
+function testProductionReadAndShadowRequireConfirmation() {
   assertBlocked(
     { NODE_ENV: "prod", SUBSCRIPTION_STACKING_READ_ENABLED: "true" },
-    "SUBSCRIPTION_STACKING_PRODUCTION_READ_BLOCKED",
+    "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
     "read"
   );
   assertBlocked(
     { NODE_ENV: "live", SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true" },
-    "SUBSCRIPTION_STACKING_PRODUCTION_SHADOW_BLOCKED",
+    "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
     "shadow"
   );
 }
@@ -65,7 +79,7 @@ function testRailwayProductionNameCannotBypassKillSwitch() {
       RAILWAY_ENVIRONMENT_NAME: "Production",
       SUBSCRIPTION_STACKING_READ_ENABLED: "true",
     },
-    "SUBSCRIPTION_STACKING_PRODUCTION_READ_BLOCKED",
+    "SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED",
     "read"
   );
   const resolved = resolveProductionEnvironment({
@@ -74,6 +88,15 @@ function testRailwayProductionNameCannotBypassKillSwitch() {
   });
   assert.strictEqual(resolved.production, true);
   assert.strictEqual(resolved.source, "RAILWAY_ENVIRONMENT_NAME");
+}
+
+function testConfirmedProductionGlobalRolloutIsAllowed() {
+  const result = assertSubscriptionStackingProductionSafety(productionGlobalEnv());
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.productionEnvironment, true);
+  assert.strictEqual(result.productionRolloutConfirmed, true);
+  assert.strictEqual(result.productionRolloutEnabled, true);
+  assert.strictEqual(result.productionRolloutBlocked, false);
 }
 
 function testProductionAllModesDisabledIsAllowed() {
@@ -101,11 +124,12 @@ function testStagingAllowlistedModesCanBeExercised() {
 }
 
 function run() {
-  testProductionWriteIsHardBlocked();
-  testProductionGlobalRolloutRemainsHardBlocked();
-  testProductionReadAndShadowAreHardBlocked();
+  testProductionWriteRequiresExplicitConfirmation();
+  testProductionConfirmationRequiresCompleteGlobalFlags();
+  testProductionReadAndShadowRequireConfirmation();
   testRailwayProductionNameCannotBypassKillSwitch();
   testProductionAllModesDisabledIsAllowed();
+  testConfirmedProductionGlobalRolloutIsAllowed();
   testStagingAllowlistedModesCanBeExercised();
   console.log("subscription stacking production safety tests passed");
 }
