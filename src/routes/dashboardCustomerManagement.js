@@ -13,5 +13,6 @@ const router = Router();
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["superadmin"]));
 router.get("/:id", asyncHandler(controller.getCustomer));
 router.patch("/:id", asyncHandler(controller.updateCustomer));
+router.post("/:id/meal-compensations", asyncHandler(controller.grantMealCompensation));
 
 module.exports = router;

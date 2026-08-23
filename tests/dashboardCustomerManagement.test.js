@@ -130,6 +130,9 @@ async function run() {
   assert.strictEqual(response.body.data.phoneE164, "+966500000101");
   assert.strictEqual(response.body.data.activeSubscription.id, String(subscription._id));
   assert.strictEqual(response.body.data.activeSubscription.deliveryAddress.line1, "Old address");
+  assert.strictEqual(response.body.data.activeSubscription.balances.totalMeals, 14);
+  assert.strictEqual(response.body.data.activeSubscription.balances.remainingRegularMeals, 14);
+  assert.deepStrictEqual(response.body.data.activeSubscription.compensationHistory, []);
 
   response = await api
     .patch(`/api/dashboard/customer-management/${customer._id}`)
@@ -196,6 +199,82 @@ async function run() {
   assert.strictEqual(refreshSession.revokedReason, "security");
   assert.strictEqual(oldOtp, null, "old phone OTP must be invalidated");
   assert.strictEqual(emailChallenge, null, "pending email OTP challenges must be invalidated");
+
+  response = await api
+    .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
+    .set(admin.headers)
+    .send({
+      quantity: 5,
+      reason: "Forbidden admin compensation",
+      idempotencyKey: "admin-forbidden-compensation",
+    });
+  assert.strictEqual(response.status, 403, JSON.stringify(response.body));
+
+  const compensationPayload = {
+    quantity: 5,
+    reason: "Service recovery compensation approved by the customer care manager",
+    idempotencyKey: "customer-compensation-0001",
+  };
+  response = await api
+    .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
+    .set(superadmin.headers)
+    .send(compensationPayload);
+  assert.strictEqual(response.status, 201, JSON.stringify(response.body));
+  assert.strictEqual(response.body.meta.replayed, false);
+  assert.strictEqual(response.body.meta.compensation.quantity, 5);
+  assert.strictEqual(response.body.data.activeSubscription.balances.totalMeals, 19);
+  assert.strictEqual(response.body.data.activeSubscription.balances.remainingMeals, 19);
+  assert.strictEqual(response.body.data.activeSubscription.balances.compensatedMealsTotal, 5);
+  assert.strictEqual(response.body.data.activeSubscription.compensationHistory.length, 1);
+
+  response = await api
+    .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
+    .set(superadmin.headers)
+    .send(compensationPayload);
+  assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+  assert.strictEqual(response.body.meta.replayed, true);
+
+  const [compensatedSubscription, compensationLogs] = await Promise.all([
+    Subscription.findById(subscription._id).lean(),
+    ActivityLog.find({
+      entityType: "subscription",
+      entityId: subscription._id,
+      action: "subscription_meal_compensation_granted_by_superadmin",
+    }).lean(),
+  ]);
+  assert.strictEqual(compensatedSubscription.totalMeals, 19, "idempotent replay must not double-add total meals");
+  assert.strictEqual(compensatedSubscription.remainingMeals, 19, "idempotent replay must not double-add remaining meals");
+  assert.strictEqual(compensatedSubscription.compensatedMealsTotal, 5);
+  assert.strictEqual(compensatedSubscription.adminMealCompensations.length, 1);
+  assert.strictEqual(compensationLogs.length, 1, "exactly one activity log must be written");
+  assert.strictEqual(compensationLogs[0].meta.before.remainingMeals, 14);
+  assert.strictEqual(compensationLogs[0].meta.after.remainingMeals, 19);
+
+  const concurrentPayload = {
+    quantity: 2,
+    reason: "Concurrent compensation request must be applied exactly once",
+    idempotencyKey: "customer-compensation-concurrent-0002",
+  };
+  const concurrentResponses = await Promise.all([
+    api
+      .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
+      .set(superadmin.headers)
+      .send(concurrentPayload),
+    api
+      .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
+      .set(superadmin.headers)
+      .send(concurrentPayload),
+  ]);
+  assert.deepStrictEqual(
+    concurrentResponses.map((row) => row.status).sort(),
+    [200, 201],
+    concurrentResponses.map((row) => JSON.stringify(row.body)).join("\n")
+  );
+  const afterConcurrentCompensation = await Subscription.findById(subscription._id).lean();
+  assert.strictEqual(afterConcurrentCompensation.totalMeals, 21);
+  assert.strictEqual(afterConcurrentCompensation.remainingMeals, 21);
+  assert.strictEqual(afterConcurrentCompensation.compensatedMealsTotal, 7);
+  assert.strictEqual(afterConcurrentCompensation.adminMealCompensations.length, 2);
 
   const conflicting = await User.create({
     phone: "+966500000103",

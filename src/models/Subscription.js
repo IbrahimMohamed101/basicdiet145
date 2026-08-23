@@ -74,6 +74,25 @@ const BaseMealAllocationSchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Superadmin-only balance grants. Stored on the subscription so the balance
+// mutation and its idempotency/audit record are one atomic document update,
+// including on standalone MongoDB deployments without transaction support.
+const AdminMealCompensationSchema = new mongoose.Schema(
+  {
+    idempotencyKey: { type: String, required: true, trim: true },
+    quantity: { type: Number, required: true, min: 1, max: 100 },
+    reason: { type: String, required: true, trim: true, maxlength: 500 },
+    byUserId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", required: true },
+    byRole: { type: String, default: "superadmin" },
+    beforeTotalMeals: { type: Number, required: true, min: 0 },
+    beforeRemainingMeals: { type: Number, required: true, min: 0 },
+    afterTotalMeals: { type: Number, required: true, min: 0 },
+    afterRemainingMeals: { type: Number, required: true, min: 0 },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 const AddonBalanceSchema = new mongoose.Schema(
   {
     addonPlanId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", default: null },
@@ -303,6 +322,8 @@ const SubscriptionSchema = new mongoose.Schema(
     consumedMeals: { type: Number, min: 0, default: undefined },
     forfeitedMeals: { type: Number, min: 0, default: undefined },
     baseMealAllocations: { type: [BaseMealAllocationSchema], default: undefined },
+    compensatedMealsTotal: { type: Number, min: 0, default: 0 },
+    adminMealCompensations: { type: [AdminMealCompensationSchema], default: [] },
     // Backend-only idempotency ledger for historical pickup requests that were
     // created before baseMealAllocations existed. New Daily/Pickup operations
     // use allocationKey instead.

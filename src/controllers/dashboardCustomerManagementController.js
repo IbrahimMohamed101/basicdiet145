@@ -3,6 +3,7 @@
 const errorResponse = require("../utils/errorResponse");
 const { logger } = require("../utils/logger");
 const {
+  grantCustomerMealCompensation,
   getCustomerManagementProfile,
   updateCustomerManagementProfile,
 } = require("../services/dashboard/customerManagementService");
@@ -51,4 +52,27 @@ async function updateCustomer(req, res) {
   }
 }
 
-module.exports = { getCustomer, updateCustomer };
+async function grantMealCompensation(req, res) {
+  try {
+    const result = await grantCustomerMealCompensation({
+      id: req.params.id,
+      payload: req.body || {},
+      actorId: req.dashboardUserId,
+      actorRole: req.dashboardUserRole,
+    });
+    return res.status(result.replayed ? 200 : 201).json({
+      status: true,
+      message: result.replayed ? "Meal compensation already applied" : "Meal compensation applied successfully",
+      messageAr: result.replayed ? "تم تطبيق التعويض مسبقًا" : "تمت إضافة الوجبات التعويضية بنجاح",
+      data: result.customer,
+      meta: {
+        compensation: result.compensation,
+        replayed: result.replayed,
+      },
+    });
+  } catch (error) {
+    return respondWithError(res, error, { customerId: req.params.id, action: "meal_compensation" });
+  }
+}
+
+module.exports = { getCustomer, grantMealCompensation, updateCustomer };

@@ -5,9 +5,11 @@ const ActivityLog = require("../../models/ActivityLog");
 const AppUser = require("../../models/AppUser");
 const EmailOtpChallenge = require("../../models/EmailOtpChallenge");
 const Otp = require("../../models/Otp");
+const Plan = require("../../models/Plan");
 const RefreshSession = require("../../models/RefreshSession");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
+const { logger } = require("../../utils/logger");
 const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const { assertValidPhoneE164 } = require("../otpService");
 
@@ -126,18 +128,77 @@ function normalizeDeliveryAddress(value, currentAddress) {
   return normalized;
 }
 
-function serializeActiveSubscription(subscription) {
+function localizedSnapshot(value) {
+  if (!value) return null;
+  if (typeof value === "string") return { ar: value, en: value };
+  return {
+    ar: String(value.ar || value.en || ""),
+    en: String(value.en || value.ar || ""),
+  };
+}
+
+function serializeMealCompensation(row) {
+  return {
+    id: row._id ? String(row._id) : null,
+    idempotencyKey: row.idempotencyKey,
+    quantity: Number(row.quantity || 0),
+    reason: row.reason || "",
+    byUserId: row.byUserId ? String(row.byUserId) : null,
+    byRole: row.byRole || "superadmin",
+    before: {
+      totalMeals: Number(row.beforeTotalMeals || 0),
+      remainingMeals: Number(row.beforeRemainingMeals || 0),
+    },
+    after: {
+      totalMeals: Number(row.afterTotalMeals || 0),
+      remainingMeals: Number(row.afterRemainingMeals || 0),
+    },
+    createdAt: row.createdAt || null,
+  };
+}
+
+function serializeActiveSubscription(subscription, plan = null) {
   if (!subscription) return null;
+  const premiumRemainingMeals = (subscription.premiumBalance || [])
+    .reduce((sum, row) => sum + Math.max(0, Number(row.remainingQty || 0)), 0);
+  const remainingMeals = Math.max(0, Number(subscription.remainingMeals || 0));
+  const totalMeals = Math.max(0, Number(subscription.totalMeals || 0));
+  const compensationHistory = [...(subscription.adminMealCompensations || [])]
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 20)
+    .map(serializeMealCompensation);
   return {
     id: String(subscription._id),
     displayId: `SUB-${String(subscription._id).slice(-6).toUpperCase()}`,
     status: subscription.status,
+    planId: subscription.planId ? String(subscription.planId) : null,
+    planName: localizedSnapshot(plan && plan.name),
+    startDate: subscription.startDate || null,
+    endDate: subscription.endDate || null,
+    validityEndDate: subscription.validityEndDate || subscription.endDate || null,
     deliveryMode: subscription.deliveryMode,
     deliveryAddress: addressSnapshot(subscription.deliveryAddress),
+    selectedMealsPerDay: Number(subscription.selectedMealsPerDay || 0),
+    selectedGrams: Number(subscription.selectedGrams || 0),
+    balances: {
+      totalMeals,
+      remainingMeals,
+      remainingRegularMeals: Math.max(0, remainingMeals - premiumRemainingMeals),
+      remainingPremiumMeals: premiumRemainingMeals,
+      consumedMeals: Math.max(0, Number(
+        subscription.consumedMeals === undefined
+          ? totalMeals - remainingMeals
+          : subscription.consumedMeals
+      )),
+      reservedMeals: Math.max(0, Number(subscription.reservedMeals || 0)),
+      forfeitedMeals: Math.max(0, Number(subscription.forfeitedMeals || 0)),
+      compensatedMealsTotal: Math.max(0, Number(subscription.compensatedMealsTotal || 0)),
+    },
+    compensationHistory,
   };
 }
 
-function serializeCustomer({ user, appUser, activeSubscription }) {
+function serializeCustomer({ user, appUser, activeSubscription, plan = null }) {
   return {
     id: String(user._id),
     coreUserId: String(user._id),
@@ -147,7 +208,7 @@ function serializeCustomer({ user, appUser, activeSubscription }) {
     phoneE164: user.phoneE164 || user.phone || (appUser && appUser.phone) || null,
     email: user.email || (appUser && appUser.email) || null,
     isActive: user.isActive !== false,
-    activeSubscription: serializeActiveSubscription(activeSubscription),
+    activeSubscription: serializeActiveSubscription(activeSubscription, plan),
     createdAt: user.createdAt || null,
     updatedAt: user.updatedAt || null,
   };
@@ -195,13 +256,145 @@ async function findActiveSubscription(userId, { session = null, lean = true } = 
   return lean ? query.lean() : query;
 }
 
+async function findPlan(planId, { session = null } = {}) {
+  if (!planId) return null;
+  let query = Plan.findById(planId).select("_id name");
+  if (session) query = query.session(session);
+  return query.lean();
+}
+
 async function getCustomerManagementProfile(id) {
   const managed = await findManagedCustomer(id);
   if (!managed) {
     throw customerManagementError(404, "NOT_FOUND", "Customer account was not found");
   }
   const activeSubscription = await findActiveSubscription(managed.user._id);
-  return serializeCustomer({ ...managed, activeSubscription });
+  const plan = activeSubscription ? await findPlan(activeSubscription.planId) : null;
+  return serializeCustomer({ ...managed, activeSubscription, plan });
+}
+
+function normalizeCompensationPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw customerManagementError(400, "INVALID", "Request body must be an object");
+  }
+  const quantity = Number(payload.quantity);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+    throw customerManagementError(400, "INVALID_COMPENSATION_QUANTITY", "quantity must be an integer between 1 and 100");
+  }
+  const reason = String(payload.reason || "").trim();
+  if (reason.length < 3 || reason.length > 500) {
+    throw customerManagementError(400, "REASON_REQUIRED", "A reason between 3 and 500 characters is required");
+  }
+  const idempotencyKey = String(payload.idempotencyKey || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,120}$/.test(idempotencyKey)) {
+    throw customerManagementError(400, "INVALID_IDEMPOTENCY_KEY", "A valid idempotencyKey is required");
+  }
+  return { quantity, reason, idempotencyKey };
+}
+
+async function grantCustomerMealCompensation({ id, payload, actorId, actorRole }) {
+  if (actorRole !== "superadmin") {
+    throw customerManagementError(403, "FORBIDDEN", "Only superadmin may grant meal compensation");
+  }
+  const input = normalizeCompensationPayload(payload);
+  const managed = await findManagedCustomer(id);
+  if (!managed) {
+    throw customerManagementError(404, "NOT_FOUND", "Customer account was not found");
+  }
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const subscription = await findActiveSubscription(managed.user._id);
+    if (!subscription) {
+      throw customerManagementError(422, "ACTIVE_SUBSCRIPTION_REQUIRED", "Meal compensation requires an active subscription");
+    }
+    const replayed = (subscription.adminMealCompensations || [])
+      .find((row) => row.idempotencyKey === input.idempotencyKey);
+    if (replayed) {
+      const plan = await findPlan(subscription.planId);
+      return {
+        customer: serializeCustomer({ ...managed, activeSubscription: subscription, plan }),
+        compensation: serializeMealCompensation(replayed),
+        replayed: true,
+      };
+    }
+
+    const beforeTotalMeals = Math.max(0, Number(subscription.totalMeals || 0));
+    const beforeRemainingMeals = Math.max(0, Number(subscription.remainingMeals || 0));
+    const compensation = {
+      _id: new mongoose.Types.ObjectId(),
+      idempotencyKey: input.idempotencyKey,
+      quantity: input.quantity,
+      reason: input.reason,
+      byUserId: actorId,
+      byRole: actorRole,
+      beforeTotalMeals,
+      beforeRemainingMeals,
+      afterTotalMeals: beforeTotalMeals + input.quantity,
+      afterRemainingMeals: beforeRemainingMeals + input.quantity,
+      createdAt: new Date(),
+    };
+    const updated = await Subscription.findOneAndUpdate(
+      {
+        _id: subscription._id,
+        status: "active",
+        totalMeals: beforeTotalMeals,
+        remainingMeals: beforeRemainingMeals,
+        "adminMealCompensations.idempotencyKey": { $ne: input.idempotencyKey },
+      },
+      {
+        $inc: {
+          totalMeals: input.quantity,
+          remainingMeals: input.quantity,
+          compensatedMealsTotal: input.quantity,
+          __v: 1,
+        },
+        $push: { adminMealCompensations: compensation },
+      },
+      { new: true }
+    ).lean();
+
+    if (!updated) continue;
+
+    try {
+      await ActivityLog.create({
+        entityType: "subscription",
+        entityId: updated._id,
+        action: "subscription_meal_compensation_granted_by_superadmin",
+        byUserId: actorId,
+        byRole: actorRole,
+        meta: {
+          customerId: String(managed.user._id),
+          idempotencyKey: input.idempotencyKey,
+          quantity: input.quantity,
+          reason: input.reason,
+          before: {
+            totalMeals: beforeTotalMeals,
+            remainingMeals: beforeRemainingMeals,
+          },
+          after: {
+            totalMeals: compensation.afterTotalMeals,
+            remainingMeals: compensation.afterRemainingMeals,
+          },
+          source: "dashboard_customer_management",
+        },
+      });
+    } catch (error) {
+      logger.error("customer meal compensation activity log failed", {
+        subscriptionId: String(updated._id),
+        idempotencyKey: input.idempotencyKey,
+        error: error.message,
+      });
+    }
+
+    const plan = await findPlan(updated.planId);
+    return {
+      customer: serializeCustomer({ ...managed, activeSubscription: updated, plan }),
+      compensation: serializeMealCompensation(compensation),
+      replayed: false,
+    };
+  }
+
+  throw customerManagementError(409, "BALANCE_CHANGED", "Subscription balance changed; refresh and try again");
 }
 
 async function assertNoIdentityConflict({ userId, appUserId, phone, email, session }) {
@@ -290,6 +483,7 @@ async function updateCustomerManagementProfile({ id, payload, actorId, actorRole
       const user = managed.user;
       let appUser = managed.appUser;
       const activeSubscription = await findActiveSubscription(user._id, { session, lean: false });
+      const plan = activeSubscription ? await findPlan(activeSubscription.planId, { session }) : null;
       const deliveryAddress = normalizeDeliveryAddress(
         payload.deliveryAddress,
         activeSubscription && activeSubscription.deliveryAddress
@@ -419,7 +613,7 @@ async function updateCustomerManagementProfile({ id, payload, actorId, actorRole
       }], { session });
 
       result = {
-        customer: serializeCustomer({ user, appUser, activeSubscription }),
+        customer: serializeCustomer({ user, appUser, activeSubscription, plan }),
         changedFields: fields,
         sessionsRevoked,
       };
@@ -441,6 +635,7 @@ async function updateCustomerManagementProfile({ id, payload, actorId, actorRole
 }
 
 module.exports = {
+  grantCustomerMealCompensation,
   getCustomerManagementProfile,
   updateCustomerManagementProfile,
 };
