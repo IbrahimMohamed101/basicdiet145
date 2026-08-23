@@ -275,14 +275,21 @@ function assertNoTestFlagsInProduction() {
         violations.push("Staging email OTP test mode requires a valid EMAIL_OTP_TEST_EMAIL");
       }
     } else {
-      const emailDeliveryProvider = String(process.env.EMAIL_DELIVERY_PROVIDER || "smtp")
+      const normalizeEmailEnv = (value) => {
+        const raw = String(value || "").trim();
+        if (raw.length >= 2 && ((raw[0] === '"' && raw.at(-1) === '"') || (raw[0] === "'" && raw.at(-1) === "'"))) {
+          return raw.slice(1, -1).trim();
+        }
+        return raw;
+      };
+      const emailDeliveryProvider = normalizeEmailEnv(process.env.EMAIL_DELIVERY_PROVIDER || "smtp")
         .trim()
         .toLowerCase();
-      const gmailUser = String(process.env.GMAIL_USER || "").trim();
-      const gmailAppPassword = String(process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
-      const gmailOauthClientId = String(process.env.GMAIL_OAUTH_CLIENT_ID || "").trim();
-      const gmailOauthClientSecret = String(process.env.GMAIL_OAUTH_CLIENT_SECRET || "").trim();
-      const gmailOauthRefreshToken = String(process.env.GMAIL_OAUTH_REFRESH_TOKEN || "").trim();
+      const gmailUser = normalizeEmailEnv(process.env.GMAIL_USER);
+      const gmailAppPassword = normalizeEmailEnv(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, "");
+      const gmailOauthClientId = normalizeEmailEnv(process.env.GMAIL_OAUTH_CLIENT_ID);
+      const gmailOauthClientSecret = normalizeEmailEnv(process.env.GMAIL_OAUTH_CLIENT_SECRET);
+      const gmailOauthRefreshToken = normalizeEmailEnv(process.env.GMAIL_OAUTH_REFRESH_TOKEN);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gmailUser)) {
         violations.push("GMAIL_USER must be a valid email when email OTP is enabled");
       }

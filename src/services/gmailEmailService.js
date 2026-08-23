@@ -16,8 +16,20 @@ let cachedAccessToken = null;
 let cachedAccessTokenExpiresAt = 0;
 let pendingAccessTokenPromise = null;
 
+function normalizeEnvironmentValue(value) {
+  const raw = String(value || "").trim();
+  if (raw.length >= 2) {
+    const first = raw[0];
+    const last = raw[raw.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return raw.slice(1, -1).trim();
+    }
+  }
+  return raw;
+}
+
 function normalizeDeliveryProvider(value) {
-  const provider = String(value || "smtp").trim().toLowerCase();
+  const provider = normalizeEnvironmentValue(value || "smtp").toLowerCase();
   if (provider === "smtp" || provider === "gmail_api") return provider;
   throw new ApiError({
     status: 503,
@@ -28,12 +40,12 @@ function normalizeDeliveryProvider(value) {
 
 function getGmailConfig() {
   const provider = normalizeDeliveryProvider(process.env.EMAIL_DELIVERY_PROVIDER);
-  const user = String(process.env.GMAIL_USER || "").trim().toLowerCase();
-  const appPassword = String(process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
-  const clientId = String(process.env.GMAIL_OAUTH_CLIENT_ID || "").trim();
-  const clientSecret = String(process.env.GMAIL_OAUTH_CLIENT_SECRET || "").trim();
-  const refreshToken = String(process.env.GMAIL_OAUTH_REFRESH_TOKEN || "").trim();
-  const fromName = String(process.env.EMAIL_FROM_NAME || "Basic Diet")
+  const user = normalizeEnvironmentValue(process.env.GMAIL_USER).toLowerCase();
+  const appPassword = normalizeEnvironmentValue(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, "");
+  const clientId = normalizeEnvironmentValue(process.env.GMAIL_OAUTH_CLIENT_ID);
+  const clientSecret = normalizeEnvironmentValue(process.env.GMAIL_OAUTH_CLIENT_SECRET);
+  const refreshToken = normalizeEnvironmentValue(process.env.GMAIL_OAUTH_REFRESH_TOKEN);
+  const fromName = normalizeEnvironmentValue(process.env.EMAIL_FROM_NAME || "Basic Diet")
     .replace(/[\r\n"<>]/g, "")
     .trim() || "Basic Diet";
 
@@ -63,7 +75,7 @@ function getGmailConfig() {
   };
 }
 
-async function resolveGmailIpv4(resolve4 = dns.promises.resolve4.bind(dns.promises)) {
+async function resolveGmailIpv4Addresses(resolve4 = dns.promises.resolve4.bind(dns.promises)) {
   const addresses = await resolve4(GMAIL_SMTP_HOST);
   const ipv4Addresses = (Array.isArray(addresses) ? addresses : [])
     .filter((address) => net.isIPv4(address));
@@ -74,7 +86,12 @@ async function resolveGmailIpv4(resolve4 = dns.promises.resolve4.bind(dns.promis
     throw err;
   }
 
-  return ipv4Addresses[0];
+  return [...new Set(ipv4Addresses)];
+}
+
+async function resolveGmailIpv4(resolve4 = dns.promises.resolve4.bind(dns.promises)) {
+  const addresses = await resolveGmailIpv4Addresses(resolve4);
+  return addresses[0];
 }
 
 function buildGmailTransportOptions(config, ipv4Address) {
@@ -105,18 +122,43 @@ function buildGmailTransportOptions(config, ipv4Address) {
   };
 }
 
-async function getTransporter(config = getGmailConfig()) {
-  const key = `${config.user}:${config.appPassword}`;
+async function getTransporter(config = getGmailConfig(), ipv4Address = null) {
+  const resolvedAddress = ipv4Address || await resolveGmailIpv4();
+  const key = `${config.user}:${config.appPassword}:${resolvedAddress}`;
   if (cachedTransporter && cachedTransporterKey === key) {
     return { transporter: cachedTransporter, config };
   }
 
-  const ipv4Address = await resolveGmailIpv4();
   cachedTransporter = nodemailer.createTransport(
-    buildGmailTransportOptions(config, ipv4Address)
+    buildGmailTransportOptions(config, resolvedAddress)
   );
   cachedTransporterKey = key;
   return { transporter: cachedTransporter, config };
+}
+
+async function sendEmailOtpWithSmtp({ config, toEmail, copy, content }) {
+  const addresses = await resolveGmailIpv4Addresses();
+  let lastError = null;
+  for (const address of addresses) {
+    try {
+      const { transporter } = await getTransporter(config, address);
+      return await transporter.sendMail({
+        disableFileAccess: true,
+        disableUrlAccess: true,
+        from: `"${config.fromName}" <${config.user}>`,
+        to: toEmail,
+        subject: copy.subject,
+        text: content.text,
+        html: content.html,
+      });
+    } catch (err) {
+      lastError = err;
+      cachedTransporter = null;
+      cachedTransporterKey = null;
+      if (err && ["EAUTH", "EENVELOPE", "EMESSAGE"].includes(err.code)) break;
+    }
+  }
+  throw lastError || new Error("Gmail SMTP delivery failed");
 }
 
 function getGmailApiTimeoutMs() {
@@ -411,16 +453,7 @@ async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
       return info;
     }
 
-    const { transporter } = await getTransporter(config);
-    const info = await transporter.sendMail({
-      disableFileAccess: true,
-      disableUrlAccess: true,
-      from: `"${config.fromName}" <${config.user}>`,
-      to: toEmail,
-      subject: copy.subject,
-      text: content.text,
-      html: content.html,
-    });
+    const info = await sendEmailOtpWithSmtp({ config, toEmail, copy, content });
     logger.info("Email OTP accepted by Gmail", {
       email: toEmail,
       purpose,
@@ -464,9 +497,12 @@ module.exports = {
   buildOtpEmailContent,
   getGmailApiAccessToken,
   getGmailConfig,
+  normalizeEnvironmentValue,
   normalizeDeliveryProvider,
   postGmailApiMessage,
   resolveGmailIpv4,
+  resolveGmailIpv4Addresses,
+  sendEmailOtpWithSmtp,
   sendEmailOtp,
   resetGmailTransporterForTests,
 };

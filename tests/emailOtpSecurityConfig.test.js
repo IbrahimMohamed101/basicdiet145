@@ -5,9 +5,12 @@ const {
   buildGmailTransportOptions,
   buildOtpEmailContent,
   getGmailConfig,
+  normalizeEnvironmentValue,
+  normalizeDeliveryProvider,
   postGmailApiMessage,
   resetGmailTransporterForTests,
   resolveGmailIpv4,
+  resolveGmailIpv4Addresses,
 } = require("../src/services/gmailEmailService");
 const { isEmailOtpEnabled } = require("../src/services/emailOtpService");
 
@@ -72,6 +75,11 @@ async function main() {
     assert(result.violations.some((item) => item.includes("GMAIL_APP_PASSWORD")));
   });
 
+  assert.strictEqual(normalizeEnvironmentValue('"otp.sender@gmail.com"'), "otp.sender@gmail.com");
+  assert.strictEqual(normalizeEnvironmentValue("'abcdefghijklmnop'"), "abcdefghijklmnop");
+  assert.strictEqual(normalizeEnvironmentValue(" Basic Diet "), "Basic Diet");
+  assert.strictEqual(normalizeDeliveryProvider('"smtp"'), "smtp");
+
   await withEnvironment({
     NODE_ENV: "production",
     APP_URL: "https://api.example.com",
@@ -116,6 +124,13 @@ async function main() {
     return ["142.250.153.108", "142.250.153.109"];
   });
   assert.strictEqual(resolved, "142.250.153.108");
+  const resolvedAddresses = await resolveGmailIpv4Addresses(async () => [
+    "142.250.153.108",
+    "2404:6800:4003:c04::6c",
+    "142.250.153.109",
+    "142.250.153.108",
+  ]);
+  assert.deepStrictEqual(resolvedAddresses, ["142.250.153.108", "142.250.153.109"]);
   await assert.rejects(
     () => resolveGmailIpv4(async () => ["2404:6800:4003:c04::6c"]),
     (err) => err && err.code === "EDNS"
