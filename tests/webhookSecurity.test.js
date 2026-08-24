@@ -11,6 +11,7 @@ const { createApp } = require("../src/app");
 const ActivityLog = require("../src/models/ActivityLog");
 const Order = require("../src/models/Order");
 const Payment = require("../src/models/Payment");
+const moyasarService = require("../src/services/moyasarService");
 
 const TEST_TAG = `webhook-security-${Date.now()}`;
 const VALID_WEBHOOK_SECRET = `${TEST_TAG}-secret`;
@@ -235,6 +236,60 @@ function setWebhookEnv({ secret = VALID_WEBHOOK_SECRET, allowedIps } = {}) {
       assert.strictEqual(payment.status, "paid");
       assert.strictEqual(payment.applied, true);
       assert.strictEqual(activityLogs.length, 1, `expected one webhook confirmation log, got ${activityLogs.length}`);
+    });
+
+    await test("invoice callback without webhook token is verified with Moyasar before applying", async () => {
+      setWebhookEnv({ secret: VALID_WEBHOOK_SECRET });
+      const seeded = await seedPendingOneTimeOrder();
+      const invoicePayload = paidWebhookPayload(seeded).data;
+      const originalGetInvoice = moyasarService.getInvoice;
+      let verifiedInvoiceId = null;
+      moyasarService.getInvoice = async (invoiceId) => {
+        verifiedInvoiceId = String(invoiceId);
+        return invoicePayload;
+      };
+
+      try {
+        const res = await api.post("/api/webhooks/moyasar").send(invoicePayload);
+        assert.strictEqual(res.status, 200, `expected 200, got ${res.status} ${JSON.stringify(res.body)}`);
+        assert.strictEqual(verifiedInvoiceId, seeded.invoiceId);
+
+        const [order, payment] = await Promise.all([
+          Order.findById(seeded.order._id).lean(),
+          Payment.findById(seeded.payment._id).lean(),
+        ]);
+        assert.strictEqual(order.status, "confirmed");
+        assert.strictEqual(order.paymentStatus, "paid");
+        assert.strictEqual(payment.status, "paid");
+        assert.strictEqual(payment.applied, true);
+        assert.strictEqual(payment.providerInvoiceId, seeded.invoiceId);
+        assert.ok(payment.providerPaymentId, "verified invoice payment attempt should be stored");
+      } finally {
+        moyasarService.getInvoice = originalGetInvoice;
+      }
+    });
+
+    await test("invoice callback is not trusted when Moyasar verification fails", async () => {
+      setWebhookEnv({ secret: VALID_WEBHOOK_SECRET });
+      const seeded = await seedPendingOneTimeOrder();
+      const invoicePayload = paidWebhookPayload(seeded).data;
+      const originalGetInvoice = moyasarService.getInvoice;
+      moyasarService.getInvoice = async () => {
+        const err = new Error("provider unavailable");
+        err.status = 503;
+        throw err;
+      };
+
+      try {
+        const res = await api.post("/api/webhooks/moyasar").send(invoicePayload);
+        assert.strictEqual(res.status, 502, `expected 502, got ${res.status} ${JSON.stringify(res.body)}`);
+
+        const payment = await Payment.findById(seeded.payment._id).lean();
+        assert.strictEqual(payment.status, "initiated");
+        assert.strictEqual(payment.applied, false);
+      } finally {
+        moyasarService.getInvoice = originalGetInvoice;
+      }
     });
   } finally {
     if (originalSecret === undefined) delete process.env.MOYASAR_WEBHOOK_SECRET;

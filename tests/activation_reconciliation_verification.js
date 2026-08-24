@@ -141,11 +141,84 @@ async function activation_reconciliation_does_not_duplicate_subscription_days() 
   }
 }
 
+async function redirect_lookup_recovers_through_checkout_draft_without_weakening_token_check() {
+  const draftId = new mongoose.Types.ObjectId();
+  const paymentId = new mongoose.Types.ObjectId();
+  const providerInvoiceId = "inv_redirect_recovery";
+  const token = "secure-redirect-token";
+  const payment = {
+    _id: paymentId,
+    provider: "moyasar",
+    providerInvoiceId,
+    type: "subscription_activation",
+    metadata: {
+      // Simulate a legacy/inconsistent top-level metadata shape. The canonical
+      // redirect context remains the authorization source.
+      redirectContext: {
+        token,
+        paymentType: "subscription_activation",
+        draftId: String(draftId),
+      },
+    },
+  };
+
+  const Payment = require("../src/models/Payment");
+  const CheckoutDraft = require("../src/models/CheckoutDraft");
+  const sandbox = sinon.createSandbox();
+  const paymentFindOne = sandbox.stub(Payment, "findOne");
+  paymentFindOne.onFirstCall().returns({
+    sort: () => ({ lean: () => Promise.resolve(null) }),
+  });
+  paymentFindOne.onSecondCall().returns({
+    sort: () => ({ lean: () => Promise.resolve(payment) }),
+  });
+  sandbox.stub(CheckoutDraft, "findById").returns({
+    select: () => ({
+      lean: () => Promise.resolve({
+        _id: draftId,
+        paymentId,
+        providerInvoiceId,
+      }),
+    }),
+  });
+
+  delete require.cache[require.resolve("../src/services/paymentFlowService")];
+  const { resolvePaymentForRedirect } = require("../src/services/paymentFlowService");
+
+  try {
+    const recovered = await resolvePaymentForRedirect({
+      payment_type: "subscription_activation",
+      token,
+      draft_id: String(draftId),
+    });
+    assert.strictEqual(String(recovered._id), String(paymentId));
+
+    paymentFindOne.resetHistory();
+    paymentFindOne.onFirstCall().returns({
+      sort: () => ({ lean: () => Promise.resolve(null) }),
+    });
+    paymentFindOne.onSecondCall().returns({
+      sort: () => ({ lean: () => Promise.resolve(payment) }),
+    });
+    const rejected = await resolvePaymentForRedirect({
+      payment_type: "subscription_activation",
+      token: "wrong-redirect-token",
+      draft_id: String(draftId),
+    });
+    assert.strictEqual(rejected, null, "draft recovery must still reject the wrong token");
+  } finally {
+    sandbox.restore();
+    delete require.cache[require.resolve("../src/services/paymentFlowService")];
+  }
+}
+
 async function run() {
   await paid_activation_payment_with_applied_false_can_be_reconciled();
   console.log("✅ paid_activation_payment_with_applied_false_can_be_reconciled passed");
   await activation_reconciliation_does_not_duplicate_subscription_days();
   console.log("✅ activation_reconciliation_does_not_duplicate_subscription_days passed");
+  await redirect_lookup_recovers_through_checkout_draft_without_weakening_token_check();
+  console.log("✅ redirect_lookup_recovers_through_checkout_draft_without_weakening_token_check passed");
 }
 
 run().catch((err) => {

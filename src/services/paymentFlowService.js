@@ -123,7 +123,7 @@ function pickProviderInvoicePayment(invoice, payment) {
   return attempts[attempts.length - 1];
 }
 
-function buildRedirectLookupFilter(query = {}) {
+function normalizeRedirectQuery(query = {}) {
   const paymentType = String(query.payment_type || query.type || "").trim();
   const token = String(query.token || "").trim();
   const draftId = String(query.draft_id || "").trim();
@@ -139,28 +139,96 @@ function buildRedirectLookupFilter(query = {}) {
     throw err;
   }
 
+  return {
+    paymentType,
+    token,
+    draftId,
+    subscriptionId,
+    dayId,
+    date,
+    paymentId,
+  };
+}
+
+function buildRedirectLookupFilter(query = {}) {
+  const context = normalizeRedirectQuery(query);
+
   const filter = {
-    type: paymentType,
-    "metadata.redirectContext.token": token,
+    type: context.paymentType,
+    "metadata.redirectContext.token": context.token,
   };
 
-  if (paymentId && mongoose.Types.ObjectId.isValid(paymentId)) {
-    filter._id = paymentId;
+  if (context.paymentId && mongoose.Types.ObjectId.isValid(context.paymentId)) {
+    filter._id = context.paymentId;
   }
-  if (draftId) {
-    filter["metadata.draftId"] = draftId;
+  if (context.draftId) {
+    filter["metadata.draftId"] = context.draftId;
   }
-  if (subscriptionId) {
-    filter["metadata.subscriptionId"] = subscriptionId;
+  if (context.subscriptionId) {
+    filter["metadata.subscriptionId"] = context.subscriptionId;
   }
-  if (dayId) {
-    filter["metadata.dayId"] = dayId;
+  if (context.dayId) {
+    filter["metadata.dayId"] = context.dayId;
   }
-  if (date) {
-    filter["metadata.date"] = date;
+  if (context.date) {
+    filter["metadata.date"] = context.date;
   }
 
   return filter;
+}
+
+function safeTokenEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  return leftBuffer.length > 0
+    && leftBuffer.length === rightBuffer.length
+    && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function matchesAny(value, candidates) {
+  if (!value) return true;
+  return candidates.some((candidate) => candidate && String(candidate) === String(value));
+}
+
+function paymentMatchesRedirectContext(payment, context, draft = null) {
+  if (!payment || String(payment.type || "") !== context.paymentType) return false;
+  if (context.paymentId && String(payment._id || "") !== context.paymentId) return false;
+
+  const metadata = payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const storedContext = metadata.redirectContext && typeof metadata.redirectContext === "object"
+    ? metadata.redirectContext
+    : {};
+  if (!safeTokenEqual(storedContext.token, context.token)) return false;
+
+  return matchesAny(context.draftId, [storedContext.draftId, metadata.draftId, draft && draft._id])
+    && matchesAny(context.subscriptionId, [storedContext.subscriptionId, metadata.subscriptionId, payment.subscriptionId])
+    && matchesAny(context.dayId, [storedContext.dayId, metadata.dayId])
+    && matchesAny(context.date, [storedContext.date, metadata.date]);
+}
+
+async function findPaymentForRedirect(query = {}) {
+  const context = normalizeRedirectQuery(query);
+  const direct = await Payment.findOne(buildRedirectLookupFilter(query)).sort({ createdAt: -1 }).lean();
+  if (direct) return direct;
+
+  // Recover subscription checkout redirects through the canonical draft link.
+  // The token is still checked against the Payment redirect context, so this
+  // fallback relaxes only legacy metadata shape differences, not authorization.
+  if (!context.draftId || !mongoose.Types.ObjectId.isValid(context.draftId)) return null;
+  const draft = await CheckoutDraft.findById(context.draftId)
+    .select("_id paymentId providerInvoiceId")
+    .lean();
+  if (!draft) return null;
+
+  const candidateFilters = [];
+  if (draft.paymentId) candidateFilters.push({ _id: draft.paymentId });
+  if (draft.providerInvoiceId) {
+    candidateFilters.push({ provider: "moyasar", providerInvoiceId: draft.providerInvoiceId });
+  }
+  if (!candidateFilters.length) return null;
+
+  const candidate = await Payment.findOne({ $or: candidateFilters }).sort({ createdAt: -1 }).lean();
+  return paymentMatchesRedirectContext(candidate, context, draft) ? candidate : null;
 }
 
 function buildPaymentResultPayload(payment, providerInvoice, effectResult) {
@@ -212,8 +280,7 @@ async function markNonPaidSubscriptionDraft(payment, session) {
 }
 
 async function synchronizePaymentForRedirect(query, { source = "redirect_verify" } = {}) {
-  const filter = buildRedirectLookupFilter(query);
-  const existingPayment = await Payment.findOne(filter).sort({ createdAt: -1 }).lean();
+  const existingPayment = await findPaymentForRedirect(query);
   if (!existingPayment) {
     const err = new Error("Payment not found for redirect context");
     err.code = "PAYMENT_NOT_FOUND";
@@ -380,8 +447,7 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
 }
 
 async function resolvePaymentForRedirect(query) {
-  const filter = buildRedirectLookupFilter(query);
-  return Payment.findOne(filter).sort({ createdAt: -1 }).lean();
+  return findPaymentForRedirect(query);
 }
 
 module.exports = {
