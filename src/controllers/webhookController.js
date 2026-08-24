@@ -16,6 +16,7 @@ const {
 const { applyOrderWebhookInvoice } = require("../services/orders/orderPaymentService");
 const { releasePromoCodeUsageReservation } = require("../services/promoCodeService");
 const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
+const moyasarService = require("../services/moyasarService");
 const {
   isMoyasarRefundEvent,
   recordMoyasarRefundWebhook,
@@ -53,6 +54,60 @@ function redactId(value) {
   return `${text.slice(0, 4)}...${text.slice(-4)}`;
 }
 
+function pickInvoicePayment(invoice) {
+  const attempts = Array.isArray(invoice && invoice.payments)
+    ? invoice.payments.filter((item) => item && typeof item === "object")
+    : [];
+  if (!attempts.length) return null;
+
+  const paidAttempts = attempts.filter(
+    (item) => normalizePaymentStatus(item, null) === "paid"
+  );
+  return paidAttempts.length ? paidAttempts[paidAttempts.length - 1] : attempts[attempts.length - 1];
+}
+
+function isInvoiceCallbackPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  if (payload.type || payload.event || payload.secret_token || payload.data || payload.payment) return false;
+  const invoiceId = String(payload.id || payload.invoice_id || payload.invoiceId || "").trim();
+  return Boolean(
+    invoiceId
+    && invoiceId.length <= 200
+    && normalizePaymentStatus(payload, null) === "paid"
+    && Array.isArray(payload.payments)
+  );
+}
+
+function normalizeMoyasarPayload(payload, { verifiedInvoiceCallback = false } = {}) {
+  const eventType = payload.type || payload.event;
+  const data = payload.data || payload.payment || payload;
+  const isInvoiceObject = verifiedInvoiceCallback || Array.isArray(data && data.payments);
+  const invoicePayment = isInvoiceObject ? pickInvoicePayment(data) : null;
+  const metadata = data && data.metadata && typeof data.metadata === "object"
+    ? data.metadata
+    : invoicePayment && invoicePayment.metadata && typeof invoicePayment.metadata === "object"
+      ? invoicePayment.metadata
+      : {};
+
+  return {
+    eventType,
+    data,
+    metadata,
+    paymentStatus: normalizePaymentStatus(
+      invoicePayment && invoicePayment.status ? invoicePayment : data,
+      eventType
+    ),
+    paymentId: invoicePayment && invoicePayment.id
+      ? String(invoicePayment.id)
+      : isInvoiceObject
+        ? undefined
+        : data && data.id,
+    invoiceId: isInvoiceObject
+      ? data && (data.id || data.invoice_id || data.invoiceId)
+      : data && (data.invoice_id || data.invoiceId),
+  };
+}
+
 async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
     ? runtimeOverrides.startSession
@@ -75,23 +130,16 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   const recordMoyasarRefundWebhookFn = runtimeOverrides && runtimeOverrides.recordMoyasarRefundWebhook
     ? runtimeOverrides.recordMoyasarRefundWebhook
     : recordMoyasarRefundWebhook;
+  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
+    ? runtimeOverrides.getInvoice
+    : moyasarService.getInvoice;
+  const applyOrderWebhookInvoiceFn = runtimeOverrides && runtimeOverrides.applyOrderWebhookInvoice
+    ? runtimeOverrides.applyOrderWebhookInvoice
+    : applyOrderWebhookInvoice;
 
-  const payload = req.body || {};
-  const eventType = payload.type || payload.event;
-  const data = payload.data || payload.payment || payload;
-  const metadata = data && data.metadata && typeof data.metadata === "object" ? data.metadata : {};
-  const paymentStatus = normalizePaymentStatus(data, eventType);
-  const isPaid = paymentStatus === "paid";
-  const paymentId = data.id;
-  const invoiceId = data.invoice_id || data.invoiceId;
-  const metadataOrderId = metadata.orderId;
-  const logContext = {
-    eventType: eventType || null,
-    paymentStatus: paymentStatus || null,
-    paymentId: redactId(paymentId),
-    invoiceId: redactId(invoiceId),
-    hasSecretToken: Boolean(payload.secret_token),
-  };
+  let payload = req.body || {};
+  let normalizedPayload = normalizeMoyasarPayload(payload);
+  let verifiedInvoiceCallback = false;
 
   const secret = process.env.MOYASAR_WEBHOOK_SECRET;
   const allowedWebhookIPs = process.env.MOYASAR_WEBHOOK_ALLOWED_IPS ? 
@@ -120,18 +168,78 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
     }
   }
 
-  // SECURITY FIX: Fail closed when webhook secret is missing or mismatched.
+  // Moyasar invoice callback_url posts an invoice object directly and does not
+  // include the account-webhook secret token. Authenticate that distinct
+  // contract by fetching the invoice from Moyasar and only use the provider's
+  // authoritative response for all payment processing.
   if (!secret || !validSecret) {
-    logger.warn("Moyasar webhook rejected: invalid token", {
-      ...logContext,
-      hasConfiguredSecret: Boolean(secret),
-      hasHeaderSecret: Boolean(receivedHeaderSecret),
-    });
-    return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
+    if (isInvoiceCallbackPayload(payload)) {
+      const callbackInvoiceId = String(payload.id || payload.invoice_id || payload.invoiceId).trim();
+      try {
+        const verifiedInvoice = await getInvoiceFn(callbackInvoiceId);
+        if (!verifiedInvoice || String(verifiedInvoice.id || "") !== callbackInvoiceId) {
+          const mismatchError = new Error("Moyasar invoice verification returned a different invoice");
+          mismatchError.code = "PAYMENT_PROVIDER_MISMATCH";
+          mismatchError.status = 409;
+          throw mismatchError;
+        }
+        payload = verifiedInvoice;
+        normalizedPayload = normalizeMoyasarPayload(payload, { verifiedInvoiceCallback: true });
+        if (normalizedPayload.paymentStatus !== "paid") {
+          const statusError = new Error("Moyasar invoice callback is not paid");
+          statusError.code = "PAYMENT_PROVIDER_STATUS_MISMATCH";
+          statusError.status = 409;
+          throw statusError;
+        }
+        verifiedInvoiceCallback = true;
+      } catch (err) {
+        logger.warn("Moyasar invoice callback verification failed", {
+          invoiceId: redactId(callbackInvoiceId),
+          code: err.code || null,
+          error: err.message,
+        });
+        return errorResponse(
+          res,
+          err.status === 404 ? 404 : err.status === 409 ? 409 : 502,
+          err.code || "PAYMENT_PROVIDER_ERROR",
+          "Unable to verify invoice callback"
+        );
+      }
+    } else {
+      logger.warn("Moyasar webhook rejected: invalid token", {
+        eventType: normalizedPayload.eventType || null,
+        paymentStatus: normalizedPayload.paymentStatus || null,
+        paymentId: redactId(normalizedPayload.paymentId),
+        invoiceId: redactId(normalizedPayload.invoiceId),
+        hasSecretToken: Boolean(payload.secret_token),
+        hasConfiguredSecret: Boolean(secret),
+        hasHeaderSecret: Boolean(receivedHeaderSecret),
+      });
+      return errorResponse(res, 401, "UNAUTHORIZED", "Invalid webhook token" );
+    }
   }
 
+  const {
+    eventType,
+    data,
+    metadata,
+    paymentStatus,
+    paymentId,
+    invoiceId,
+  } = normalizedPayload;
+  const isPaid = paymentStatus === "paid";
+  const metadataOrderId = metadata.orderId;
+  const logContext = {
+    eventType: eventType || null,
+    paymentStatus: paymentStatus || null,
+    paymentId: redactId(paymentId),
+    invoiceId: redactId(invoiceId),
+    hasSecretToken: Boolean(req.body && req.body.secret_token),
+    authentication: verifiedInvoiceCallback ? "provider_invoice_fetch" : "webhook_secret",
+  };
+
   // SECURITY FIX: IP whitelist validation for webhooks
-  if (allowedWebhookIPs.length > 0) {
+  if (!verifiedInvoiceCallback && allowedWebhookIPs.length > 0) {
     const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0]?.trim();
     if (!clientIP || !allowedWebhookIPs.includes(clientIP)) {
       logger.warn("Moyasar webhook rejected: IP not allowed", {
@@ -184,7 +292,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
 
     let orderWebhookResult;
     try {
-      orderWebhookResult = await applyOrderWebhookInvoice({ providerInvoice: data, eventType });
+      orderWebhookResult = await applyOrderWebhookInvoiceFn({ providerInvoice: data, eventType });
     } catch (err) {
       if (err && err.code && err.status) {
         logger.warn("Moyasar order webhook rejected", {
