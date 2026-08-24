@@ -20,7 +20,7 @@ process.env.RATE_LIMIT_MOBILE_LOGIN_MAX = "1000";
 const assert = require("assert");
 const mongoose = require("mongoose");
 const request = require("supertest");
-const { MongoMemoryReplSet } = require("mongodb-memory-server");
+const { MongoMemoryReplSet, MongoMemoryServer } = require("mongodb-memory-server");
 
 const { createApp } = require("../src/app");
 const AppUser = require("../src/models/AppUser");
@@ -35,7 +35,8 @@ const OTP = process.env.EMAIL_OTP_TEST_CODE;
 const PASSWORD = "StrongPassword123";
 const NEW_PASSWORD = "ChangedPassword123";
 
-let replSet;
+const useStandaloneMongo = process.env.EMAIL_AUTH_TEST_STANDALONE === "true";
+let mongoServer;
 let passed = 0;
 let failed = 0;
 
@@ -65,8 +66,10 @@ function authHeader(token) {
 }
 
 async function startMongo() {
-  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, dbName: "email_otp_auth_test" } });
-  const uri = replSet.getUri("email_otp_auth_test");
+  mongoServer = useStandaloneMongo
+    ? await MongoMemoryServer.create()
+    : await MongoMemoryReplSet.create({ replSet: { count: 1, dbName: "email_otp_auth_test" } });
+  const uri = mongoServer.getUri("email_otp_auth_test");
   process.env.MONGO_URI = uri;
   process.env.MONGODB_URI = uri;
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
@@ -80,7 +83,7 @@ async function startMongo() {
 
 async function stopMongo() {
   if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
-  if (replSet) await replSet.stop();
+  if (mongoServer) await mongoServer.stop();
 }
 
 async function run() {
@@ -350,7 +353,8 @@ async function run() {
   });
 
   await stopMongo();
-  console.log(`\nEmail OTP auth tests: ${passed} passed, ${failed} failed`);
+  const topology = useStandaloneMongo ? "standalone" : "replica set";
+  console.log(`\nEmail OTP auth tests (${topology}): ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;
 }
 
