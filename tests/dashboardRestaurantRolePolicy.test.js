@@ -113,9 +113,9 @@ function run() {
     "restaurant can complete branch pickup"
   );
   assert(
-    !actionIds({ entityType: "order", status: "out_for_delivery", mode: "delivery", role: "restaurant" })
+    actionIds({ entityType: "order", status: "out_for_delivery", mode: "delivery", role: "restaurant" })
       .includes("fulfill"),
-    "restaurant does not inherit courier delivery completion"
+    "restaurant can complete delivery through the canonical operations flow"
   );
   assert(
     !actionIds({ entityType: "order", status: "confirmed", mode: "pickup", role: "cashier" })

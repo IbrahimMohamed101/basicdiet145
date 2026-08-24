@@ -149,7 +149,7 @@ async function handleAction(req, res) {
       }
 
       // 2. Validate action using Policy Engine
-      if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
+      if (effectiveMode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(action)) {
         return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
       }
 
@@ -161,7 +161,7 @@ async function handleAction(req, res) {
       const validation = opsActionPolicy.validateAction({
         entityType,
         status: doc.status,
-        mode,
+        mode: effectiveMode,
         role,
         actionId: action,
       });
