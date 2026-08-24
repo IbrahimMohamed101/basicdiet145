@@ -1,4 +1,3 @@
-const mongoose = require("mongoose");
 const AppUser = require("../models/AppUser");
 const User = require("../models/User");
 const { ApiError, isApiError } = require("../utils/apiError");
@@ -8,6 +7,7 @@ const { writeLog } = require("../utils/log");
 const { assertValidPhoneE164 } = require("../services/otpService");
 const { validateAppPassword, hashAppPassword } = require("../services/appPasswordService");
 const { clearTemporaryPasswordState } = require("../services/customerTemporaryPasswordService");
+const { startSafeSession } = require("../utils/mongoTransactionSupport");
 const {
   createRefreshSession,
   revokeAllUserSessions,
@@ -186,7 +186,11 @@ async function verifyEmailRegistration(req, res) {
 
     let createdUser = null;
     let sessionPayload = null;
-    const session = await mongoose.startSession();
+    // Railway's managed MongoDB service can run as a standalone server. Use
+    // the shared capability-aware session wrapper so this workflow keeps its
+    // transaction boundary on replica sets and executes once (without an
+    // unsupported transaction command) on standalone MongoDB.
+    const session = await startSafeSession();
     try {
       await session.withTransaction(async () => {
         const challenge = await findActiveChallenge({
@@ -290,7 +294,7 @@ async function confirmExistingEmailVerification(req, res) {
     }
 
     let updatedUser = null;
-    const session = await mongoose.startSession();
+    const session = await startSafeSession();
     try {
       await session.withTransaction(async () => {
         const challenge = await findActiveChallenge({
@@ -379,7 +383,7 @@ async function verifyEmailPasswordReset(req, res) {
     await findActiveChallenge({ challengeId, otp, purpose: "password_reset" });
 
     let resetToken = null;
-    const session = await mongoose.startSession();
+    const session = await startSafeSession();
     try {
       await session.withTransaction(async () => {
         const challenge = await findActiveChallenge({
@@ -421,7 +425,7 @@ async function resetPasswordWithEmail(req, res) {
     const passwordHash = await hashAppPassword(newPassword);
 
     let updatedUser = null;
-    const session = await mongoose.startSession();
+    const session = await startSafeSession();
     try {
       await session.withTransaction(async () => {
         const challenge = await findUsablePasswordResetChallenge(passwordResetToken, session);

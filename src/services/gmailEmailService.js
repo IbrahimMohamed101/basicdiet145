@@ -163,7 +163,10 @@ async function sendEmailOtpWithSmtp({ config, toEmail, copy, content }) {
 
 function getGmailApiTimeoutMs() {
   const configured = Number(process.env.EMAIL_GMAIL_API_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured >= 1000 ? configured : 10000;
+  // Railway occasionally needs more than ten seconds for the OAuth token or
+  // Gmail send request. Keep an explicit environment override, but use a
+  // production-safe default that does not abort healthy requests too early.
+  return Number.isFinite(configured) && configured >= 1000 ? configured : 30000;
 }
 
 function createTimeoutSignal(timeoutMs) {
