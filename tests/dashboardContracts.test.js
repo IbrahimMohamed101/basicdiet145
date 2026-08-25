@@ -399,6 +399,8 @@ async function runTests() {
     assert.strictEqual(getRes.body.data.timelineExtraDays, 4, "timeline extra days must round-trip independently");
     assert(Array.isArray(getRes.body.data.grams), "should return grams array for compatibility");
     assert(Array.isArray(getRes.body.data.gramsOptions), "should return gramsOptions array");
+    assert.strictEqual(getRes.body.data.gramsOptions[0].mealsOptions[0].priceHalala, 120000, "higher legacy compare-at value becomes base price");
+    assert.strictEqual(getRes.body.data.gramsOptions[0].mealsOptions[0].compareAtHalala, 0, "compare-at price is retired");
 
     // 6c. Update Package details
     const updatePayload = {
@@ -425,6 +427,8 @@ async function runTests() {
     expectStatus(getUpdatedRes, 200, "get updated plan");
     assert.strictEqual(getUpdatedRes.body.data.category, "weight_gain", "category must be updated");
     assert.strictEqual(getUpdatedRes.body.data.timelineExtraDays, 9, "timeline extra days must be editable");
+    assert.strictEqual(getUpdatedRes.body.data.gramsOptions[0].mealsOptions[0].priceHalala, 130000, "updated base price uses the higher submitted legacy value");
+    assert.strictEqual(getUpdatedRes.body.data.gramsOptions[0].mealsOptions[0].compareAtHalala, 0, "updated compare-at stays retired");
 
     // 6d. List Packages (should include the created plan)
     const listRes = await request(app)

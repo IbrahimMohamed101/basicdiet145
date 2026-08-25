@@ -74,6 +74,31 @@ for (const [index, plan] of serializedPlans.entries()) {
   }
 }
 
+const legacyDiscountedPlan = resolvePlanCatalogEntry(withId({
+  key: "legacy_discounted_plan",
+  name: { ar: "سعر قديم", en: "Legacy price" },
+  daysCount: 7,
+  durationDays: 7,
+  currency: "SAR",
+  isActive: true,
+  gramsOptions: [{
+    grams: 100,
+    mealsOptions: [{
+      mealsPerDay: 1,
+      priceHalala: 11700,
+      compareAtHalala: 13800,
+      isActive: true,
+    }],
+  }],
+}), "en");
+const legacyMealOption = legacyDiscountedPlan.gramsOptions[0].mealsOptions[0];
+assert.strictEqual(legacyMealOption.priceHalala, 13800, "the higher legacy value becomes the base plan price");
+assert.strictEqual(legacyMealOption.compareAtHalala, 0, "static compare-at pricing is not public");
+assert.strictEqual(legacyMealOption.savingsHalala, 0, "static savings are not public");
+assert.strictEqual(legacyDiscountedPlan.pricing.startsFromHalala, 13800);
+assert.strictEqual(legacyDiscountedPlan.pricing.compareAtStartsFromHalala, 0);
+assert.strictEqual(legacyDiscountedPlan.pricing.savingsStartsFromHalala, 0);
+
 const wrongFlatPlans = wrongFlatPlanKeys.map((key) => ({
   _id: new mongoose.Types.ObjectId(),
   key,

@@ -7,6 +7,17 @@ function normalizeHalala(value) {
   return Math.max(0, Math.round(parsed));
 }
 
+// `compareAtHalala` used to contain the undiscounted plan price while
+// `priceHalala` contained a manually discounted price. Promo codes are now the
+// only discount authority, so the highest legacy value is the canonical base
+// plan price until every stored plan has been normalized by an admin save.
+function resolvePlanBasePriceHalala(mealOption = {}) {
+  return Math.max(
+    normalizeHalala(mealOption && mealOption.priceHalala),
+    normalizeHalala(mealOption && mealOption.compareAtHalala)
+  );
+}
+
 function normalizeVatPercentage(value, fallback = DEFAULT_VAT_PERCENTAGE) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -139,4 +150,5 @@ module.exports = {
   buildMoneySummary,
   normalizeVatPercentage,
   normalizeHalala,
+  resolvePlanBasePriceHalala,
 };

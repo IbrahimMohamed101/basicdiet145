@@ -11,7 +11,7 @@ const dateUtils = require("../../utils/date");
 const validateObjectId = require("../../utils/validateObjectId");
 const { pickLang } = require("../../utils/i18n");
 const { SYSTEM_CURRENCY, assertSystemCurrencyOrThrow } = require("../../utils/currency");
-const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
+const { computeInclusiveVatBreakdown, resolvePlanBasePriceHalala } = require("../../utils/pricing");
 const { VAT_PERCENTAGE } = require("../../config/vat");
 const {
   resolvePickupLocationSelection,
@@ -930,7 +930,7 @@ async function resolveCheckoutQuoteOrThrow(
     throw err;
   }
 
-  const basePlanPriceHalala = parseNonNegativeInteger(mealOption.priceHalala);
+  const basePlanPriceHalala = parseNonNegativeInteger(resolvePlanBasePriceHalala(mealOption));
   if (basePlanPriceHalala === null) {
     const err = new Error("Plan price is invalid");
     err.code = "INVALID_SELECTION";

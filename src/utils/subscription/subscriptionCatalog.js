@@ -4,6 +4,7 @@ const { resolveSinglePickupLocations } = require("../singlePickupLocation");
 const {
   resolvePlanTimelineExtraDays,
 } = require("../../services/subscription/subscriptionTimelineDurationService");
+const { resolvePlanBasePriceHalala } = require("../pricing");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
@@ -200,17 +201,8 @@ function formatWindowLabel(windowValue, lang) {
   return `${formatTimeLabel(from, lang)} - ${formatTimeLabel(to, lang)}`;
 }
 
-function resolveSavings(compareAtHalala, priceHalala) {
-  const compareAt = Number(compareAtHalala) || 0;
-  const price = Number(priceHalala) || 0;
-  return Math.max(0, compareAt - price);
-}
-
 function resolvePlanMealOption(mealOption, lang, isDefault = false) {
-  const price = toMoneyParts(mealOption && mealOption.priceHalala);
-  const compareAt = toMoneyParts(mealOption && mealOption.compareAtHalala);
-  const savingsHalala = resolveSavings(compareAt.halala, price.halala);
-  const savings = toMoneyParts(savingsHalala);
+  const price = toMoneyParts(resolvePlanBasePriceHalala(mealOption));
   const mealsPerDay = Number(mealOption && mealOption.mealsPerDay) || 0;
 
   return {
@@ -219,15 +211,15 @@ function resolvePlanMealOption(mealOption, lang, isDefault = false) {
     shortLabel: formatMealsLabel(mealsPerDay, lang, true),
     priceHalala: price.halala,
     priceSar: price.sar,
-    compareAtHalala: compareAt.halala,
-    compareAtSar: compareAt.sar,
-    savingsHalala,
-    savingsSar: savings.sar,
+    // Compatibility fields remain numeric for older mobile clients, but no
+    // longer describe or advertise a static discount.
+    compareAtHalala: 0,
+    compareAtSar: 0,
+    savingsHalala: 0,
+    savingsSar: 0,
     priceLabel: formatCurrencyLabel(price.halala),
-    compareAtLabel: compareAt.halala > 0 ? formatCurrencyLabel(compareAt.halala) : "",
-    savingsLabel: savingsHalala > 0
-      ? localizeText(lang, `وفر ${formatCompactMoney(savings.sar)} ${SYSTEM_CURRENCY}`, `Save ${formatCompactMoney(savings.sar)} ${SYSTEM_CURRENCY}`)
-      : "",
+    compareAtLabel: "",
+    savingsLabel: "",
     isDefault,
   };
 }
@@ -273,8 +265,8 @@ function resolvePlanCatalogEntry(plan, lang) {
     ? defaultGramsOption.mealsOptions[0] || null
     : null;
   const startsFromHalala = defaultMealsOption ? defaultMealsOption.priceHalala : 0;
-  const compareAtStartsFromHalala = defaultMealsOption ? defaultMealsOption.compareAtHalala : 0;
-  const savingsStartsFromHalala = resolveSavings(compareAtStartsFromHalala, startsFromHalala);
+  const compareAtStartsFromHalala = 0;
+  const savingsStartsFromHalala = 0;
   const skipPolicy = plan && plan.skipPolicy && typeof plan.skipPolicy === "object" ? plan.skipPolicy : {};
   const timelineExtraDays = resolvePlanTimelineExtraDays(plan);
 

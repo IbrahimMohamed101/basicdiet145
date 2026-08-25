@@ -16,6 +16,7 @@ const {
 const {
   normalizeSubscriptionAddonCategory,
 } = require("../services/subscription/subscriptionAddonPolicyService");
+const { resolvePlanBasePriceHalala } = require("../utils/pricing");
 
 const SYSTEM_CURRENCY = "SAR";
 const ADDON_IMAGE_FOLDER = "addons";
@@ -623,7 +624,7 @@ async function buildFullyPopulatedAddonDetail(addonId, { includeInternal = false
           const mealOpt = gramsOpt.mealsOptions.find((m) => m.mealsPerDay === 2) || gramsOpt.mealsOptions[0];
           if (mealOpt) {
             mealsCount = daysCount * mealOpt.mealsPerDay;
-            basePlanPriceHalala = mealOpt.priceHalala;
+            basePlanPriceHalala = resolvePlanBasePriceHalala(mealOpt);
           }
         }
       }
