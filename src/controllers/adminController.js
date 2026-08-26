@@ -5817,7 +5817,6 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
     if (
       normalizedStatus === "paid"
       && ["subscription_activation", "subscription_renewal"].includes(String(paymentInSession.type || ""))
-      && !paymentInSession.applied
     ) {
       const linkedSubscription = paymentInSession.subscriptionId
         ? await Subscription.findOne({
@@ -5826,11 +5825,16 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
         }).session(session)
         : null;
 
-      if (linkedSubscription && linkedSubscription.status !== "pending_payment") {
+      if (paymentInSession.applied && !linkedSubscription) {
+        paymentInSession.applied = false;
+        await paymentInSession.save({ session });
+      }
+
+      if (!paymentInSession.applied && linkedSubscription && linkedSubscription.status !== "pending_payment") {
         paymentInSession.applied = true;
         await paymentInSession.save({ session });
         synchronized = true;
-      } else {
+      } else if (!paymentInSession.applied) {
         const linkRecovery = await repairCheckoutDraftPaymentLink(paymentInSession, session);
         if (linkRecovery.reason) businessReason = linkRecovery.reason;
       }
