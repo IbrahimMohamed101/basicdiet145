@@ -15,6 +15,9 @@ const {
   seedInitialPaidPurchaseEntitlementsTransactional,
 } = require("./subscriptionStackingInitialActivationService");
 const {
+  findCurrentActiveSubscriptionForUser,
+} = require("./subscriptionCurrentResolverService");
+const {
   FINALIZATION_ROUTES,
   resolveFinalizationAuthority,
 } = require("./subscriptionStackingFinalizationAuthorityService");
@@ -34,10 +37,12 @@ function defaultRuntime() {
     findDraftById: (draftId, session) => CheckoutDraft.findById(draftId).session(session),
     findPaymentById: (paymentId, session) => Payment.findById(paymentId).session(session),
     findSubscriptionById: (subscriptionId, session) => Subscription.findById(subscriptionId).session(session),
-    findActiveContainer: (userId, session) => Subscription.findOne({
-      userId,
-      status: "active",
-    }).select("_id userId status").session(session),
+    findActiveContainer: (userId, session, businessDate) => findCurrentActiveSubscriptionForUser(userId, {
+      session,
+      lean: false,
+      businessDate,
+      context: "stacking_initial_finalization_conflict",
+    }),
     getBusinessDate: () => getRestaurantBusinessDate(),
     seedInitialEntitlements: (args) => seedInitialPaidPurchaseEntitlementsTransactional(args),
     applyStack: (args) => applyPaidDraftToSubscriptionStackTransactional(args),
@@ -149,7 +154,14 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
     }
 
     if (authority.route === FINALIZATION_ROUTES.STANDARD_INITIAL) {
-      const activeContainer = await runtime.findActiveContainer(userId, session);
+      const businessDate = await runtime.getBusinessDate();
+      if (!businessDate) {
+        throw routerError(
+          "STACKING_BUSINESS_DATE_UNAVAILABLE",
+          "Restaurant business date is unavailable"
+        );
+      }
+      const activeContainer = await runtime.findActiveContainer(userId, session, businessDate);
       if (activeContainer) {
         throw routerError(
           "STACKING_INITIAL_FINALIZATION_CONFLICT",
@@ -161,13 +173,6 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
       const standardResult = await originalFinalize(args, originalRuntimeOverrides);
       if (!standardResult || !standardResult.applied || !standardResult.subscriptionId) {
         return standardResult;
-      }
-      const businessDate = await runtime.getBusinessDate();
-      if (!businessDate) {
-        throw routerError(
-          "STACKING_BUSINESS_DATE_UNAVAILABLE",
-          "Restaurant business date is unavailable"
-        );
       }
       const [finalDraft, finalPayment, subscription] = await Promise.all([
         runtime.findDraftById(draft._id, session),

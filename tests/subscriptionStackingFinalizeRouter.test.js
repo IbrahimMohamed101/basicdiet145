@@ -391,9 +391,11 @@ async function testInitialAuthorityCannotReplaceNewlyActiveParent() {
     },
     {
       writeEnabledForUser: () => true,
-      findActiveContainer: async () => ({
-        _id: new mongoose.Types.ObjectId(),
-      }),
+      getBusinessDate: async () => "2026-08-26",
+      findActiveContainer: async (userId, session, businessDate) => {
+        assert.strictEqual(businessDate, "2026-08-26");
+        return { _id: new mongoose.Types.ObjectId() };
+      },
     }
   );
   await assert.rejects(
