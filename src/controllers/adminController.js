@@ -5918,7 +5918,17 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
       error: err.message,
       stack: err.stack,
     });
-    return errorResponse(res, 500, "INTERNAL", "Payment verification failed");
+    const failureCode = err && err.code ? String(err.code) : "PAYMENT_APPLICATION_FAILED";
+    const failureStatus = Number.isInteger(err && err.status) && err.status >= 400 && err.status < 600
+      ? err.status
+      : 500;
+    return errorResponse(
+      res,
+      failureStatus,
+      failureCode,
+      `Payment verification failed: ${failureCode}`,
+      { reason: failureCode }
+    );
   }
 
   const latestPayment = await Payment.findById(id).lean();
