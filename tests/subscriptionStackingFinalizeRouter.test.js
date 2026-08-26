@@ -380,6 +380,34 @@ async function testInitialBatchFailureRejectsInsideCallerTransaction() {
   );
 }
 
+async function testInitialAuthorityFallsBackOnStandaloneMongo() {
+  const { draft, payment } = ids();
+  markInitial(draft);
+  const subscriptionId = new mongoose.Types.ObjectId();
+  let seedCalls = 0;
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => ({ applied: true, subscriptionId: String(subscriptionId) }),
+    {
+      writeEnabledForUser: () => true,
+      findActiveContainer: async () => null,
+      getBusinessDate: async () => "2026-08-26",
+      seedInitialEntitlements: async () => {
+        seedCalls += 1;
+        return { batch: { _id: new mongoose.Types.ObjectId() } };
+      },
+    }
+  );
+  const session = transactionalSession();
+  session.supportsTransactions = false;
+  const result = await wrapper({ draft, payment, session });
+  assert.strictEqual(result.applied, true);
+  assert.strictEqual(result.subscriptionId, String(subscriptionId));
+  assert.strictEqual(result.stacking.legacyFallback, true);
+  assert.strictEqual(result.stacking.initialBatchCreated, false);
+  assert.strictEqual(result.stacking.reason, "transactions_unsupported");
+  assert.strictEqual(seedCalls, 0);
+}
+
 async function testInitialAuthorityCannotReplaceNewlyActiveParent() {
   const { draft, payment } = ids();
   markInitial(draft);
@@ -419,6 +447,7 @@ async function run() {
   await testAdditiveDraftCannotBecomeLegacyAfterKillSwitch();
   await testInitialAuthorityUsesLegacyOnlyWhenNoParentExists();
   await testInitialBatchFailureRejectsInsideCallerTransaction();
+  await testInitialAuthorityFallsBackOnStandaloneMongo();
   await testInitialAuthorityCannotReplaceNewlyActiveParent();
   console.log("subscription stacking finalize router tests passed");
 }

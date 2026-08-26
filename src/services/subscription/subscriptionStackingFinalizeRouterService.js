@@ -174,6 +174,18 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
       if (!standardResult || !standardResult.applied || !standardResult.subscriptionId) {
         return standardResult;
       }
+      if (session && session.supportsTransactions === false) {
+        return {
+          ...standardResult,
+          stacking: {
+            applied: false,
+            legacyFallback: true,
+            route: authority.route,
+            initialBatchCreated: false,
+            reason: "transactions_unsupported",
+          },
+        };
+      }
       const [finalDraft, finalPayment, subscription] = await Promise.all([
         runtime.findDraftById(draft._id, session),
         runtime.findPaymentById(payment._id, session),
