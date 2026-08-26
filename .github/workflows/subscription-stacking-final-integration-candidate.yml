@@ -50,6 +50,9 @@ jobs:
           node --check src/services/subscription/subscriptionStackingExtraSelectionAuthorityService.js
           node --check src/services/subscription/subscriptionStackingExtraSelectionLifecycleService.js
           node --check tests/subscriptionStackingFinalIntegrationCandidate.integration.test.js
+          node --check tests/subscriptionStackingSelectionEligibilityService.test.js
+          node --check tests/subscriptionStackingSelectionRouter.test.js
+          node --check tests/subscriptionStackingSelectionRuntimeComposition.test.js
           NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
 
       - name: P0 wallet
@@ -65,6 +68,9 @@ jobs:
         run: |
           NODE_ENV=test node tests/subscriptionStackingExtraSelectionP3.integration.test.js
           NODE_ENV=test node tests/subscriptionStackingExtraSelectionP3Contracts.test.js
+          NODE_ENV=test node tests/subscriptionStackingSelectionEligibilityService.test.js
+          NODE_ENV=test node tests/subscriptionStackingSelectionRouter.test.js
+          NODE_ENV=test node tests/subscriptionStackingSelectionRuntimeComposition.test.js
 
       - name: Pickup planned reservation and availability
         run: |
