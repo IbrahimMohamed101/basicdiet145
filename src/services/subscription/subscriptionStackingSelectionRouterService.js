@@ -46,9 +46,18 @@ function createStackingSelectionWrappers(originals = {}, runtimeOverrides = null
   const originalValidation = originals.performDaySelectionValidation;
   const originalBulk = originals.performBulkDaySelectionPlanningBalanceValidation;
   const originalConfirmation = originals.performDayPlanningConfirmation;
-  async function extraSelectionEnabled(args = {}) {
-    if (!runtime.extraCanaryEnabledForUser(args.userId)) return false;
+
+  async function persistedStackingSelectionEnabled(args = {}) {
+    if (!runtime.writeEnabledForUser(args.userId)) return false;
+    if (!args.subscriptionId) return false;
     return Boolean(await runtime.hasPersistedStackingBatch(args.subscriptionId));
+  }
+
+  function extraSelectionEnabled(args = {}, stackingEnabled = false) {
+    return Boolean(
+      stackingEnabled
+      && runtime.extraCanaryEnabledForUser(args.userId)
+    );
   }
 
   for (const [name, fn] of Object.entries({
@@ -64,27 +73,30 @@ function createStackingSelectionWrappers(originals = {}, runtimeOverrides = null
 
   return {
     async performDaySelectionUpdate(args = {}) {
-      if (!runtime.writeEnabledForUser(args.userId)) {
+      const stackingEnabled = await persistedStackingSelectionEnabled(args);
+      if (!stackingEnabled) {
         return originalUpdate(args);
       }
       return runtime.stackingUpdate({
         ...args,
-        extraSelectionEnabled: await extraSelectionEnabled(args),
+        extraSelectionEnabled: extraSelectionEnabled(args, stackingEnabled),
       });
     },
 
     async performDaySelectionValidation(args = {}) {
-      if (!runtime.writeEnabledForUser(args.userId)) {
+      const stackingEnabled = await persistedStackingSelectionEnabled(args);
+      if (!stackingEnabled) {
         return originalValidation(args);
       }
       return runtime.stackingValidation({
         ...args,
-        extraSelectionEnabled: await extraSelectionEnabled(args),
+        extraSelectionEnabled: extraSelectionEnabled(args, stackingEnabled),
       });
     },
 
     async performBulkDaySelectionPlanningBalanceValidation(args = {}) {
-      if (!runtime.writeEnabledForUser(args.userId)) {
+      const stackingEnabled = await persistedStackingSelectionEnabled(args);
+      if (!stackingEnabled) {
         return originalBulk(args);
       }
       throw routerError(
@@ -95,12 +107,13 @@ function createStackingSelectionWrappers(originals = {}, runtimeOverrides = null
     },
 
     async performDayPlanningConfirmation(args = {}) {
-      if (!runtime.writeEnabledForUser(args.userId)) {
+      const stackingEnabled = await persistedStackingSelectionEnabled(args);
+      if (!stackingEnabled) {
         return originalConfirmation(args);
       }
       return runtime.stackingConfirmation({
         ...args,
-        extraSelectionEnabled: await extraSelectionEnabled(args),
+        extraSelectionEnabled: extraSelectionEnabled(args, stackingEnabled),
       });
     },
   };
