@@ -135,6 +135,38 @@ async function testAdditiveRouteNeverFallsThroughToLegacy() {
   assert.strictEqual(originalCalled, false);
 }
 
+async function testExpiredAdditiveParentFallsBackWithoutTransaction() {
+  const { draft, payment } = ids();
+  markAdditive(draft);
+  const subscriptionId = new mongoose.Types.ObjectId();
+  let originalCalls = 0;
+  let stackCalls = 0;
+  const session = transactionalSession();
+  session.inTransaction = () => false;
+  const wrapper = createFinalizeSubscriptionDraftPaymentWrapper(
+    async () => {
+      originalCalls += 1;
+      return { applied: true, subscriptionId: String(subscriptionId) };
+    },
+    {
+      writeEnabledForUser: () => true,
+      getBusinessDate: async () => "2026-08-26",
+      findActiveContainer: async () => null,
+      applyStack: async () => {
+        stackCalls += 1;
+        return null;
+      },
+    }
+  );
+  const result = await wrapper({ draft, payment, session });
+  assert.strictEqual(result.applied, true);
+  assert.strictEqual(result.subscriptionId, String(subscriptionId));
+  assert.strictEqual(result.stacking.legacyFallback, true);
+  assert.strictEqual(result.stacking.reason, "expected_parent_inactive");
+  assert.strictEqual(originalCalls, 1);
+  assert.strictEqual(stackCalls, 0);
+}
+
 async function testRouterOwnsTransactionWhenCallerHasNone() {
   const { draft, payment } = ids();
   markAdditive(draft);
@@ -467,6 +499,7 @@ async function run() {
   await testDisabledRouterDelegatesUnchanged();
   await testAllowlistedSessionUsesStackingPath();
   await testAdditiveRouteNeverFallsThroughToLegacy();
+  await testExpiredAdditiveParentFallsBackWithoutTransaction();
   await testRouterOwnsTransactionWhenCallerHasNone();
   await testCompletedDraftUsesCanonicalIdempotencyPath();
   await testMissingReloadedDocumentFailsClosedAndEndsSession();

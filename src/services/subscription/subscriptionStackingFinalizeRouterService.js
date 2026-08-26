@@ -240,6 +240,39 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
       );
     }
 
+    const hasActiveTransaction = Boolean(
+      session
+        && session.supportsTransactions !== false
+        && typeof session.inTransaction === "function"
+        && session.inTransaction()
+    );
+    if (!hasActiveTransaction) {
+      const activeContainer = await runtime.findActiveContainer(
+        userId,
+        session,
+        businessDate
+      );
+      if (!activeContainer) {
+        const standardResult = await originalFinalize(
+          args,
+          originalRuntimeOverrides
+        );
+        if (!standardResult || !standardResult.applied || !standardResult.subscriptionId) {
+          return standardResult;
+        }
+        return {
+          ...standardResult,
+          stacking: {
+            applied: false,
+            legacyFallback: true,
+            route: authority.route,
+            initialBatchCreated: false,
+            reason: "expected_parent_inactive",
+          },
+        };
+      }
+    }
+
     const stacked = await runtime.applyStack({
       draft,
       payment,
