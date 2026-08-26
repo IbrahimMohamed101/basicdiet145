@@ -16,6 +16,9 @@ const {
   withTransactionIfNeeded,
 } = require("../src/services/subscription/subscriptionStackingEntitlementRouterService");
 const {
+  createStackingSelectionWrappers,
+} = require("../src/services/subscription/subscriptionStackingSelectionRouterService");
+const {
   installSubscriptionStackingPlannedPickupRouter,
 } = require("../src/services/installSubscriptionStackingPlannedPickupRouter");
 
@@ -33,6 +36,27 @@ function makeOriginals(calls) {
     calls.push(name);
     return { legacy: true, name, args };
   }]));
+}
+
+function makeSelectionOriginals(calls) {
+  return {
+    performDaySelectionUpdate: async (args) => {
+      calls.push("update");
+      return { legacy: true, operation: "update", args };
+    },
+    performDaySelectionValidation: async (args) => {
+      calls.push("validation");
+      return { legacy: true, operation: "validation", args };
+    },
+    performBulkDaySelectionPlanningBalanceValidation: async (args) => {
+      calls.push("bulk");
+      return { legacy: true, operation: "bulk", args };
+    },
+    performDayPlanningConfirmation: async (args) => {
+      calls.push("confirmation");
+      return { legacy: true, operation: "confirmation", args };
+    },
+  };
 }
 
 function assertProductionModeBlocked(env, code, mode) {
@@ -151,6 +175,119 @@ async function testDisabledWrappersPerformNoLookup() {
   assert.strictEqual(ownerLookups, 0);
 }
 
+async function testLegacySelectionFallsBackWithoutPersistedStackingBatch() {
+  const legacyCalls = [];
+  const stackingCalls = [];
+  let batchLookups = 0;
+  let extraChecks = 0;
+  const wrappers = createStackingSelectionWrappers(
+    makeSelectionOriginals(legacyCalls),
+    {
+      // Reproduce the production-global rollout: the user is eligible globally,
+      // but this pre-stacking subscription has no applied purchase batch.
+      writeEnabledForUser: () => true,
+      extraCanaryEnabledForUser: () => {
+        extraChecks += 1;
+        return true;
+      },
+      hasPersistedStackingBatch: async () => {
+        batchLookups += 1;
+        return false;
+      },
+      stackingUpdate: async () => {
+        stackingCalls.push("update");
+        throw new Error("legacy subscription must not enter stacking update");
+      },
+      stackingValidation: async () => {
+        stackingCalls.push("validation");
+        throw new Error("legacy subscription must not enter stacking validation");
+      },
+      stackingConfirmation: async () => {
+        stackingCalls.push("confirmation");
+        throw new Error("legacy subscription must not enter stacking confirmation");
+      },
+    }
+  );
+  const args = {
+    userId: "legacy-user",
+    subscriptionId: "legacy-subscription",
+    date: "2026-08-27",
+  };
+
+  // Initial save and subsequent edit must both remain on the proven legacy path.
+  assert.strictEqual((await wrappers.performDaySelectionUpdate(args)).legacy, true);
+  assert.strictEqual((await wrappers.performDaySelectionUpdate({ ...args, edit: true })).legacy, true);
+  assert.strictEqual((await wrappers.performDaySelectionValidation(args)).legacy, true);
+  assert.strictEqual(
+    (await wrappers.performBulkDaySelectionPlanningBalanceValidation(args)).legacy,
+    true
+  );
+  assert.strictEqual((await wrappers.performDayPlanningConfirmation(args)).legacy, true);
+
+  assert.deepStrictEqual(
+    legacyCalls,
+    ["update", "update", "validation", "bulk", "confirmation"]
+  );
+  assert.deepStrictEqual(stackingCalls, []);
+  assert.strictEqual(batchLookups, 5);
+  assert.strictEqual(extraChecks, 0);
+}
+
+async function testPersistedStackingSelectionStillUsesStackingFlow() {
+  const legacyCalls = [];
+  const stackingCalls = [];
+  let batchLookups = 0;
+  let extraChecks = 0;
+  const wrappers = createStackingSelectionWrappers(
+    makeSelectionOriginals(legacyCalls),
+    {
+      writeEnabledForUser: () => true,
+      extraCanaryEnabledForUser: () => {
+        extraChecks += 1;
+        return true;
+      },
+      hasPersistedStackingBatch: async () => {
+        batchLookups += 1;
+        return true;
+      },
+      stackingUpdate: async (args) => {
+        stackingCalls.push(["update", args.extraSelectionEnabled]);
+        return { stacking: true };
+      },
+      stackingValidation: async (args) => {
+        stackingCalls.push(["validation", args.extraSelectionEnabled]);
+        return { stacking: true };
+      },
+      stackingConfirmation: async (args) => {
+        stackingCalls.push(["confirmation", args.extraSelectionEnabled]);
+        return { stacking: true };
+      },
+    }
+  );
+  const args = {
+    userId: "stacking-user",
+    subscriptionId: "stacking-subscription",
+    date: "2026-08-27",
+  };
+
+  assert.strictEqual((await wrappers.performDaySelectionUpdate(args)).stacking, true);
+  assert.strictEqual((await wrappers.performDaySelectionValidation(args)).stacking, true);
+  assert.strictEqual((await wrappers.performDayPlanningConfirmation(args)).stacking, true);
+  await assert.rejects(
+    () => wrappers.performBulkDaySelectionPlanningBalanceValidation(args),
+    (err) => Boolean(err && err.code === "STACKING_BULK_PLANNING_NOT_READY")
+  );
+
+  assert.deepStrictEqual(legacyCalls, []);
+  assert.deepStrictEqual(stackingCalls, [
+    ["update", true],
+    ["validation", true],
+    ["confirmation", true],
+  ]);
+  assert.strictEqual(batchLookups, 4);
+  assert.strictEqual(extraChecks, 3);
+}
+
 async function testDirectPickupRemainsFailClosed() {
   const calls = [];
   const wrappers = createStackingEntitlementWrappers(makeOriginals(calls), {
@@ -231,6 +368,8 @@ async function run() {
   testProductionRolloutRequiresExplicitConfirmation();
   testRolloutPolicyFailsClosed();
   await testDisabledWrappersPerformNoLookup();
+  await testLegacySelectionFallsBackWithoutPersistedStackingBatch();
+  await testPersistedStackingSelectionStillUsesStackingFlow();
   await testDirectPickupRemainsFailClosed();
   await testForeignAllocationCannotEnterStackingLedger();
   await testOwnedSessionAlwaysClosesOnFailure();
