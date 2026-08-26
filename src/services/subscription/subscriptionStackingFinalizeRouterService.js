@@ -174,7 +174,13 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
       if (!standardResult || !standardResult.applied || !standardResult.subscriptionId) {
         return standardResult;
       }
-      if (session && session.supportsTransactions === false) {
+      const hasActiveTransaction = Boolean(
+        session
+          && session.supportsTransactions !== false
+          && typeof session.inTransaction === "function"
+          && session.inTransaction()
+      );
+      if (!hasActiveTransaction) {
         return {
           ...standardResult,
           stacking: {
