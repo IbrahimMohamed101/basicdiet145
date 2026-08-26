@@ -108,13 +108,13 @@ async function testRouterRequiresCanaryAndPersistedNonLegacyBatch() {
     userId: "canary",
     subscriptionId: "legacy-only",
   });
-  assert.strictEqual(result.extraSelectionEnabled, false);
+  assert.strictEqual(result.source, "legacy:update");
   result = await wrappers.performDaySelectionUpdate({
     userId: "not-canary",
     subscriptionId: "stacked",
   });
   assert.strictEqual(result.extraSelectionEnabled, false);
-  assert.strictEqual(calls.length, 3);
+  assert.strictEqual(calls.length, 2);
 }
 
 async function testPinnedBucketAuthorityAndCanonicalAddonIdentity() {

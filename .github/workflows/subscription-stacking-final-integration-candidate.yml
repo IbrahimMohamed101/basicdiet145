@@ -116,7 +116,7 @@ jobs:
           grep -q 'STACKING_PREMIUM_ADDON_WRITE_NOT_READY' src/services/subscription/subscriptionStackingActivationService.js
           grep -q 'STACKING_PREMIUM_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
           grep -q 'STACKING_ADDON_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
-          grep -q 'SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED' src/services/subscription/subscriptionStackingProductionSafetyService.js
+          grep -q 'SUBSCRIPTION_STACKING_PRODUCTION_CONFIRMATION_REQUIRED' src/services/subscription/subscriptionStackingProductionSafetyService.js
           grep -q 'STACKING_EXTRA_SELECTION_WILDCARD_BLOCKED' src/services/subscription/subscriptionStackingRolloutPolicyService.js
 
       - name: Candidate scope and secret audit
