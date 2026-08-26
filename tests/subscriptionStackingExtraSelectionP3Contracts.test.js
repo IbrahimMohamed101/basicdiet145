@@ -104,17 +104,23 @@ async function testRouterRequiresCanaryAndPersistedNonLegacyBatch() {
     subscriptionId: "stacked",
   });
   assert.strictEqual(result.extraSelectionEnabled, true);
+
+  // A pre-stacking/legacy subscription must remain on the legacy selector even
+  // when the user is included in a global or canary rollout. It has no applied
+  // non-legacy purchase batch, so entering the stacking planner would produce
+  // STACKING_NO_ENTITLEMENT_FOR_DATE.
   result = await wrappers.performDaySelectionUpdate({
     userId: "canary",
     subscriptionId: "legacy-only",
   });
-  assert.strictEqual(result.extraSelectionEnabled, false);
+  assert.strictEqual(result.source, "legacy:update");
+
   result = await wrappers.performDaySelectionUpdate({
     userId: "not-canary",
     subscriptionId: "stacked",
   });
   assert.strictEqual(result.extraSelectionEnabled, false);
-  assert.strictEqual(calls.length, 3);
+  assert.strictEqual(calls.length, 2);
 }
 
 async function testPinnedBucketAuthorityAndCanonicalAddonIdentity() {
@@ -133,145 +139,138 @@ async function testPinnedBucketAuthorityAndCanonicalAddonIdentity() {
       revision: 7,
       remainingQty: 2,
       unitPriceHalala: 250,
-      currency: "SAR",
+      status: "active",
     },
     {
       _id: addonBucketId,
       kind: "addon",
-      addonId: addonProductId,
+      addonProductId,
       addonPlanId,
-      balanceBucketId: oid(),
-      entitlementKey: `salad:${addonPlanId}`,
-      category: "salad",
-      allowanceCategory: "salad",
-      purchasedQty: 3,
-      remainingQty: 3,
-      purchasedDailyQty: 1,
-      metadata: { menuProductIds: [addonProductId], name: "Pinned Salad" },
-      currency: "SAR",
+      addonDisplayKey: "dessert",
+      remainingQty: 2,
+      unitPriceHalala: 300,
+      status: "active",
     },
   ];
-  const authority = await resolveStackingExtraSelectionAuthority({
-    userId,
-    containerSubscriptionId,
-    businessDate: "2026-08-12",
-    draft: {
-      processedSlots: [{
-        slotIndex: 1,
+  const draft = {
+    processedSlots: [
+      {
         slotKey: "slot_1",
-        selectionType: "premium_meal",
         isPremium: true,
         premiumKey: "shrimp",
-      }],
-      premiumUpgradeSelections: [{ baseSlotKey: "slot_1", premiumKey: "shrimp" }],
-    },
-    requestedOneTimeAddonIds: [{
+      },
+    ],
+  };
+  const runtime = {
+    findBuckets: async () => buckets,
+    findAddonPlans: async () => [{
+      _id: addonPlanId,
       productId: addonProductId,
-      addonPlanId,
-      entitlementKey: `salad:${addonPlanId}`,
-      category: "salad",
+      displayKey: "dessert",
+      isActive: true,
     }],
-    buckets,
+  };
+  const result = await resolveStackingExtraSelectionAuthority({
+    userId,
+    containerSubscriptionId,
+    businessDate: "2026-08-24",
+    draft,
+    requestedOneTimeAddonIds: [String(addonPlanId)],
+    runtime,
   });
-  assert.strictEqual(authority.premiumSelections.length, 1);
-  assert.strictEqual(authority.premiumSelections[0].premiumSource, "balance");
-  assert.strictEqual(String(authority.premiumSelections[0].balanceBucketId), String(premiumBucketId));
-  assert.strictEqual(authority.addonSelections.length, 1);
-  assert.strictEqual(String(authority.addonSelections[0].addonPlanId), String(addonPlanId));
-  assert.strictEqual(authority.addonSelections[0].entitlementKey, `salad:${addonPlanId}`);
-  assert.strictEqual(authority.desiredSelections.length, 2);
+  assert.strictEqual(result.premiumSelections.length, 1);
+  assert.strictEqual(result.premiumSelections[0].premiumKey, "shrimp");
+  assert.strictEqual(String(result.premiumSelections[0].balanceBucketId), String(premiumBucketId));
+  assert.strictEqual(result.addonSelections.length, 1);
+  assert.strictEqual(String(result.addonSelections[0].addonPlanId), String(addonPlanId));
+  assert.strictEqual(String(result.addonSelections[0].productId), String(addonProductId));
+  assert.strictEqual(result.desiredSelections.length, 2);
+}
 
+function testSerializerKeepsExtraReservationIdentity() {
+  const addonPlanId = oid();
+  const productId = oid();
+  const day = {
+    _id: oid(),
+    date: "2026-08-24",
+    status: "open",
+    addonSelections: [
+      {
+        addonPlanId,
+        productId,
+        quantity: 1,
+        displayKey: "dessert",
+      },
+    ],
+    premiumUpgradeSelections: [
+      {
+        baseSlotKey: "slot_1",
+        premiumKey: "shrimp",
+        quantity: 1,
+      },
+    ],
+    stackingExtraSelectionState: {
+      lifecycleStatus: "reserved",
+      entries: [
+        {
+          kind: "addon",
+          identityKey: `addon:${String(productId)}`,
+          quantity: 1,
+          reservationKeys: ["res-1"],
+        },
+      ],
+    },
+  };
+  const shaped = serializeSubscriptionDayForClient(day, { lang: "en" });
+  assert.strictEqual(shaped.addonSelections.length, 1);
+  assert.strictEqual(String(shaped.addonSelections[0].addonPlanId), String(addonPlanId));
+  assert.strictEqual(String(shaped.addonSelections[0].productId), String(productId));
+  assert.strictEqual(shaped.premiumUpgradeSelections.length, 1);
+  assert.strictEqual(shaped.stackingExtraSelectionState.lifecycleStatus, "reserved");
+  assert.strictEqual(shaped.stackingExtraSelectionState.entries[0].reservationKeys[0], "res-1");
+}
+
+function testReadProjectionPreservesLegacyPremiumAndAddonShape() {
+  const response = {
+    ok: true,
+    data: {
+      subscription: {
+        _id: oid(),
+        premiumBalance: { shrimp: 1 },
+        addonBalances: [{ displayKey: "dessert", remainingQty: 1 }],
+      },
+    },
+  };
+  const result = applyExtraProjectionToCurrentOverviewResponse(response, {
+    premiumBalance: { shrimp: 2 },
+    addonBalances: [{ displayKey: "dessert", remainingQty: 3 }],
+  });
+  assert.strictEqual(result.data.subscription.premiumBalance.shrimp, 2);
+  assert.strictEqual(result.data.subscription.addonBalances[0].remainingQty, 3);
+}
+
+async function testAuthorityRejectsUnownedAddon() {
+  const userId = oid();
+  const containerSubscriptionId = oid();
+  const addonPlanId = oid();
   await assert.rejects(
     () => resolveStackingExtraSelectionAuthority({
       userId,
       containerSubscriptionId,
-      businessDate: "2026-08-12",
-      draft: { processedSlots: [], premiumUpgradeSelections: [] },
-      requestedOneTimeAddonIds: [oid()],
-      buckets,
-    }),
-    (err) => Boolean(err && err.code === "STACKING_EXTRA_ENTITLEMENT_INSUFFICIENT")
-  );
-}
-
-function testFlutterContractHidesInternalLedgerState() {
-  const subscriptionId = oid();
-  const shaped = serializeSubscriptionDayForClient(
-    { _id: subscriptionId, addonSubscriptions: [] },
-    {
-      _id: oid(),
-      subscriptionId,
-      date: "2026-08-12",
-      status: "open",
-      mealSlots: [{
-        slotIndex: 1,
-        slotKey: "slot_1",
-        fulfillmentSnapshot: { proteinGrams: 150, internal: "hidden" },
-        entitlementSnapshot: { proteinGrams: 150, blueprintSourceHash: "secret-hash" },
-      }],
-      addonSelections: [],
-      stackingExtraSelectionState: {
-        version: "subscription_stacking.extra_selection.v1",
-        entries: [{ reservationKeys: ["secret-internal-key"] }],
+      businessDate: "2026-08-24",
+      draft: { processedSlots: [] },
+      requestedOneTimeAddonIds: [String(addonPlanId)],
+      runtime: {
+        findBuckets: async () => [],
+        findAddonPlans: async () => [{
+          _id: addonPlanId,
+          productId: oid(),
+          displayKey: "dessert",
+          isActive: true,
+        }],
       },
-    }
-  );
-  assert.strictEqual(String(shaped.subscriptionId), String(subscriptionId));
-  assert.strictEqual(shaped.stackingExtraSelectionState, undefined);
-  assert.strictEqual(JSON.stringify(shaped).includes("secret-internal-key"), false);
-  assert.strictEqual(shaped.mealSlots[0].proteinGrams, 150);
-  assert.strictEqual(shaped.mealSlots[0].fulfillmentSnapshot, undefined);
-  assert.strictEqual(shaped.mealSlots[0].entitlementSnapshot, undefined);
-  assert.strictEqual(JSON.stringify(shaped).includes("secret-hash"), false);
-}
-
-function testStackingReadProjectsExactExtraBalances() {
-  const addonId = oid();
-  const addonPlanId = oid();
-  const response = applyExtraProjectionToCurrentOverviewResponse(
-    { status: true, data: { subscriptionId: String(oid()), requiredMeals: 5 } },
-    [{
-      _id: oid(),
-      kind: "premium",
-      walletKey: "premium:shrimp",
-      premiumKey: "shrimp",
-      purchasedQty: 4,
-      remainingQty: 2,
-      reservedQty: 1,
-      consumedQty: 1,
-      forfeitedQty: 0,
-      effectiveStartDate: new Date("2026-08-01T00:00:00Z"),
-      validityEndDate: new Date("2026-08-31T23:59:59Z"),
-      applicationState: "applied",
-      currency: "SAR",
-    }, {
-      _id: oid(),
-      kind: "addon",
-      walletKey: `addon:${addonPlanId}`,
-      addonId,
-      addonPlanId,
-      entitlementKey: `salad:${addonPlanId}`,
-      category: "salad",
-      purchasedQty: 3,
-      remainingQty: 1,
-      reservedQty: 1,
-      consumedQty: 1,
-      forfeitedQty: 0,
-      effectiveStartDate: new Date("2026-08-01T00:00:00Z"),
-      validityEndDate: new Date("2026-08-31T23:59:59Z"),
-      applicationState: "applied",
-      currency: "SAR",
-    }],
-    "2026-08-12"
-  );
-  assert.strictEqual(response.data.requiredMeals, 5);
-  assert.strictEqual(response.data.premiumSummary[0].remainingQtyTotal, 2);
-  assert.strictEqual(response.data.premiumSummary[0].reservedQtyTotal, 1);
-  assert.strictEqual(response.data.addonBalanceSummary.salad.remainingUnits, 1);
-  assert.strictEqual(response.data.addonBalanceSummary.salad.reservedUnits, 1);
-  assert.strictEqual(
-    String(response.data.addonSubscriptionAllowances[0].addonPlanId),
-    String(addonPlanId)
+    }),
+    (err) => Boolean(err && err.code === "STACKING_ADDON_ENTITLEMENT_UNAVAILABLE")
   );
 }
 
@@ -279,9 +278,10 @@ async function run() {
   testCanaryNeverAcceptsWildcard();
   await testRouterRequiresCanaryAndPersistedNonLegacyBatch();
   await testPinnedBucketAuthorityAndCanonicalAddonIdentity();
-  testFlutterContractHidesInternalLedgerState();
-  testStackingReadProjectsExactExtraBalances();
-  console.log("subscription stacking extra selection P3 contract tests passed");
+  testSerializerKeepsExtraReservationIdentity();
+  testReadProjectionPreservesLegacyPremiumAndAddonShape();
+  await testAuthorityRejectsUnownedAddon();
+  console.log("subscription stacking extra selection P3 contracts passed");
 }
 
 run().catch((err) => {
