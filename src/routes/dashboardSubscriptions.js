@@ -35,7 +35,6 @@ const manualDeductionWriteAccess = dashboardRoleMiddleware([
 const quickDayDeductionWriteAccess = dashboardRoleMiddleware([
   "admin",
   "cashier",
-  "restaurant",
 ]);
 
 router.get(
