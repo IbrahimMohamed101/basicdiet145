@@ -17,6 +17,12 @@ const SubscriptionQuickDayDeduction = require("../src/models/SubscriptionQuickDa
 const {
   createQuickDayDeductionService,
 } = require("../src/services/dashboard/subscriptionQuickDayDeductionService");
+const {
+  DAILY_DEDUCTION_ACTION,
+  loadDailyDeductions,
+  loadManualDeductions,
+  reconcileTrackingSummary,
+} = require("../src/services/subscription/subscriptionDashboardTrackingReadService");
 
 async function main() {
   const replSet = await MongoMemoryReplSet.create({
@@ -141,7 +147,7 @@ async function main() {
       ActivityLog.findOne({
         entityType: "subscription",
         entityId: subscriptionId,
-        action: "manual_subscription_meal_deduction",
+        action: DAILY_DEDUCTION_ACTION,
         "meta.source": "pickup_quick_deduction",
       }).lean(),
       SubscriptionAuditLog.findOne({
@@ -166,21 +172,58 @@ async function main() {
       [...operation.allocationKeys].sort(),
       allocations.map((row) => row.allocationKey).sort()
     );
-    assert(activity, "activity projection must exist");
+    assert(activity, "daily deduction activity projection must exist");
+    assert.strictEqual(activity.meta.classification, "daily_deduction");
+    assert.strictEqual(activity.meta.days, 2);
+    assert.strictEqual(activity.meta.mealsPerDay, 3);
     assert.strictEqual(activity.meta.deductedTotalMeals, 6);
     assert.strictEqual(activity.meta.entitlementBatchId, String(batchA._id));
     assert(audit, "subscription audit must exist");
     assert.strictEqual(audit.meta.mealsDeducted, 6);
 
+    const [manualDeductions, dailyDeductions] = await Promise.all([
+      loadManualDeductions(subscriptionId),
+      loadDailyDeductions(subscriptionId),
+    ]);
+    assert.strictEqual(manualDeductions.length, 0, "quick day deduction must never be classified as manual");
+    assert.strictEqual(dailyDeductions.length, 1);
+    assert.strictEqual(dailyDeductions[0].days, 2);
+    assert.strictEqual(dailyDeductions[0].deducted.totalMeals, 6);
+
+    const trackingSummary = reconcileTrackingSummary({
+      subscription: container,
+      baseSummary: {},
+      manualDeductions,
+      dailyDeductions,
+      dayConsumption: {
+        receivedMeals: 0,
+        consumedWithoutPreparationMeals: 0,
+        otherDayConsumedMeals: 0,
+        deliveredDays: 0,
+      },
+    });
+    assert.strictEqual(trackingSummary.dailyDeductedDays, 2);
+    assert.strictEqual(trackingSummary.dailyDeductedMeals, 6);
+    assert.strictEqual(trackingSummary.manualDeductedMeals, 0);
+    assert.strictEqual(trackingSummary.receivedMeals, 6);
+    assert.strictEqual(trackingSummary.otherConsumedMeals, 0);
+    assert.strictEqual(trackingSummary.reconciliation.status, "balanced");
+
     const replay = await service.deduct(args);
     assert.strictEqual(replay.idempotent, true);
     assert.strictEqual(replay.mealsDeducted, 6);
 
-    const [replayA, replayB, replayAllocations, operationCount, activityCount, auditCount] = await Promise.all([
+    const [replayA, replayB, replayAllocations, operationCount, dailyActivityCount, manualActivityCount, auditCount] = await Promise.all([
       SubscriptionEntitlementBatch.findById(batchA._id).lean(),
       SubscriptionEntitlementBatch.findById(batchB._id).lean(),
       SubscriptionEntitlementAllocation.find({ containerSubscriptionId: subscriptionId }).lean(),
       SubscriptionQuickDayDeduction.countDocuments({ idempotencyKey: args.idempotencyKey }),
+      ActivityLog.countDocuments({
+        entityType: "subscription",
+        entityId: subscriptionId,
+        action: DAILY_DEDUCTION_ACTION,
+        "meta.source": "pickup_quick_deduction",
+      }),
       ActivityLog.countDocuments({
         entityType: "subscription",
         entityId: subscriptionId,
@@ -198,7 +241,8 @@ async function main() {
     assert.strictEqual(replayB.remainingMeals, 9);
     assert.strictEqual(replayAllocations.length, 6, "replay must not create more allocations");
     assert.strictEqual(operationCount, 1);
-    assert.strictEqual(activityCount, 1);
+    assert.strictEqual(dailyActivityCount, 1);
+    assert.strictEqual(manualActivityCount, 0);
     assert.strictEqual(auditCount, 1);
 
     console.log("subscriptionQuickDayDeduction.integration.test.js: OK");
