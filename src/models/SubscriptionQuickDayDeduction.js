@@ -3,6 +3,8 @@
 const mongoose = require("mongoose");
 const ActivityLog = require("./ActivityLog");
 
+const DAILY_DEDUCTION_ACTION = "subscription_daily_meal_deduction";
+
 const SubscriptionQuickDayDeductionSchema = new mongoose.Schema(
   {
     idempotencyKey: { type: String, required: true, trim: true },
@@ -60,11 +62,12 @@ SubscriptionQuickDayDeductionSchema.post("save", async function projectToActivit
     {
       entityType: "subscription",
       entityId: doc.subscriptionId,
-      action: "manual_subscription_meal_deduction",
+      action: DAILY_DEDUCTION_ACTION,
       byUserId: doc.actorId || undefined,
       byRole: doc.actorRole,
       meta: {
         source: doc.source,
+        classification: "daily_deduction",
         quickDayDeductionId: String(doc._id),
         idempotencyKey: doc.idempotencyKey,
         businessDate: doc.businessDate,
