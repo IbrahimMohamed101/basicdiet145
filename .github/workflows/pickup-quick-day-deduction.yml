@@ -1,0 +1,33 @@
+name: Pickup quick day deduction
+
+on:
+  pull_request:
+    paths:
+      - "src/controllers/dashboard/subscriptionQuickDayDeductionController.js"
+      - "src/models/SubscriptionQuickDayDeduction.js"
+      - "src/routes/dashboardSubscriptions.js"
+      - "src/services/dashboard/subscriptionQuickDayDeduction*.js"
+      - "tests/subscriptionQuickDayDeduction.test.js"
+      - "scripts/create-production-indexes.js"
+      - ".github/workflows/pickup-quick-day-deduction.yml"
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Syntax check
+        run: |
+          node --check src/controllers/dashboard/subscriptionQuickDayDeductionController.js
+          node --check src/models/SubscriptionQuickDayDeduction.js
+          node --check src/services/dashboard/subscriptionQuickDayDeductionService.js
+          node --check src/services/dashboard/subscriptionQuickDayDeductionLedgerAdapter.js
+          node --check src/services/dashboard/subscriptionQuickDayDeductionPickupPolicy.js
+          node --check src/services/dashboard/subscriptionQuickDayDeductionSearchService.js
+      - name: Focused unit test
+        run: NODE_ENV=test node tests/subscriptionQuickDayDeduction.test.js
