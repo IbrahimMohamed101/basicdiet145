@@ -9,6 +9,10 @@ const {
   validateSubscriptionCanDeduct,
 } = require("./manualDeductionPolicy");
 const { buildDeductionLog, buildDeductionResponse } = require("./manualDeductionPresenter");
+const {
+  executeStackedManualDeduction,
+  hasEntitlementBatches,
+} = require("./stackedManualDeductionService");
 
 function createManualDeductionCommandService({ repository, getBusinessDate, runTransactionWithRetry }) {
   async function validateSubscriptionCustomerExists(subscription, session) {
@@ -30,7 +34,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     }
   }
 
-  async function manualDeduction({ subscriptionId, body, actorId, actorRole }) {
+  async function manualDeduction({ subscriptionId, body, actorId, actorRole, idempotencyKey }) {
     assertCashierOrAdminRole(actorRole);
     if (!repository.isValidObjectId(subscriptionId)) {
       throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
@@ -38,6 +42,26 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
 
     const counts = validateCounts(body || {});
     const businessDate = await getBusinessDate();
+
+    // Stacked subscriptions use their entitlement batches as the source of
+    // truth. Route them through the resumable lease-backed flow so manual
+    // deduction remains available on standalone MongoDB without allowing a
+    // later reconciliation to restore meals that were already handed out.
+    if (await hasEntitlementBatches(subscriptionId)) {
+      const subscription = await repository.findSubscriptionById(subscriptionId, null);
+      validateSubscriptionCanDeduct(subscription, businessDate);
+      await validateSubscriptionCustomerExists(subscription, null);
+      validateBalances(subscription, counts);
+      return executeStackedManualDeduction({
+        subscriptionId,
+        counts,
+        body: body || {},
+        actorId,
+        actorRole,
+        businessDate,
+        idempotencyKey,
+      });
+    }
 
     try {
       return await runTransactionWithRetry(async (session) => {

@@ -25,11 +25,12 @@ function isSafeRequest(req = {}) {
   // own one or more entitlement batches.
   if (isCreateRequest(req)) return true;
 
-  // This write is already batch-scoped, transactional, idempotent, and routed
-  // through the stacking allocation ledger. The legacy parent guard must not
-  // intercept it before the dedicated service validates the selected batch.
-  return method === "POST"
-    && /\/dashboard\/subscriptions\/[a-f0-9]{24}\/quick-day-deduction\/?$/i.test(path);
+  if (method !== "POST") return false;
+
+  // Both deduction actions are now stacking-aware. Quick-day deduction is
+  // explicitly batch-scoped, while manual deduction distributes the requested
+  // balance across entitlement batches under the same lease/idempotency model.
+  return /\/dashboard\/subscriptions\/[a-f0-9]{24}\/(?:quick-day-deduction|manual-deduction)\/?$/i.test(path);
 }
 
 function targetSubscriptionId(req = {}) {
