@@ -18,7 +18,7 @@ const {
 } = require("./subscriptionQuickDayDeductionLedgerAdapter");
 
 const SOURCE = "pickup_quick_deduction";
-const ALLOWED_ROLES = new Set(["admin", "cashier", "restaurant"]);
+const ALLOWED_ROLES = new Set(["superadmin", "admin", "cashier", "restaurant"]);
 
 class QuickDayDeductionError extends Error {
   constructor(code, message, status = 400, details = {}) {
