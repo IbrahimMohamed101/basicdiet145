@@ -7,7 +7,7 @@ on:
       - "src/models/SubscriptionQuickDayDeduction.js"
       - "src/routes/dashboardSubscriptions.js"
       - "src/services/dashboard/subscriptionQuickDayDeduction*.js"
-      - "tests/subscriptionQuickDayDeduction.test.js"
+      - "tests/subscriptionQuickDayDeduction*.test.js"
       - "scripts/create-production-indexes.js"
       - ".github/workflows/pickup-quick-day-deduction.yml"
 
@@ -29,5 +29,7 @@ jobs:
           node --check src/services/dashboard/subscriptionQuickDayDeductionLedgerAdapter.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionPickupPolicy.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionSearchService.js
-      - name: Focused unit test
-        run: NODE_ENV=test node tests/subscriptionQuickDayDeduction.test.js
+      - name: Focused unit tests
+        run: |
+          NODE_ENV=test node tests/subscriptionQuickDayDeduction.test.js
+          NODE_ENV=test node tests/subscriptionQuickDayDeductionLedgerAdapter.test.js
