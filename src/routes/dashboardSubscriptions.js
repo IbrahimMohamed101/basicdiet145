@@ -1,5 +1,10 @@
 "use strict";
 
+// Install the additive dashboard-create adapter before any dashboard controller
+// captures subscription activation exports.
+require("../services/installDashboardSubscriptionStackingFlow");
+require("../services/installDashboardSubscriptionPromoFlow");
+
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/subscriptionManualDeductionController");
 const quickDayDeductionController = require("../controllers/dashboard/subscriptionQuickDayDeductionController");

@@ -32,6 +32,10 @@ require("./services/installSubscriptionStackingPlannedPickupRouter");
 require("./services/installSubscriptionStackingPickupAvailabilityProjection");
 require("./services/installUpcomingSubscriptionPlanningBalance");
 require("./services/installOneTimeOrderItemTypeCompatibility");
+// Dashboard-created subscriptions must compose over the final stacking services
+// before createApp loads adminController and captures activation exports.
+require("./services/installDashboardSubscriptionStackingFlow");
+require("./services/installDashboardSubscriptionPromoFlow");
 
 const { createServer } = require("http");
 const { createApp } = require("./app");

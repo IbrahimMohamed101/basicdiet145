@@ -1,13 +1,6 @@
 "use strict";
 
-const Subscription = require("../models/Subscription");
 const SubscriptionEntitlementBatch = require("../models/SubscriptionEntitlementBatch");
-const {
-  isSubscriptionStackingWriteEnabled,
-} = require("../utils/featureFlags");
-const {
-  isWriteStackingEnabledForUser,
-} = require("../services/subscription/subscriptionStackingRolloutPolicyService");
 
 const STACKING_DASHBOARD_MUTATION_CODE =
   "STACKING_DASHBOARD_MUTATION_NOT_READY";
@@ -16,11 +9,22 @@ function requestPath(req = {}) {
   return String(req.originalUrl || req.url || "").split("?")[0];
 }
 
+function isCreateRequest(req = {}) {
+  return String(req.method || "").toUpperCase() === "POST"
+    && /\/dashboard\/subscriptions\/?$/i.test(requestPath(req));
+}
+
 function isSafeRequest(req = {}) {
   const method = String(req.method || "GET").toUpperCase();
   if (["GET", "HEAD", "OPTIONS"].includes(method)) return true;
   const path = requestPath(req);
   if (/\/dashboard\/subscriptions\/quote\/?$/i.test(path)) return true;
+
+  // Dashboard creation is now routed through the additive stacking adapter.
+  // It is safe for both first-time subscriptions and customers that already
+  // own one or more entitlement batches.
+  if (isCreateRequest(req)) return true;
+
   // This write is already batch-scoped, transactional, idempotent, and routed
   // through the stacking allocation ledger. The legacy parent guard must not
   // intercept it before the dedicated service validates the selected batch.
@@ -35,25 +39,13 @@ function targetSubscriptionId(req = {}) {
   return match ? match[1] : "";
 }
 
-function isCreateRequest(req = {}) {
-  return String(req.method || "").toUpperCase() === "POST"
-    && /\/dashboard\/subscriptions\/?$/i.test(requestPath(req));
-}
-
 function defaultRuntime() {
   return {
-    globallyEnabled: () => isSubscriptionStackingWriteEnabled(),
-    writeEnabledForUser: (userId) => isWriteStackingEnabledForUser(userId),
     findBatchOwner(subscriptionId) {
       return SubscriptionEntitlementBatch.findOne({
         containerSubscriptionId: subscriptionId,
       })
         .select("userId containerSubscriptionId")
-        .lean();
-    },
-    findActiveSubscriptionForUser(userId) {
-      return Subscription.findOne({ userId, status: "active" })
-        .select("_id userId")
         .lean();
     },
   };
@@ -94,31 +86,6 @@ function createDashboardSubscriptionStackingWriteGuard(runtimeOverrides = null) 
           subscriptionId: String(
             batch.containerSubscriptionId || subscriptionId
           ),
-        });
-      }
-
-      if (isCreateRequest(req)) {
-        const userId = String(req.body && req.body.userId || "");
-        if (!/^[a-f0-9]{24}$/i.test(userId)) return next();
-        const activeSubscription = await runtime.findActiveSubscriptionForUser(
-          userId
-        );
-        if (!activeSubscription) return next();
-        const persistedBatch = await runtime.findBatchOwner(
-          activeSubscription._id
-        );
-        // A kill switch stops new stacking writes; it does not turn a
-        // batch-backed parent into a legacy subscription again.
-        if (persistedBatch) {
-          return blockedResponse(res, {
-            subscriptionId: String(activeSubscription._id || ""),
-          });
-        }
-        if (!runtime.globallyEnabled() || !runtime.writeEnabledForUser(userId)) {
-          return next();
-        }
-        return blockedResponse(res, {
-          subscriptionId: String(activeSubscription._id || ""),
         });
       }
 
