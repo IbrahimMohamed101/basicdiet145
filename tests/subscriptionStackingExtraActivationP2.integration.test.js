@@ -223,7 +223,7 @@ async function createFixture({
     type: "subscription_activation",
     status: "paid",
     applied: false,
-    amount: 10000,
+    amount: draft.breakdown.totalHalala,
     currency: "SAR",
     userId,
     providerInvoiceId: `inv_p2_${sequence}`,
