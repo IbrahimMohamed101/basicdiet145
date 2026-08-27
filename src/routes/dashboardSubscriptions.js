@@ -52,6 +52,13 @@ router.get(
   asyncHandler(controller.searchByPhone)
 );
 
+router.get(
+  "/quick-day-deduction/search",
+  dashboardAuthMiddleware,
+  quickDayDeductionWriteAccess,
+  asyncHandler(quickDayDeductionController.search)
+);
+
 router.post(
   "/quote",
   dashboardAuthMiddleware,
