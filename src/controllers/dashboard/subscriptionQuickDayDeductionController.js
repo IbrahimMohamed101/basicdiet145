@@ -2,12 +2,29 @@
 
 const errorResponse = require("../../utils/errorResponse");
 const quickDayDeductionService = require("../../services/dashboard/subscriptionQuickDayDeductionService");
+const quickDayDeductionSearchService = require("../../services/dashboard/subscriptionQuickDayDeductionSearchService");
 
 function handleError(res, error) {
-  if (error instanceof quickDayDeductionService.QuickDayDeductionError) {
+  if (
+    error instanceof quickDayDeductionService.QuickDayDeductionError
+    || error instanceof quickDayDeductionSearchService.QuickDayDeductionSearchError
+  ) {
     return errorResponse(res, error.status, error.code, error.message, error.details);
   }
   throw error;
+}
+
+async function search(req, res) {
+  try {
+    const data = await quickDayDeductionSearchService.search({
+      q: req.query.q,
+      limit: req.query.limit,
+      role: req.dashboardUserRole || req.userRole,
+    });
+    return res.status(200).json({ status: true, data });
+  } catch (error) {
+    return handleError(res, error);
+  }
 }
 
 async function listOptions(req, res) {
@@ -41,4 +58,5 @@ async function deduct(req, res) {
 module.exports = {
   deduct,
   listOptions,
+  search,
 };
