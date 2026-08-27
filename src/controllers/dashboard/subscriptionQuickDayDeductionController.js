@@ -3,6 +3,7 @@
 const errorResponse = require("../../utils/errorResponse");
 const quickDayDeductionService = require("../../services/dashboard/subscriptionQuickDayDeductionService");
 const quickDayDeductionSearchService = require("../../services/dashboard/subscriptionQuickDayDeductionSearchService");
+const quickDayDeductionPickupPolicy = require("../../services/dashboard/subscriptionQuickDayDeductionPickupPolicy");
 
 function handleError(res, error) {
   if (
@@ -33,6 +34,10 @@ async function listOptions(req, res) {
       subscriptionId: req.params.subscriptionId,
       role: req.dashboardUserRole || req.userRole,
     });
+    data.batches = await quickDayDeductionPickupPolicy.filterPickupOptions(
+      req.params.subscriptionId,
+      data.batches
+    );
     return res.status(200).json({ status: true, data });
   } catch (error) {
     return handleError(res, error);
@@ -41,6 +46,10 @@ async function listOptions(req, res) {
 
 async function deduct(req, res) {
   try {
+    await quickDayDeductionPickupPolicy.assertPickupTarget({
+      subscriptionId: req.params.subscriptionId,
+      batchId: req.body && req.body.batchId,
+    });
     const data = await quickDayDeductionService.deduct({
       subscriptionId: req.params.subscriptionId,
       batchId: req.body && req.body.batchId,
