@@ -8,6 +8,9 @@ const BuilderProtein = require("../src/models/BuilderProtein");
 const ActivityLog = require("../src/models/ActivityLog");
 const EmailOtpChallenge = require("../src/models/EmailOtpChallenge");
 const PromoCode = require("../src/models/PromoCode");
+const SubscriptionQuickDayDeduction = require(
+  "../src/models/SubscriptionQuickDayDeduction"
+);
 const SubscriptionExtraEntitlementAllocation = require(
   "../src/models/SubscriptionExtraEntitlementAllocation"
 );
@@ -102,6 +105,7 @@ function defaultIndexName(key) {
 
 for (const model of [
   PromoCode,
+  SubscriptionQuickDayDeduction,
   SubscriptionExtraEntitlementAllocation,
   SubscriptionExtraEntitlementBucket,
 ]) {
@@ -137,8 +141,8 @@ async function ensureProductionIndexes() {
       try {
         existingIndexes = await collection.indexes();
       } catch (err) {
-        // The new OTP collection does not exist before first deployment.
-        // createIndex below creates it atomically; all other errors still fail.
+        // New collections do not exist before their first deployment.
+        // createIndex below creates them atomically; all other errors still fail.
         if (err.code !== 26) throw err;
       }
       const existing = existingIndexes.find((idx) => idx.name === def.name);

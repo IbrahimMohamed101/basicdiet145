@@ -2,6 +2,7 @@
 
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/subscriptionManualDeductionController");
+const quickDayDeductionController = require("../controllers/dashboard/subscriptionQuickDayDeductionController");
 const fulfillmentListController = require("../controllers/dashboard/subscriptionFulfillmentListController");
 const auditController = require("../controllers/dashboard/subscriptionAuditController");
 const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentRecordingController");
@@ -31,6 +32,10 @@ const manualDeductionWriteAccess = dashboardRoleMiddleware([
   "cashier",
   "restaurant",
 ]);
+const quickDayDeductionWriteAccess = dashboardRoleMiddleware([
+  "admin",
+  "cashier",
+]);
 
 router.get(
   "/list",
@@ -44,6 +49,13 @@ router.get(
   dashboardAuthMiddleware,
   subscriptionStaffAccess,
   asyncHandler(controller.searchByPhone)
+);
+
+router.get(
+  "/quick-day-deduction/search",
+  dashboardAuthMiddleware,
+  quickDayDeductionWriteAccess,
+  asyncHandler(quickDayDeductionController.search)
 );
 
 router.post(
@@ -100,6 +112,20 @@ router.get(
   dashboardAuthMiddleware,
   subscriptionStaffAccess,
   asyncHandler(adminController.getSubscriptionBalancesAdmin)
+);
+
+router.get(
+  "/:subscriptionId/quick-day-deduction/options",
+  dashboardAuthMiddleware,
+  quickDayDeductionWriteAccess,
+  asyncHandler(quickDayDeductionController.listOptions)
+);
+
+router.post(
+  "/:subscriptionId/quick-day-deduction",
+  dashboardAuthMiddleware,
+  quickDayDeductionWriteAccess,
+  asyncHandler(quickDayDeductionController.deduct)
 );
 
 router.post(
