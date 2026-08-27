@@ -1,6 +1,7 @@
 "use strict";
 
 const mongoose = require("mongoose");
+const ActivityLog = require("./ActivityLog");
 
 const SubscriptionQuickDayDeductionSchema = new mongoose.Schema(
   {
@@ -50,6 +51,35 @@ SubscriptionQuickDayDeductionSchema.index(
 );
 SubscriptionQuickDayDeductionSchema.index({ subscriptionId: 1, createdAt: -1 });
 SubscriptionQuickDayDeductionSchema.index({ entitlementBatchId: 1, createdAt: -1 });
+
+SubscriptionQuickDayDeductionSchema.post("save", async function projectToActivityLog(doc) {
+  const session = typeof doc.$session === "function" ? doc.$session() : null;
+  const options = session ? { session } : {};
+  await ActivityLog.create([
+    {
+      entityType: "subscription",
+      entityId: doc.subscriptionId,
+      action: "manual_subscription_meal_deduction",
+      byUserId: doc.actorId || undefined,
+      byRole: doc.actorRole,
+      meta: {
+        source: doc.source,
+        quickDayDeductionId: String(doc._id),
+        idempotencyKey: doc.idempotencyKey,
+        businessDate: doc.businessDate,
+        fulfillmentMethod: "pickup",
+        entitlementBatchId: String(doc.entitlementBatchId),
+        days: doc.days,
+        mealsPerDay: doc.mealsPerDay,
+        deductedRegularMeals: doc.mealsDeducted,
+        deductedPremiumMeals: 0,
+        deductedTotalMeals: doc.mealsDeducted,
+        before: doc.before,
+        after: doc.after,
+      },
+    },
+  ], options);
+});
 
 module.exports = mongoose.models.SubscriptionQuickDayDeduction
   || mongoose.model("SubscriptionQuickDayDeduction", SubscriptionQuickDayDeductionSchema);
