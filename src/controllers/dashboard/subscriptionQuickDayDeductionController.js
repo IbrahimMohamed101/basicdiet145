@@ -1,5 +1,9 @@
 "use strict";
 
+// Install the standalone-Mongo fallback before this controller captures the
+// quick deduction service export.
+require("../../services/installStandaloneQuickDayDeductionFlow");
+
 const errorResponse = require("../../utils/errorResponse");
 const quickDayDeductionService = require("../../services/dashboard/subscriptionQuickDayDeductionService");
 const quickDayDeductionLegacyService = require("../../services/dashboard/subscriptionQuickDayDeductionLegacyService");
