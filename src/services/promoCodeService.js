@@ -5,6 +5,10 @@ const PromoUsage = require("../models/PromoUsage");
 const Subscription = require("../models/Subscription");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const { computeInclusiveVatBreakdown } = require("../utils/pricing");
+const {
+  normalizePromoCodeInput,
+  buildPromoCodeLookupFilter,
+} = require("../utils/promoCodeNormalization");
 const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 
 const SYSTEM_CURRENCY = "SAR";
@@ -20,12 +24,8 @@ const PROMO_ERROR_MESSAGES = {
   PROMO_MINIMUM_NOT_MET: "Subscription amount does not meet the promo minimum",
   PROMO_NOT_APPLICABLE_TO_ORDER_TYPE: "Promo code is not applicable to this order type",
   PROMO_INVALID_CONFIGURATION: "Promo code configuration is invalid",
+  PROMO_ALREADY_EXISTS: "Promo code already exists",
 };
-
-function normalizePromoCodeInput(value) {
-  const normalized = String(value || "").trim().toUpperCase();
-  return normalized || null;
-}
 
 function createPromoError(code, message = null, extra = {}) {
   const err = new Error(message || PROMO_ERROR_MESSAGES[code] || "Promo code could not be applied");
@@ -130,10 +130,7 @@ async function resolvePromoCodeOrThrow({ promoCode, session = null }) {
     return null;
   }
 
-  let query = PromoCode.findOne({
-    codeNormalized: normalizedCode,
-    deletedAt: null,
-  });
+  let query = PromoCode.findOne(buildPromoCodeLookupFilter(normalizedCode));
   if (session) {
     query = query.session(session);
   }
@@ -142,6 +139,21 @@ async function resolvePromoCodeOrThrow({ promoCode, session = null }) {
     throw createPromoError("PROMO_NOT_FOUND");
   }
   return promo;
+}
+
+async function assertPromoCodeAvailableOrThrow({ promoCode, excludeId = null, session = null }) {
+  const filter = buildPromoCodeLookupFilter(promoCode, { excludeId });
+  if (!filter) {
+    throw createPromoError("PROMO_INVALID_CONFIGURATION", "code is required");
+  }
+
+  let query = PromoCode.exists(filter);
+  if (session) {
+    query = query.session(session);
+  }
+  if (await query) {
+    throw createPromoError("PROMO_ALREADY_EXISTS", null, { status: 409 });
+  }
 }
 
 async function validatePromoEligibilityOrThrow({
@@ -849,6 +861,7 @@ module.exports = {
   normalizeAppDisplay,
   normalizeLocalizedText,
   normalizePromoPayload,
+  assertPromoCodeAvailableOrThrow,
   resolvePromoCodeOrThrow,
   validatePromoEligibilityOrThrow,
   computePromoDiscountAmountHalala,

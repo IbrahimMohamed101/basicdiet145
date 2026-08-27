@@ -4,6 +4,10 @@ const ActivityLog = require("../../models/ActivityLog");
 const Payment = require("../../models/Payment");
 const PromoCode = require("../../models/PromoCode");
 const PromoUsage = require("../../models/PromoUsage");
+const {
+  normalizePromoCodeInput,
+  buildPromoCodeLookupFilter,
+} = require("../../utils/promoCodeNormalization");
 // Install promo-aware dashboard quote/activation behavior before the admin
 // subscription controller captures service exports.
 require("../../services/installDashboardSubscriptionPromoFlow");
@@ -68,10 +72,6 @@ function decorateQuotePayload(payload) {
   };
 }
 
-function normalizePromoCode(value) {
-  return String(value || "").trim().toUpperCase();
-}
-
 function readDiscountHalala(data = {}) {
   const candidates = [
     data.breakdown && data.breakdown.discountHalala,
@@ -86,12 +86,12 @@ function readDiscountHalala(data = {}) {
 }
 
 async function decoratePromoQuotePayload(payload, body = {}) {
-  const code = normalizePromoCode(body.promoCode || body.promo_code);
+  const code = normalizePromoCodeInput(body.promoCode || body.promo_code);
   if (!code || !payload || payload.status !== true || !payload.data || typeof payload.data !== "object") {
     return payload;
   }
 
-  const promo = await PromoCode.findOne({ codeNormalized: code, deletedAt: null }).lean();
+  const promo = await PromoCode.findOne(buildPromoCodeLookupFilter(code)).lean();
   const discountAmountHalala = readDiscountHalala(payload.data);
   const promoBlock = {
     promoCodeId: promo && promo._id ? String(promo._id) : null,

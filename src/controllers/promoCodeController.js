@@ -6,6 +6,7 @@ const { writeLog } = require("../utils/log");
 const {
   serializePromoCodeForAdmin,
   normalizePromoPayload,
+  assertPromoCodeAvailableOrThrow,
   applyPromoCodeToSubscriptionQuote,
 } = require("../services/promoCodeService");
 const {
@@ -193,6 +194,7 @@ async function updateAppPromoSelectionAdmin(req, res) {
 async function createPromoCodeAdmin(req, res) {
   try {
     const normalized = normalizePromoPayload(req.body || {});
+    await assertPromoCodeAvailableOrThrow({ promoCode: normalized.code });
     const promo = await PromoCode.create(normalized);
     await writePromoActivityLog(req, promo, "promo_code_created_by_admin");
     return res.status(201).json({
@@ -202,6 +204,9 @@ async function createPromoCodeAdmin(req, res) {
   } catch (err) {
     if (err && err.code === 11000) {
       return errorResponse(res, 409, "CONFLICT", "Promo code already exists");
+    }
+    if (err && err.code === "PROMO_ALREADY_EXISTS") {
+      return errorResponse(res, 409, "CONFLICT", err.message);
     }
     if (String(err.code || "").startsWith("PROMO_")) {
       return errorResponse(res, 422, err.code, err.message);
@@ -229,6 +234,10 @@ async function updatePromoCodeAdmin(req, res) {
       ...req.body,
       code: req.body && req.body.code !== undefined ? req.body.code : existing.code,
     });
+    await assertPromoCodeAvailableOrThrow({
+      promoCode: normalized.code,
+      excludeId: existing._id,
+    });
     Object.assign(existing, normalized);
     await existing.save();
     await writePromoActivityLog(req, existing, "promo_code_updated_by_admin");
@@ -239,6 +248,9 @@ async function updatePromoCodeAdmin(req, res) {
   } catch (err) {
     if (err && err.code === 11000) {
       return errorResponse(res, 409, "CONFLICT", "Promo code already exists");
+    }
+    if (err && err.code === "PROMO_ALREADY_EXISTS") {
+      return errorResponse(res, 409, "CONFLICT", err.message);
     }
     if (String(err.code || "").startsWith("PROMO_")) {
       return errorResponse(res, 422, err.code, err.message);

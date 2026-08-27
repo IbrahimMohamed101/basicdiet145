@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { normalizePromoCodeInput } = require("../utils/promoCodeNormalization");
 
 const LocalizedTextSchema = new mongoose.Schema(
   {
@@ -69,7 +70,7 @@ const PromoCodeSchema = new mongoose.Schema(
 );
 
 PromoCodeSchema.pre("validate", function normalizePromoCodeBeforeValidate(next) {
-  const normalizedCode = String(this.code || "").trim().toUpperCase();
+  const normalizedCode = normalizePromoCodeInput(this.code) || "";
   this.code = normalizedCode;
   this.codeNormalized = normalizedCode;
   next();
