@@ -44,6 +44,9 @@ jobs:
       - name: Start MongoDB replica set
         run: bash scripts/ci/start-mongo-replset.sh basicdiet-final-release-mongo
 
+      - name: Run concurrent stacked paid purchase regression
+        run: node tests/subscriptionStackingConcurrentPaidPurchases.integration.test.js
+
       - name: Validate backend syntax and composition
         run: npm run validate:backend
 
