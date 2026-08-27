@@ -3,7 +3,7 @@
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 
-const ALLOWED_ROLES = new Set(["admin", "cashier"]);
+const ALLOWED_ROLES = new Set(["superadmin", "admin", "cashier", "restaurant"]);
 
 class QuickDayDeductionSearchError extends Error {
   constructor(code, message, status = 400, details = {}) {
