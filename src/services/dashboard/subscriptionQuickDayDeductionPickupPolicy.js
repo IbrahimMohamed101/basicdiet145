@@ -1,8 +1,15 @@
 "use strict";
 
+const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const { QuickDayDeductionError } = require("./subscriptionQuickDayDeductionService");
+
+function assertObjectId(value, code, message) {
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    throw new QuickDayDeductionError(code, message, 400);
+  }
+}
 
 function pickupSnapshotFilter() {
   return {
@@ -15,6 +22,7 @@ function pickupSnapshotFilter() {
 }
 
 async function assertPickupSubscription(subscriptionId) {
+  assertObjectId(subscriptionId, "INVALID_SUBSCRIPTION_ID", "Invalid subscription id");
   const subscription = await Subscription.findOne({
     _id: subscriptionId,
     status: "active",
@@ -32,6 +40,7 @@ async function assertPickupSubscription(subscriptionId) {
 
 async function assertPickupTarget({ subscriptionId, batchId }) {
   await assertPickupSubscription(subscriptionId);
+  assertObjectId(batchId, "INVALID_ENTITLEMENT_BATCH_ID", "Invalid entitlement batch id");
   const batch = await SubscriptionEntitlementBatch.findOne({
     _id: batchId,
     containerSubscriptionId: subscriptionId,
