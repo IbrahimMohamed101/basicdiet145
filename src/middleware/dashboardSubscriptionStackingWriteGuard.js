@@ -19,7 +19,13 @@ function requestPath(req = {}) {
 function isSafeRequest(req = {}) {
   const method = String(req.method || "GET").toUpperCase();
   if (["GET", "HEAD", "OPTIONS"].includes(method)) return true;
-  return /\/dashboard\/subscriptions\/quote\/?$/i.test(requestPath(req));
+  const path = requestPath(req);
+  if (/\/dashboard\/subscriptions\/quote\/?$/i.test(path)) return true;
+  // This write is already batch-scoped, transactional, idempotent, and routed
+  // through the stacking allocation ledger. The legacy parent guard must not
+  // intercept it before the dedicated service validates the selected batch.
+  return method === "POST"
+    && /\/dashboard\/subscriptions\/[a-f0-9]{24}\/quick-day-deduction\/?$/i.test(path);
 }
 
 function targetSubscriptionId(req = {}) {

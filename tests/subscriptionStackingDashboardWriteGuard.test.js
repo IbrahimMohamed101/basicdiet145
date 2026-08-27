@@ -153,6 +153,25 @@ async function run() {
     const result = await invoke({
       method: "POST",
       originalUrl:
+        `/api/dashboard/subscriptions/${subscriptionId}/quick-day-deduction`,
+      body: {
+        batchId: "64f000000000000000000003",
+        days: 2,
+      },
+    }, {
+      findBatchOwner: async () => {
+        throw new Error("integrated quick deduction must bypass the legacy write guard");
+      },
+    });
+    assert.strictEqual(result.nextCalls, 1);
+    assert.strictEqual(result.nextError, null);
+    assert.strictEqual(result.res.payload, null);
+  }
+
+  {
+    const result = await invoke({
+      method: "POST",
+      originalUrl:
         `/api/dashboard/subscriptions/${subscriptionId}/manual-deduction`,
       body: {},
     });
