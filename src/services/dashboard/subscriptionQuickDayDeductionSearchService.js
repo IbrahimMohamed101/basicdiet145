@@ -3,7 +3,7 @@
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 
-const ALLOWED_ROLES = new Set(["admin", "cashier", "restaurant"]);
+const ALLOWED_ROLES = new Set(["admin", "cashier"]);
 
 class QuickDayDeductionSearchError extends Error {
   constructor(code, message, status = 400, details = {}) {
@@ -21,11 +21,19 @@ function escapeRegExp(value) {
 
 async function search({ q, role, limit = 10 } = {}) {
   if (!ALLOWED_ROLES.has(String(role || ""))) {
-    throw new QuickDayDeductionSearchError("FORBIDDEN", "You are not allowed to search quick deductions", 403);
+    throw new QuickDayDeductionSearchError(
+      "FORBIDDEN",
+      "You are not allowed to search quick deductions",
+      403
+    );
   }
   const query = String(q || "").trim();
   if (query.length < 2 || query.length > 80) {
-    throw new QuickDayDeductionSearchError("INVALID_SEARCH", "Search must contain between 2 and 80 characters", 400);
+    throw new QuickDayDeductionSearchError(
+      "INVALID_SEARCH",
+      "Search must contain between 2 and 80 characters",
+      400
+    );
   }
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 20);
   const pattern = new RegExp(escapeRegExp(query), "i");
