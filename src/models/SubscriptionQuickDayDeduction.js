@@ -14,10 +14,16 @@ const SubscriptionQuickDayDeductionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    targetType: {
+      type: String,
+      enum: ["entitlement_batch", "legacy_subscription"],
+      default: "entitlement_batch",
+      required: true,
+    },
     entitlementBatchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubscriptionEntitlementBatch",
-      required: true,
+      default: null,
       index: true,
     },
     userId: {
@@ -68,11 +74,12 @@ SubscriptionQuickDayDeductionSchema.post("save", async function projectToActivit
       meta: {
         source: doc.source,
         classification: "daily_deduction",
+        targetType: doc.targetType,
         quickDayDeductionId: String(doc._id),
         idempotencyKey: doc.idempotencyKey,
         businessDate: doc.businessDate,
         fulfillmentMethod: "pickup",
-        entitlementBatchId: String(doc.entitlementBatchId),
+        entitlementBatchId: doc.entitlementBatchId ? String(doc.entitlementBatchId) : null,
         days: doc.days,
         mealsPerDay: doc.mealsPerDay,
         deductedRegularMeals: doc.mealsDeducted,

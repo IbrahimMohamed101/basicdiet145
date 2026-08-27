@@ -26,6 +26,7 @@ jobs:
           node --check src/controllers/dashboard/subscriptionQuickDayDeductionController.js
           node --check src/models/SubscriptionQuickDayDeduction.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionService.js
+          node --check src/services/dashboard/subscriptionQuickDayDeductionLegacyService.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionLedgerAdapter.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionPickupPolicy.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionSearchService.js
@@ -34,5 +35,7 @@ jobs:
           NODE_ENV=test node tests/subscriptionQuickDayDeduction.test.js
           NODE_ENV=test node tests/subscriptionQuickDayDeductionLedgerAdapter.test.js
           NODE_ENV=test node tests/subscriptionQuickDayDeductionRoles.test.js
-      - name: Replica-set integration test
-        run: NODE_ENV=test node tests/subscriptionQuickDayDeduction.integration.test.js
+      - name: Replica-set integration tests
+        run: |
+          NODE_ENV=test node tests/subscriptionQuickDayDeduction.integration.test.js
+          NODE_ENV=test node tests/subscriptionQuickDayDeductionLegacy.integration.test.js
