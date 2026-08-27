@@ -2,6 +2,7 @@
 
 const errorResponse = require("../../utils/errorResponse");
 const quickDayDeductionService = require("../../services/dashboard/subscriptionQuickDayDeductionService");
+const quickDayDeductionLegacyService = require("../../services/dashboard/subscriptionQuickDayDeductionLegacyService");
 const quickDayDeductionSearchService = require("../../services/dashboard/subscriptionQuickDayDeductionSearchService");
 const quickDayDeductionPickupPolicy = require("../../services/dashboard/subscriptionQuickDayDeductionPickupPolicy");
 
@@ -30,14 +31,22 @@ async function search(req, res) {
 
 async function listOptions(req, res) {
   try {
+    const role = req.dashboardUserRole || req.userRole;
     const data = await quickDayDeductionService.listOptions({
       subscriptionId: req.params.subscriptionId,
-      role: req.dashboardUserRole || req.userRole,
+      role,
     });
     data.batches = await quickDayDeductionPickupPolicy.filterPickupOptions(
       req.params.subscriptionId,
       data.batches
     );
+    if (data.batches.length === 0) {
+      const legacyOption = await quickDayDeductionLegacyService.listOption({
+        subscriptionId: req.params.subscriptionId,
+        role,
+      });
+      if (legacyOption) data.batches = [legacyOption];
+    }
     return res.status(200).json({ status: true, data });
   } catch (error) {
     return handleError(res, error);
@@ -46,18 +55,28 @@ async function listOptions(req, res) {
 
 async function deduct(req, res) {
   try {
-    await quickDayDeductionPickupPolicy.assertPickupTarget({
+    const batchId = req.body && req.body.batchId;
+    const actorRole = req.dashboardUserRole || req.userRole;
+    const common = {
       subscriptionId: req.params.subscriptionId,
-      batchId: req.body && req.body.batchId,
-    });
-    const data = await quickDayDeductionService.deduct({
-      subscriptionId: req.params.subscriptionId,
-      batchId: req.body && req.body.batchId,
+      batchId,
       days: req.body && req.body.days,
       idempotencyKey: req.get("Idempotency-Key"),
       actorId: req.dashboardUserId || req.userId,
-      actorRole: req.dashboardUserRole || req.userRole,
-    });
+      actorRole,
+    };
+
+    let data;
+    if (String(batchId || "") === quickDayDeductionLegacyService.LEGACY_TARGET_ID) {
+      await quickDayDeductionPickupPolicy.assertPickupSubscription(req.params.subscriptionId);
+      data = await quickDayDeductionLegacyService.deduct(common);
+    } else {
+      await quickDayDeductionPickupPolicy.assertPickupTarget({
+        subscriptionId: req.params.subscriptionId,
+        batchId,
+      });
+      data = await quickDayDeductionService.deduct(common);
+    }
     return res.status(200).json({ status: true, data });
   } catch (error) {
     return handleError(res, error);
