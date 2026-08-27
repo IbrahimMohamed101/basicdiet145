@@ -245,9 +245,11 @@ async function activatePaidDraftIntoExistingContainerCoreTransactional({
   expectedParentSubscriptionId = null,
   now = new Date(),
   seedExtraWallets = false,
+  requireTransaction = true,
+  deferDocumentFinalization = false,
   runtime: runtimeOverrides = null,
 } = {}) {
-  assertTransactionalSession(session);
+  if (requireTransaction) assertTransactionalSession(session);
   const runtime = resolveRuntime(runtimeOverrides);
 
   if (!draft || !draft._id || !draft.userId) {
@@ -402,7 +404,14 @@ async function activatePaidDraftIntoExistingContainerCoreTransactional({
     })
     : { buckets: [], createdOrExisting: 0, idempotent: true };
 
-  const allBatches = existingBatches
+  // Re-read after the idempotent insert. On standalone MongoDB this is what
+  // makes concurrent paid purchases converge: the later lease holder always
+  // mirrors every batch committed by earlier holders.
+  const persistedBatches = await runtime.findBatches({
+    containerSubscriptionId: container._id,
+    session,
+  });
+  const allBatches = persistedBatches
     .filter((batch) => String(batch.sourceKey || "") !== String(purchaseBatch.sourceKey || ""))
     .concat(purchaseBatch);
   const containerMirror = buildContainerMirror({
@@ -424,42 +433,15 @@ async function activatePaidDraftIntoExistingContainerCoreTransactional({
     );
   }
 
-  const updatedDraft = await runtime.updateDraftCompleted({
-    draftId: draft._id,
-    containerId: container._id,
-    now,
-    session,
-  });
-  if (!updatedDraft) {
-    throw activationError(
-      "STACKING_DRAFT_COMPLETION_CONFLICT",
-      "Checkout draft could not be marked completed",
-      409,
-      { draftId: stringId(draft._id) }
-    );
-  }
-
-  const linkedPayment = await runtime.linkPayment({
-    paymentId: payment._id,
-    containerId: container._id,
-    draftId: draft._id,
-    session,
-  });
-  if (!linkedPayment) {
-    throw activationError(
-      "STACKING_PAYMENT_LINK_CONFLICT",
-      "Paid payment could not be linked to the subscription container",
-      409,
-      { paymentId: stringId(payment._id) }
-    );
-  }
-
-  if (draft.promo && draft.promo.usageId) {
-    await runtime.consumePromoReservation(
-      draft._id,
-      container._id,
-      { session }
-    );
+  if (!deferDocumentFinalization) {
+    await completePaidDraftStackingActivation({
+      draft,
+      payment,
+      containerId: container._id,
+      now,
+      session,
+      runtime,
+    });
   }
 
   return {
@@ -479,6 +461,53 @@ async function activatePaidDraftIntoExistingContainerCoreTransactional({
       batch: purchaseBatch,
     }),
   };
+}
+
+async function completePaidDraftStackingActivation({
+  draft,
+  payment,
+  containerId,
+  now = new Date(),
+  session = null,
+  runtime: runtimeOverrides = null,
+} = {}) {
+  const runtime = runtimeOverrides && runtimeOverrides.updateDraftCompleted
+    ? runtimeOverrides
+    : resolveRuntime(runtimeOverrides);
+  const updatedDraft = await runtime.updateDraftCompleted({
+    draftId: draft._id,
+    containerId,
+    now,
+    session,
+  });
+  if (!updatedDraft) {
+    throw activationError(
+      "STACKING_DRAFT_COMPLETION_CONFLICT",
+      "Checkout draft could not be marked completed",
+      409,
+      { draftId: stringId(draft._id) }
+    );
+  }
+
+  const linkedPayment = await runtime.linkPayment({
+    paymentId: payment._id,
+    containerId,
+    draftId: draft._id,
+    session,
+  });
+  if (!linkedPayment) {
+    throw activationError(
+      "STACKING_PAYMENT_LINK_CONFLICT",
+      "Paid payment could not be linked to the subscription container",
+      409,
+      { paymentId: stringId(payment._id) }
+    );
+  }
+
+  if (draft.promo && draft.promo.usageId) {
+    await runtime.consumePromoReservation(draft._id, containerId, { session });
+  }
+  return { draft: updatedDraft, payment: linkedPayment };
 }
 
 // Runtime entry point. P2 intentionally keeps paid extras unreachable even
@@ -506,10 +535,21 @@ async function activatePinnedExtrasPaidDraftIntoExistingContainerTransactional(a
   });
 }
 
+async function activatePaidDraftIntoExistingContainerStandalone(args = {}) {
+  return activatePaidDraftIntoExistingContainerCoreTransactional({
+    ...args,
+    seedExtraWallets: Boolean(args.seedExtraWallets),
+    requireTransaction: false,
+    deferDocumentFinalization: true,
+  });
+}
+
 module.exports = {
   activatePaidDraftIntoExistingContainerTransactional,
+  activatePaidDraftIntoExistingContainerStandalone,
   activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
   buildContainerMirror,
   buildDayFulfillmentOverrides,
+  completePaidDraftStackingActivation,
   hasPaidPurchaseExtras,
 };

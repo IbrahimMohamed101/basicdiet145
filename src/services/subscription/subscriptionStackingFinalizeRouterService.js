@@ -3,6 +3,7 @@
 const CheckoutDraft = require("../../models/CheckoutDraft");
 const Payment = require("../../models/Payment");
 const Subscription = require("../../models/Subscription");
+const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const {
@@ -46,6 +47,43 @@ function defaultRuntime() {
     getBusinessDate: () => getRestaurantBusinessDate(),
     seedInitialEntitlements: (args) => seedInitialPaidPurchaseEntitlementsTransactional(args),
     applyStack: (args) => applyPaidDraftToSubscriptionStackTransactional(args),
+    async repairStackingIdempotentLinks({ draft, payment, containerId, session }) {
+      const batch = await SubscriptionEntitlementBatch.findOne({
+        containerSubscriptionId: containerId,
+        applicationState: "applied",
+        $or: [
+          { paymentId: payment._id },
+          { checkoutDraftId: draft._id },
+        ],
+      }).session(session).lean();
+      if (!batch) return false;
+      await CheckoutDraft.updateOne(
+        { _id: draft._id },
+        {
+          $set: {
+            status: "completed",
+            subscriptionId: containerId,
+            activationSubscriptionId: containerId,
+            paymentId: payment._id,
+            providerInvoiceId: payment.providerInvoiceId || draft.providerInvoiceId,
+            failureReason: "",
+          },
+        },
+        { session }
+      );
+      const linked = await Payment.findOneAndUpdate(
+        { _id: payment._id, status: "paid" },
+        {
+          $set: {
+            applied: true,
+            subscriptionId: containerId,
+            checkoutDraftId: draft._id,
+          },
+        },
+        { new: true, session }
+      );
+      return Boolean(linked);
+    },
   };
 }
 
@@ -92,6 +130,20 @@ function createFinalizeSubscriptionDraftPaymentWrapper(
     }
 
     if (authority.route === FINALIZATION_ROUTES.STACKING_IDEMPOTENT) {
+      const repaired = await runtime.repairStackingIdempotentLinks({
+        draft,
+        payment,
+        containerId: authority.expectedParentSubscriptionId,
+        session,
+      });
+      if (!repaired) {
+        throw routerError(
+          "STACKING_IDEMPOTENT_LINK_REPAIR_FAILED",
+          "Completed stacking checkout is missing its applied entitlement batch",
+          409,
+          { expectedParentSubscriptionId: authority.expectedParentSubscriptionId }
+        );
+      }
       return {
         applied: true,
         subscriptionId: authority.expectedParentSubscriptionId,

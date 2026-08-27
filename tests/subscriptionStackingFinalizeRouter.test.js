@@ -246,6 +246,7 @@ async function testCompletedDraftUsesCanonicalIdempotencyPath() {
         stackCalled = true;
         return null;
       },
+      repairStackingIdempotentLinks: async () => true,
     }
   );
   const result = await wrapper({ draft, payment, session: transactionalSession() });

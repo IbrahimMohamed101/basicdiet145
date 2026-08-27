@@ -29,6 +29,31 @@ function defaultRuntime() {
   return {
     async findSubscriptionById(subscriptionId, { session } = {}) { return Subscription.findById(subscriptionId).session(session); },
     async findDraftById(draftId, { session } = {}) { return CheckoutDraft.findById(draftId).session(session); },
+    async findDraftForPayment(payment, { session } = {}) {
+      const metadata = metadataOf(payment);
+      const candidates = [];
+      if (isValidObjectId(metadata.draftId)) candidates.push({ _id: metadata.draftId });
+      if (isValidObjectId(payment && payment.checkoutDraftId)) {
+        candidates.push({ _id: payment.checkoutDraftId });
+      }
+      if (payment && payment._id) candidates.push({ paymentId: payment._id });
+      if (payment && payment.providerInvoiceId) {
+        candidates.push({ providerInvoiceId: String(payment.providerInvoiceId) });
+      }
+      if (!candidates.length) return null;
+      return CheckoutDraft.findOne({ $or: candidates }).sort({ createdAt: -1 }).session(session);
+    },
+    async repairDraftPaymentLink({ draft, payment, session }) {
+      draft.paymentId = payment._id;
+      if (payment.providerInvoiceId) draft.providerInvoiceId = payment.providerInvoiceId;
+      await draft.save({ session });
+      payment.metadata = Object.assign({}, payment.metadata || {}, {
+        draftId: String(draft._id),
+      });
+      payment.checkoutDraftId = draft._id;
+      await payment.save({ session });
+      return { draft, payment };
+    },
     async findOpenDayAndAddAddon({ subscriptionId, date, addonId, session }) {
       return SubscriptionDay.findOneAndUpdate({ subscriptionId, date, status: "open" }, { $addToSet: { addonsOneTime: addonId } }, { new: true, session });
     },
@@ -477,13 +502,30 @@ async function applyUnifiedDayPlanningPayment({ payment, session, source = "syst
 }
 
 async function applySubscriptionActivationPayment({ payment, session, source = "system" }, runtimeOverrides = null) {
-  const runtime = runtimeOverrides || defaultRuntime();
-  const metadata = metadataOf(payment);
-  if (isValidObjectId(metadata.draftId)) {
-    const draft = await runtime.findDraftById(metadata.draftId, { session });
-    return runtime.finalizeSubscriptionDraftPaymentFlow({ draft, payment, session });
+  const runtime = runtimeOverrides
+    ? { ...defaultRuntime(), ...runtimeOverrides }
+    : defaultRuntime();
+  const draft = await runtime.findDraftForPayment(payment, { session });
+  if (!draft) return { applied: false, reason: "draft_not_found" };
+  if (String(draft.userId || "") !== String(payment.userId || "")) {
+    return { applied: false, reason: "draft_user_mismatch" };
   }
-  return { applied: false, reason: "invalid_metadata" };
+  const expectedAmount = Number(
+    draft.breakdown && draft.breakdown.totalHalala !== undefined
+      ? draft.breakdown.totalHalala
+      : payment.amount
+  );
+  if (Number.isFinite(expectedAmount) && expectedAmount !== Number(payment.amount)) {
+    return { applied: false, reason: "draft_amount_mismatch" };
+  }
+  const draftCurrency = String(
+    draft.breakdown && draft.breakdown.currency || payment.currency || "SAR"
+  ).toUpperCase();
+  if (draftCurrency !== String(payment.currency || "SAR").toUpperCase()) {
+    return { applied: false, reason: "draft_currency_mismatch" };
+  }
+  await runtime.repairDraftPaymentLink({ draft, payment, session });
+  return runtime.finalizeSubscriptionDraftPaymentFlow({ draft, payment, session });
 }
 
 async function applyPaymentSideEffects({ payment, session, source = "system", allowAppliedReconciliation = false }, runtimeOverrides = null) {

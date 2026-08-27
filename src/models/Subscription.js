@@ -357,6 +357,17 @@ const SubscriptionSchema = new mongoose.Schema(
     contractSnapshot: { type: mongoose.Schema.Types.Mixed },
     renewedFromSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
 
+    // Serializes additive paid activations when MongoDB transactions are not
+    // available. The lease is short-lived and source-bound; every mutation in
+    // the standalone activation saga is independently idempotent.
+    stackingActivationLease: {
+      token: { type: String, trim: true, default: "" },
+      sourceKey: { type: String, trim: true, default: "" },
+      acquiredAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+    },
+    stackingRevision: { type: Number, min: 0, default: 0 },
+
     deliveryMode: { type: String, enum: ["delivery", "pickup"], required: true },
     deliveryAddress: {
       line1: { type: String },

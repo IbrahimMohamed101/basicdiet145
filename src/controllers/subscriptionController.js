@@ -11,6 +11,9 @@ const CheckoutDraft = require("../models/CheckoutDraft");
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Payment = require("../models/Payment");
+const {
+  hasMinimumAppliedLink,
+} = require("../services/subscription/subscriptionPaymentApplicationStateService");
 const dateUtils = require("../utils/date");
 const { addDaysToKSADateString } = dateUtils;
 const { canTransitionStatus } = require("../services/dashboard/opsTransitionPolicy");
@@ -753,8 +756,8 @@ function buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoic
 }
 
 async function autoFinalizePaidCheckoutDraft({ draft, payment, providerInvoice }, runtimeOverrides = null) {
-  if (!draft || !payment || !payment._id || payment.applied) {
-    return { applied: false, alreadyApplied: Boolean(payment && payment.applied) };
+  if (!draft || !payment || !payment._id || hasMinimumAppliedLink(payment)) {
+    return { applied: false, alreadyApplied: hasMinimumAppliedLink(payment) };
   }
   if (String(payment.status).trim().toLowerCase() !== "paid") {
     return { applied: false, reason: "payment_not_paid" };
@@ -785,10 +788,14 @@ async function autoFinalizePaidCheckoutDraft({ draft, payment, providerInvoice }
       session.endSession();
       return { applied: false, reason: "payment_not_found" };
     }
-    if (paymentInSession.applied) {
+    if (hasMinimumAppliedLink(paymentInSession)) {
       await session.commitTransaction();
       session.endSession();
       return { applied: false, alreadyApplied: true };
+    }
+    if (paymentInSession.applied) {
+      paymentInSession.applied = false;
+      await paymentInSession.save({ session });
     }
 
     const claimedPayment = await Payment.findOneAndUpdate(
@@ -1381,7 +1388,11 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
       });
     }
 
-    if (!paymentInSession.applied) {
+    if (!hasMinimumAppliedLink(paymentInSession)) {
+      if (paymentInSession.applied) {
+        paymentInSession.applied = false;
+        await paymentInSession.save({ session });
+      }
       // Atomic guard: exactly one process can transition applied from false to true
       const claimedPayment = await Payment.findOneAndUpdate(
         { _id: paymentInSession._id, applied: false },

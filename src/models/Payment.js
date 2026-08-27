@@ -38,6 +38,7 @@ const PaymentSchema = new mongoose.Schema(
     currency: { type: String, default: "SAR" },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
+    checkoutDraftId: { type: mongoose.Schema.Types.ObjectId, ref: "CheckoutDraft", default: null },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
     providerInvoiceId: { type: String, set: normalizeOptionalProviderIdentifier },
     providerPaymentId: { type: String, set: normalizeOptionalProviderIdentifier },

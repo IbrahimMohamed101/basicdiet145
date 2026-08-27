@@ -179,13 +179,14 @@ function resolveRuntime(runtimeOverrides = null) {
   return { ...runtime, ...runtimeOverrides };
 }
 
-async function materializeStackingSubscriptionDaysTransactional({
+async function materializeStackingSubscriptionDaysIdempotent({
   container,
   batch,
   session,
   runtime: runtimeOverrides = null,
+  requireTransaction = false,
 } = {}) {
-  assertTransactionalSession(session);
+  if (requireTransaction) assertTransactionalSession(session);
   const entries = buildStackingSubscriptionDayEntries({ container, batch });
   const runtime = resolveRuntime(runtimeOverrides);
   const result = await runtime.upsertDays(entries, session);
@@ -202,10 +203,18 @@ async function materializeStackingSubscriptionDaysTransactional({
   };
 }
 
+async function materializeStackingSubscriptionDaysTransactional(args = {}) {
+  return materializeStackingSubscriptionDaysIdempotent({
+    ...args,
+    requireTransaction: true,
+  });
+}
+
 module.exports = {
   MAX_STACKING_DAY_MATERIALIZATION,
   buildDayFulfillmentFields,
   buildStackingSubscriptionDayEntries,
+  materializeStackingSubscriptionDaysIdempotent,
   materializeStackingSubscriptionDaysTransactional,
   normalizeDeliverySnapshot,
 };

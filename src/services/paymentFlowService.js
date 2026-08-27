@@ -11,6 +11,9 @@ const { validateRedirectUrl } = require("../utils/security");
 const {
   cleanupTerminalNonPaidDayPayment,
 } = require("./subscription/subscriptionDayPaymentLifecycleService");
+const {
+  hasMinimumAppliedLink,
+} = require("./subscription/subscriptionPaymentApplicationStateService");
 
 const TERMINAL_PAYMENT_STATUSES = new Set(["paid", "failed", "canceled", "expired", "refunded"]);
 
@@ -288,7 +291,7 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
     throw err;
   }
 
-  if (existingPayment.status === "paid" && existingPayment.applied === true) {
+  if (hasMinimumAppliedLink(existingPayment)) {
     return buildPaymentResultPayload(existingPayment, null, { applied: true });
   }
 
@@ -309,7 +312,7 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
       error: err.message,
       source,
     });
-    if (existingPayment.status === "paid" && existingPayment.applied) {
+    if (hasMinimumAppliedLink(existingPayment)) {
       return buildPaymentResultPayload(existingPayment, null, { applied: true });
     }
     err.code = err.code || "PAYMENT_PROVIDER_ERROR";
@@ -339,7 +342,7 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
       throw err;
     }
 
-    if (payment.status === "paid" && payment.applied === true) {
+    if (hasMinimumAppliedLink(payment)) {
       logger.info("Payment redirect verify: already processed", {
         paymentId: String(payment._id),
         providerInvoiceId: payment.providerInvoiceId || null,
@@ -347,6 +350,10 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
         attempt: attempt + 1,
       });
       return buildPaymentResultPayload(payment.toObject(), providerInvoice, { applied: true });
+    }
+    if (payment.applied && ["subscription_activation", "subscription_renewal"].includes(String(payment.type || ""))) {
+      payment.applied = false;
+      await payment.save({ session });
     }
 
     if (normalizedStatus !== "paid") {

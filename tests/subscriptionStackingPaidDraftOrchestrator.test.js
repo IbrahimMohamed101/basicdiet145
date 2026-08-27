@@ -182,10 +182,59 @@ async function testInvalidIdentityAndTransactionAreRejected() {
       payment,
       businessDate: "2026-08-06",
       session: null,
-      runtime: {},
+      runtime: {
+        buildActivationPayload: async () => ({ subscriptionPayload: {} }),
+      },
     }),
-    (err) => Boolean(err && err.code === "SUBSCRIPTION_STACKING_TRANSACTION_REQUIRED")
+    (err) => Boolean(err && err.code === "STACKING_EXPECTED_PARENT_REQUIRED")
   );
+}
+
+async function testStandaloneSagaSerializesAndFinalizesLast() {
+  const { draft, payment, container, purchaseBatch } = fixture();
+  const calls = [];
+  const result = await applyPaidDraftToSubscriptionStackTransactional({
+    draft,
+    payment,
+    businessDate: "2026-08-06",
+    expectedParentSubscriptionId: container._id,
+    session: { supportsTransactions: false, inTransaction: () => false },
+    runtime: {
+      buildActivationPayload: async () => ({ subscriptionPayload: {} }),
+      acquireStandaloneLease: async () => {
+        calls.push("lease");
+        return container;
+      },
+      prepareStandalonePayment: async () => {
+        calls.push("prepare");
+        return { ...payment, applied: false };
+      },
+      activateStandalone: async () => {
+        calls.push("activate");
+        return {
+          outcome: "stacked_into_existing_container",
+          container,
+          purchaseBatch,
+          idempotent: false,
+        };
+      },
+      materializeDaysStandalone: async () => {
+        calls.push("days");
+        return { requestedCount: 26, idempotent: false };
+      },
+      completeStandalone: async () => {
+        calls.push("complete");
+        return { applied: true };
+      },
+      releaseStandaloneLease: async () => {
+        calls.push("release");
+      },
+    },
+  });
+  assert.deepStrictEqual(calls, ["lease", "prepare", "activate", "days", "complete", "release"]);
+  assert.strictEqual(result.applied, true);
+  assert.strictEqual(result.subscriptionId, String(container._id));
+  assert.strictEqual(result.standaloneSaga, true);
 }
 
 async function testEmptyMaterializationFailsClosed() {
@@ -216,6 +265,7 @@ async function run() {
   await testNoContainerDelegatesWithoutCreatingDays();
   await testDayFailureRejectsWholeOrchestration();
   await testInvalidIdentityAndTransactionAreRejected();
+  await testStandaloneSagaSerializesAndFinalizesLast();
   await testEmptyMaterializationFailsClosed();
   console.log("subscription stacking paid draft orchestrator tests passed");
 }

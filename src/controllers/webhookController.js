@@ -29,6 +29,9 @@ const { logger } = require("../utils/logger");
 const { toKSADateString } = require("../utils/date");
 const { isPhase1SharedPaymentDispatcherEnabled } = require("../utils/featureFlags");
 const errorResponse = require("../utils/errorResponse");
+const {
+  hasMinimumAppliedLink,
+} = require("../services/subscription/subscriptionPaymentApplicationStateService");
 
 function normalizePaymentStatus(payload, eventType) {
   if (payload && payload.status) {
@@ -359,7 +362,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       return errorResponse(res, 409, "MISMATCH", "Currency mismatch" );
     }
 
-    if (payment.applied === true && payment.status === "paid" && isPaid) {
+    if (isPaid && hasMinimumAppliedLink(payment)) {
       logger.info("Moyasar webhook ignored before transaction: payment already applied", {
         ...logContext,
         internalPaymentId: String(payment._id),
@@ -380,7 +383,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       if (paymentId && !paymentInSession.providerPaymentId) paymentInSession.providerPaymentId = paymentId;
       if (invoiceId && !paymentInSession.providerInvoiceId) paymentInSession.providerInvoiceId = invoiceId;
 
-      if (paymentInSession.applied === true && paymentInSession.status === "paid" && isPaid) {
+      if (isPaid && hasMinimumAppliedLink(paymentInSession)) {
         logger.info("Moyasar webhook ignored in transaction: payment already applied", {
           ...logContext,
           internalPaymentId: String(paymentInSession._id),
@@ -388,6 +391,14 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
           attempt: attempt + 1,
         });
         return { alreadyProcessed: true };
+      }
+      if (
+        isPaid
+        && paymentInSession.applied
+        && ["subscription_activation", "subscription_renewal"].includes(String(paymentInSession.type || ""))
+      ) {
+        paymentInSession.applied = false;
+        await paymentInSession.save({ session });
       }
 
       if (!isPaid) {
