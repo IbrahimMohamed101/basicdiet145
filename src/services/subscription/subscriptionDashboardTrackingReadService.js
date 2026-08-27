@@ -6,6 +6,7 @@ const {
   buildSubscriptionDashboardTracking,
 } = require("./subscriptionDashboardTrackingService");
 
+const DAILY_DEDUCTION_ACTION = "subscription_daily_meal_deduction";
 const FULFILLED_DAY_STATUSES = new Set(["fulfilled", "delivered"]);
 const CONSUMED_WITHOUT_PREPARATION_STATUS = "consumed_without_preparation";
 const OPERATIONAL_DAY_STATUSES = new Set([
@@ -59,6 +60,30 @@ function serializeManualDeduction(log) {
   };
 }
 
+function serializeDailyDeduction(log) {
+  const meta = log && log.meta && typeof log.meta === "object" ? log.meta : {};
+  return {
+    id: log && log._id ? String(log._id) : null,
+    businessDate: meta.businessDate || null,
+    days: nonNegativeInteger(meta.days),
+    mealsPerDay: nonNegativeInteger(meta.mealsPerDay),
+    deducted: {
+      regularMeals: nonNegativeInteger(meta.deductedRegularMeals),
+      premiumMeals: 0,
+      totalMeals: nonNegativeInteger(meta.deductedTotalMeals),
+      addons: [],
+    },
+    fulfillmentMethod: meta.fulfillmentMethod || "pickup",
+    entitlementBatchId: meta.entitlementBatchId ? String(meta.entitlementBatchId) : null,
+    allocationKeys: Array.isArray(meta.allocationKeys) ? meta.allocationKeys.map(String) : [],
+    actor: {
+      id: meta.actorId || (log && log.byUserId ? String(log.byUserId) : null),
+      role: meta.actorRole || (log && log.byRole ? String(log.byRole) : null),
+    },
+    createdAt: log && log.createdAt ? log.createdAt : null,
+  };
+}
+
 async function loadManualDeductions(subscriptionId) {
   const logs = await ActivityLog.find({
     entityType: "subscription",
@@ -70,6 +95,20 @@ async function loadManualDeductions(subscriptionId) {
     .lean();
 
   return logs.map(serializeManualDeduction);
+}
+
+async function loadDailyDeductions(subscriptionId) {
+  const logs = await ActivityLog.find({
+    entityType: "subscription",
+    entityId: subscriptionId,
+    action: DAILY_DEDUCTION_ACTION,
+    "meta.source": "pickup_quick_deduction",
+  })
+    .select("_id meta byUserId byRole createdAt")
+    .sort({ createdAt: 1 })
+    .lean();
+
+  return logs.map(serializeDailyDeduction);
 }
 
 function resolveDayStatus(day = {}) {
@@ -175,6 +214,7 @@ function reconcileTrackingSummary({
   subscription,
   baseSummary = {},
   manualDeductions = [],
+  dailyDeductions = [],
   dayConsumption = null,
 }) {
   const totalMeals = nonNegativeInteger(subscription.totalMeals ?? baseSummary.totalMeals);
@@ -204,7 +244,7 @@ function reconcileTrackingSummary({
   // A customer receipt requires a fulfilled/delivered operational day. A
   // consumed allocation on a consumed_without_preparation day is a known
   // operational balance movement, but it is not physical customer receipt.
-  const receivedMeals = nonNegativeInteger(
+  const timelineReceivedMeals = nonNegativeInteger(
     dayConsumption && dayConsumption.receivedMeals !== undefined
       ? dayConsumption.receivedMeals
       : baseSummary.timelineReceivedMeals ?? baseSummary.receivedMeals
@@ -216,7 +256,7 @@ function reconcileTrackingSummary({
     dayConsumption && dayConsumption.otherDayConsumedMeals
   );
   const timelineConsumedMeals =
-    receivedMeals + consumedWithoutPreparationMeals + otherDayConsumedMeals;
+    timelineReceivedMeals + consumedWithoutPreparationMeals + otherDayConsumedMeals;
   const deliveredDays = nonNegativeInteger(
     dayConsumption && dayConsumption.deliveredDays !== undefined
       ? dayConsumption.deliveredDays
@@ -227,11 +267,36 @@ function reconcileTrackingSummary({
     (sum, row) => sum + nonNegativeInteger(row && row.deducted && row.deducted.totalMeals),
     0
   );
+  const dailyDeductedMeals = dailyDeductions.reduce(
+    (sum, row) => sum + nonNegativeInteger(row && row.deducted && row.deducted.totalMeals),
+    0
+  );
+  const dailyDeductedDays = dailyDeductions.reduce(
+    (sum, row) => sum + nonNegativeInteger(row && row.days),
+    0
+  );
 
-  const attributedConsumedMeals = timelineConsumedMeals + manualDeductedMeals;
+  // Quick pickup deduction is a daily operational consumption, not a manual
+  // adjustment. Keep it in a separate daily bucket. If a future read model
+  // also attributes the same allocation to a concrete SubscriptionDay, cap the
+  // adjustment attribution so the same consumed meals are never counted twice.
+  const remainingAfterTimelineAndManual = Math.max(
+    0,
+    balanceConsumedMeals - timelineConsumedMeals - manualDeductedMeals
+  );
+  const attributedDailyDeductedMeals = Math.min(
+    dailyDeductedMeals,
+    remainingAfterTimelineAndManual
+  );
+  const attributedConsumedMeals =
+    timelineConsumedMeals + manualDeductedMeals + attributedDailyDeductedMeals;
   const consumedAttributionDifference = balanceConsumedMeals - attributedConsumedMeals;
   const otherConsumedMeals = Math.max(0, consumedAttributionDifference);
   const overAttributedMeals = Math.max(0, -consumedAttributionDifference);
+  const receivedMeals = Math.min(
+    balanceConsumedMeals,
+    timelineReceivedMeals + dailyDeductedMeals
+  );
   const displayRemainingMeals = availableMeals + reservedMeals;
 
   // Entitlement v2 invariant:
@@ -246,11 +311,14 @@ function reconcileTrackingSummary({
     consumedMeals: balanceConsumedMeals,
     balanceConsumedMeals,
     receivedMeals,
-    timelineReceivedMeals: receivedMeals,
+    timelineReceivedMeals,
     timelineConsumedMeals,
     consumedWithoutPreparationMeals,
     otherDayConsumedMeals,
     deliveredDays,
+    dailyDeductedMeals,
+    dailyDeductedDays,
+    attributedDailyDeductedMeals,
     manualDeductedMeals,
     otherConsumedMeals,
     overAttributedMeals,
@@ -274,10 +342,14 @@ function reconcileTrackingSummary({
       consumedMeals: balanceConsumedMeals,
       balanceConsumedMeals,
       receivedMeals,
+      timelineReceivedMeals,
       timelineConsumedMeals,
       consumedWithoutPreparationMeals,
       otherDayConsumedMeals,
       attributedToTimeline: timelineConsumedMeals,
+      dailyDeductedMeals,
+      dailyDeductedDays,
+      attributedDailyDeductedMeals,
       manualDeductedMeals,
       attributedKnownTotal: attributedConsumedMeals,
       otherConsumedMeals,
@@ -303,7 +375,7 @@ async function buildSubscriptionDashboardTrackingReadModel({
   lang = "ar",
   businessDate = null,
 }) {
-  const [baseTracking, manualDeductions] = await Promise.all([
+  const [baseTracking, manualDeductions, dailyDeductions] = await Promise.all([
     buildSubscriptionDashboardTracking({
       subscription,
       timeline,
@@ -311,6 +383,7 @@ async function buildSubscriptionDashboardTrackingReadModel({
       businessDate,
     }),
     loadManualDeductions(subscription._id),
+    loadDailyDeductions(subscription._id),
   ]);
 
   const days = normalizeTrackingDays(baseTracking.days);
@@ -319,6 +392,7 @@ async function buildSubscriptionDashboardTrackingReadModel({
     subscription,
     baseSummary: baseTracking.summary,
     manualDeductions,
+    dailyDeductions,
     dayConsumption,
   });
 
@@ -327,8 +401,11 @@ async function buildSubscriptionDashboardTrackingReadModel({
     contractVersion: "dashboard_subscription_tracking.v2",
     summary,
     adjustments: {
+      dailyDeductions,
       manualDeductions,
       totals: {
+        dailyDeductedMeals: summary.dailyDeductedMeals,
+        dailyDeductedDays: summary.dailyDeductedDays,
         manualDeductedMeals: summary.manualDeductedMeals,
         consumedWithoutPreparationMeals: summary.consumedWithoutPreparationMeals,
         otherDayConsumedMeals: summary.otherDayConsumedMeals,
@@ -341,11 +418,14 @@ async function buildSubscriptionDashboardTrackingReadModel({
 }
 
 module.exports = {
+  DAILY_DEDUCTION_ACTION,
   buildDayConsumptionBreakdown,
   buildSubscriptionDashboardTrackingReadModel,
+  loadDailyDeductions,
   loadManualDeductions,
   normalizeTrackingDays,
   reconcileTrackingSummary,
   resolveTrackingState,
+  serializeDailyDeduction,
   serializeManualDeduction,
 };
