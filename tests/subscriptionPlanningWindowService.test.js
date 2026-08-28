@@ -58,7 +58,7 @@ function run() {
     }
   });
 
-  test("Saturday opens the full Saturday-to-Friday menu week", () => {
+  test("Saturday still resolves the calendar menu week for metadata", () => {
     const result = resolveCurrentMenuWeek({ businessDate: "2026-08-01" });
     assertWindow(result, {
       businessDate: "2026-08-01",
@@ -67,20 +67,23 @@ function run() {
     });
   });
 
-  test("A midweek business date only exposes today through Friday", () => {
+  test("A midweek business date exposes a continuous seven-day planning horizon", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-28",
     });
     assertWindow(result, {
+      mode: "rolling_7_days",
+      horizonDays: 7,
       menuWeekStart: "2026-07-25",
       menuWeekEnd: "2026-07-31",
       planningWindowStart: "2026-07-28",
-      planningWindowEnd: "2026-07-31",
+      planningWindowEnd: "2026-08-03",
+      rollingWindowEnd: "2026-08-03",
       hasSelectableDates: true,
     });
   });
 
-  test("Friday exposes Friday only", () => {
+  test("Friday no longer collapses the planner to one day", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-31",
     });
@@ -88,12 +91,12 @@ function run() {
       menuWeekStart: "2026-07-25",
       menuWeekEnd: "2026-07-31",
       planningWindowStart: "2026-07-31",
-      planningWindowEnd: "2026-07-31",
+      planningWindowEnd: "2026-08-06",
       hasSelectableDates: true,
     });
   });
 
-  test("Menu weeks cross month boundaries without changing Saturday-Friday semantics", () => {
+  test("Menu-week metadata crosses month boundaries without limiting planning", () => {
     const result = resolveCurrentMenuWeek({ businessDate: "2026-09-01" });
     assertWindow(result, {
       menuWeekStart: "2026-08-29",
@@ -101,7 +104,7 @@ function run() {
     });
   });
 
-  test("Menu weeks cross year boundaries safely", () => {
+  test("Menu-week metadata crosses year boundaries safely", () => {
     const result = resolveCurrentMenuWeek({ businessDate: "2026-12-31" });
     assertWindow(result, {
       menuWeekStart: "2026-12-26",
@@ -109,7 +112,7 @@ function run() {
     });
   });
 
-  test("Subscription start date narrows the beginning of the planning window", () => {
+  test("Subscription start date narrows the beginning without extending the horizon", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-25",
       subscriptionStartDate: "2026-07-28",
@@ -118,11 +121,12 @@ function run() {
     assertWindow(result, {
       planningWindowStart: "2026-07-28",
       planningWindowEnd: "2026-07-31",
+      rollingWindowEnd: "2026-07-31",
       hasSelectableDates: true,
     });
   });
 
-  test("Subscription validity narrows the end of the planning window", () => {
+  test("Subscription validity narrows the end of the rolling horizon", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-25",
       subscriptionStartDate: "2026-07-20",
@@ -135,20 +139,33 @@ function run() {
     });
   });
 
-  test("A subscription starting after Friday has no selectable date in the current menu week", () => {
+  test("An upcoming subscription inside the next seven days exposes only intersecting dates", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-28",
       subscriptionStartDate: "2026-08-01",
       subscriptionValidityEndDate: "2026-08-30",
     });
-    assert.strictEqual(result.hasSelectableDates, false);
+    assert.strictEqual(result.hasSelectableDates, true);
     assert.strictEqual(result.planningWindowStart, "2026-08-01");
-    assert.strictEqual(result.planningWindowEnd, "2026-07-31");
+    assert.strictEqual(result.planningWindowEnd, "2026-08-03");
+    assert.strictEqual(result.rollingWindowEnd, "2026-08-03");
   });
 
-  test("A date inside the current menu week and subscription validity is allowed", () => {
+  test("A far-future subscription never shifts the rolling horizon forward", () => {
+    const result = resolveSubscriptionPlanningWindow({
+      businessDate: "2026-07-28",
+      subscriptionStartDate: "2026-08-10",
+      subscriptionValidityEndDate: "2026-09-10",
+    });
+    assert.strictEqual(result.hasSelectableDates, false);
+    assert.strictEqual(result.planningWindowStart, "2026-08-10");
+    assert.strictEqual(result.planningWindowEnd, "2026-08-03");
+    assert.strictEqual(result.rollingWindowEnd, "2026-08-03");
+  });
+
+  test("A date inside the rolling horizon and subscription validity is allowed", () => {
     const result = evaluatePlanningDate({
-      requestedDate: "2026-07-30",
+      requestedDate: "2026-08-02",
       businessDate: "2026-07-28",
       subscriptionStartDate: "2026-07-20",
       subscriptionValidityEndDate: "2026-08-30",
@@ -164,7 +181,7 @@ function run() {
         endDate: new Date("2026-08-20T20:59:59.999Z"),
         validityEndDate: new Date("2026-08-30T20:59:59.999Z"),
       },
-      requestedDate: "2026-07-30",
+      requestedDate: "2026-08-02",
       businessDate: "2026-07-28",
     });
     assert.strictEqual(result.allowed, true);
@@ -172,9 +189,20 @@ function run() {
     assert.strictEqual(result.subscriptionValidityEndDate, "2026-08-30");
   });
 
-  test("The next Saturday is rejected until the new menu week begins", () => {
+  test("The next Saturday is allowed before the calendar week flips", () => {
     const result = evaluatePlanningDate({
       requestedDate: "2026-08-01",
+      businessDate: "2026-07-28",
+      subscriptionStartDate: "2026-07-20",
+      subscriptionValidityEndDate: "2026-08-30",
+    });
+    assert.strictEqual(result.allowed, true);
+    assert.strictEqual(result.reason, null);
+  });
+
+  test("A date beyond the seven-day horizon remains safely rejected", () => {
+    const result = evaluatePlanningDate({
+      requestedDate: "2026-08-04",
       businessDate: "2026-07-28",
       subscriptionStartDate: "2026-07-20",
       subscriptionValidityEndDate: "2026-08-30",
@@ -186,7 +214,7 @@ function run() {
     );
   });
 
-  test("Past dates are rejected independently from the weekly window", () => {
+  test("Past dates are rejected independently from the planning horizon", () => {
     const result = evaluatePlanningDate({
       requestedDate: "2026-07-27",
       businessDate: "2026-07-28",
@@ -232,7 +260,7 @@ function run() {
       subscriptionValidityEndDate: new Date("2026-08-30T23:59:59+03:00"),
     });
     assert.strictEqual(result.businessDate, "2026-07-28");
-    assert.strictEqual(result.planningWindowEnd, "2026-07-31");
+    assert.strictEqual(result.planningWindowEnd, "2026-08-03");
   });
 
   test("Impossible calendar dates fail closed", () => {

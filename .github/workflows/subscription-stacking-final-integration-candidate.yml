@@ -83,7 +83,7 @@ jobs:
 
       - name: Concurrent finalization and authority
         run: |
-          NODE_ENV=test node tests/subscriptionStackingConcurrentPurchases.integration.test.js
+          NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/subscriptionStackingConcurrentPurchasesClock.js node tests/subscriptionStackingConcurrentPurchases.integration.test.js
           NODE_ENV=test node tests/subscriptionStackingFinalizationAuthority.test.js
 
       - name: Stacking entitlement and balance conservation

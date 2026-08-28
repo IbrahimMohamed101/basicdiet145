@@ -381,6 +381,8 @@ async function run() {
   const pastDate = dateUtils.addDaysToKSADateString(BUSINESS_DATE, -1);
   const missingPastDate = dateUtils.addDaysToKSADateString(BUSINESS_DATE, -2);
   const nextSaturday = dateUtils.addDaysToKSADateString(week.menuWeekEnd, 1);
+  const rollingWindowEnd = dateUtils.addDaysToKSADateString(BUSINESS_DATE, 6);
+  const beyondRollingWindow = dateUtils.addDaysToKSADateString(BUSINESS_DATE, 7);
   const subscriptionStart = dateUtils.addDaysToKSADateString(BUSINESS_DATE, -7);
   const subscriptionEnd = dateUtils.addDaysToKSADateString(nextSaturday, 14);
   const api = request(createApp());
@@ -390,6 +392,8 @@ async function run() {
     menuWeekStart: "2026-07-25",
     menuWeekEnd: "2026-07-31",
   });
+  assert.strictEqual(rollingWindowEnd, "2026-08-04");
+  assert.strictEqual(beyondRollingWindow, "2026-08-05");
 
   const mainUser = await createUser(1);
   const main = await createSubscription({
@@ -405,11 +409,12 @@ async function run() {
     tomorrow,
     week.menuWeekEnd,
     nextSaturday,
+    beyondRollingWindow,
   ]) {
     await createOpenDay(main._id, date);
   }
 
-  for (const date of [BUSINESS_DATE, tomorrow, week.menuWeekEnd]) {
+  for (const date of [BUSINESS_DATE, tomorrow, week.menuWeekEnd, nextSaturday]) {
     await check(`flag ON allows ${date}`, async () => {
       await assertAllowedLifecycle({
         api,
@@ -424,11 +429,11 @@ async function run() {
 
   await check("flag ON counters and client balance", async () => {
     const stored = await Subscription.findById(main._id).lean();
-    assert.strictEqual(stored.remainingMeals, 7);
-    assert.strictEqual(stored.reservedMeals, 3);
+    assert.strictEqual(stored.remainingMeals, 6);
+    assert.strictEqual(stored.reservedMeals, 4);
     assert.strictEqual(stored.consumedMeals, 0);
     assert.strictEqual(stored.forfeitedMeals, 0);
-    assert.strictEqual(stored.baseMealAllocations.length, 3);
+    assert.strictEqual(stored.baseMealAllocations.length, 4);
     assert.strictEqual(
       stored.remainingMeals
         + stored.reservedMeals
@@ -441,8 +446,8 @@ async function run() {
       .get("/api/subscriptions/current/overview?lang=en")
       .set(mainHeaders);
     assert.strictEqual(overview.status, 200);
-    assert.strictEqual(overview.body.data.remainingMeals, 7);
-    assert.strictEqual(overview.body.data.mealBalance.availableMeals, 7);
+    assert.strictEqual(overview.body.data.remainingMeals, 6);
+    assert.strictEqual(overview.body.data.mealBalance.availableMeals, 6);
     assert.strictEqual(overview.body.data.mealBalance.remainingMeals, 10);
     assert.strictEqual(
       overview.body.data.mealBalance.displayRemainingMeals,
@@ -452,10 +457,10 @@ async function run() {
       overview.body.data.mealBalance.maxConsumableMealsNow
         <= overview.body.data.mealBalance.availableMeals
     );
-    return "available=7 reserved=3 display=10 allocations=3";
+    return "available=6 reserved=4 display=10 allocations=4";
   });
 
-  await check("flag ON GET read purity", async () => {
+  await check("flag ON GET read purity and rolling metadata", async () => {
     const before = await persistenceFingerprint(main._id);
     const [overview, timeline] = await Promise.all([
       api.get("/api/subscriptions/current/overview?lang=en").set(mainHeaders),
@@ -465,8 +470,14 @@ async function run() {
     ]);
     assert.strictEqual(overview.status, 200);
     assert.strictEqual(timeline.status, 200);
+    assert.strictEqual(timeline.body.data.planningWindow.mode, "rolling_7_days");
+    assert.strictEqual(timeline.body.data.planningWindow.horizonDays, 7);
+    assert.strictEqual(timeline.body.data.planningWindow.planningWindowEnd, rollingWindowEnd);
+    const saturday = timeline.body.data.days.find((day) => day.date === nextSaturday);
+    assert(saturday, "next Saturday must remain visible");
+    assert.strictEqual(saturday.withinPlanningWindow, true);
     assert.strictEqual(await persistenceFingerprint(main._id), before);
-    return "overview/timeline performed no writes";
+    return "overview/timeline performed no writes; next Saturday remains in window";
   });
 
   await check("flag ON rejects existing past day", () => (
@@ -544,12 +555,12 @@ async function run() {
     })
   ));
 
-  await check("flag ON rejects next Saturday", () => (
+  await check("flag ON rejects only beyond the rolling seven-day horizon", () => (
     assertRejectedWithoutWrites({
       api,
       headers: mainHeaders,
       subscription: main,
-      date: nextSaturday,
+      date: beyondRollingWindow,
       payload,
       expectations: {
         validate: { status: 400, code: "OUTSIDE_CURRENT_MENU_WEEK" },
@@ -559,14 +570,17 @@ async function run() {
     })
   ));
 
-  await check("flag ON hasSelectableDates=false", async () => {
+  await check("flag ON intersects upcoming start with current rolling horizon", async () => {
     const window = resolveSubscriptionPlanningWindow({
       businessDate: BUSINESS_DATE,
       subscriptionStartDate: nextSaturday,
       subscriptionValidityEndDate: subscriptionEnd,
     });
-    assert.strictEqual(window.hasSelectableDates, false);
-    return `${window.planningWindowStart}>${window.planningWindowEnd}`;
+    assert.strictEqual(window.hasSelectableDates, true);
+    assert.strictEqual(window.mode, "rolling_7_days");
+    assert.strictEqual(window.planningWindowStart, nextSaturday);
+    assert.strictEqual(window.planningWindowEnd, rollingWindowEnd);
+    return `${window.planningWindowStart}..${window.planningWindowEnd}`;
   });
 
   const legacyUser = await createUser(4);
@@ -576,8 +590,8 @@ async function run() {
     startDate: subscriptionStart,
     endDate: subscriptionEnd,
   });
-  await createOpenDay(legacy._id, nextSaturday);
-  await check("flag OFF preserves planning beyond current week", () => (
+  await createOpenDay(legacy._id, beyondRollingWindow);
+  await check("flag OFF preserves planning beyond rolling horizon", () => (
     withTemporaryEnvironment(
       { SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false" },
       async () => {
@@ -585,14 +599,14 @@ async function run() {
           api,
           headers: authHeader(legacyUser._id),
           subscription: legacy,
-          date: nextSaturday,
+          date: beyondRollingWindow,
           payload,
         });
         const stored = await Subscription.findById(legacy._id).lean();
         assert.strictEqual(stored.remainingMeals, 9);
         assert.strictEqual(stored.reservedMeals, 1);
         assert.strictEqual(stored.baseMealAllocations.length, 1);
-        return "next Saturday validate/save/confirm allowed";
+        return "beyond-horizon validate/save/confirm allowed when flag is off";
       }
     )
   ));

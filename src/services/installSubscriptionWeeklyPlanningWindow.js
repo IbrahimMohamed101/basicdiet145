@@ -21,11 +21,11 @@ const CONTROLLER_WRAPPER_MARKER = Symbol.for(
   "basicdiet.subscriptionWeeklyPlanningWindow.controllerWrapped"
 );
 const TIMELINE_PLANNING_WINDOW_VERSION =
-  "subscription_weekly_planning_window.v1";
+  "subscription_weekly_planning_window.v2";
 
 const LOCKED_MESSAGES = Object.freeze({
-  ar: "يمكن اختيار الوجبات لأسبوع المنيو الحالي فقط من السبت إلى الجمعة",
-  en: "Meal planning is available only for the current menu week, from Saturday through Friday",
+  ar: "يمكن اختيار الوجبات خلال فترة التخطيط المتاحة فقط",
+  en: "Meal planning is available only within the active planning window",
 });
 const INVALID_WINDOW_MESSAGES = Object.freeze({
   ar: "تعذر تحديد فترة اختيار الوجبات لهذا الاشتراك",
@@ -61,6 +61,7 @@ function lockEditableTimelineDay(day, {
     lockedReason: day.lockedReason || reason,
     lockedMessage: day.lockedMessage || message,
     planningWindowReason: reason,
+    withinPlanningWindow: false,
     withinCurrentMenuWeek: false,
     ...(evaluation ? {
       planningWindowStart: evaluation.planningWindowStart,
@@ -145,6 +146,9 @@ function projectTimelineToWeeklyPlanningWindow(timeline, {
     if (evaluation.allowed) {
       return {
         ...day,
+        withinPlanningWindow: true,
+        // Compatibility alias for existing Flutter builds that were released
+        // while the planning horizon was tied to the menu week.
         withinCurrentMenuWeek: true,
         planningWindowReason: null,
         planningWindowStart: evaluation.planningWindowStart,
@@ -154,6 +158,7 @@ function projectTimelineToWeeklyPlanningWindow(timeline, {
 
     const annotated = {
       ...day,
+      withinPlanningWindow: false,
       withinCurrentMenuWeek: false,
       planningWindowReason: evaluation.reason,
       planningWindowStart: evaluation.planningWindowStart,
@@ -162,7 +167,7 @@ function projectTimelineToWeeklyPlanningWindow(timeline, {
 
     // Confirmed, fulfilled, frozen, skipped, and already-locked days remain visible
     // with their original operational status. Only a day the legacy timeline still
-    // considered editable is converted into a read-only weekly-planning row.
+    // considered editable is converted into a read-only planning row.
     return lockEditableTimelineDay(annotated, {
       reason: evaluation.reason || PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK,
       message,
@@ -176,11 +181,14 @@ function projectTimelineToWeeklyPlanningWindow(timeline, {
       version: TIMELINE_PLANNING_WINDOW_VERSION,
       enabled: true,
       available: planningWindow.hasSelectableDates,
+      mode: planningWindow.mode,
+      horizonDays: planningWindow.horizonDays,
       businessDate: planningWindow.businessDate,
       menuWeekStart: planningWindow.menuWeekStart,
       menuWeekEnd: planningWindow.menuWeekEnd,
       planningWindowStart: planningWindow.planningWindowStart,
       planningWindowEnd: planningWindow.planningWindowEnd,
+      rollingWindowEnd: planningWindow.rollingWindowEnd,
       subscriptionStartDate: planningWindow.subscriptionStartDate,
       subscriptionValidityEndDate:
         planningWindow.subscriptionValidityEndDate,

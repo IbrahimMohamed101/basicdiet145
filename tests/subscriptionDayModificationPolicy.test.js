@@ -80,8 +80,8 @@ function buildDeliverySubscription(window = "13:00-16:00", overrides = {}) {
 async function run() {
   const businessDate = "2026-04-29";
   const getBusinessDateFn = async () => businessDate;
-  const beforeLockNow = new Date("2026-04-29T07:30:00+03:00");  // 10:30 KSA — before 11:00 cutoff for 13:00 window
-  const insideLockNow = new Date("2026-04-29T12:15:00+03:00");  // 12:15 KSA — after 11:00 cutoff for 13:00 window
+  const beforeLockNow = new Date("2026-04-29T07:30:00+03:00");
+  const insideLockNow = new Date("2026-04-29T12:15:00+03:00");
 
   await expectAllowed("1. pickup same-day selection is allowed", {
     subscription: buildPickupSubscription(),
@@ -173,18 +173,18 @@ async function run() {
   }, DELIVERY_TIME_UNAVAILABLE_CODE);
   assert(missingWindowError.details && missingWindowError.details.fulfillmentMethod === "delivery", "12. expected delivery details");
 
-  await expectAllowed("13. default-off weekly policy preserves next-week compatibility", {
+  await expectAllowed("13. default-off weekly policy preserves unrestricted future compatibility", {
     subscription: buildDeliverySubscription("13:00-16:00", {
       startDate: "2026-04-20",
       validityEndDate: "2026-05-31",
     }),
-    date: "2026-05-02",
+    date: "2026-05-10",
     now: insideLockNow,
     getBusinessDateFn,
     weeklyPlanningWindowEnabled: false,
   });
 
-  const currentWeekResult = await expectAllowed("14. enabled weekly policy allows the current Friday", {
+  const fridayResult = await expectAllowed("14. enabled planning policy keeps Friday inside a full seven-day horizon", {
     subscription: buildDeliverySubscription("13:00-16:00", {
       startDate: "2026-04-20",
       validityEndDate: "2026-05-31",
@@ -194,10 +194,11 @@ async function run() {
     getBusinessDateFn,
     weeklyPlanningWindowEnabled: true,
   });
-  assert(currentWeekResult.planningWindow, "14. expected planning window metadata");
-  assert(currentWeekResult.planningWindow.planningWindowEnd === "2026-05-01", "14. expected Friday window end");
+  assert(fridayResult.planningWindow, "14. expected planning window metadata");
+  assert(fridayResult.planningWindow.mode === "rolling_7_days", "14. expected rolling mode");
+  assert(fridayResult.planningWindow.planningWindowEnd === "2026-05-05", "14. expected rolling window end");
 
-  const nextWeekError = await expectRejected("15. enabled weekly policy rejects the next Saturday", {
+  const nextSaturdayResult = await expectAllowed("15. enabled planning policy allows the next Saturday", {
     subscription: buildDeliverySubscription("13:00-16:00", {
       startDate: "2026-04-20",
       validityEndDate: "2026-05-31",
@@ -206,13 +207,25 @@ async function run() {
     now: insideLockNow,
     getBusinessDateFn,
     weeklyPlanningWindowEnabled: true,
-  }, PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK);
-  assert(nextWeekError.messageAr, "15. expected Arabic weekly-window message");
-  assert(nextWeekError.details.menuWeekStart === "2026-04-25", "15. expected Saturday week start");
-  assert(nextWeekError.details.menuWeekEnd === "2026-05-01", "15. expected Friday week end");
-  assert(nextWeekError.details.requestedDate === "2026-05-02", "15. expected requested date details");
+  });
+  assert(nextSaturdayResult.planningWindow.planningWindowEnd === "2026-05-05", "15. expected same rolling horizon");
 
-  await expectRejected("16. enabled weekly policy respects subscription start date", {
+  const horizonError = await expectRejected("16. enabled planning policy rejects dates beyond seven days", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-04-20",
+      validityEndDate: "2026-05-31",
+    }),
+    date: "2026-05-06",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: true,
+  }, PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK);
+  assert(horizonError.messageAr, "16. expected Arabic planning-window message");
+  assert(horizonError.details.planningWindowStart === "2026-04-29", "16. expected rolling start");
+  assert(horizonError.details.planningWindowEnd === "2026-05-05", "16. expected rolling end");
+  assert(horizonError.details.requestedDate === "2026-05-06", "16. expected requested date details");
+
+  await expectRejected("17. enabled planning policy respects subscription start date", {
     subscription: buildDeliverySubscription("13:00-16:00", {
       startDate: "2026-05-01",
       validityEndDate: "2026-05-31",
@@ -223,7 +236,7 @@ async function run() {
     weeklyPlanningWindowEnabled: true,
   }, PLANNING_WINDOW_REASONS.BEFORE_SUBSCRIPTION_START);
 
-  await expectRejected("17. enabled weekly policy respects subscription validity end", {
+  await expectRejected("18. enabled planning policy respects subscription validity end", {
     subscription: buildDeliverySubscription("13:00-16:00", {
       startDate: "2026-04-20",
       validityEndDate: "2026-04-30",
@@ -234,7 +247,7 @@ async function run() {
     weeklyPlanningWindowEnabled: true,
   }, PLANNING_WINDOW_REASONS.AFTER_SUBSCRIPTION_VALIDITY);
 
-  console.log("subscriptionDayModificationPolicy.test.js: 17/17 checks passed");
+  console.log("subscriptionDayModificationPolicy.test.js: 18/18 checks passed");
 }
 
 run().catch((err) => {

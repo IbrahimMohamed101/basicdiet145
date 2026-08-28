@@ -85,12 +85,33 @@ function responseErrorCode(res) {
       : null;
 }
 
+function openDay(subscriptionId, date) {
+  return SubscriptionDay.create({
+    subscriptionId,
+    date,
+    status: "open",
+    plannerState: "draft",
+    planningState: "draft",
+    mealSlots: [],
+    addonSelections: [],
+    plannerMeta: {
+      requiredSlotCount: 1,
+      completeSlotCount: 0,
+      partialSlotCount: 0,
+      isDraftValid: false,
+      isConfirmable: false,
+    },
+  });
+}
+
 async function run() {
   await connect();
   try {
     const businessDate = await getRestaurantBusinessDate();
     const week = resolveCurrentMenuWeek({ businessDate });
     const nextSaturday = dateUtils.addDaysToKSADateString(week.menuWeekEnd, 1);
+    const rollingWindowEnd = dateUtils.addDaysToKSADateString(businessDate, 6);
+    const beyondRollingWindow = dateUtils.addDaysToKSADateString(businessDate, 7);
     const subscriptionStartDate = dateUtils.addDaysToKSADateString(businessDate, -7);
     const subscriptionEndDate = dateUtils.addDaysToKSADateString(nextSaturday, 14);
 
@@ -110,7 +131,7 @@ async function run() {
 
     const user = await User.create({
       phone: `+9665${String(Date.now()).slice(-8)}`,
-      name: "Weekly Planning Integration",
+      name: "Rolling Planning Integration",
       password: "Test12345",
       role: "client",
       isActive: true,
@@ -134,22 +155,10 @@ async function run() {
       pickupLocationId: "main",
       premiumBalance: [],
     });
-    const futureDay = await SubscriptionDay.create({
-      subscriptionId: subscription._id,
-      date: nextSaturday,
-      status: "open",
-      plannerState: "draft",
-      planningState: "draft",
-      mealSlots: [],
-      addonSelections: [],
-      plannerMeta: {
-        requiredSlotCount: 1,
-        completeSlotCount: 0,
-        partialSlotCount: 0,
-        isDraftValid: false,
-        isConfirmable: false,
-      },
-    });
+    const [nextSaturdayDay, beyondDay] = await Promise.all([
+      openDay(subscription._id, nextSaturday),
+      openDay(subscription._id, beyondRollingWindow),
+    ]);
 
     const app = createApp();
     const api = request(app);
@@ -167,43 +176,54 @@ async function run() {
     assert(timeline, "timeline response data must exist");
     assert(timeline.planningWindow, "timeline must expose enabled planning window");
     assert.strictEqual(timeline.planningWindow.businessDate, businessDate);
+    assert.strictEqual(timeline.planningWindow.mode, "rolling_7_days");
+    assert.strictEqual(timeline.planningWindow.horizonDays, 7);
     assert.strictEqual(timeline.planningWindow.menuWeekStart, week.menuWeekStart);
     assert.strictEqual(timeline.planningWindow.menuWeekEnd, week.menuWeekEnd);
-    assert.strictEqual(timeline.planningWindow.planningWindowEnd, week.menuWeekEnd);
+    assert.strictEqual(timeline.planningWindow.planningWindowStart, businessDate);
+    assert.strictEqual(timeline.planningWindow.planningWindowEnd, rollingWindowEnd);
 
     const friday = timeline.days.find((day) => day.date === week.menuWeekEnd);
-    assert(friday, "current menu-week Friday must remain in timeline");
-    assert.strictEqual(friday.canEdit, true, "current Friday remains editable");
-    assert.strictEqual(friday.withinCurrentMenuWeek, true);
+    assert(friday, "current calendar Friday must remain in timeline");
+    assert.strictEqual(friday.canEdit, true, "Friday remains editable when otherwise eligible");
+    assert.strictEqual(friday.withinPlanningWindow, true);
 
     const nextWeekDay = timeline.days.find((day) => day.date === nextSaturday);
     assert(nextWeekDay, "next Saturday remains visible in timeline");
-    assert.strictEqual(nextWeekDay.canEdit, false);
-    assert.strictEqual(nextWeekDay.status, "locked");
-    assert.strictEqual(nextWeekDay.dayStatus, "locked");
+    assert.strictEqual(nextWeekDay.canEdit, true);
+    assert.strictEqual(nextWeekDay.status, "open");
+    assert.strictEqual(nextWeekDay.dayStatus, "open");
+    assert.strictEqual(nextWeekDay.withinPlanningWindow, true);
+    assert.strictEqual(nextWeekDay.planningWindowReason, null);
+
+    const beyondWeekDay = timeline.days.find((day) => day.date === beyondRollingWindow);
+    assert(beyondWeekDay, "day beyond rolling horizon remains visible in timeline");
+    assert.strictEqual(beyondWeekDay.canEdit, false);
+    assert.strictEqual(beyondWeekDay.status, "locked");
+    assert.strictEqual(beyondWeekDay.dayStatus, "locked");
     assert.strictEqual(
-      nextWeekDay.lockedReason,
+      beyondWeekDay.lockedReason,
       PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK
     );
-    assert.strictEqual(nextWeekDay.withinCurrentMenuWeek, false);
+    assert.strictEqual(beyondWeekDay.withinPlanningWindow, false);
 
     const endpoints = [
       {
         label: "save",
         method: "put",
-        url: `/api/subscriptions/${subscription._id}/days/${nextSaturday}/selection`,
+        url: `/api/subscriptions/${subscription._id}/days/${beyondRollingWindow}/selection`,
         body: { contractVersion: "meal_planner_menu.v3", mealSlots: [] },
       },
       {
         label: "validate",
         method: "post",
-        url: `/api/subscriptions/${subscription._id}/days/${nextSaturday}/selection/validate`,
+        url: `/api/subscriptions/${subscription._id}/days/${beyondRollingWindow}/selection/validate`,
         body: { contractVersion: "meal_planner_menu.v3", mealSlots: [] },
       },
       {
         label: "confirm",
         method: "post",
-        url: `/api/subscriptions/${subscription._id}/days/${nextSaturday}/confirm`,
+        url: `/api/subscriptions/${subscription._id}/days/${beyondRollingWindow}/confirm`,
         body: {},
       },
     ];
@@ -222,21 +242,26 @@ async function run() {
         PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK,
         `${endpoint.label} error code`
       );
-      assert.strictEqual(res.body.error.details.menuWeekStart, week.menuWeekStart);
-      assert.strictEqual(res.body.error.details.menuWeekEnd, week.menuWeekEnd);
-      assert.strictEqual(res.body.error.details.requestedDate, nextSaturday);
+      assert.strictEqual(res.body.error.details.mode, "rolling_7_days");
+      assert.strictEqual(res.body.error.details.horizonDays, 7);
+      assert.strictEqual(res.body.error.details.planningWindowStart, businessDate);
+      assert.strictEqual(res.body.error.details.planningWindowEnd, rollingWindowEnd);
+      assert.strictEqual(res.body.error.details.requestedDate, beyondRollingWindow);
     }
 
-    const [subscriptionAfter, dayAfter] = await Promise.all([
+    const [subscriptionAfter, nextSaturdayAfter, beyondAfter] = await Promise.all([
       Subscription.findById(subscription._id).lean(),
-      SubscriptionDay.findById(futureDay._id).lean(),
+      SubscriptionDay.findById(nextSaturdayDay._id).lean(),
+      SubscriptionDay.findById(beyondDay._id).lean(),
     ]);
     assert.strictEqual(subscriptionAfter.remainingMeals, 10);
     assert.strictEqual(subscriptionAfter.reservedMeals, 0);
     assert.strictEqual(subscriptionAfter.consumedMeals, 0);
-    assert.strictEqual(dayAfter.status, "open");
-    assert.strictEqual(dayAfter.plannerState, "draft");
-    assert.deepStrictEqual(dayAfter.mealSlots || [], []);
+    assert.strictEqual(nextSaturdayAfter.status, "open");
+    assert.strictEqual(nextSaturdayAfter.plannerState, "draft");
+    assert.strictEqual(beyondAfter.status, "open");
+    assert.strictEqual(beyondAfter.plannerState, "draft");
+    assert.deepStrictEqual(beyondAfter.mealSlots || [], []);
 
     console.log(
       "subscriptionWeeklyPlanningWindow.integration.test.js passed"
