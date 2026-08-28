@@ -105,17 +105,16 @@ function resolveSubscriptionPlanningWindow({
     { required: false }
   );
 
-  // UX invariant: whenever a customer can plan, expose a continuous seven-day
-  // horizon instead of shortening the experience as Friday approaches. For an
-  // upcoming active subscription, the horizon begins at the subscription start
-  // so the customer can prepare the first week before fulfillment starts.
+  // UX invariant: the planning horizon is always the next seven KSA business
+  // dates from today. Subscription bounds only intersect that horizon; they must
+  // never shift it forward and accidentally expose a far-future subscription.
+  const rollingWindowEnd = dateUtils.addDaysToKSADateString(
+    week.businessDate,
+    PLANNING_WINDOW_DAYS - 1
+  );
   const planningWindowStart = maxDate(
     week.businessDate,
     normalizedStartDate || week.businessDate
-  );
-  const rollingWindowEnd = dateUtils.addDaysToKSADateString(
-    planningWindowStart,
-    PLANNING_WINDOW_DAYS - 1
   );
   const planningWindowEnd = minDate(
     rollingWindowEnd,
