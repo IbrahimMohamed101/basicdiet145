@@ -112,7 +112,7 @@ function run() {
     });
   });
 
-  test("Subscription start date moves the beginning of the rolling horizon", () => {
+  test("Subscription start date narrows the beginning without extending the horizon", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-25",
       subscriptionStartDate: "2026-07-28",
@@ -120,7 +120,8 @@ function run() {
     });
     assertWindow(result, {
       planningWindowStart: "2026-07-28",
-      planningWindowEnd: "2026-08-03",
+      planningWindowEnd: "2026-07-31",
+      rollingWindowEnd: "2026-07-31",
       hasSelectableDates: true,
     });
   });
@@ -138,7 +139,7 @@ function run() {
     });
   });
 
-  test("An upcoming subscription exposes its first seven valid days", () => {
+  test("An upcoming subscription inside the next seven days exposes only intersecting dates", () => {
     const result = resolveSubscriptionPlanningWindow({
       businessDate: "2026-07-28",
       subscriptionStartDate: "2026-08-01",
@@ -146,7 +147,20 @@ function run() {
     });
     assert.strictEqual(result.hasSelectableDates, true);
     assert.strictEqual(result.planningWindowStart, "2026-08-01");
-    assert.strictEqual(result.planningWindowEnd, "2026-08-07");
+    assert.strictEqual(result.planningWindowEnd, "2026-08-03");
+    assert.strictEqual(result.rollingWindowEnd, "2026-08-03");
+  });
+
+  test("A far-future subscription never shifts the rolling horizon forward", () => {
+    const result = resolveSubscriptionPlanningWindow({
+      businessDate: "2026-07-28",
+      subscriptionStartDate: "2026-08-10",
+      subscriptionValidityEndDate: "2026-09-10",
+    });
+    assert.strictEqual(result.hasSelectableDates, false);
+    assert.strictEqual(result.planningWindowStart, "2026-08-10");
+    assert.strictEqual(result.planningWindowEnd, "2026-08-03");
+    assert.strictEqual(result.rollingWindowEnd, "2026-08-03");
   });
 
   test("A date inside the rolling horizon and subscription validity is allowed", () => {
