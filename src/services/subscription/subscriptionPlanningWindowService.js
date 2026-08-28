@@ -4,11 +4,16 @@ const dateUtils = require("../../utils/date");
 
 const SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG =
   "SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED";
+const PLANNING_WINDOW_MODE = "rolling_7_days";
+const PLANNING_WINDOW_DAYS = 7;
 
 const PLANNING_WINDOW_REASONS = Object.freeze({
   DATE_IN_PAST: "DATE_IN_PAST",
   BEFORE_SUBSCRIPTION_START: "BEFORE_SUBSCRIPTION_START",
   AFTER_SUBSCRIPTION_VALIDITY: "AFTER_SUBSCRIPTION_VALIDITY",
+  // Kept as a compatibility error code for existing mobile clients. In v2 it
+  // means the requested date is outside the active rolling planning horizon,
+  // not literally outside the Saturday-Friday calendar week.
   OUTSIDE_CURRENT_MENU_WEEK: "OUTSIDE_CURRENT_MENU_WEEK",
 });
 
@@ -100,22 +105,33 @@ function resolveSubscriptionPlanningWindow({
     { required: false }
   );
 
+  // UX invariant: whenever a customer can plan, expose a continuous seven-day
+  // horizon instead of shortening the experience as Friday approaches. For an
+  // upcoming active subscription, the horizon begins at the subscription start
+  // so the customer can prepare the first week before fulfillment starts.
   const planningWindowStart = maxDate(
     week.businessDate,
     normalizedStartDate || week.businessDate
   );
+  const rollingWindowEnd = dateUtils.addDaysToKSADateString(
+    planningWindowStart,
+    PLANNING_WINDOW_DAYS - 1
+  );
   const planningWindowEnd = minDate(
-    week.menuWeekEnd,
-    normalizedValidityEndDate || week.menuWeekEnd
+    rollingWindowEnd,
+    normalizedValidityEndDate || rollingWindowEnd
   );
   const hasSelectableDates = planningWindowStart <= planningWindowEnd;
 
   return {
     ...week,
+    mode: PLANNING_WINDOW_MODE,
+    horizonDays: PLANNING_WINDOW_DAYS,
     subscriptionStartDate: normalizedStartDate,
     subscriptionValidityEndDate: normalizedValidityEndDate,
     planningWindowStart,
     planningWindowEnd,
+    rollingWindowEnd,
     hasSelectableDates,
   };
 }
@@ -147,13 +163,8 @@ function evaluatePlanningDate({
   ) {
     reason = PLANNING_WINDOW_REASONS.AFTER_SUBSCRIPTION_VALIDITY;
   } else if (
-    normalizedRequestedDate < window.menuWeekStart
-    || normalizedRequestedDate > window.menuWeekEnd
-    || !window.hasSelectableDates
-  ) {
-    reason = PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK;
-  } else if (
-    normalizedRequestedDate < window.planningWindowStart
+    !window.hasSelectableDates
+    || normalizedRequestedDate < window.planningWindowStart
     || normalizedRequestedDate > window.planningWindowEnd
   ) {
     reason = PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK;
@@ -197,6 +208,8 @@ function evaluateSubscriptionPlanningDate({
 
 module.exports = {
   INVALID_PLANNING_WINDOW_DATE_CODE,
+  PLANNING_WINDOW_DAYS,
+  PLANNING_WINDOW_MODE,
   PLANNING_WINDOW_REASONS,
   SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_FLAG,
   evaluatePlanningDate,
