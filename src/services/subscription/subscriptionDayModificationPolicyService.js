@@ -24,8 +24,8 @@ const DELIVERY_TIME_UNAVAILABLE_CODE = "DELIVERY_TIME_UNAVAILABLE";
 
 const WEEKLY_PLANNING_MESSAGES = Object.freeze({
   [PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK]: {
-    en: "Meal planning is available only for the current menu week, from Saturday through Friday",
-    ar: "يمكن اختيار الوجبات لأسبوع المنيو الحالي فقط من السبت إلى الجمعة",
+    en: "Meal planning is available only within the active 7-day planning window",
+    ar: "يمكن اختيار الوجبات خلال فترة التخطيط المتاحة لمدة 7 أيام فقط",
   },
   [PLANNING_WINDOW_REASONS.BEFORE_SUBSCRIPTION_START]: {
     en: "The selected date is before the subscription start date",
@@ -189,10 +189,13 @@ function serializePlanningWindowEvaluation(evaluation) {
   return {
     requestedDate: evaluation.requestedDate,
     businessDate: evaluation.businessDate,
+    mode: evaluation.mode,
+    horizonDays: evaluation.horizonDays,
     menuWeekStart: evaluation.menuWeekStart,
     menuWeekEnd: evaluation.menuWeekEnd,
     planningWindowStart: evaluation.planningWindowStart,
     planningWindowEnd: evaluation.planningWindowEnd,
+    rollingWindowEnd: evaluation.rollingWindowEnd,
     subscriptionStartDate: evaluation.subscriptionStartDate,
     subscriptionValidityEndDate: evaluation.subscriptionValidityEndDate,
     hasSelectableDates: evaluation.hasSelectableDates,
