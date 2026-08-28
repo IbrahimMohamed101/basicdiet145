@@ -75,6 +75,17 @@ function timelineFixture(overrides = {}) {
         lockedReason: null,
         lockedMessage: null,
       },
+      {
+        date: "2026-05-06",
+        status: "open",
+        dayStatus: "open",
+        timelineStatus: "empty",
+        selectionStatus: "empty",
+        canEdit: true,
+        locked: false,
+        lockedReason: null,
+        lockedMessage: null,
+      },
     ],
     ...overrides,
   };
@@ -92,7 +103,7 @@ function run() {
     );
   });
 
-  test("enabled projection exposes today-through-Friday metadata", () => {
+  test("enabled projection exposes rolling seven-day metadata", () => {
     const source = timelineFixture();
     const projected = projectTimelineToWeeklyPlanningWindow(source, {
       businessDate: "2026-04-29",
@@ -102,28 +113,32 @@ function run() {
 
     assert.notStrictEqual(projected, source);
     assert.deepStrictEqual(projected.planningWindow, {
-      version: "subscription_weekly_planning_window.v1",
+      version: "subscription_weekly_planning_window.v2",
       enabled: true,
       available: true,
+      mode: "rolling_7_days",
+      horizonDays: 7,
       businessDate: "2026-04-29",
       menuWeekStart: "2026-04-25",
       menuWeekEnd: "2026-05-01",
       planningWindowStart: "2026-04-29",
-      planningWindowEnd: "2026-05-01",
+      planningWindowEnd: "2026-05-05",
+      rollingWindowEnd: "2026-05-05",
       subscriptionStartDate: "2026-04-20",
       subscriptionValidityEndDate: "2026-05-31",
     });
 
-    for (const date of ["2026-04-29", "2026-05-01"]) {
+    for (const date of ["2026-04-29", "2026-05-01", "2026-05-02"]) {
       const day = projected.days.find((row) => row.date === date);
       assert.strictEqual(day.canEdit, true, date);
       assert.strictEqual(day.status, "open", date);
+      assert.strictEqual(day.withinPlanningWindow, true, date);
       assert.strictEqual(day.withinCurrentMenuWeek, true, date);
       assert.strictEqual(day.planningWindowReason, null, date);
     }
   });
 
-  test("the next Saturday becomes read-only and locked", () => {
+  test("the next Saturday remains editable before the calendar week flips", () => {
     const source = timelineFixture();
     const sourceSnapshot = JSON.stringify(source);
     const projected = projectTimelineToWeeklyPlanningWindow(source, {
@@ -133,6 +148,23 @@ function run() {
     });
     const day = projected.days.find((row) => row.date === "2026-05-02");
 
+    assert.strictEqual(day.canEdit, true);
+    assert.strictEqual(day.status, "open");
+    assert.strictEqual(day.dayStatus, "open");
+    assert.strictEqual(day.locked, false);
+    assert.strictEqual(day.planningWindowReason, null);
+    assert.strictEqual(day.withinPlanningWindow, true);
+    assert.strictEqual(JSON.stringify(source), sourceSnapshot, "source timeline is not mutated");
+  });
+
+  test("a date beyond the rolling horizon becomes read-only and locked", () => {
+    const projected = projectTimelineToWeeklyPlanningWindow(timelineFixture(), {
+      businessDate: "2026-04-29",
+      enabled: true,
+      lang: "en",
+    });
+    const day = projected.days.find((row) => row.date === "2026-05-06");
+
     assert.strictEqual(day.canEdit, false);
     assert.strictEqual(day.status, "locked");
     assert.strictEqual(day.dayStatus, "locked");
@@ -141,13 +173,8 @@ function run() {
       day.lockedReason,
       PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK
     );
-    assert.strictEqual(
-      day.planningWindowReason,
-      PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK
-    );
-    assert.strictEqual(day.withinCurrentMenuWeek, false);
-    assert(day.lockedMessage.includes("Saturday through Friday"));
-    assert.strictEqual(JSON.stringify(source), sourceSnapshot, "source timeline is not mutated");
+    assert.strictEqual(day.withinPlanningWindow, false);
+    assert(day.lockedMessage.includes("planning window"));
   });
 
   test("a confirmed next-week selection remains planned and visible", () => {
@@ -179,11 +206,8 @@ function run() {
     assert.strictEqual(day.isPlanned, true);
     assert.strictEqual(day.canShowAsPlanned, true);
     assert.strictEqual(day.canEdit, false);
-    assert.strictEqual(day.withinCurrentMenuWeek, false);
-    assert.strictEqual(
-      day.planningWindowReason,
-      PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK
-    );
+    assert.strictEqual(day.withinPlanningWindow, true);
+    assert.strictEqual(day.planningWindowReason, null);
     assert.strictEqual(day.lockedReason, null, "operational/planned status is not overwritten");
   });
 
