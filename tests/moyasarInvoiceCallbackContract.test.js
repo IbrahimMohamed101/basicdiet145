@@ -54,6 +54,7 @@ async function verified_invoice_callback_uses_provider_authority() {
     type: "subscription_activation",
     status: "paid",
     applied: true,
+    subscriptionId: "subscription_verified",
     amount: invoice.amount,
     currency: invoice.currency,
   };
