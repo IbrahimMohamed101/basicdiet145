@@ -17,7 +17,14 @@ const {
   repairLegacyBatchValidityEndDates,
 } = require("./legacyBatchCompatibility");
 
-function createManualDeductionCommandService({ repository, getBusinessDate, runTransactionWithRetry }) {
+function createManualDeductionCommandService({
+  repository,
+  getBusinessDate,
+  runTransactionWithRetry,
+  entitlementBatchDetector = hasEntitlementBatches,
+  stackedManualDeductionExecutor = executeStackedManualDeduction,
+  legacyBatchValidityRepair = repairLegacyBatchValidityEndDates,
+}) {
   async function validateSubscriptionCustomerExists(subscription, session) {
     const customer = await repository.customerExists(subscription.userId, session);
     if (!customer) {
@@ -51,8 +58,8 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     // guard, but do not reject a valid batch because the aggregate mirror is
     // temporarily stale. The stacked executor performs package-level balance
     // validation, idempotency, leasing and reconciliation atomically.
-    if (await hasEntitlementBatches(subscriptionId)) {
-      await repairLegacyBatchValidityEndDates(subscriptionId);
+    if (await entitlementBatchDetector(subscriptionId)) {
+      await legacyBatchValidityRepair(subscriptionId);
       const subscription = await repository.findSubscriptionById(subscriptionId, null);
       if (!subscription) {
         throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
@@ -61,7 +68,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
         throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
       }
       await validateSubscriptionCustomerExists(subscription, null);
-      return executeStackedManualDeduction({
+      return stackedManualDeductionExecutor({
         subscriptionId,
         counts,
         body: body || {},
