@@ -65,6 +65,10 @@ async function run() {
     repository,
     getBusinessDate: async () => "2026-08-03",
     runTransactionWithRetry: async (callback) => callback({}),
+    // This fixture intentionally models the legacy/non-stacked path. Keep the
+    // unit test isolated from MongoDB instead of letting the batch detector
+    // issue a buffered database query against an unconnected test process.
+    entitlementBatchDetector: async () => false,
   });
 
   const result = await manualDeduction({

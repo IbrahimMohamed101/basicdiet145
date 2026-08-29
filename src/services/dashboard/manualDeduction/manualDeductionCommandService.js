@@ -13,8 +13,18 @@ const {
   executeStackedManualDeduction,
   hasEntitlementBatches,
 } = require("./stackedManualDeductionService");
+const {
+  repairLegacyBatchValidityEndDates,
+} = require("./legacyBatchCompatibility");
 
-function createManualDeductionCommandService({ repository, getBusinessDate, runTransactionWithRetry }) {
+function createManualDeductionCommandService({
+  repository,
+  getBusinessDate,
+  runTransactionWithRetry,
+  entitlementBatchDetector = hasEntitlementBatches,
+  stackedManualDeductionExecutor = executeStackedManualDeduction,
+  legacyBatchValidityRepair = repairLegacyBatchValidityEndDates,
+}) {
   async function validateSubscriptionCustomerExists(subscription, session) {
     const customer = await repository.customerExists(subscription.userId, session);
     if (!customer) {
@@ -43,16 +53,22 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     const counts = validateCounts(body || {});
     const businessDate = await getBusinessDate();
 
-    // Stacked subscriptions use their entitlement batches as the source of
-    // truth. Route them through the resumable lease-backed flow so manual
-    // deduction remains available on standalone MongoDB without allowing a
-    // later reconciliation to restore meals that were already handed out.
-    if (await hasEntitlementBatches(subscriptionId)) {
+    // Stacked subscriptions use entitlement batches as their balance/date
+    // source of truth. Keep the parent subscription as the lifecycle/identity
+    // guard, but do not reject a valid batch because the aggregate mirror is
+    // temporarily stale. The stacked executor performs package-level balance
+    // validation, idempotency, leasing and reconciliation atomically.
+    if (await entitlementBatchDetector(subscriptionId)) {
+      await legacyBatchValidityRepair(subscriptionId);
       const subscription = await repository.findSubscriptionById(subscriptionId, null);
-      validateSubscriptionCanDeduct(subscription, businessDate);
+      if (!subscription) {
+        throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
+      }
+      if (String(subscription.status || "") !== "active") {
+        throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
+      }
       await validateSubscriptionCustomerExists(subscription, null);
-      validateBalances(subscription, counts);
-      return executeStackedManualDeduction({
+      return stackedManualDeductionExecutor({
         subscriptionId,
         counts,
         body: body || {},

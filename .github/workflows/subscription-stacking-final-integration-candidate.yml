@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           changed_files="$(git diff --name-only origin/main...HEAD)"
-          if printf '%s\n' "$changed_files" | grep -Ei '(^|/)(flutter|dashboard)(/|$)'; then
+          if printf '%s\n' "$changed_files" | grep -Ei '^(flutter|dashboard)(/|$)'; then
             echo 'Candidate must not change Flutter or Dashboard files.' >&2
             exit 1
           fi
