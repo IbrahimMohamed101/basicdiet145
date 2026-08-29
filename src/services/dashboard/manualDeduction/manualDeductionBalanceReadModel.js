@@ -29,7 +29,7 @@ function buildManualDeductionBalanceReadModel(subscription = {}, suppliedBalance
   const projectionApplied = Boolean(projection);
   const displayRemainingMeals = projectionApplied
     ? nonNegativeInteger(projection.displayRemainingMeals)
-    : deductibleMeals;
+    : availableMeals;
 
   return {
     totalMeals,
@@ -45,7 +45,9 @@ function buildManualDeductionBalanceReadModel(subscription = {}, suppliedBalance
     projectionApplied,
     canManualDeduct: deductibleMeals > 0,
     manualDeductionMaxMeals: deductibleMeals,
-    displaySemantics: "UNCONSUMED_INCLUDING_RESERVED",
+    displaySemantics: projectionApplied
+      ? "UNCONSUMED_INCLUDING_RESERVED"
+      : "AVAILABLE_ONLY_FAIL_CLOSED",
     availableSemantics: "UNRESERVED_AVAILABLE",
     manualDeductionSemantics: "UNCONSUMED_AVAILABLE_PLUS_RESERVED",
   };
