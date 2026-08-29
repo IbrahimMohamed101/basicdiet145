@@ -6,7 +6,11 @@ const ActivityLog = require("../../../models/ActivityLog");
 const Subscription = require("../../../models/Subscription");
 const SubscriptionEntitlementBatch = require("../../../models/SubscriptionEntitlementBatch");
 const SubscriptionExtraEntitlementBucket = require("../../../models/SubscriptionExtraEntitlementBucket");
+const { startSafeSession } = require("../../../utils/mongoTransactionSupport");
 const { buildContainerMirror } = require("../../subscription/subscriptionStackingActivationService");
+const {
+  consumeBatchThroughAllocationLedgerTransactional,
+} = require("../subscriptionQuickDayDeductionLedgerAdapter");
 const {
   buildPremiumAllocation,
   resolveAddonBalances,
@@ -32,6 +36,10 @@ function manualError(code, message, status = 409, details = {}) {
 function asInt(value) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function deductibleBatchMeals(batch) {
+  return asInt(batch && batch.remainingMeals) + asInt(batch && batch.reservedMeals);
 }
 
 function normalizeKey(value) {
@@ -235,14 +243,34 @@ async function reserveOperation({ subscription, counts, before, businessDate, id
   }
 }
 
-async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole }) {
-  if (quantity <= 0) return batch;
-  const existing = journalFor(batch, idempotencyKey);
-  if (existing) {
-    assertJournal(existing, fingerprint);
-    return batch;
-  }
+function buildManualBatchJournalEntry({
+  idempotencyKey,
+  fingerprint,
+  quantity,
+  businessDate,
+  actorId,
+  actorRole,
+  allocationKeys = [],
+  consumedReservedMeals = 0,
+  consumedAvailableMeals = 0,
+  appliedAt = new Date(),
+}) {
+  return {
+    idempotencyKey,
+    fingerprint,
+    kind: "base_meal",
+    quantity,
+    businessDate,
+    actorId: actorId ? String(actorId) : null,
+    actorRole: String(actorRole || ""),
+    allocationKeys: allocationKeys.map(String),
+    consumedReservedMeals: asInt(consumedReservedMeals),
+    consumedAvailableMeals: asInt(consumedAvailableMeals),
+    appliedAt,
+  };
+}
 
+async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole }) {
   const now = new Date();
   const updated = await SubscriptionEntitlementBatch.findOneAndUpdate(
     {
@@ -272,16 +300,16 @@ async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, b
                   [],
                 ],
               },
-              [{
+              [buildManualBatchJournalEntry({
                 idempotencyKey,
                 fingerprint,
-                kind: "base_meal",
                 quantity,
                 businessDate,
-                actorId: actorId ? String(actorId) : null,
-                actorRole: String(actorRole || ""),
+                actorId,
+                actorRole,
+                consumedAvailableMeals: quantity,
                 appliedAt: now,
-              }],
+              })],
             ],
           },
           remainingMeals: { $subtract: ["$remainingMeals", quantity] },
@@ -291,8 +319,30 @@ async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, b
       },
       {
         $set: {
-          status: { $cond: [{ $eq: ["$remainingMeals", 0] }, "exhausted", "$status"] },
-          exhaustedAt: { $cond: [{ $eq: ["$remainingMeals", 0] }, now, "$exhaustedAt"] },
+          status: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$remainingMeals", 0] },
+                  { $eq: [{ $ifNull: ["$reservedMeals", 0] }, 0] },
+                ],
+              },
+              "exhausted",
+              "$status",
+            ],
+          },
+          exhaustedAt: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$remainingMeals", 0] },
+                  { $eq: [{ $ifNull: ["$reservedMeals", 0] }, 0] },
+                ],
+              },
+              now,
+              "$exhaustedAt",
+            ],
+          },
         },
       },
     ],
@@ -311,6 +361,169 @@ async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, b
     "Subscription package balance changed; not enough remaining meals",
     409
   );
+}
+
+async function applyReservedAwareBatchDebit({ batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole }) {
+  const session = await startSafeSession();
+  if (!session || session.supportsTransactions === false) {
+    if (session && typeof session.endSession === "function") await session.endSession();
+    throw manualError(
+      "SUBSCRIPTION_STACKING_TRANSACTION_REQUIRED",
+      "Consuming reserved subscription meals requires MongoDB transaction support",
+      503
+    );
+  }
+
+  let result;
+  try {
+    await session.withTransaction(async () => {
+      const current = await SubscriptionEntitlementBatch.findOne({
+        _id: batch._id,
+        containerSubscriptionId: batch.containerSubscriptionId,
+        applicationState: "applied",
+        status: { $in: ["active", "paid_scheduled"] },
+      }).session(session).lean();
+      if (!current) {
+        throw manualError(
+          "ENTITLEMENT_BATCH_NOT_ELIGIBLE",
+          "Subscription package is no longer eligible for manual deduction",
+          409
+        );
+      }
+
+      const existing = journalFor(current, idempotencyKey);
+      if (existing) {
+        assertJournal(existing, fingerprint);
+        result = current;
+        return;
+      }
+      if (deductibleBatchMeals(current) < quantity) {
+        throw manualError(
+          "INSUFFICIENT_REMAINING_MEALS",
+          "Subscription package balance changed; not enough unconsumed meals",
+          409,
+          {
+            remainingMeals: asInt(current.remainingMeals),
+            reservedMeals: asInt(current.reservedMeals),
+            requestedMeals: quantity,
+          }
+        );
+      }
+
+      const consumption = await consumeBatchThroughAllocationLedgerTransactional({
+        subscription: {
+          _id: current.containerSubscriptionId,
+          userId: current.userId,
+        },
+        batch: current,
+        businessDate,
+        mealsToDeduct: quantity,
+        idempotencyKey: `manual:${idempotencyKey}:${String(current._id)}`,
+        session,
+      });
+
+      const journalEntry = buildManualBatchJournalEntry({
+        idempotencyKey,
+        fingerprint,
+        quantity,
+        businessDate,
+        actorId,
+        actorRole,
+        allocationKeys: consumption.allocationKeys,
+        consumedReservedMeals: consumption.consumedReservedMeals,
+        consumedAvailableMeals: consumption.consumedAvailableMeals,
+      });
+
+      const journaled = await SubscriptionEntitlementBatch.findOneAndUpdate(
+        {
+          _id: current._id,
+          [`metadata.${JOURNAL_KEY}.idempotencyKey`]: { $ne: idempotencyKey },
+        },
+        [
+          {
+            $set: {
+              metadata: {
+                $cond: [{ $eq: [{ $type: "$metadata" }, "object"] }, "$metadata", {}],
+              },
+            },
+          },
+          {
+            $set: {
+              [`metadata.${JOURNAL_KEY}`]: {
+                $concatArrays: [
+                  {
+                    $cond: [
+                      { $isArray: `$metadata.${JOURNAL_KEY}` },
+                      `$metadata.${JOURNAL_KEY}`,
+                      [],
+                    ],
+                  },
+                  [journalEntry],
+                ],
+              },
+            },
+          },
+        ],
+        { new: true, session }
+      ).lean();
+
+      if (!journaled) {
+        const raced = await SubscriptionEntitlementBatch.findById(current._id)
+          .session(session)
+          .lean();
+        const racedJournal = journalFor(raced, idempotencyKey);
+        if (!racedJournal) {
+          throw manualError(
+            "SUBSCRIPTION_BALANCE_CONFLICT",
+            "Subscription package changed while recording manual deduction",
+            409
+          );
+        }
+        assertJournal(racedJournal, fingerprint);
+        result = raced;
+        return;
+      }
+      result = journaled;
+    });
+    return result;
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole }) {
+  if (quantity <= 0) return batch;
+  const existing = journalFor(batch, idempotencyKey);
+  if (existing) {
+    assertJournal(existing, fingerprint);
+    return batch;
+  }
+
+  // Reservations are selections, not receipts. If the selected package has
+  // reserved credits, consume those allocation rows first in a transaction.
+  // This keeps allocation state and batch counters aligned and prevents a
+  // later fulfillment path from charging the same reserved credit again.
+  if (asInt(batch.reservedMeals) > 0) {
+    return applyReservedAwareBatchDebit({
+      batch,
+      quantity,
+      idempotencyKey,
+      fingerprint,
+      businessDate,
+      actorId,
+      actorRole,
+    });
+  }
+
+  return applyAvailableOnlyBatchDebit({
+    batch,
+    quantity,
+    idempotencyKey,
+    fingerprint,
+    businessDate,
+    actorId,
+    actorRole,
+  });
 }
 
 async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempotencyKey, fingerprint, actorId, actorRole }) {
@@ -341,7 +554,7 @@ async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempote
     if (remaining <= 0) break;
     if (!["active", "paid_scheduled"].includes(String(batch.status || ""))) continue;
     if (journalFor(batch, idempotencyKey)) continue;
-    const available = asInt(batch.remainingMeals);
+    const available = deductibleBatchMeals(batch);
     if (available <= 0) continue;
     const debit = Math.min(remaining, available);
     touched.push(await applyBatchDebit({
@@ -358,7 +571,7 @@ async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempote
   if (remaining > 0) {
     throw manualError(
       "INSUFFICIENT_REMAINING_MEALS",
-      "Not enough remaining meals across subscription packages",
+      "Not enough unconsumed meals across subscription packages",
       409,
       { requestedMeals: quantity, missingMeals: remaining }
     );
@@ -767,6 +980,7 @@ async function executeStackedManualDeduction({ subscriptionId, counts, body, act
 }
 
 module.exports = {
+  deductibleBatchMeals,
   executeStackedManualDeduction,
   hasEntitlementBatches,
 };
