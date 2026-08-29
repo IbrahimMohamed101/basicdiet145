@@ -5,6 +5,9 @@ const ActivityLog = require("../../../models/ActivityLog");
 const Plan = require("../../../models/Plan");
 const Subscription = require("../../../models/Subscription");
 const User = require("../../../models/User");
+const {
+  transitionPickupEntitlements,
+} = require("../../subscription/subscriptionMealEntitlementService");
 const { ACTIVE_STATUS, MANUAL_DEDUCTION_ACTION } = require("./constants");
 const { ManualDeductionError } = require("./ManualDeductionError");
 const { buildPremiumAllocation } = require("./manualDeductionPolicy");
@@ -61,6 +64,66 @@ function buildPremiumRemainingExpression() {
 function buildRegularRemainingExpression() {
   return {
     $subtract: ["$remainingMeals", buildPremiumRemainingExpression()],
+  };
+}
+
+function isReservedRegularAllocation(allocation) {
+  if (!allocation || String(allocation.state || "") !== "reserved") return false;
+  const premiumSource = String(
+    allocation.premiumFunding && allocation.premiumFunding.source || "none"
+  );
+  return premiumSource === "none";
+}
+
+function compareReservedAllocations(left, right) {
+  const dateCompare = String(left && left.date || "").localeCompare(String(right && right.date || ""));
+  if (dateCompare !== 0) return dateCompare;
+  const slotCompare = String(left && left.slotKey || "").localeCompare(String(right && right.slotKey || ""));
+  if (slotCompare !== 0) return slotCompare;
+  return String(left && left.allocationKey || "").localeCompare(String(right && right.allocationKey || ""));
+}
+
+function selectReservedRegularAllocationKeys(subscription, requestedCount) {
+  const count = Math.max(0, Math.floor(Number(requestedCount) || 0));
+  if (count <= 0 || Number(subscription && subscription.entitlementVersion || 0) < 2) return [];
+  return (Array.isArray(subscription && subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : [])
+    .filter(isReservedRegularAllocation)
+    .slice()
+    .sort(compareReservedAllocations)
+    .slice(0, count)
+    .map((allocation) => String(allocation.allocationKey || ""))
+    .filter(Boolean);
+}
+
+async function consumeReservedRegularMeals({ subscription, quantity, session }) {
+  const allocationKeys = selectReservedRegularAllocationKeys(subscription, quantity);
+  if (!allocationKeys.length) {
+    return { consumedMeals: 0, allocationKeys: [] };
+  }
+
+  const transitioned = await transitionPickupEntitlements({
+    subscriptionId: subscription._id,
+    allocationKeys,
+    toState: "consumed",
+    session,
+  });
+  if (!transitioned || transitioned.changedCount !== allocationKeys.length) {
+    throw new ManualDeductionError(
+      "RESERVED_MEAL_CONSUMPTION_CONFLICT",
+      "Reserved meal balance changed during manual deduction",
+      409,
+      {
+        requestedReservedMeals: allocationKeys.length,
+        consumedReservedMeals: transitioned ? Number(transitioned.changedCount || 0) : 0,
+      }
+    );
+  }
+
+  return {
+    consumedMeals: allocationKeys.length,
+    allocationKeys,
   };
 }
 
@@ -176,6 +239,7 @@ function listManualDeductionLogs(subscriptionId, limit) {
 
 module.exports = {
   buildDeductionAtomicMutation,
+  consumeReservedRegularMeals,
   createDeductionLog,
   customerExists,
   deductAtomically,
@@ -184,6 +248,8 @@ module.exports = {
   findPlansByIds,
   findSubscriptionById,
   findUserByPhone,
+  isReservedRegularAllocation,
   isValidObjectId,
   listManualDeductionLogs,
+  selectReservedRegularAllocationKeys,
 };
