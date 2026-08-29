@@ -21,16 +21,27 @@ function resolvePremiumRemaining(subscription) {
 function resolveBalances(subscription) {
   const totalMeals = Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
   const remainingMeals = Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
-  const remainingPremiumMeals = resolvePremiumRemaining(subscription);
-  const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
   const hasEntitlementLedger = Number(subscription && subscription.entitlementVersion || 0) >= 2;
+  const reservedMeals = hasEntitlementLedger
+    ? Math.max(0, Math.floor(Number(subscription && subscription.reservedMeals) || 0))
+    : 0;
+  const deductibleMeals = remainingMeals + reservedMeals;
+  const remainingPremiumMeals = resolvePremiumRemaining(subscription);
+  // Keep the historical "remaining" fields as unreserved availability for
+  // backwards compatibility. Manual write capacity is exposed separately via
+  // deductible* fields because a reservation is not a receipt.
+  const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
+  const deductibleRegularMeals = Math.max(0, deductibleMeals - remainingPremiumMeals);
   return {
     totalMeals,
     consumedMeals: hasEntitlementLedger
       ? Math.max(0, Math.floor(Number(subscription && subscription.consumedMeals) || 0))
       : Math.max(0, totalMeals - remainingMeals),
     remainingMeals,
+    reservedMeals,
+    deductibleMeals,
     remainingRegularMeals,
+    deductibleRegularMeals,
     remainingPremiumMeals,
   };
 }
@@ -185,10 +196,20 @@ function validateSubscriptionCanDeduct(subscription, businessDate = null) {
 
 function validateBalances(subscription, counts) {
   const balances = resolveBalances(subscription);
-  if (counts.total > balances.remainingMeals) {
-    throw new ManualDeductionError("INSUFFICIENT_REMAINING_MEALS", "Not enough remaining meals", 409);
+  if (counts.total > balances.deductibleMeals) {
+    throw new ManualDeductionError(
+      "INSUFFICIENT_REMAINING_MEALS",
+      "Not enough remaining meals",
+      409,
+      {
+        availableMeals: balances.remainingMeals,
+        reservedMeals: balances.reservedMeals,
+        deductibleMeals: balances.deductibleMeals,
+        requestedMeals: counts.total,
+      }
+    );
   }
-  if (counts.regularMeals > balances.remainingRegularMeals) {
+  if (counts.regularMeals > balances.deductibleRegularMeals) {
     throw new ManualDeductionError("INSUFFICIENT_REGULAR_MEALS", "Not enough regular meals", 409);
   }
   if (counts.premiumMeals > balances.remainingPremiumMeals) {

@@ -7,14 +7,18 @@ const mongoose = require("mongoose");
 const {
   createManualDeductionCommandService,
 } = require("../src/services/dashboard/manualDeduction/manualDeductionCommandService");
+const {
+  validateBalances,
+  validateCounts,
+} = require("../src/services/dashboard/manualDeduction/manualDeductionPolicy");
 
 async function run() {
   const subscriptionId = new mongoose.Types.ObjectId();
   const customerId = new mongoose.Types.ObjectId();
-  let atomicDeductionCalls = 0;
-  let logCalls = 0;
+  let legacyAtomicDeductionCalls = 0;
+  let stackedCalls = 0;
 
-  const subscription = {
+  const fullyReservedSubscription = {
     _id: subscriptionId,
     userId: customerId,
     status: "active",
@@ -22,42 +26,43 @@ async function run() {
     validityEndDate: new Date("2026-08-30T00:00:00.000Z"),
     deliveryMode: "pickup",
     entitlementVersion: 2,
-    totalMeals: 30,
-    remainingMeals: 24,
-    reservedMeals: 2,
-    consumedMeals: 4,
+    totalMeals: 10,
+    remainingMeals: 0,
+    reservedMeals: 10,
+    consumedMeals: 0,
     forfeitedMeals: 0,
     premiumBalance: [],
     addonBalance: [],
     addonSubscriptions: [],
-    baseMealAllocations: [
-      {
-        allocationKey: "2026-08-03:slot_1",
-        date: "2026-08-03",
-        slotKey: "slot_1",
-        quantity: 1,
-        state: "reserved",
-      },
-    ],
   };
 
-  const updatedSubscription = {
-    ...subscription,
-    remainingMeals: 23,
-    consumedMeals: 5,
-  };
+  const counts = validateCounts({ regularMeals: 3, premiumMeals: 0 });
+  const before = validateBalances(fullyReservedSubscription, counts);
+  assert.equal(before.remainingMeals, 0);
+  assert.equal(before.reservedMeals, 10);
+  assert.equal(before.deductibleMeals, 10);
 
   const repository = {
     isValidObjectId: (value) => mongoose.isValidObjectId(value),
-    findSubscriptionById: async () => subscription,
+    findSubscriptionById: async () => fullyReservedSubscription,
     customerExists: async () => true,
     findLastManualDeduction: async () => null,
     deductAtomically: async () => {
-      atomicDeductionCalls += 1;
-      return updatedSubscription;
+      legacyAtomicDeductionCalls += 1;
+      throw new Error("legacy atomic path must not run for stacked entitlements");
     },
-    createDeductionLog: async () => {
-      logCalls += 1;
+    createDeductionLog: async () => {},
+  };
+
+  const expected = {
+    subscriptionId: String(subscriptionId),
+    deducted: { regularMeals: 3, premiumMeals: 0, total: 3, addons: [] },
+    remaining: { regularMeals: 7, premiumMeals: 0, totalMeals: 0, addons: [] },
+    balance: {
+      availableMeals: 0,
+      reservedMeals: 7,
+      deductibleMeals: 7,
+      manualDeductionMaxMeals: 7,
     },
   };
 
@@ -65,31 +70,34 @@ async function run() {
     repository,
     getBusinessDate: async () => "2026-08-03",
     runTransactionWithRetry: async (callback) => callback({}),
-    // This fixture intentionally models the legacy/non-stacked path. Keep the
-    // unit test isolated from MongoDB instead of letting the batch detector
-    // issue a buffered database query against an unconnected test process.
-    entitlementBatchDetector: async () => false,
+    entitlementBatchDetector: async () => true,
+    legacyBatchValidityRepair: async () => {},
+    stackedManualDeductionExecutor: async (args) => {
+      stackedCalls += 1;
+      assert.equal(String(args.subscriptionId), String(subscriptionId));
+      assert.equal(args.counts.total, 3);
+      assert.equal(args.counts.regularMeals, 3);
+      return expected;
+    },
   });
 
   const result = await manualDeduction({
     subscriptionId: String(subscriptionId),
     body: {
-      regularMeals: 1,
+      regularMeals: 3,
       premiumMeals: 0,
       reason: "cashier_walk_in",
     },
     actorId: new mongoose.Types.ObjectId(),
     actorRole: "admin",
+    idempotencyKey: "reserved-manual-test-0001",
   });
 
-  assert.equal(atomicDeductionCalls, 1, "manual deduction remains available when a day has reserved meals");
-  assert.equal(logCalls, 1, "successful deduction keeps its audit log");
-  assert.equal(result.deducted.total, 1);
-  assert.equal(result.remaining.totalMeals, 23);
-  assert.equal(result.balance.reservedMeals, 2);
-  assert.equal(result.balance.displayRemainingMeals, 25);
+  assert.equal(stackedCalls, 1, "fully reserved stacked balance must reach the reserved-aware executor");
+  assert.equal(legacyAtomicDeductionCalls, 0, "stacked balance must never use the legacy remaining-only mutation");
+  assert.deepEqual(result, expected);
 
-  console.log("manual deduction with reserved meals remains allowed");
+  console.log("manual deduction with fully reserved meals remains allowed");
 }
 
 run().catch((error) => {
