@@ -50,17 +50,20 @@ function run() {
   assert.equal(serialized.availableMeals, 24);
   assert.equal(serialized.displayRemainingMeals, 30);
   assert.equal(serialized.reservedMeals, 6);
-  assert.equal(serialized.balance.manualDeductionMaxMeals, 24);
+  assert.equal(serialized.balance.deductibleMeals, 30);
+  assert.equal(serialized.balance.manualDeductionMaxMeals, 30);
+  assert.equal(serialized.balance.canManualDeduct, true);
   assert.equal(serialized.balance.displaySemantics, "UNCONSUMED_INCLUDING_RESERVED");
-  assert.equal(serialized.balance.availableSemantics, "UNRESERVED_AVAILABLE_FOR_MANUAL_DEDUCTION");
+  assert.equal(serialized.balance.availableSemantics, "UNRESERVED_AVAILABLE");
+  assert.equal(serialized.balance.manualDeductionSemantics, "UNCONSUMED_AVAILABLE_PLUS_RESERVED");
   assert.equal(serialized.balance.balanced, true);
 
   assert.throws(
-    () => validateBalances(subscription, validateCounts({ regularMeals: 25, premiumMeals: 0 })),
+    () => validateBalances(subscription, validateCounts({ regularMeals: 31, premiumMeals: 0 })),
     (error) => error && error.code === "INSUFFICIENT_REMAINING_MEALS"
   );
   assert.doesNotThrow(
-    () => validateBalances(subscription, validateCounts({ regularMeals: 24, premiumMeals: 0 }))
+    () => validateBalances(subscription, validateCounts({ regularMeals: 30, premiumMeals: 0 }))
   );
   assert.doesNotThrow(
     () => validateSubscriptionCanDeduct(subscription, "2026-08-03")
@@ -112,7 +115,22 @@ function run() {
   assert.equal(response.balance.availableMeals, 22);
   assert.equal(response.balance.displayRemainingMeals, 28);
   assert.equal(response.balance.reservedMeals, 6);
-  assert.equal(response.balance.manualDeductionMaxMeals, 22);
+  assert.equal(response.balance.deductibleMeals, 28);
+  assert.equal(response.balance.manualDeductionMaxMeals, 28);
+
+  const fullyReserved = modernSubscription({
+    remainingMeals: 0,
+    reservedMeals: 10,
+    consumedMeals: 20,
+  });
+  const fullyReservedSerialized = serializeSubscription(fullyReserved, null, "ar");
+  assert.equal(fullyReservedSerialized.availableMeals, 0);
+  assert.equal(fullyReservedSerialized.reservedMeals, 10);
+  assert.equal(fullyReservedSerialized.balance.manualDeductionMaxMeals, 10);
+  assert.equal(fullyReservedSerialized.balance.canManualDeduct, true);
+  assert.doesNotThrow(
+    () => validateBalances(fullyReserved, validateCounts({ regularMeals: 10, premiumMeals: 0 }))
+  );
 
   const inconsistentSubscription = modernSubscription({ reservedMeals: 5 });
   const inconsistent = serializeSubscription(inconsistentSubscription, null, "ar");
@@ -137,6 +155,7 @@ function run() {
   assert.equal(legacy.availableMeals, 18);
   assert.equal(legacy.displayRemainingMeals, 18);
   assert.equal(legacy.reservedMeals, 0);
+  assert.equal(legacy.balance.manualDeductionMaxMeals, 18);
   assert.equal(legacy.balance.balanced, true);
 
   console.log("manual deduction balance presentation tests passed");
