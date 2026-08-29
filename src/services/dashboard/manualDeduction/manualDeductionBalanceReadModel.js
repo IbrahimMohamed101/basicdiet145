@@ -17,6 +17,7 @@ function buildManualDeductionBalanceReadModel(subscription = {}, suppliedBalance
   const reservedMeals = entitlementVersion >= 2
     ? nonNegativeInteger(subscription.reservedMeals)
     : 0;
+  const deductibleMeals = availableMeals + reservedMeals;
   const consumedMeals = nonNegativeInteger(balances.consumedMeals);
   const forfeitedMeals = entitlementVersion >= 2
     ? nonNegativeInteger(subscription.forfeitedMeals)
@@ -28,25 +29,25 @@ function buildManualDeductionBalanceReadModel(subscription = {}, suppliedBalance
   const projectionApplied = Boolean(projection);
   const displayRemainingMeals = projectionApplied
     ? nonNegativeInteger(projection.displayRemainingMeals)
-    : availableMeals;
+    : deductibleMeals;
 
   return {
     totalMeals,
     displayRemainingMeals,
     availableMeals,
     reservedMeals,
+    deductibleMeals,
     consumedMeals,
     forfeitedMeals,
     accountedMeals,
     equationDifference,
     balanced: entitlementVersion < 2 || equationDifference === 0,
     projectionApplied,
-    canManualDeduct: availableMeals > 0,
-    manualDeductionMaxMeals: availableMeals,
-    displaySemantics: projectionApplied
-      ? "UNCONSUMED_INCLUDING_RESERVED"
-      : "AVAILABLE_ONLY_FAIL_CLOSED",
-    availableSemantics: "UNRESERVED_AVAILABLE_FOR_MANUAL_DEDUCTION",
+    canManualDeduct: deductibleMeals > 0,
+    manualDeductionMaxMeals: deductibleMeals,
+    displaySemantics: "UNCONSUMED_INCLUDING_RESERVED",
+    availableSemantics: "UNRESERVED_AVAILABLE",
+    manualDeductionSemantics: "UNCONSUMED_AVAILABLE_PLUS_RESERVED",
   };
 }
 
