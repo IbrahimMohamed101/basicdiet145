@@ -30,11 +30,14 @@ jobs:
           node --check src/services/dashboard/subscriptionQuickDayDeductionLedgerAdapter.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionPickupPolicy.js
           node --check src/services/dashboard/subscriptionQuickDayDeductionSearchService.js
+          node --check src/services/dashboard/manualDeduction/legacyBatchCompatibility.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionCommandService.js
       - name: Focused unit tests
         run: |
           NODE_ENV=test node tests/subscriptionQuickDayDeduction.test.js
           NODE_ENV=test node tests/subscriptionQuickDayDeductionLedgerAdapter.test.js
           NODE_ENV=test node tests/subscriptionQuickDayDeductionRoles.test.js
+          NODE_ENV=test node tests/deductionBatchCompatibility.test.js
       - name: Replica-set integration tests
         run: |
           NODE_ENV=test node tests/subscriptionQuickDayDeduction.integration.test.js
