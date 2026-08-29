@@ -199,7 +199,7 @@ function validateBalances(subscription, counts) {
   if (counts.total > balances.deductibleMeals) {
     throw new ManualDeductionError(
       "INSUFFICIENT_REMAINING_MEALS",
-      "Not enough unconsumed meals",
+      "Not enough remaining meals",
       409,
       {
         availableMeals: balances.remainingMeals,
