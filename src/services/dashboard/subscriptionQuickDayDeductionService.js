@@ -83,10 +83,19 @@ function normalizeInput({ subscriptionId, batchId, days, idempotencyKey }) {
   };
 }
 
+function mealCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
+function deductibleMealsForBatch(batch) {
+  return mealCount(batch && batch.remainingMeals) + mealCount(batch && batch.reservedMeals);
+}
+
 function batchIsEligible(batch, businessDate) {
   if (!batch || batch.applicationState !== "applied") return false;
   if (!["active", "paid_scheduled"].includes(String(batch.status || ""))) return false;
-  if (Number(batch.remainingMeals || 0) <= 0) return false;
+  if (deductibleMealsForBatch(batch) <= 0) return false;
   const start = dateUtils.toKSADateString(batch.effectiveStartDate);
   const end = dateUtils.toKSADateString(batch.validityEndDate || batch.endDate);
   return start <= businessDate && businessDate <= end;
@@ -159,7 +168,10 @@ function createDefaultRuntime() {
             dayStart,
           ],
         },
-        remainingMeals: { $gt: 0 },
+        $or: [
+          { remainingMeals: { $gt: 0 } },
+          { reservedMeals: { $gt: 0 } },
+        ],
       }).sort({ effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
     },
     findPlans(planIds) {
@@ -222,8 +234,9 @@ function createQuickDayDeductionService(runtimeOverrides = null) {
           mealsPerDay: Number(batch.mealsPerDay || 0),
           proteinGrams: Number(batch.proteinGrams || 0),
           totalMeals: Number(batch.totalMeals || 0),
-          remainingMeals: Number(batch.remainingMeals || 0),
-          reservedMeals: Number(batch.reservedMeals || 0),
+          remainingMeals: mealCount(batch.remainingMeals),
+          reservedMeals: mealCount(batch.reservedMeals),
+          deductibleMeals: deductibleMealsForBatch(batch),
           consumedMeals: Number(batch.consumedMeals || 0),
           effectiveStartDate: batch.effectiveStartDate,
           validityEndDate: batch.validityEndDate || batch.endDate,
@@ -310,21 +323,27 @@ function createQuickDayDeductionService(runtimeOverrides = null) {
           );
         }
         const mealsToDeduct = input.days * mealsPerDay;
-        if (Number(batch.remainingMeals || 0) < mealsToDeduct) {
+        const availableMeals = mealCount(batch.remainingMeals);
+        const reservedMeals = mealCount(batch.reservedMeals);
+        const deductibleMeals = availableMeals + reservedMeals;
+        if (deductibleMeals < mealsToDeduct) {
           throw new QuickDayDeductionError(
             "INSUFFICIENT_BATCH_CREDITS",
-            "Selected package does not have enough remaining meals",
+            "Selected package does not have enough unconsumed meals",
             422,
             {
-              remainingMeals: Number(batch.remainingMeals || 0),
+              remainingMeals: availableMeals,
+              reservedMeals,
+              deductibleMeals,
               requestedMeals: mealsToDeduct,
             }
           );
         }
 
         const before = {
-          remainingMeals: Number(batch.remainingMeals || 0),
-          reservedMeals: Number(batch.reservedMeals || 0),
+          remainingMeals: availableMeals,
+          reservedMeals,
+          deductibleMeals,
           consumedMeals: Number(batch.consumedMeals || 0),
         };
 
@@ -358,9 +377,13 @@ function createQuickDayDeductionService(runtimeOverrides = null) {
         const after = {
           remainingMeals: Number(updatedBatch.remainingMeals || 0),
           reservedMeals: Number(updatedBatch.reservedMeals || 0),
+          deductibleMeals: deductibleMealsForBatch(updatedBatch),
           consumedMeals: Number(updatedBatch.consumedMeals || 0),
           subscriptionRemainingMeals: lifecycle && lifecycle.container
             ? Number(lifecycle.container.remainingMeals || 0)
+            : null,
+          subscriptionReservedMeals: lifecycle && lifecycle.container
+            ? Number(lifecycle.container.reservedMeals || 0)
             : null,
           subscriptionConsumedMeals: lifecycle && lifecycle.container
             ? Number(lifecycle.container.consumedMeals || 0)
@@ -436,6 +459,7 @@ module.exports = {
   QuickDayDeductionError,
   batchIsEligible,
   createQuickDayDeductionService,
+  deductibleMealsForBatch,
   deduct: service.deduct,
   listOptions: service.listOptions,
   normalizeInput,
