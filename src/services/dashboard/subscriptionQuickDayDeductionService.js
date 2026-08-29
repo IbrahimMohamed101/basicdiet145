@@ -153,7 +153,12 @@ function createDefaultRuntime() {
         applicationState: "applied",
         status: { $in: ["active", "paid_scheduled"] },
         effectiveStartDate: { $lte: dayEnd },
-        validityEndDate: { $gte: dayStart },
+        $expr: {
+          $gte: [
+            { $ifNull: ["$validityEndDate", "$endDate"] },
+            dayStart,
+          ],
+        },
         remainingMeals: { $gt: 0 },
       }).sort({ effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
     },
