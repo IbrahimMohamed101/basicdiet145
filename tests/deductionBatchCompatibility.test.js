@@ -43,14 +43,15 @@ async function testStackedManualDeductionUsesBatchAuthority() {
   let repaired = 0;
   let executed = 0;
 
-  // Deliberately stale aggregate mirror: the stacked command must not reject
-  // this before the batch-level executor validates the real package credits.
+  // Deliberately stale aggregate balance mirror: the subscription lifecycle is
+  // still valid, but the parent has no usable balance. A stacked request must
+  // reach the batch-level executor, which owns the actual package credits.
   const subscription = {
     _id: subscriptionId,
     userId: customerId,
     status: "active",
-    startDate: new Date("2026-01-01T00:00:00.000Z"),
-    validityEndDate: new Date("2026-01-31T00:00:00.000Z"),
+    startDate: new Date("2026-08-01T00:00:00.000Z"),
+    validityEndDate: new Date("2026-09-30T00:00:00.000Z"),
     remainingMeals: 0,
     totalMeals: 0,
     consumedMeals: 0,
@@ -92,7 +93,7 @@ async function testStackedManualDeductionUsesBatchAuthority() {
   });
 
   assert.equal(repaired, 1, "legacy validity repair must run before stacked allocation");
-  assert.equal(executed, 1, "stacked executor must receive the request despite a stale parent mirror");
+  assert.equal(executed, 1, "stacked executor must receive the request despite a stale parent balance mirror");
   assert.equal(result.deducted.total, 2);
 }
 
