@@ -43,6 +43,7 @@ jobs:
           node --check src/services/dashboard/manualDeduction/manualDeductionCommandService.js
           node --check src/services/dashboard/manualDeduction/manualDeductionPolicy.js
           node --check src/services/dashboard/manualDeduction/manualDeductionPresenter.js
+          node --check src/services/dashboard/manualDeduction/manualDeductionRepository.js
           node --check tests/manualDeductionBalancePresentation.test.js
           node --check tests/manualDeductionReservedMealsAllowed.test.js
       - name: Verify deduction capacity policy

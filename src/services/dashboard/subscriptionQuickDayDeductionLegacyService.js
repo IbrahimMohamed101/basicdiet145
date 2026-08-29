@@ -69,19 +69,63 @@ function normalizeIdempotencyKey(value) {
   return key;
 }
 
+function mealCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
 function premiumRemaining(subscription) {
   return (Array.isArray(subscription && subscription.premiumBalance)
     ? subscription.premiumBalance
     : [])
-    .reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row && row.remainingQty) || 0)), 0);
+    .reduce((sum, row) => sum + mealCount(row && row.remainingQty), 0);
 }
 
 function regularRemaining(subscription) {
   return Math.max(
     0,
-    Math.floor(Number(subscription && subscription.remainingMeals) || 0)
+    mealCount(subscription && subscription.remainingMeals)
       - premiumRemaining(subscription)
   );
+}
+
+function isRegularReservedAllocation(allocation) {
+  if (!allocation || allocation.state !== "reserved") return false;
+  const premiumSource = String(
+    allocation.premiumFunding && allocation.premiumFunding.source || "none"
+  );
+  return premiumSource === "none";
+}
+
+function compareReservedAllocations(left, right) {
+  const dateCompare = String(left && left.date || "").localeCompare(
+    String(right && right.date || "")
+  );
+  if (dateCompare !== 0) return dateCompare;
+  const slotCompare = String(left && left.slotKey || "").localeCompare(
+    String(right && right.slotKey || "")
+  );
+  if (slotCompare !== 0) return slotCompare;
+  return String(left && left.allocationKey || "").localeCompare(
+    String(right && right.allocationKey || "")
+  );
+}
+
+function regularReservedAllocations(subscription) {
+  return (Array.isArray(subscription && subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : [])
+    .filter(isRegularReservedAllocation)
+    .slice()
+    .sort(compareReservedAllocations);
+}
+
+function regularReserved(subscription) {
+  return regularReservedAllocations(subscription).length;
+}
+
+function regularDeductible(subscription) {
+  return regularRemaining(subscription) + regularReserved(subscription);
 }
 
 function isWithinValidity(subscription, businessDate) {
@@ -152,13 +196,15 @@ async function listOption({ subscriptionId, role } = {}) {
     status: "active",
     deliveryMode: "pickup",
   }).select(
-    "_id planId startDate endDate validityEndDate totalMeals remainingMeals reservedMeals consumedMeals selectedMealsPerDay mealsPerDay selectedGrams premiumBalance"
+    "_id planId startDate endDate validityEndDate totalMeals remainingMeals reservedMeals consumedMeals selectedMealsPerDay mealsPerDay selectedGrams premiumBalance baseMealAllocations"
   ).lean();
   if (!subscription || !isWithinValidity(subscription, businessDate)) return null;
 
   const mealsPerDay = Number(subscription.selectedMealsPerDay || subscription.mealsPerDay || 0);
   const availableRegularMeals = regularRemaining(subscription);
-  if (!Number.isInteger(mealsPerDay) || mealsPerDay <= 0 || availableRegularMeals <= 0) {
+  const reservedRegularMeals = regularReserved(subscription);
+  const deductibleRegularMeals = availableRegularMeals + reservedRegularMeals;
+  if (!Number.isInteger(mealsPerDay) || mealsPerDay <= 0 || deductibleRegularMeals <= 0) {
     return null;
   }
 
@@ -176,7 +222,8 @@ async function listOption({ subscriptionId, role } = {}) {
     proteinGrams: Math.max(0, Number(subscription.selectedGrams || 0)),
     totalMeals: Math.max(0, Number(subscription.totalMeals || 0)),
     remainingMeals: availableRegularMeals,
-    reservedMeals: Math.max(0, Number(subscription.reservedMeals || 0)),
+    reservedMeals: reservedRegularMeals,
+    deductibleMeals: deductibleRegularMeals,
     consumedMeals: Math.max(0, Number(subscription.consumedMeals || 0)),
     effectiveStartDate: subscription.startDate,
     validityEndDate: subscription.validityEndDate || subscription.endDate,
@@ -278,13 +325,18 @@ async function deduct({
 
       const mealsToDeduct = days * mealsPerDay;
       const availableRegularMeals = regularRemaining(subscription);
-      if (availableRegularMeals < mealsToDeduct) {
+      const allReservedRegularAllocations = regularReservedAllocations(subscription);
+      const reservedRegularMeals = allReservedRegularAllocations.length;
+      const deductibleRegularMeals = availableRegularMeals + reservedRegularMeals;
+      if (deductibleRegularMeals < mealsToDeduct) {
         throw new QuickDayDeductionError(
           "INSUFFICIENT_BATCH_CREDITS",
-          "Subscription does not have enough regular meals",
+          "Subscription does not have enough unconsumed regular meals",
           422,
           {
             remainingMeals: availableRegularMeals,
+            reservedMeals: reservedRegularMeals,
+            deductibleMeals: deductibleRegularMeals,
             requestedMeals: mealsToDeduct,
           }
         );
@@ -294,42 +346,81 @@ async function deduct({
         remainingMeals: Number(subscription.remainingMeals || 0),
         regularRemainingMeals: availableRegularMeals,
         reservedMeals: Number(subscription.reservedMeals || 0),
+        regularReservedMeals: reservedRegularMeals,
+        deductibleMeals: deductibleRegularMeals,
         consumedMeals: Number(subscription.consumedMeals || 0),
       };
 
-      const pickupRequest = {
-        _id: deterministicPickupRequestId(idempotencyKey),
-        subscriptionDayId: null,
-        date: businessDate,
-        mealCount: mealsToDeduct,
-      };
-      const reservation = await reservePickupEntitlements({
-        subscriptionId,
-        pickupRequest,
-        session,
-      });
-      const allocationKeys = Array.isArray(reservation && reservation.allocationKeys)
-        ? reservation.allocationKeys.map(String)
-        : [];
+      const reservedAllocationKeys = allReservedRegularAllocations
+        .slice(0, mealsToDeduct)
+        .map((allocation) => String(allocation.allocationKey))
+        .filter(Boolean);
+
+      if (reservedAllocationKeys.length) {
+        await transitionPickupEntitlements({
+          subscriptionId,
+          allocationKeys: reservedAllocationKeys,
+          toState: "consumed",
+          session,
+        });
+      }
+
+      const freshMealsToConsume = mealsToDeduct - reservedAllocationKeys.length;
+      let freshAllocationKeys = [];
+      if (freshMealsToConsume > 0) {
+        const pickupRequest = {
+          _id: deterministicPickupRequestId(idempotencyKey),
+          subscriptionDayId: null,
+          date: businessDate,
+          mealCount: freshMealsToConsume,
+        };
+        const reservation = await reservePickupEntitlements({
+          subscriptionId,
+          pickupRequest,
+          session,
+        });
+        freshAllocationKeys = Array.isArray(reservation && reservation.allocationKeys)
+          ? reservation.allocationKeys.map(String)
+          : [];
+        if (freshAllocationKeys.length !== freshMealsToConsume) {
+          throw new QuickDayDeductionError(
+            "LEGACY_ALLOCATION_COUNT_MISMATCH",
+            "Quick day deduction did not reserve the expected number of meals",
+            409,
+            {
+              expectedCount: freshMealsToConsume,
+              actualCount: freshAllocationKeys.length,
+            }
+          );
+        }
+        await transitionPickupEntitlements({
+          subscriptionId,
+          allocationKeys: freshAllocationKeys,
+          toState: "consumed",
+          session,
+        });
+      }
+
+      const allocationKeys = [...reservedAllocationKeys, ...freshAllocationKeys];
       if (allocationKeys.length !== mealsToDeduct) {
         throw new QuickDayDeductionError(
           "LEGACY_ALLOCATION_COUNT_MISMATCH",
-          "Quick day deduction did not reserve the expected number of meals",
-          409
+          "Quick day deduction did not consume the expected number of meals",
+          409,
+          {
+            expectedCount: mealsToDeduct,
+            actualCount: allocationKeys.length,
+          }
         );
       }
-      await transitionPickupEntitlements({
-        subscriptionId,
-        allocationKeys,
-        toState: "consumed",
-        session,
-      });
 
       const updated = await Subscription.findById(subscriptionId).session(session).lean();
       const after = {
         remainingMeals: Number(updated.remainingMeals || 0),
         regularRemainingMeals: regularRemaining(updated),
         reservedMeals: Number(updated.reservedMeals || 0),
+        regularReservedMeals: regularReserved(updated),
+        deductibleMeals: regularDeductible(updated),
         consumedMeals: Number(updated.consumedMeals || 0),
         subscriptionRemainingMeals: Number(updated.remainingMeals || 0),
         subscriptionConsumedMeals: Number(updated.consumedMeals || 0),
@@ -374,6 +465,8 @@ async function deduct({
             days,
             mealsPerDay,
             mealsDeducted: mealsToDeduct,
+            consumedReservedMeals: reservedAllocationKeys.length,
+            consumedAvailableMeals: freshAllocationKeys.length,
             allocationKeys,
             before,
             after,
@@ -402,7 +495,11 @@ module.exports = {
   LEGACY_TARGET_ID,
   deduct,
   deterministicPickupRequestId,
+  isRegularReservedAllocation,
   listOption,
   premiumRemaining,
+  regularDeductible,
   regularRemaining,
+  regularReserved,
+  regularReservedAllocations,
 };

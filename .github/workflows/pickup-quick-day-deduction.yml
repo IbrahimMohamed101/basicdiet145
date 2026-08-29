@@ -32,6 +32,7 @@ jobs:
           node --check src/services/dashboard/subscriptionQuickDayDeductionSearchService.js
           node --check src/services/dashboard/manualDeduction/legacyBatchCompatibility.js
           node --check src/services/dashboard/manualDeduction/manualDeductionCommandService.js
+          node --check tests/subscriptionQuickDayDeductionLegacyReserved.integration.test.js
       - name: Focused unit tests
         run: |
           NODE_ENV=test node tests/subscriptionQuickDayDeduction.test.js
@@ -42,3 +43,4 @@ jobs:
         run: |
           NODE_ENV=test node tests/subscriptionQuickDayDeduction.integration.test.js
           NODE_ENV=test node tests/subscriptionQuickDayDeductionLegacy.integration.test.js
+          NODE_ENV=test node tests/subscriptionQuickDayDeductionLegacyReserved.integration.test.js

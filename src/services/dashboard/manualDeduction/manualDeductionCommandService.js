@@ -17,6 +17,19 @@ const {
   repairLegacyBatchValidityEndDates,
 } = require("./legacyBatchCompatibility");
 
+function buildResidualCounts(counts, consumedReservedRegularMeals = 0) {
+  const consumedReserved = Math.min(
+    Math.max(0, Math.floor(Number(consumedReservedRegularMeals) || 0)),
+    counts.regularMeals
+  );
+  const regularMeals = counts.regularMeals - consumedReserved;
+  return {
+    ...counts,
+    regularMeals,
+    total: regularMeals + counts.premiumMeals,
+  };
+}
+
 function createManualDeductionCommandService({
   repository,
   getBusinessDate,
@@ -86,7 +99,45 @@ function createManualDeductionCommandService({
         await validateSubscriptionCustomerExists(subscription, session);
         await ensureNoDeliveryDeductionToday(subscription, businessDate, session);
         const before = validateBalances(subscription, counts);
-        const updated = await repository.deductAtomically({ subscription, counts, session });
+
+        // For entitlement-ledger subscriptions, a reserved meal is selected but
+        // not received. Consume matching regular reservations first, then debit
+        // only the residual request from unreserved remainingMeals. This keeps
+        // remainingMeals non-negative and prevents double-debiting a reservation.
+        let mutationSubscription = subscription;
+        let writeCounts = counts;
+        if (
+          counts.regularMeals > 0
+          && Number(subscription.entitlementVersion || 0) >= 2
+          && typeof repository.consumeReservedRegularMeals === "function"
+        ) {
+          const reservedConsumption = await repository.consumeReservedRegularMeals({
+            subscription,
+            quantity: counts.regularMeals,
+            session,
+          });
+          const consumedReservedMeals = Number(
+            reservedConsumption && reservedConsumption.consumedMeals || 0
+          );
+          if (consumedReservedMeals > 0) {
+            writeCounts = buildResidualCounts(counts, consumedReservedMeals);
+            mutationSubscription = await repository.findSubscriptionById(subscriptionId, session);
+            if (!mutationSubscription) {
+              throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
+            }
+          }
+        }
+
+        const needsAtomicWrite = writeCounts.total > 0
+          || (Array.isArray(writeCounts.addons) && writeCounts.addons.length > 0);
+        const updated = needsAtomicWrite
+          ? await repository.deductAtomically({
+            subscription: mutationSubscription,
+            counts: writeCounts,
+            session,
+          })
+          : mutationSubscription;
+
         const after = resolveBalances(updated);
         const afterAddonBalances = resolveAddonBalances(updated);
 
@@ -130,5 +181,6 @@ function createManualDeductionCommandService({
 }
 
 module.exports = {
+  buildResidualCounts,
   createManualDeductionCommandService,
 };
