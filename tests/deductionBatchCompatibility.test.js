@@ -3,10 +3,14 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const mongoose = require("mongoose");
 
 const {
   batchIsEligible,
 } = require("../src/services/dashboard/subscriptionQuickDayDeductionService");
+const {
+  createManualDeductionCommandService,
+} = require("../src/services/dashboard/manualDeduction/manualDeductionCommandService");
 
 function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", relativePath), "utf8");
@@ -33,24 +37,71 @@ function read(relativePath) {
   );
 })();
 
-(function testManualStackedPathRepairsLegacyBatchesBeforeExecution() {
-  const source = read("src/services/dashboard/manualDeduction/manualDeductionCommandService.js");
-  const repairIndex = source.indexOf("await repairLegacyBatchValidityEndDates(subscriptionId)");
-  const executeIndex = source.indexOf("return executeStackedManualDeduction({");
-  assert.ok(repairIndex >= 0, "stacked manual deduction must repair legacy batch dates");
-  assert.ok(executeIndex > repairIndex, "legacy batch repair must happen before stacked execution");
-})();
+async function testStackedManualDeductionUsesBatchAuthority() {
+  const subscriptionId = new mongoose.Types.ObjectId();
+  const customerId = new mongoose.Types.ObjectId();
+  let repaired = 0;
+  let executed = 0;
 
-(function testStackedCommandDoesNotGateOnParentAggregateBalance() {
-  const source = read("src/services/dashboard/manualDeduction/manualDeductionCommandService.js");
-  const stackedStart = source.indexOf("if (await hasEntitlementBatches(subscriptionId))");
-  const legacyStart = source.indexOf("try {", stackedStart);
-  const stackedBlock = source.slice(stackedStart, legacyStart);
-  assert.doesNotMatch(
-    stackedBlock,
-    /validateBalances\s*\(/,
-    "stacked manual deduction must use entitlement batches instead of the parent balance mirror"
-  );
-})();
+  // Deliberately stale aggregate mirror: the stacked command must not reject
+  // this before the batch-level executor validates the real package credits.
+  const subscription = {
+    _id: subscriptionId,
+    userId: customerId,
+    status: "active",
+    startDate: new Date("2026-01-01T00:00:00.000Z"),
+    validityEndDate: new Date("2026-01-31T00:00:00.000Z"),
+    remainingMeals: 0,
+    totalMeals: 0,
+    consumedMeals: 0,
+    reservedMeals: 0,
+    forfeitedMeals: 0,
+    entitlementVersion: 2,
+  };
 
-console.log("deduction batch compatibility tests passed");
+  const repository = {
+    isValidObjectId: (value) => mongoose.isValidObjectId(value),
+    findSubscriptionById: async () => subscription,
+    customerExists: async () => true,
+  };
+
+  const { manualDeduction } = createManualDeductionCommandService({
+    repository,
+    getBusinessDate: async () => "2026-08-29",
+    runTransactionWithRetry: async () => {
+      throw new Error("legacy transaction path must not run for a stacked subscription");
+    },
+    entitlementBatchDetector: async () => true,
+    legacyBatchValidityRepair: async () => {
+      repaired += 1;
+    },
+    stackedManualDeductionExecutor: async ({ counts, businessDate }) => {
+      executed += 1;
+      assert.equal(counts.regularMeals, 2);
+      assert.equal(businessDate, "2026-08-29");
+      return { ok: true, deducted: { total: 2 } };
+    },
+  });
+
+  const result = await manualDeduction({
+    subscriptionId: String(subscriptionId),
+    body: { regularMeals: 2, premiumMeals: 0, reason: "cashier_walk_in" },
+    actorId: new mongoose.Types.ObjectId(),
+    actorRole: "admin",
+    idempotencyKey: "manual-stacked-compatibility-0001",
+  });
+
+  assert.equal(repaired, 1, "legacy validity repair must run before stacked allocation");
+  assert.equal(executed, 1, "stacked executor must receive the request despite a stale parent mirror");
+  assert.equal(result.deducted.total, 2);
+}
+
+async function run() {
+  await testStackedManualDeductionUsesBatchAuthority();
+  console.log("deduction batch compatibility tests passed");
+}
+
+run().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+});
