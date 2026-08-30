@@ -3,7 +3,6 @@
 const Payment = require("../models/Payment");
 const PaymentRefund = require("../models/PaymentRefund");
 const { calculateVatBreakdownFromInclusiveTotal } = require("../config/vat");
-const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 
 function clean(value) {
   return value === undefined || value === null ? "" : String(value).trim();
@@ -76,7 +75,7 @@ async function recordMoyasarRefundWebhook({
   payload,
   data,
   paymentId,
-  startSession,
+  startSession: _startSession,
 } = {}) {
   const snapshot = extractMoyasarRefundSnapshot({ payload, data });
   if (!snapshot.providerPaymentId && !paymentId) {
@@ -94,93 +93,107 @@ async function recordMoyasarRefundWebhook({
 
   const idempotencyKey = buildMoyasarRefundIdempotencyKey(snapshot);
   try {
-    return await runMongoTransactionWithRetry(async (session) => {
-      const payment = paymentId
-        ? await Payment.findById(paymentId).session(session)
-        : await Payment.findOne({
+    const payment = paymentId
+      ? await Payment.findById(paymentId)
+      : await Payment.findOne({
+        provider: "moyasar",
+        providerPaymentId: snapshot.providerPaymentId,
+      });
+    if (!payment) {
+      const error = new Error("Payment not found");
+      error.code = "NOT_FOUND";
+      error.status = 404;
+      throw error;
+    }
+
+    const existing = await PaymentRefund.findOne({
+      provider: "moyasar",
+      idempotencyKey,
+    });
+    if (existing) return { refund: existing.toObject(), alreadyProcessed: true };
+
+    const previouslyRecorded = await PaymentRefund.aggregate([
+      {
+        $match: {
+          paymentId: payment._id,
           provider: "moyasar",
-          providerPaymentId: snapshot.providerPaymentId,
-        }).session(session);
-      if (!payment) {
-        const error = new Error("Payment not found");
-        error.code = "NOT_FOUND";
-        error.status = 404;
-        throw error;
-      }
-
-      const existing = await PaymentRefund.findOne({
-        provider: "moyasar",
-        idempotencyKey,
-      }).session(session);
-      if (existing) return { refund: existing.toObject(), alreadyProcessed: true };
-
-      const previouslyRecorded = await PaymentRefund.aggregate([
-        {
-          $match: {
-            paymentId: payment._id,
-            provider: "moyasar",
-            status: { $in: ["confirmed", "needs_review"] },
-          },
+          status: { $in: ["confirmed", "needs_review"] },
         },
-        { $group: { _id: null, total: { $sum: "$amountHalala" } } },
-      ]).session(session);
-      const recordedHalala = Number(previouslyRecorded[0] && previouslyRecorded[0].total || 0);
-      const amountHalala = snapshot.cumulativeRefundedHalala - recordedHalala;
-      if (amountHalala <= 0) {
-        return { refund: null, alreadyProcessed: true, staleSnapshot: true };
-      }
-      if (
-        snapshot.cumulativeRefundedHalala > Number(payment.amount)
-        || recordedHalala + amountHalala > Number(payment.amount)
-      ) {
-        const error = new Error("Refund exceeds original payment amount");
-        error.code = "REFUND_AMOUNT_MISMATCH";
-        error.status = 409;
-        throw error;
-      }
-
-      const vat = calculateVatBreakdownFromInclusiveTotal(amountHalala);
-      const created = await PaymentRefund.create([{
-        paymentId: payment._id,
-        subscriptionId: payment.subscriptionId,
-        orderId: payment.orderId,
-        provider: "moyasar",
-        providerRefundId: snapshot.providerRefundId || undefined,
-        providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
-        amountHalala,
-        vatHalala: vat.vatHalala,
-        refundedAt: snapshot.refundedAt || undefined,
-        status: snapshot.refundedAt ? "confirmed" : "needs_review",
-        idempotencyKey,
-        rawReference: {
-          webhookId: snapshot.webhookId || null,
-          providerPaymentId: snapshot.providerPaymentId || null,
-          cumulativeRefundedHalala: snapshot.cumulativeRefundedHalala,
-        },
-      }], { session });
-
-      // Preserve the paid collection as gross. The immutable refund ledger is
-      // the accounting source of truth; status=refunded is only provider state.
+      },
+      { $group: { _id: null, total: { $sum: "$amountHalala" } } },
+    ]);
+    const recordedHalala = Number(previouslyRecorded[0] && previouslyRecorded[0].total || 0);
+    const amountHalala = snapshot.cumulativeRefundedHalala - recordedHalala;
+    if (amountHalala <= 0) {
       await Payment.updateOne(
         { _id: payment._id },
         {
           $set: {
             status: "paid",
-            "metadata.providerRefundStatus": "refunded",
+            "metadata.providerRefundStatus": snapshot.cumulativeRefundedHalala >= Number(payment.amount)
+              ? "refunded"
+              : "partially_refunded",
             "metadata.providerRefundedHalala": snapshot.cumulativeRefundedHalala,
           },
-        },
-        { session }
+        }
       );
-      return { refund: created[0].toObject(), alreadyProcessed: false };
-    }, {
-      label: "moyasar_refund_webhook",
-      startSession,
-      context: { providerPaymentId: snapshot.providerPaymentId || null },
+      return { refund: null, alreadyProcessed: true, staleSnapshot: true };
+    }
+    if (
+      snapshot.cumulativeRefundedHalala > Number(payment.amount)
+      || recordedHalala + amountHalala > Number(payment.amount)
+    ) {
+      const error = new Error("Refund exceeds original payment amount");
+      error.code = "REFUND_AMOUNT_MISMATCH";
+      error.status = 409;
+      throw error;
+    }
+
+    const vat = calculateVatBreakdownFromInclusiveTotal(amountHalala);
+    const created = await PaymentRefund.create({
+      paymentId: payment._id,
+      subscriptionId: payment.subscriptionId,
+      orderId: payment.orderId,
+      provider: "moyasar",
+      providerRefundId: snapshot.providerRefundId || undefined,
+      providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
+      amountHalala,
+      vatHalala: vat.vatHalala,
+      refundedAt: snapshot.refundedAt || undefined,
+      status: snapshot.refundedAt ? "confirmed" : "needs_review",
+      idempotencyKey,
+      rawReference: {
+        webhookId: snapshot.webhookId || null,
+        providerPaymentId: snapshot.providerPaymentId || null,
+        cumulativeRefundedHalala: snapshot.cumulativeRefundedHalala,
+      },
     });
+
+    // Each write is independently durable. The immutable refund ledger is the
+    // accounting source of truth; Payment remains gross-paid provider history.
+    await Payment.updateOne(
+      { _id: payment._id },
+      {
+        $set: {
+          status: "paid",
+          "metadata.providerRefundStatus": snapshot.cumulativeRefundedHalala >= Number(payment.amount)
+            ? "refunded"
+            : "partially_refunded",
+          "metadata.providerRefundedHalala": snapshot.cumulativeRefundedHalala,
+        },
+      }
+    );
+    return { refund: created.toObject(), alreadyProcessed: false };
   } catch (error) {
     if (!duplicateKey(error)) throw error;
-    const existing = await PaymentRefund.findOne({ provider: "moyasar", idempotencyKey }).lean();
+    const existing = await PaymentRefund.findOne({
+      $or: [
+        { provider: "moyasar", idempotencyKey },
+        ...(snapshot.providerRefundId
+          ? [{ provider: "moyasar", providerRefundId: snapshot.providerRefundId }]
+          : []),
+      ],
+    }).lean();
     return { refund: existing, alreadyProcessed: true };
   }
 }
