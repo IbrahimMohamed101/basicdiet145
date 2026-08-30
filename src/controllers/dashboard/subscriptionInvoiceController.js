@@ -3,6 +3,8 @@
 const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const Payment = require("../../models/Payment");
+const CheckoutDraft = require("../../models/CheckoutDraft");
+const PaymentRefund = require("../../models/PaymentRefund");
 const {
   calculateVatBreakdownFromInclusiveTotal,
   getSystemVatPercentage,
@@ -18,6 +20,13 @@ function sumHalala(rows, field = "totalHalala") {
   return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
     const value = toNonNegativeInteger(row && row[field]);
     return sum + (value || 0);
+  }, 0);
+}
+
+function sumSignedLineItems(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const amount = Number(row && row.amountHalala);
+    return sum + (Number.isFinite(amount) ? Math.round(amount) : 0);
   }, 0);
 }
 
@@ -40,13 +49,28 @@ function localizedName(value) {
   };
 }
 
-function buildInvoiceNumber(subscription) {
-  const createdAt = new Date(subscription.createdAt || subscription.startDate || Date.now());
+function firstMoneyValue(...values) {
+  for (const value of values) {
+    const normalized = toNonNegativeInteger(value);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
+function buildInvoiceNumber(subscription, payment, issuedAt) {
+  const createdAt = new Date(
+    issuedAt ||
+      (payment && (payment.paidAt || payment.createdAt)) ||
+      subscription.createdAt ||
+      subscription.startDate ||
+      Date.now()
+  );
   const fallback = new Date();
   const source = Number.isFinite(createdAt.getTime()) ? createdAt : fallback;
   const year = source.getUTCFullYear();
   const month = String(source.getUTCMonth() + 1).padStart(2, "0");
-  const suffix = String(subscription._id || "").slice(-8).toUpperCase();
+  const identity = payment && payment._id ? payment._id : subscription._id;
+  const suffix = String(identity || "").slice(-10).toUpperCase();
   return `INV-${year}${month}-${suffix}`;
 }
 
@@ -63,35 +87,31 @@ function resolvePaymentMethod(payment) {
   return raw || null;
 }
 
-async function findPrimaryPayment(subscriptionId) {
-  const baseQuery = {
+async function findInvoicePayments(subscriptionId) {
+  return Payment.find({
     subscriptionId,
     status: { $in: ["paid", "refunded"] },
-  };
-
-  const activation = await Payment.findOne({
-    ...baseQuery,
-    type: "subscription_activation",
+    type: { $in: ["subscription_activation", "subscription_renewal"] },
   })
-    .sort({ paidAt: 1, createdAt: 1 })
-    .populate("collectedBy", "email role")
-    .lean();
-  if (activation) return activation;
-
-  return Payment.findOne({
-    ...baseQuery,
-    type: "subscription_renewal",
-  })
-    .sort({ paidAt: 1, createdAt: 1 })
+    .sort({ paidAt: -1, createdAt: -1 })
     .populate("collectedBy", "email role")
     .lean();
 }
 
+async function resolveCheckoutDraft(payment) {
+  if (!payment) return null;
+
+  if (payment.checkoutDraftId && mongoose.Types.ObjectId.isValid(payment.checkoutDraftId)) {
+    const linked = await CheckoutDraft.findById(payment.checkoutDraftId).lean();
+    if (linked) return linked;
+  }
+
+  return CheckoutDraft.findOne({ paymentId: payment._id }).sort({ createdAt: -1 }).lean();
+}
+
 function buildPersistedLineItems(subscription) {
   const planHalala =
-    toNonNegativeInteger(subscription.basePlanPriceHalala) ||
-    toNonNegativeInteger(subscription.basePlanGrossHalala) ||
-    0;
+    firstMoneyValue(subscription.basePlanPriceHalala, subscription.basePlanGrossHalala) || 0;
   const premiumHalala = sumHalala(subscription.premiumBalance);
   const addonsHalala = sumHalala(subscription.addonSubscriptions);
   const deliveryHalala = toNonNegativeInteger(subscription.deliveryFeeHalala) || 0;
@@ -108,6 +128,223 @@ function buildPersistedLineItems(subscription) {
     rows.push({ kind: "discount", labelAr: "الخصم", amountHalala: -discountHalala });
   }
   return rows;
+}
+
+function buildCheckoutDraftLineItems(checkoutDraft) {
+  const breakdown = checkoutDraft && checkoutDraft.breakdown;
+  if (!breakdown || typeof breakdown !== "object") return [];
+
+  const planHalala =
+    firstMoneyValue(breakdown.basePlanGrossHalala, breakdown.basePlanPriceHalala) || 0;
+  const premiumHalala = toNonNegativeInteger(breakdown.premiumTotalHalala) || 0;
+  const addonsHalala = toNonNegativeInteger(breakdown.addonsTotalHalala) || 0;
+  const deliveryHalala = toNonNegativeInteger(breakdown.deliveryFeeHalala) || 0;
+  const discountHalala = toNonNegativeInteger(breakdown.discountHalala) || 0;
+
+  const rows = [
+    { kind: "plan", labelAr: "الاشتراك الأساسي", amountHalala: planHalala },
+    { kind: "premium", labelAr: "الوجبات المميزة", amountHalala: premiumHalala },
+    { kind: "addons", labelAr: "اشتراكات الإضافات", amountHalala: addonsHalala },
+    { kind: "delivery", labelAr: "رسوم التوصيل", amountHalala: deliveryHalala },
+  ].filter((row) => row.amountHalala > 0);
+
+  if (discountHalala > 0) {
+    rows.push({ kind: "discount", labelAr: "الخصم", amountHalala: -discountHalala });
+  }
+  return rows;
+}
+
+function reconcileLineItemsToTotal(rows, totalHalala) {
+  const target = toNonNegativeInteger(totalHalala);
+  if (target === null) return Array.isArray(rows) ? rows : [];
+
+  const normalizedRows = Array.isArray(rows) ? [...rows] : [];
+  if (normalizedRows.length === 0) {
+    return [
+      {
+        kind: "historical_payment_total",
+        labelAr: "المبلغ المدفوع تاريخياً",
+        amountHalala: target,
+      },
+    ];
+  }
+
+  const difference = target - sumSignedLineItems(normalizedRows);
+  if (difference !== 0) {
+    normalizedRows.push({
+      kind: "payment_reconciliation_adjustment",
+      labelAr: "تسوية مع سجل الدفع",
+      amountHalala: difference,
+    });
+  }
+  return normalizedRows;
+}
+
+function buildInvoiceFinancialSnapshot({ subscription, payment, checkoutDraft, paymentCount = 0 }) {
+  const paymentAmountHalala = payment ? toNonNegativeInteger(payment.amount) : null;
+  const subscriptionTotalHalala = toNonNegativeInteger(subscription.totalPriceHalala);
+  const hasStoredSubscriptionTotal = subscriptionTotalHalala !== null && subscriptionTotalHalala > 0;
+  const draftBreakdown = checkoutDraft && checkoutDraft.breakdown && typeof checkoutDraft.breakdown === "object"
+    ? checkoutDraft.breakdown
+    : null;
+  const draftTotalHalala = draftBreakdown
+    ? toNonNegativeInteger(draftBreakdown.totalHalala)
+    : null;
+  const hasDraftTotal = draftTotalHalala !== null;
+  const multiplePayments = paymentCount > 1;
+
+  const authoritativeTotalHalala = paymentAmountHalala !== null
+    ? paymentAmountHalala
+    : hasDraftTotal
+      ? draftTotalHalala
+      : hasStoredSubscriptionTotal
+        ? subscriptionTotalHalala
+        : null;
+
+  let snapshotSource = "unavailable";
+  let lineItems = [];
+  let discountHalala = 0;
+  let deliveryFeeHalala = 0;
+  let basePlanGrossHalala = null;
+  let basePlanNetHalala = null;
+
+  if (draftBreakdown) {
+    snapshotSource = "checkout_draft";
+    lineItems = buildCheckoutDraftLineItems(checkoutDraft);
+    discountHalala = toNonNegativeInteger(draftBreakdown.discountHalala) || 0;
+    deliveryFeeHalala = toNonNegativeInteger(draftBreakdown.deliveryFeeHalala) || 0;
+    basePlanGrossHalala = firstMoneyValue(
+      draftBreakdown.basePlanGrossHalala,
+      draftBreakdown.basePlanPriceHalala
+    );
+    basePlanNetHalala = firstMoneyValue(
+      draftBreakdown.basePlanNetHalala,
+      draftBreakdown.basePlanPriceHalala
+    );
+  } else if (payment) {
+    const safeToUseSubscriptionBreakdown =
+      !multiplePayments &&
+      paymentAmountHalala !== null &&
+      hasStoredSubscriptionTotal &&
+      paymentAmountHalala === subscriptionTotalHalala;
+
+    if (safeToUseSubscriptionBreakdown) {
+      snapshotSource = "subscription_snapshot_matched_payment";
+      lineItems = buildPersistedLineItems(subscription);
+      discountHalala = toNonNegativeInteger(subscription.discountHalala) || 0;
+      deliveryFeeHalala = toNonNegativeInteger(subscription.deliveryFeeHalala) || 0;
+      basePlanGrossHalala = firstMoneyValue(
+        subscription.basePlanGrossHalala,
+        subscription.basePlanPriceHalala
+      );
+      basePlanNetHalala = firstMoneyValue(
+        subscription.basePlanNetHalala,
+        subscription.basePlanPriceHalala
+      );
+    } else {
+      // When multiple purchases share one Subscription, its financial fields are
+      // aggregate/current state and cannot safely describe one historical payment.
+      // Use the immutable Payment amount instead of inventing a breakdown from
+      // today's subscription/catalog values.
+      snapshotSource = "payment_record";
+      lineItems = paymentAmountHalala === null
+        ? []
+        : [{
+            kind: "historical_payment_total",
+            labelAr: "المبلغ المدفوع تاريخياً",
+            amountHalala: paymentAmountHalala,
+          }];
+    }
+  } else if (hasStoredSubscriptionTotal) {
+    snapshotSource = "subscription_snapshot";
+    lineItems = buildPersistedLineItems(subscription);
+    discountHalala = toNonNegativeInteger(subscription.discountHalala) || 0;
+    deliveryFeeHalala = toNonNegativeInteger(subscription.deliveryFeeHalala) || 0;
+    basePlanGrossHalala = firstMoneyValue(
+      subscription.basePlanGrossHalala,
+      subscription.basePlanPriceHalala
+    );
+    basePlanNetHalala = firstMoneyValue(
+      subscription.basePlanNetHalala,
+      subscription.basePlanPriceHalala
+    );
+  }
+
+  lineItems = reconcileLineItemsToTotal(lineItems, authoritativeTotalHalala);
+
+  const draftPaymentMismatch =
+    paymentAmountHalala !== null && hasDraftTotal
+      ? paymentAmountHalala !== draftTotalHalala
+      : false;
+  const singlePaymentSubscriptionMismatch =
+    paymentAmountHalala !== null && hasStoredSubscriptionTotal && !multiplePayments
+      ? paymentAmountHalala !== subscriptionTotalHalala
+      : false;
+
+  let reconciliationStatus = "balanced_or_single_source";
+  if (draftPaymentMismatch) {
+    reconciliationStatus = "payment_authoritative_snapshot_mismatch";
+  } else if (singlePaymentSubscriptionMismatch) {
+    reconciliationStatus = "payment_authoritative_subscription_mismatch";
+  } else if (multiplePayments) {
+    reconciliationStatus = "payment_scoped_multi_purchase";
+  }
+
+  return {
+    authoritativeTotalHalala,
+    paymentAmountHalala,
+    subscriptionTotalHalala: hasStoredSubscriptionTotal ? subscriptionTotalHalala : null,
+    draftTotalHalala: hasDraftTotal ? draftTotalHalala : null,
+    financialDataComplete: authoritativeTotalHalala !== null,
+    snapshotSource,
+    lineItems,
+    discountHalala,
+    deliveryFeeHalala,
+    basePlanGrossHalala,
+    basePlanNetHalala,
+    multiplePayments,
+    draftPaymentMismatch,
+    singlePaymentSubscriptionMismatch,
+    reconciliationStatus,
+  };
+}
+
+function buildRefundSummary(refunds) {
+  const rows = (Array.isArray(refunds) ? refunds : []).map((refund) => {
+    const amountHalala = toNonNegativeInteger(refund && refund.amountHalala) || 0;
+    const executionMode = text(refund && refund.executionMode);
+    const rawSettled = toNonNegativeInteger(
+      refund && refund.settlement && refund.settlement.settledAmountHalala
+    ) || 0;
+    const settledAmountHalala = executionMode === "provider_confirmed"
+      ? amountHalala
+      : Math.min(amountHalala, rawSettled);
+
+    return {
+      id: refund && refund._id ? String(refund._id) : "",
+      amountHalala,
+      vatHalala: toNonNegativeInteger(refund && refund.vatHalala) || 0,
+      status: text(refund && refund.status),
+      executionMode,
+      refundChannel: text(refund && refund.refundChannel),
+      refundedAt: toIso(refund && refund.refundedAt),
+      settledAmountHalala,
+      settlementStatus: text(refund && refund.settlement && refund.settlement.status),
+      settlementMethod: text(refund && refund.settlement && refund.settlement.method),
+      settledAt: toIso(refund && refund.settlement && refund.settlement.settledAt),
+      reference: text(refund && refund.settlement && refund.settlement.reference),
+    };
+  });
+
+  const recognizedAmountHalala = rows.reduce((sum, row) => sum + row.amountHalala, 0);
+  const settledAmountHalala = rows.reduce((sum, row) => sum + row.settledAmountHalala, 0);
+
+  return {
+    recognizedAmountHalala,
+    settledAmountHalala,
+    pendingSettlementAmountHalala: Math.max(0, recognizedAmountHalala - settledAmountHalala),
+    rows,
+  };
 }
 
 function formatSarFromHalala(amountHalala) {
@@ -154,6 +391,16 @@ async function getSubscriptionInvoice(req, res) {
     });
   }
 
+  const requestedPaymentId = text(req.query && req.query.paymentId);
+  if (requestedPaymentId && !mongoose.Types.ObjectId.isValid(requestedPaymentId)) {
+    return res.status(400).json({
+      status: false,
+      message: "Invalid payment id",
+      messageAr: "معرّف عملية الدفع غير صالح",
+      error: { code: "INVALID_PAYMENT_ID" },
+    });
+  }
+
   const subscription = await Subscription.findById(subscriptionId)
     .populate("userId", "name phone phoneE164 email")
     .populate("planId", "name daysCount durationDays currency")
@@ -168,19 +415,38 @@ async function getSubscriptionInvoice(req, res) {
     });
   }
 
-  const payment = await findPrimaryPayment(subscription._id);
-  const paymentAmountHalala = payment ? toNonNegativeInteger(payment.amount) : null;
-  const subscriptionTotalHalala = toNonNegativeInteger(subscription.totalPriceHalala);
-  const hasStoredSubscriptionTotal = subscriptionTotalHalala !== null && subscriptionTotalHalala > 0;
-  const authoritativeTotalHalala = paymentAmountHalala !== null
-    ? paymentAmountHalala
-    : hasStoredSubscriptionTotal
-      ? subscriptionTotalHalala
-      : null;
-  const financialDataComplete = authoritativeTotalHalala !== null;
-  const totalsMismatch = paymentAmountHalala !== null && hasStoredSubscriptionTotal
-    ? paymentAmountHalala !== subscriptionTotalHalala
-    : false;
+  const payments = await findInvoicePayments(subscription._id);
+  const payment = requestedPaymentId
+    ? payments.find((row) => String(row._id) === requestedPaymentId) || null
+    : payments[0] || null;
+
+  if (requestedPaymentId && !payment) {
+    return res.status(404).json({
+      status: false,
+      message: "Payment is not an invoice-eligible payment for this subscription",
+      messageAr: "عملية الدفع لا تخص فاتورة شراء لهذا الاشتراك",
+      error: { code: "INVOICE_PAYMENT_NOT_FOUND" },
+    });
+  }
+
+  const checkoutDraft = await resolveCheckoutDraft(payment);
+  const financialSnapshot = buildInvoiceFinancialSnapshot({
+    subscription,
+    payment,
+    checkoutDraft,
+    paymentCount: payments.length,
+  });
+  const {
+    authoritativeTotalHalala,
+    paymentAmountHalala,
+    financialDataComplete,
+    lineItems,
+  } = financialSnapshot;
+
+  const refundRows = payment
+    ? await PaymentRefund.find({ paymentId: payment._id }).sort({ refundedAt: 1, createdAt: 1 }).lean()
+    : [];
+  const refunds = buildRefundSummary(refundRows);
 
   const user = subscription.userId && typeof subscription.userId === "object"
     ? subscription.userId
@@ -193,6 +459,7 @@ async function getSubscriptionInvoice(req, res) {
     : null;
   const currency = text(
     (payment && payment.currency) ||
+      (checkoutDraft && checkoutDraft.breakdown && checkoutDraft.breakdown.currency) ||
       subscription.checkoutCurrency ||
       plan.currency ||
       "SAR"
@@ -200,17 +467,6 @@ async function getSubscriptionInvoice(req, res) {
 
   const paidAt = payment ? toIso(payment.paidAt || payment.createdAt) : null;
   const issuedAt = paidAt || toIso(subscription.createdAt) || toIso(subscription.startDate);
-  const lineItems = buildPersistedLineItems(subscription);
-
-  // Some very old rows predate line-item snapshots. Never reconstruct those from
-  // today's plan catalog; use the historical paid/stored total as one explicit row.
-  if (lineItems.length === 0 && authoritativeTotalHalala !== null) {
-    lineItems.push({
-      kind: "legacy_subscription_total",
-      labelAr: "قيمة الاشتراك التاريخية",
-      amountHalala: authoritativeTotalHalala,
-    });
-  }
 
   const taxRegistrationEffective = isTaxRegistrationEffectiveAt(issuedAt);
   const taxInvoiceEligible = financialDataComplete && taxRegistrationEffective && currency === "SAR";
@@ -232,13 +488,26 @@ async function getSubscriptionInvoice(req, res) {
       })
     : null;
 
+  const availablePayments = payments.map((row) => ({
+    id: String(row._id),
+    type: text(row.type),
+    status: text(row.status),
+    amountHalala: toNonNegativeInteger(row.amount) || 0,
+    currency: text(row.currency || "SAR").toUpperCase() || "SAR",
+    provider: text(row.provider),
+    method: resolvePaymentMethod(row),
+    paidAt: toIso(row.paidAt || row.createdAt),
+  }));
+
   return res.json({
     status: true,
     data: {
-      invoiceNumber: buildInvoiceNumber(subscription),
+      invoiceNumber: buildInvoiceNumber(subscription, payment, issuedAt),
       issuedAt,
       historical: true,
       invoiceType: taxInvoiceEligible ? "simplified_tax_invoice" : "subscription_invoice",
+      selectedPaymentId: payment ? String(payment._id) : null,
+      availablePayments,
       seller: {
         legalNameAr: BUSINESS_TAX_IDENTITY.legalNameAr,
         legalNameEn: BUSINESS_TAX_IDENTITY.legalNameEn,
@@ -296,35 +565,39 @@ async function getSubscriptionInvoice(req, res) {
         currency,
         source: payment
           ? "payment"
-          : hasStoredSubscriptionTotal
+          : financialSnapshot.subscriptionTotalHalala !== null
             ? "subscription_snapshot"
             : "unavailable",
+        snapshotSource: financialSnapshot.snapshotSource,
         financialDataComplete,
-        reconciliationStatus: totalsMismatch ? "payment_authoritative_mismatch" : "balanced_or_single_source",
+        reconciliationStatus: financialSnapshot.reconciliationStatus,
         lineItems,
-        basePlanGrossHalala: toNonNegativeInteger(subscription.basePlanGrossHalala),
-        basePlanNetHalala: toNonNegativeInteger(subscription.basePlanNetHalala),
-        discountHalala: toNonNegativeInteger(subscription.discountHalala) || 0,
+        basePlanGrossHalala: financialSnapshot.basePlanGrossHalala,
+        basePlanNetHalala: financialSnapshot.basePlanNetHalala,
+        discountHalala: financialSnapshot.discountHalala,
         subtotalHalala: subtotalExcludingVatHalala,
         subtotalBeforeVatHalala: subtotalExcludingVatHalala,
-        deliveryFeeHalala: toNonNegativeInteger(subscription.deliveryFeeHalala) || 0,
+        deliveryFeeHalala: financialSnapshot.deliveryFeeHalala,
         vatPercentage,
         vatHalala,
         priceIncludesVat: taxInvoiceEligible,
-        subscriptionTotalHalala: hasStoredSubscriptionTotal ? subscriptionTotalHalala : null,
+        subscriptionTotalHalala: financialSnapshot.subscriptionTotalHalala,
+        checkoutDraftTotalHalala: financialSnapshot.draftTotalHalala,
         paidAmountHalala: paymentAmountHalala,
         totalHalala: authoritativeTotalHalala,
       },
       payment: payment
         ? {
             id: String(payment._id),
+            type: text(payment.type),
             status: text(payment.status),
             method: resolvePaymentMethod(payment),
             provider: text(payment.provider),
             paidAt,
-            refunded: payment.status === "refunded",
+            refunded: payment.status === "refunded" || refunds.recognizedAmountHalala > 0,
           }
         : null,
+      refunds,
       createdBy: collectedBy
         ? {
             id: collectedBy._id ? String(collectedBy._id) : null,
@@ -336,8 +609,17 @@ async function getSubscriptionInvoice(req, res) {
         ...(!financialDataComplete
           ? [{ code: "FINANCIAL_DATA_INCOMPLETE", messageAr: "لا توجد قيمة دفع أو إجمالي تاريخي موثوق لهذا الاشتراك القديم." }]
           : []),
-        ...(totalsMismatch
-          ? [{ code: "PAYMENT_TOTAL_MISMATCH", messageAr: "يوجد اختلاف بين إجمالي الاشتراك التاريخي والمبلغ المدفوع؛ تم اعتماد سجل الدفع في الفاتورة." }]
+        ...(financialSnapshot.draftPaymentMismatch
+          ? [{ code: "PAYMENT_SNAPSHOT_MISMATCH", messageAr: "يوجد اختلاف بين Snapshot الشراء وسجل الدفع؛ تم اعتماد المبلغ المدفوع الفعلي وإظهار تسوية واضحة داخل تفاصيل الفاتورة." }]
+          : []),
+        ...(financialSnapshot.singlePaymentSubscriptionMismatch
+          ? [{ code: "PAYMENT_TOTAL_MISMATCH", messageAr: "يوجد اختلاف بين إجمالي الاشتراك التاريخي والمبلغ المدفوع؛ تم اعتماد سجل الدفع في الفاتورة دون إعادة تسعير من بيانات الاشتراك الحالية." }]
+          : []),
+        ...(payment && !checkoutDraft && payments.length > 1
+          ? [{ code: "PAYMENT_BREAKDOWN_UNAVAILABLE", messageAr: "هذه عملية شراء قديمة داخل اشتراك متعدد الدفعات ولا يتوفر لها Snapshot تفصيلي؛ تم عرض المبلغ المدفوع الفعلي فقط لمنع خلط أسعار عمليات شراء مختلفة." }]
+          : []),
+        ...(payments.length > 1
+          ? [{ code: "MULTIPLE_PURCHASE_INVOICES", messageAr: "هذا الاشتراك يحتوي أكثر من عملية شراء؛ لكل عملية دفع فاتورة مستقلة ويمكن اختيارها من قائمة الفواتير." }]
           : []),
         ...(!taxRegistrationEffective
           ? [{
@@ -353,4 +635,7 @@ async function getSubscriptionInvoice(req, res) {
 module.exports = {
   getSubscriptionInvoice,
   buildLocalTaxQrPayload,
+  buildInvoiceFinancialSnapshot,
+  buildRefundSummary,
+  buildInvoiceNumber,
 };
