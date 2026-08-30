@@ -140,7 +140,6 @@ async function sumMoyasarReconciledAccounting(paymentId) {
       $match: {
         paymentId,
         executionMode: "recorded_only",
-        refundChannel: "moyasar",
         status: { $in: ["confirmed", "needs_review"] },
       },
     },
@@ -158,15 +157,19 @@ async function reconcileAccountingRowsWithMoyasar({ payment, snapshot, amountHal
   let remaining = Math.max(0, Number(amountHalala || 0));
   if (!remaining) return 0;
 
+  // A real Moyasar webhook settles an already-recognized pending refund first,
+  // even if the operator initially planned cash/another gateway. This prevents
+  // the same customer refund from being counted twice when the actual return
+  // method changes after the accounting record was created.
   const rows = await PaymentRefund.find({
     paymentId: payment._id,
     executionMode: "recorded_only",
-    refundChannel: "moyasar",
     status: { $in: ["confirmed", "needs_review"] },
     $or: [
+      { "settlement.status": { $in: ["pending", "partially_settled"] } },
+      { "settlement.status": { $exists: false } },
+      { "settlement.status": null },
       { "settlement.method": "moyasar" },
-      { "settlement.method": { $exists: false } },
-      { "settlement.method": null },
     ],
   }).sort({ createdAt: 1 });
 
