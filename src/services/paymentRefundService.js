@@ -4,6 +4,9 @@ const Payment = require("../models/Payment");
 const PaymentRefund = require("../models/PaymentRefund");
 const { calculateVatBreakdownFromInclusiveTotal } = require("../config/vat");
 
+const REFUND_LEDGER_LOCK_TTL_MS = 5 * 60 * 1000;
+const REFUND_LEDGER_LOCK_RETRIES = 5;
+
 function clean(value) {
   return value === undefined || value === null ? "" : String(value).trim();
 }
@@ -17,6 +20,10 @@ function optionalDate(value) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isMoyasarRefundEvent(eventType, data = {}) {
@@ -69,6 +76,48 @@ function buildMoyasarRefundIdempotencyKey(snapshot) {
 
 function duplicateKey(error) {
   return Boolean(error && Number(error.code) === 11000);
+}
+
+async function acquireRefundLedgerLock(paymentId, operationKey) {
+  for (let attempt = 0; attempt < REFUND_LEDGER_LOCK_RETRIES; attempt += 1) {
+    const staleBefore = new Date(Date.now() - REFUND_LEDGER_LOCK_TTL_MS);
+    const locked = await Payment.findOneAndUpdate(
+      {
+        _id: paymentId,
+        $or: [
+          { "metadata.accountingRefundRecordLock": { $exists: false } },
+          { "metadata.accountingRefundRecordLock": null },
+          { "metadata.accountingRefundRecordLock.operationKey": operationKey },
+          { "metadata.accountingRefundRecordLock.acquiredAt": { $lt: staleBefore } },
+        ],
+      },
+      {
+        $set: {
+          "metadata.accountingRefundRecordLock": {
+            operationKey,
+            acquiredAt: new Date(),
+          },
+        },
+      },
+      { new: true }
+    );
+    if (locked) return;
+    if (attempt < REFUND_LEDGER_LOCK_RETRIES - 1) {
+      await sleep(50 * (attempt + 1));
+    }
+  }
+
+  const error = new Error("Refund ledger is temporarily busy");
+  error.code = "REFUND_LEDGER_BUSY";
+  error.status = 503;
+  throw error;
+}
+
+async function releaseRefundLedgerLock(paymentId, operationKey) {
+  await Payment.updateOne(
+    { _id: paymentId, "metadata.accountingRefundRecordLock.operationKey": operationKey },
+    { $unset: { "metadata.accountingRefundRecordLock": 1 } }
+  );
 }
 
 async function sumMoyasarProviderLedger(paymentId) {
@@ -143,8 +192,10 @@ async function reconcileAccountingRowsWithMoyasar({ payment, snapshot, amountHal
           ...(fullyConfirmed ? { "settlement.settledAt": snapshot.refundedAt || new Date() } : {}),
           "settlement.source": "moyasar_webhook_reconciliation",
           "settlement.providerConfirmedHalala": providerConfirmedHalala,
-          "settlement.providerRefundId": snapshot.providerRefundId || undefined,
-          "settlement.providerPaymentId": snapshot.providerPaymentId || payment.providerPaymentId || undefined,
+          ...(snapshot.providerRefundId ? { "settlement.providerRefundId": snapshot.providerRefundId } : {}),
+          ...(snapshot.providerPaymentId || payment.providerPaymentId
+            ? { "settlement.providerPaymentId": snapshot.providerPaymentId || payment.providerPaymentId }
+            : {}),
         },
       }
     );
@@ -175,8 +226,12 @@ async function recordMoyasarRefundWebhook({
   }
 
   const idempotencyKey = buildMoyasarRefundIdempotencyKey(snapshot);
+  let payment = null;
+  let lockKey = "";
+  let lockHeld = false;
+
   try {
-    const payment = paymentId
+    payment = paymentId
       ? await Payment.findById(paymentId)
       : await Payment.findOne({
         provider: "moyasar",
@@ -213,6 +268,32 @@ async function recordMoyasarRefundWebhook({
         }
       );
       return { refund: existing.toObject(), alreadyProcessed: true };
+    }
+
+    lockKey = `webhook:${idempotencyKey}`;
+    await acquireRefundLedgerLock(payment._id, lockKey);
+    lockHeld = true;
+
+    // Re-check after acquiring the shared lock in case another request finished
+    // while this webhook was waiting.
+    const existingAfterLock = await PaymentRefund.findOne({
+      provider: "moyasar",
+      idempotencyKey,
+    });
+    if (existingAfterLock) {
+      await Payment.updateOne(
+        { _id: payment._id },
+        {
+          $set: {
+            status: "paid",
+            "metadata.providerRefundStatus": snapshot.cumulativeRefundedHalala >= Number(payment.amount)
+              ? "refunded"
+              : "partially_refunded",
+            "metadata.providerRefundedHalala": snapshot.cumulativeRefundedHalala,
+          },
+        }
+      );
+      return { refund: existingAfterLock.toObject(), alreadyProcessed: true };
     }
 
     const [providerLedgerHalala, reconciledAccountingHalala] = await Promise.all([
@@ -326,6 +407,10 @@ async function recordMoyasarRefundWebhook({
       ],
     }).lean();
     return { refund: existing, alreadyProcessed: true };
+  } finally {
+    if (payment && lockHeld && lockKey) {
+      await releaseRefundLedgerLock(payment._id, lockKey).catch(() => null);
+    }
   }
 }
 
