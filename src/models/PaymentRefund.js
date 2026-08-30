@@ -8,6 +8,8 @@ function normalizeOptionalString(value) {
   return normalized || undefined;
 }
 
+const REFUND_CHANNELS = ["moyasar", "payment_gateway", "cash", "bank_transfer"];
+
 const PaymentRefundSchema = new mongoose.Schema(
   {
     paymentId: {
@@ -72,6 +74,51 @@ const PaymentRefundSchema = new mongoose.Schema(
       set: normalizeOptionalString,
       immutable: true,
     },
+    // provider_confirmed = money movement was confirmed by a provider event.
+    // recorded_only = superadmin recognized the refund for accounting only;
+    // this record MUST NOT trigger any external money transfer.
+    executionMode: {
+      type: String,
+      enum: ["provider_confirmed", "recorded_only"],
+      immutable: true,
+    },
+    // Planned channel selected by the superadmin when the accounting refund is recorded.
+    refundChannel: {
+      type: String,
+      enum: REFUND_CHANNELS,
+      immutable: true,
+    },
+    settlement: {
+      status: {
+        type: String,
+        enum: ["pending", "partially_settled", "settled"],
+      },
+      method: {
+        type: String,
+        enum: REFUND_CHANNELS,
+      },
+      settledAmountHalala: {
+        type: Number,
+        min: 0,
+        default: 0,
+        validate: Number.isInteger,
+      },
+      settledAt: { type: Date },
+      reference: { type: String, set: normalizeOptionalString },
+      note: { type: String, set: normalizeOptionalString },
+      byDashboardUserId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser" },
+      source: { type: String, set: normalizeOptionalString },
+      // Used only to reconcile a later Moyasar webhook to an already-recognized
+      // accounting refund without creating a second financial amount row.
+      providerConfirmedHalala: {
+        type: Number,
+        min: 0,
+        default: 0,
+        validate: Number.isInteger,
+      },
+      providerRefundId: { type: String, set: normalizeOptionalString },
+      providerPaymentId: { type: String, set: normalizeOptionalString },
+    },
     rawReference: {
       type: mongoose.Schema.Types.Mixed,
       immutable: true,
@@ -94,5 +141,8 @@ PaymentRefundSchema.index(
 );
 PaymentRefundSchema.index({ refundedAt: 1, subscriptionId: 1 });
 PaymentRefundSchema.index({ paymentId: 1, createdAt: 1 });
+PaymentRefundSchema.index({ subscriptionId: 1, "settlement.status": 1, createdAt: -1 });
+
+PaymentRefundSchema.statics.REFUND_CHANNELS = Object.freeze([...REFUND_CHANNELS]);
 
 module.exports = mongoose.model("PaymentRefund", PaymentRefundSchema);
