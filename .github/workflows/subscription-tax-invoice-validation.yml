@@ -9,6 +9,7 @@ on:
       - "src/config/businessTaxIdentity.js"
       - "src/config/vat.js"
       - "tests/subscriptionTaxInvoiceQr.test.js"
+      - "tests/subscriptionInvoiceHistoricalPricing.test.js"
       - ".github/workflows/subscription-tax-invoice-validation.yml"
   pull_request:
     paths:
@@ -16,6 +17,7 @@ on:
       - "src/config/businessTaxIdentity.js"
       - "src/config/vat.js"
       - "tests/subscriptionTaxInvoiceQr.test.js"
+      - "tests/subscriptionInvoiceHistoricalPricing.test.js"
       - ".github/workflows/subscription-tax-invoice-validation.yml"
   workflow_dispatch:
 
@@ -33,8 +35,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Validate invoice controller syntax
-        run: node --check src/controllers/dashboard/subscriptionInvoiceController.js
+      - name: Validate invoice controller and tests syntax
+        run: |
+          node --check src/controllers/dashboard/subscriptionInvoiceController.js
+          node --check tests/subscriptionInvoiceHistoricalPricing.test.js
+      - name: Verify historical invoice pricing
+        run: NODE_ENV=test node tests/subscriptionInvoiceHistoricalPricing.test.js
       - name: Verify tax invoice TLV QR payload
         run: NODE_ENV=test node tests/subscriptionTaxInvoiceQr.test.js
       - name: Smoke deployed invoice route authentication
