@@ -11,6 +11,9 @@ const {
   executeCustomerAccountMerge,
   previewCustomerAccountMerge,
 } = require("../services/dashboard/customerAccountMergeService");
+const {
+  resetCustomerPasswordDirect,
+} = require("../services/dashboard/customerPasswordResetService");
 
 function respondWithError(res, error, context) {
   if (error && Number.isInteger(error.status) && error.code) {
@@ -53,6 +56,30 @@ async function updateCustomer(req, res) {
     });
   } catch (error) {
     return respondWithError(res, error, { customerId: req.params.id, action: "update" });
+  }
+}
+
+async function resetCustomerPassword(req, res) {
+  try {
+    const result = await resetCustomerPasswordDirect({
+      id: req.params.id,
+      reason: (req.body || {}).reason,
+      actorId: req.dashboardUserId,
+      actorRole: req.dashboardUserRole,
+    });
+
+    return res.status(200).json({
+      status: true,
+      message: "Customer password reset successfully",
+      messageAr: "تمت إعادة تعيين كلمة مرور العميل بنجاح",
+      data: result,
+      meta: {
+        passwordShownOnce: true,
+        directLoginReady: true,
+      },
+    });
+  } catch (error) {
+    return respondWithError(res, error, { customerId: req.params.id, action: "password_reset" });
   }
 }
 
@@ -123,5 +150,6 @@ module.exports = {
   grantMealCompensation,
   mergeAccounts,
   previewAccountMerge,
+  resetCustomerPassword,
   updateCustomer,
 };
