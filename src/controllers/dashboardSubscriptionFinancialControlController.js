@@ -5,6 +5,7 @@ const { logger } = require("../utils/logger");
 const {
   executeFinancialControl,
   getFinancialControlPreview,
+  settleRecordedRefund,
 } = require("../services/dashboard/subscriptionFinancialControlNoTxnService");
 
 function respondWithError(res, error, context) {
@@ -58,7 +59,7 @@ async function execute(req, res) {
       message: result.replayed ? "Operation already processed" : "Operation completed successfully",
       messageAr: result.replayed ? "تم تنفيذ العملية مسبقًا" : "تم تنفيذ العملية بنجاح",
       data: result.operation,
-      meta: { replayed: result.replayed },
+      meta: { replayed: result.replayed, accountingOnly: true, moneyMovementPerformed: false },
     });
   } catch (error) {
     logger.warn("dashboard subscription financial control request failed", {
@@ -74,4 +75,29 @@ async function execute(req, res) {
   }
 }
 
-module.exports = { execute, preview };
+async function settle(req, res) {
+  try {
+    const result = await settleRecordedRefund({
+      subscriptionId: req.params.subscriptionId,
+      refundId: req.params.refundId,
+      payload: req.body || {},
+      actorId: req.dashboardUserId,
+      actorRole: req.dashboardUserRole,
+    });
+    return res.status(200).json({
+      status: true,
+      message: result.replayed ? "Refund was already settled" : "Refund settlement confirmed",
+      messageAr: result.replayed ? "تم تأكيد تسوية الاسترجاع مسبقًا" : "تم تأكيد تسوية الاسترجاع",
+      data: result.refund,
+      meta: { replayed: result.replayed, moneyMovementPerformed: false },
+    });
+  } catch (error) {
+    return respondWithError(res, error, {
+      subscriptionId: req.params.subscriptionId,
+      refundId: req.params.refundId,
+      action: "refund_settlement_confirm",
+    });
+  }
+}
+
+module.exports = { execute, preview, settle };
