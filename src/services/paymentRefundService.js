@@ -246,37 +246,54 @@ async function recordMoyasarRefundWebhook({
 
     let created = null;
     if (newProviderDelta > 0) {
-      const vat = calculateVatBreakdownFromInclusiveTotal(newProviderDelta);
-      created = await PaymentRefund.create({
-        paymentId: payment._id,
-        subscriptionId: payment.subscriptionId,
-        orderId: payment.orderId,
-        provider: "moyasar",
-        providerRefundId: snapshot.providerRefundId || undefined,
-        providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
-        amountHalala: newProviderDelta,
-        vatHalala: vat.vatHalala,
-        refundedAt: snapshot.refundedAt || undefined,
-        status: snapshot.refundedAt ? "confirmed" : "needs_review",
-        idempotencyKey,
-        executionMode: "provider_confirmed",
-        refundChannel: "moyasar",
-        settlement: {
-          status: "settled",
-          method: "moyasar",
-          settledAmountHalala: newProviderDelta,
-          settledAt: snapshot.refundedAt || new Date(),
-          source: "moyasar_webhook",
-          providerConfirmedHalala: newProviderDelta,
+      const allRecognized = await PaymentRefund.aggregate([
+        {
+          $match: {
+            paymentId: payment._id,
+            status: { $in: ["confirmed", "needs_review"] },
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$amountHalala" } } },
+      ]);
+      const recognizedHalala = Math.max(0, Number(allRecognized[0] && allRecognized[0].total || 0));
+      const financialCapacity = Math.max(0, Number(payment.amount || 0) - recognizedHalala);
+      const ledgerAmountHalala = Math.min(newProviderDelta, financialCapacity);
+
+      if (ledgerAmountHalala > 0) {
+        const vat = calculateVatBreakdownFromInclusiveTotal(ledgerAmountHalala);
+        created = await PaymentRefund.create({
+          paymentId: payment._id,
+          subscriptionId: payment.subscriptionId,
+          orderId: payment.orderId,
+          provider: "moyasar",
           providerRefundId: snapshot.providerRefundId || undefined,
           providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
-        },
-        rawReference: {
-          webhookId: snapshot.webhookId || null,
-          providerPaymentId: snapshot.providerPaymentId || null,
-          cumulativeRefundedHalala: snapshot.cumulativeRefundedHalala,
-        },
-      });
+          amountHalala: ledgerAmountHalala,
+          vatHalala: vat.vatHalala,
+          refundedAt: snapshot.refundedAt || undefined,
+          status: snapshot.refundedAt ? "confirmed" : "needs_review",
+          idempotencyKey,
+          executionMode: "provider_confirmed",
+          refundChannel: "moyasar",
+          settlement: {
+            status: "settled",
+            method: "moyasar",
+            settledAmountHalala: ledgerAmountHalala,
+            settledAt: snapshot.refundedAt || new Date(),
+            source: "moyasar_webhook",
+            providerConfirmedHalala: ledgerAmountHalala,
+            providerRefundId: snapshot.providerRefundId || undefined,
+            providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
+          },
+          rawReference: {
+            webhookId: snapshot.webhookId || null,
+            providerPaymentId: snapshot.providerPaymentId || null,
+            cumulativeRefundedHalala: snapshot.cumulativeRefundedHalala,
+            providerDeltaHalala: newProviderDelta,
+            financialLedgerAmountHalala: ledgerAmountHalala,
+          },
+        });
+      }
     }
 
     // Provider state is tracked separately from the accounting recognition rows.
