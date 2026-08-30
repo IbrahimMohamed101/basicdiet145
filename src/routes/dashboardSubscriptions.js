@@ -100,6 +100,13 @@ router.post(
   asyncHandler(financialControlController.execute)
 );
 
+router.post(
+  "/:subscriptionId/financial-control/refunds/:refundId/settle",
+  dashboardAuthMiddleware,
+  superadminFinancialControlAccess,
+  asyncHandler(financialControlController.settle)
+);
+
 router.get(
   "/:subscriptionId/audit",
   dashboardAuthMiddleware,
