@@ -5,12 +5,11 @@ const { logger } = require("../utils/logger");
 const {
   executeFinancialControl,
   getFinancialControlPreview,
-} = require("../services/dashboard/subscriptionFinancialControlService");
+} = require("../services/dashboard/subscriptionFinancialControlNoTxnService");
 
 function respondWithError(res, error, context) {
   if (error && Number.isInteger(error.status) && error.code) {
-    const response = errorResponse(res, error.status, error.code, error.message);
-    return response;
+    return errorResponse(res, error.status, error.code, error.message);
   }
   logger.error("dashboard subscription financial control failed", {
     error: error && error.message,
@@ -20,27 +19,31 @@ function respondWithError(res, error, context) {
   return errorResponse(res, 500, "INTERNAL", "Subscription financial control failed");
 }
 
+function requestContext(req) {
+  return {
+    customerId: req.params.id || null,
+    subscriptionId: req.params.subscriptionId,
+  };
+}
+
 async function preview(req, res) {
+  const context = requestContext(req);
   try {
-    const data = await getFinancialControlPreview({
-      customerId: req.params.id,
-      subscriptionId: req.params.subscriptionId,
-    });
+    const data = await getFinancialControlPreview(context);
     return res.status(200).json({ status: true, data });
   } catch (error) {
     return respondWithError(res, error, {
-      customerId: req.params.id,
-      subscriptionId: req.params.subscriptionId,
+      ...context,
       action: "financial_control_preview",
     });
   }
 }
 
 async function execute(req, res) {
+  const context = requestContext(req);
   try {
     const result = await executeFinancialControl({
-      customerId: req.params.id,
-      subscriptionId: req.params.subscriptionId,
+      ...context,
       payload: req.body || {},
       actorId: req.dashboardUserId,
       actorRole: req.dashboardUserRole,
@@ -62,12 +65,10 @@ async function execute(req, res) {
       code: error && error.code,
       message: error && error.message,
       operationKey: error && error.extra && error.extra.operationKey,
-      customerId: req.params.id,
-      subscriptionId: req.params.subscriptionId,
+      ...context,
     });
     return respondWithError(res, error, {
-      customerId: req.params.id,
-      subscriptionId: req.params.subscriptionId,
+      ...context,
       action: "financial_control_execute",
     });
   }
