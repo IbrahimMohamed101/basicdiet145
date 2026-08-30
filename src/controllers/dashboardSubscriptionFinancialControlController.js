@@ -54,10 +54,19 @@ async function execute(req, res) {
       },
       lang: req.lang || "ar",
     });
+    const accountingOnly = ["refund", "cancel_and_refund"].includes(String(result.operation && result.operation.type || ""));
     return res.status(result.replayed ? 200 : 201).json({
       status: true,
-      message: result.replayed ? "Operation already processed" : "Operation completed successfully",
-      messageAr: result.replayed ? "تم تنفيذ العملية مسبقًا" : "تم تنفيذ العملية بنجاح",
+      message: result.replayed
+        ? "Operation already processed"
+        : accountingOnly
+          ? "Accounting refund recorded; no money was transferred"
+          : "Operation completed successfully",
+      messageAr: result.replayed
+        ? "تم تنفيذ العملية مسبقًا"
+        : accountingOnly
+          ? "تم تسجيل الاسترجاع محاسبيًا فقط ولم يتم تحويل أي أموال"
+          : "تم تنفيذ العملية بنجاح",
       data: result.operation,
       meta: { replayed: result.replayed, accountingOnly: true, moneyMovementPerformed: false },
     });
@@ -87,7 +96,7 @@ async function settle(req, res) {
     return res.status(200).json({
       status: true,
       message: result.replayed ? "Refund was already settled" : "Refund settlement confirmed",
-      messageAr: result.replayed ? "تم تأكيد تسوية الاسترجاع مسبقًا" : "تم تأكيد تسوية الاسترجاع",
+      messageAr: result.replayed ? "تم تأكيد تسوية الاسترجاع مسبقًا" : "تم تأكيد أن رد المبلغ تم خارج النظام",
       data: result.refund,
       meta: { replayed: result.replayed, moneyMovementPerformed: false },
     });
