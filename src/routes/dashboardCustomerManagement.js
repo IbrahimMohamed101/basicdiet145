@@ -12,7 +12,7 @@ const {
 
 const router = Router();
 const superadminOnly = dashboardRoleMiddleware(["superadmin"]);
-const restaurantOrAbove = dashboardRoleMiddleware(["restaurant"]);
+const customerPasswordResetRoles = dashboardRoleMiddleware(["restaurant", "admin"]);
 
 router.use(dashboardAuthMiddleware);
 
@@ -21,7 +21,7 @@ router.use(dashboardAuthMiddleware);
 // remain superadmin-only below.
 router.post(
   "/:id/password-reset",
-  restaurantOrAbove,
+  customerPasswordResetRoles,
   adminPasswordResetLimiter,
   asyncHandler(controller.resetCustomerPassword)
 );
