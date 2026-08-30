@@ -34,7 +34,7 @@ async function serializeSubscriptionAdmin(subscription, lang, userDoc) {
  * Orchestrates the admin-initiated cancellation of a subscription.
  * Preserves exact behavior from adminController.js legacy implementation.
  */
-async function performCancelSubscriptionAdmin({ subscriptionId, actor, lang }) {
+async function performCancelSubscriptionAdmin({ subscriptionId, actor, lang, reason = "" }) {
   try {
     const result = await cancelSubscriptionDomain({
       subscriptionId,
@@ -43,6 +43,7 @@ async function performCancelSubscriptionAdmin({ subscriptionId, actor, lang }) {
         dashboardUserId: actor.dashboardUserId,
         dashboardUserRole: actor.dashboardUserRole,
       },
+      reason,
     });
 
     if (result.outcome === "not_found") {
