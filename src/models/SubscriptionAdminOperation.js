@@ -12,7 +12,7 @@ const SubscriptionAdminOperationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["processing", "provider_succeeded", "completed", "needs_review", "failed"],
+      enum: ["processing", "completed", "needs_review", "failed"],
       default: "processing",
       required: true,
     },
@@ -25,21 +25,26 @@ const SubscriptionAdminOperationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Payment",
     },
+    refundId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PaymentRefund",
+    },
     refundMode: {
       type: String,
       enum: ["none", "full", "partial"],
       default: "none",
     },
+    refundChannel: {
+      type: String,
+      enum: ["none", "moyasar", "payment_gateway", "cash", "bank_transfer"],
+      default: "none",
+    },
     requestedAmountHalala: { type: Number, min: 0, default: 0 },
     refundedAmountHalala: { type: Number, min: 0, default: 0 },
     recordedRefundedBeforeHalala: { type: Number, min: 0 },
-    provider: { type: String },
-    providerPaymentId: { type: String },
-    providerRefundId: { type: String },
-    providerRefundedBeforeHalala: { type: Number, min: 0 },
-    providerRefundedAfterHalala: { type: Number, min: 0 },
     cancellationApplied: { type: Boolean, default: false },
     refundRecorded: { type: Boolean, default: false },
+    accountingOnly: { type: Boolean, default: true },
     reason: { type: String, required: true, trim: true },
     note: { type: String, trim: true },
     lastStep: { type: String },
@@ -52,7 +57,6 @@ const SubscriptionAdminOperationSchema = new mongoose.Schema(
       ip: { type: String },
       userAgent: { type: String },
     },
-    providerSnapshot: { type: mongoose.Schema.Types.Mixed },
     error: { type: mongoose.Schema.Types.Mixed },
   },
   { timestamps: true, minimize: false }
@@ -60,5 +64,6 @@ const SubscriptionAdminOperationSchema = new mongoose.Schema(
 
 SubscriptionAdminOperationSchema.index({ subscriptionId: 1, createdAt: -1 });
 SubscriptionAdminOperationSchema.index({ paymentId: 1, createdAt: -1 });
+SubscriptionAdminOperationSchema.index({ refundId: 1 });
 
 module.exports = mongoose.model("SubscriptionAdminOperation", SubscriptionAdminOperationSchema);
