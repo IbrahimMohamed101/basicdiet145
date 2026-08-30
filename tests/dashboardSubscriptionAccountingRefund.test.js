@@ -153,9 +153,6 @@ async function main() {
     assert.equal(preview.refunds.length, 1);
     assert.equal(preview.refunds[0].settlement.status, "pending");
 
-    // Planned channel and actual settlement method are intentionally separate.
-    // The dashboard does not move money; it records what was planned and later
-    // what actually happened outside the system.
     const settlement = await settleRecordedRefund({
       subscriptionId: String(subscription._id),
       refundId: String(refund._id),
