@@ -204,6 +204,9 @@ async function main() {
     assert.equal(refunds.reduce((sum, row) => sum + row.amountHalala, 0), 10000);
     assert.equal(refunds.reduce((sum, row) => sum + row.vatHalala, 0), 1304);
     assert.equal(new Set(refunds.map((row) => row.idempotencyKey)).size, 3);
+    assert(refunds.every((row) => row.executionMode === "provider_confirmed"));
+    assert(refunds.every((row) => row.refundChannel === "moyasar"));
+    assert(refunds.every((row) => row.settlement && row.settlement.status === "settled"));
     assert.equal(refreshedPayment.status, "paid", "gross collection must remain paid");
 
     const report = await buildDailySubscriptionPaymentReport({ date: "2026-08-01" });
@@ -259,12 +262,11 @@ async function main() {
     await mongoose.disconnect().catch(() => {});
     await mongo.stop();
   }
-
-  console.log("accounting refund reporting tests passed");
 }
 
-main().catch(async (error) => {
-  console.error(error && error.stack ? error.stack : error);
-  await mongoose.disconnect().catch(() => {});
-  process.exit(1);
+main().then(() => {
+  console.log("accountingRefundReporting.test.js: ok");
+}).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
