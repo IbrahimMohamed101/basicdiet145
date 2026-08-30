@@ -3,18 +3,30 @@ name: Accounting report contracts
 on:
   pull_request:
     paths:
+      - "src/models/PaymentRefund.js"
+      - "src/models/SubscriptionAdminOperation.js"
+      - "src/services/dashboard/subscriptionFinancialControlNoTxnService.js"
+      - "src/services/paymentRefundService.js"
       - "src/services/dashboard/subscriptionPaymentAccountingFacade.js"
       - "src/services/dashboard/subscriptionPaymentMethodReportService.js"
       - "src/controllers/dashboard/subscriptionPaymentReportController.js"
+      - "tests/dashboardSubscriptionAccountingRefund.test.js"
+      - "tests/accountingRefundReporting.test.js"
       - "tests/subscriptionPaymentAccountingFacade.test.js"
       - "tests/subscriptionPaymentReportPresentation.test.js"
       - ".github/workflows/accounting-report-contracts.yml"
   push:
     branches: [main]
     paths:
+      - "src/models/PaymentRefund.js"
+      - "src/models/SubscriptionAdminOperation.js"
+      - "src/services/dashboard/subscriptionFinancialControlNoTxnService.js"
+      - "src/services/paymentRefundService.js"
       - "src/services/dashboard/subscriptionPaymentAccountingFacade.js"
       - "src/services/dashboard/subscriptionPaymentMethodReportService.js"
       - "src/controllers/dashboard/subscriptionPaymentReportController.js"
+      - "tests/dashboardSubscriptionAccountingRefund.test.js"
+      - "tests/accountingRefundReporting.test.js"
       - "tests/subscriptionPaymentAccountingFacade.test.js"
       - "tests/subscriptionPaymentReportPresentation.test.js"
       - ".github/workflows/accounting-report-contracts.yml"
@@ -32,9 +44,17 @@ jobs:
       - run: npm ci
       - name: Validate syntax
         run: |
+          node --check src/services/dashboard/subscriptionFinancialControlNoTxnService.js
+          node --check src/services/paymentRefundService.js
           node --check src/services/dashboard/subscriptionPaymentAccountingFacade.js
           node --check src/controllers/dashboard/subscriptionPaymentReportController.js
+          node --check tests/dashboardSubscriptionAccountingRefund.test.js
+          node --check tests/accountingRefundReporting.test.js
           node --check tests/subscriptionPaymentAccountingFacade.test.js
+      - name: Verify accounting-only refund and standalone Mongo flow
+        run: node tests/dashboardSubscriptionAccountingRefund.test.js
+      - name: Verify Moyasar refund ledger compatibility
+        run: node tests/accountingRefundReporting.test.js
       - name: Verify provider and orphan-payment accounting
         run: node tests/subscriptionPaymentAccountingFacade.test.js
       - name: Verify existing presentation contract
