@@ -17,6 +17,7 @@ const {
   getFinancialControlPreview,
   settleRecordedRefund,
 } = require("../src/services/dashboard/subscriptionFinancialControlNoTxnService");
+const { recordMoyasarRefundWebhook } = require("../src/services/paymentRefundService");
 const {
   buildDailySubscriptionPaymentReport,
 } = require("../src/services/dashboard/subscriptionPaymentMethodReportService");
@@ -194,6 +195,59 @@ async function main() {
     assert.equal(report.summary.refundsCount, 1);
     assert.equal(report.reconciliation.movementDifferenceHalala, 0);
     assert.equal(report.reconciliation.vatDifferenceHalala, 0);
+
+    // Planned channel can change after recognition. If an actual Moyasar webhook
+    // arrives while an accounting-only refund is still pending, it must settle
+    // that existing row instead of creating a second financial refund amount.
+    const providerPaymentId = `provider-change-${Date.now()}`;
+    const providerPayment = await Payment.create({
+      provider: "moyasar",
+      type: "subscription_renewal",
+      status: "paid",
+      amount: 5000,
+      currency: "SAR",
+      userId: user._id,
+      subscriptionId: subscription._id,
+      source: "mobile_app_subscription",
+      providerPaymentId,
+      applied: true,
+      paidAt: new Date(),
+    });
+    await executeFinancialControl({
+      subscriptionId: String(subscription._id),
+      payload: {
+        action: "refund",
+        operationKey: "acct_refund_channel_change_002",
+        reason: "planned cash but returned by provider",
+        paymentId: String(providerPayment._id),
+        refundMode: "partial",
+        refundChannel: "cash",
+        amountHalala: 2000,
+      },
+      actorId: String(actorId),
+      actorRole: "superadmin",
+      requestMeta: { ip: "127.0.0.1", userAgent: "test" },
+      lang: "ar",
+    });
+    assert.equal(await PaymentRefund.countDocuments({ paymentId: providerPayment._id }), 1);
+
+    const webhook = await recordMoyasarRefundWebhook({
+      payload: { id: "channel-change-webhook-1" },
+      data: {
+        id: providerPaymentId,
+        status: "refunded",
+        refunded: 2000,
+        refunded_at: new Date().toISOString(),
+      },
+    });
+    assert.equal(webhook.reconciledAccountingOnly, true);
+    const providerRefundRows = await PaymentRefund.find({ paymentId: providerPayment._id }).lean();
+    assert.equal(providerRefundRows.length, 1, "provider webhook must not create a duplicate accounting amount");
+    assert.equal(providerRefundRows[0].executionMode, "recorded_only");
+    assert.equal(providerRefundRows[0].refundChannel, "cash", "planned channel remains historical");
+    assert.equal(providerRefundRows[0].settlement.status, "settled");
+    assert.equal(providerRefundRows[0].settlement.method, "moyasar", "actual provider becomes settlement method");
+    assert.equal(providerRefundRows[0].settlement.providerConfirmedHalala, 2000);
 
     console.log("dashboardSubscriptionAccountingRefund.test.js: OK");
   } finally {
