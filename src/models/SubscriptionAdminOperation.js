@@ -44,6 +44,8 @@ const SubscriptionAdminOperationSchema = new mongoose.Schema(
     recordedRefundedBeforeHalala: { type: Number, min: 0 },
     cancellationApplied: { type: Boolean, default: false },
     refundRecorded: { type: Boolean, default: false },
+    // True means this operation can change accounting recognition only; it has
+    // no authority to execute a provider/cash money movement.
     accountingOnly: { type: Boolean, default: true },
     reason: { type: String, required: true, trim: true },
     note: { type: String, trim: true },
