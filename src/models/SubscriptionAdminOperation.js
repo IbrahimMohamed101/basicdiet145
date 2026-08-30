@@ -32,6 +32,7 @@ const SubscriptionAdminOperationSchema = new mongoose.Schema(
     },
     requestedAmountHalala: { type: Number, min: 0, default: 0 },
     refundedAmountHalala: { type: Number, min: 0, default: 0 },
+    recordedRefundedBeforeHalala: { type: Number, min: 0 },
     provider: { type: String },
     providerPaymentId: { type: String },
     providerRefundId: { type: String },
