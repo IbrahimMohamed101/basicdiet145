@@ -68,7 +68,7 @@ async function execute(req, res) {
           ? "تم تسجيل الاسترجاع محاسبيًا فقط ولم يتم تحويل أي أموال"
           : "تم تنفيذ العملية بنجاح",
       data: result.operation,
-      meta: { replayed: result.replayed, accountingOnly: true, moneyMovementPerformed: false },
+      meta: { replayed: result.replayed, accountingOnly, moneyMovementPerformed: false },
     });
   } catch (error) {
     logger.warn("dashboard subscription financial control request failed", {
