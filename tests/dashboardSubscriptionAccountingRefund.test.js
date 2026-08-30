@@ -90,7 +90,7 @@ async function main() {
         reason: "customer refund approved",
         paymentId: String(payment._id),
         refundMode: "partial",
-        refundChannel: "cash",
+        refundChannel: "moyasar",
         amountHalala: 4000,
       },
       actorId: String(actorId),
@@ -102,17 +102,18 @@ async function main() {
     assert.equal(first.replayed, false);
     assert.equal(first.operation.status, "completed");
     assert.equal(first.operation.accountingOnly, true);
-    assert.equal(first.operation.refundChannel, "cash");
+    assert.equal(first.operation.refundChannel, "moyasar");
 
     const refunds = await PaymentRefund.find({ paymentId: payment._id }).lean();
     assert.equal(refunds.length, 1, "accounting refund must create exactly one ledger row");
     const refund = refunds[0];
     assert.equal(refund.provider, "none");
     assert.equal(refund.executionMode, "recorded_only");
-    assert.equal(refund.refundChannel, "cash");
+    assert.equal(refund.refundChannel, "moyasar");
     assert.equal(refund.amountHalala, 4000);
     assert.equal(refund.status, "confirmed");
     assert.equal(refund.settlement.status, "pending");
+    assert.equal(refund.settlement.method, "moyasar");
     assert.equal(refund.settlement.settledAmountHalala, 0);
     assert.equal(refund.rawReference.moneyMovementPerformed, false);
 
@@ -131,7 +132,7 @@ async function main() {
         reason: "customer refund approved",
         paymentId: String(payment._id),
         refundMode: "partial",
-        refundChannel: "cash",
+        refundChannel: "moyasar",
         amountHalala: 4000,
       },
       actorId: String(actorId),
@@ -152,6 +153,9 @@ async function main() {
     assert.equal(preview.refunds.length, 1);
     assert.equal(preview.refunds[0].settlement.status, "pending");
 
+    // Planned channel and actual settlement method are intentionally separate.
+    // The dashboard does not move money; it records what was planned and later
+    // what actually happened outside the system.
     const settlement = await settleRecordedRefund({
       subscriptionId: String(subscription._id),
       refundId: String(refund._id),
@@ -164,6 +168,7 @@ async function main() {
       actorRole: "superadmin",
     });
     assert.equal(settlement.replayed, false);
+    assert.equal(settlement.refund.refundChannel, "moyasar");
     assert.equal(settlement.refund.settlement.status, "settled");
     assert.equal(settlement.refund.settlement.method, "cash");
     assert.equal(settlement.refund.settlement.settledAmountHalala, 4000);
@@ -178,6 +183,8 @@ async function main() {
     assert.equal(settlementReplay.replayed, true);
 
     const refundForReport = await PaymentRefund.findById(refund._id).lean();
+    assert.equal(refundForReport.refundChannel, "moyasar");
+    assert.equal(refundForReport.settlement.method, "cash");
     await Payment.updateOne(
       { _id: payment._id },
       { $set: { paidAt: refundForReport.refundedAt } }
