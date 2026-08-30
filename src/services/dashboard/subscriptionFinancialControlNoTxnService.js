@@ -284,7 +284,7 @@ async function acquireRefundLock(payment, operationKey) {
     { new: true }
   );
   if (!locked) {
-    throw fail(409, "REFUND_RECORD_IN_PROGRESS", "Another accounting refund is being recorded for this payment");
+    throw fail(409, "REFUND_RECORD_IN_PROGRESS", "Another refund ledger operation is being processed for this payment");
   }
 }
 
@@ -339,6 +339,15 @@ async function recordAccountingRefund({ operation, payment }) {
   let refund = await PaymentRefund.findOne({ provider: "none", idempotencyKey });
 
   if (!refund) {
+    // Re-check under the shared payment lock immediately before inserting the
+    // accounting row. A provider webhook uses the same lock, so the recognized
+    // total cannot advance concurrently through either supported refund path.
+    const recognizedNow = await sumRecognizedRefunds(payment._id);
+    const refundableNow = Math.max(0, Number(payment.amount || 0) - recognizedNow);
+    if (!requested || requested > refundableNow) {
+      throw fail(409, "REFUND_AMOUNT_EXCEEDS_AVAILABLE", "Refund amount exceeds the available accounting balance");
+    }
+
     const vat = calculateVatBreakdownFromInclusiveTotal(requested);
     try {
       refund = await PaymentRefund.create({
@@ -556,6 +565,17 @@ async function settleRecordedRefund({
   }
 
   const settledAt = new Date();
+  const settlementSet = {
+    "settlement.status": "settled",
+    "settlement.method": method,
+    "settlement.settledAmountHalala": Number(current.amountHalala || 0),
+    "settlement.settledAt": settledAt,
+    "settlement.byDashboardUserId": actorId,
+    "settlement.source": "dashboard_manual_confirmation",
+  };
+  if (reference) settlementSet["settlement.reference"] = reference;
+  if (note) settlementSet["settlement.note"] = note;
+
   const updated = await PaymentRefund.findOneAndUpdate(
     {
       _id: current._id,
@@ -563,18 +583,7 @@ async function settleRecordedRefund({
       executionMode: "recorded_only",
       "settlement.status": { $ne: "settled" },
     },
-    {
-      $set: {
-        "settlement.status": "settled",
-        "settlement.method": method,
-        "settlement.settledAmountHalala": Number(current.amountHalala || 0),
-        "settlement.settledAt": settledAt,
-        "settlement.reference": reference || undefined,
-        "settlement.note": note || undefined,
-        "settlement.byDashboardUserId": actorId,
-        "settlement.source": "dashboard_manual_confirmation",
-      },
-    },
+    { $set: settlementSet },
     { new: true }
   );
 
