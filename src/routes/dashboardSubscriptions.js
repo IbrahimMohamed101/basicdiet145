@@ -12,6 +12,7 @@ const fulfillmentListController = require("../controllers/dashboard/subscription
 const auditController = require("../controllers/dashboard/subscriptionAuditController");
 const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentRecordingController");
 const subscriptionInvoiceController = require("../controllers/dashboard/subscriptionInvoiceController");
+const financialControlController = require("../controllers/dashboardSubscriptionFinancialControlController");
 const subscriptionTrackingController = require("../controllers/subscriptionTrackingController");
 const adminController = require("../controllers/adminController");
 const asyncHandler = require("../middleware/asyncHandler");
@@ -41,6 +42,7 @@ const quickDayDeductionWriteAccess = dashboardRoleMiddleware([
   "admin",
   "cashier",
 ]);
+const superadminFinancialControlAccess = dashboardRoleMiddleware(["superadmin"]);
 
 router.get(
   "/list",
@@ -82,6 +84,20 @@ router.get(
   dashboardAuthMiddleware,
   invoiceReadAccess,
   asyncHandler(subscriptionInvoiceController.getSubscriptionInvoice)
+);
+
+router.get(
+  "/:subscriptionId/financial-control",
+  dashboardAuthMiddleware,
+  superadminFinancialControlAccess,
+  asyncHandler(financialControlController.preview)
+);
+
+router.post(
+  "/:subscriptionId/financial-control",
+  dashboardAuthMiddleware,
+  superadminFinancialControlAccess,
+  asyncHandler(financialControlController.execute)
 );
 
 router.get(
