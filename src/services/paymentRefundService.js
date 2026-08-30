@@ -71,6 +71,89 @@ function duplicateKey(error) {
   return Boolean(error && Number(error.code) === 11000);
 }
 
+async function sumMoyasarProviderLedger(paymentId) {
+  const rows = await PaymentRefund.aggregate([
+    {
+      $match: {
+        paymentId,
+        provider: "moyasar",
+        status: { $in: ["confirmed", "needs_review"] },
+      },
+    },
+    { $group: { _id: null, total: { $sum: "$amountHalala" } } },
+  ]);
+  return Math.max(0, Number(rows[0] && rows[0].total || 0));
+}
+
+async function sumMoyasarReconciledAccounting(paymentId) {
+  const rows = await PaymentRefund.aggregate([
+    {
+      $match: {
+        paymentId,
+        executionMode: "recorded_only",
+        refundChannel: "moyasar",
+        status: { $in: ["confirmed", "needs_review"] },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ["$settlement.providerConfirmedHalala", 0] } },
+      },
+    },
+  ]);
+  return Math.max(0, Number(rows[0] && rows[0].total || 0));
+}
+
+async function reconcileAccountingRowsWithMoyasar({ payment, snapshot, amountHalala }) {
+  let remaining = Math.max(0, Number(amountHalala || 0));
+  if (!remaining) return 0;
+
+  const rows = await PaymentRefund.find({
+    paymentId: payment._id,
+    executionMode: "recorded_only",
+    refundChannel: "moyasar",
+    status: { $in: ["confirmed", "needs_review"] },
+    $or: [
+      { "settlement.method": "moyasar" },
+      { "settlement.method": { $exists: false } },
+      { "settlement.method": null },
+    ],
+  }).sort({ createdAt: 1 });
+
+  for (const row of rows) {
+    if (remaining <= 0) break;
+    const alreadyConfirmed = Math.max(0, Number(row.settlement && row.settlement.providerConfirmedHalala || 0));
+    const capacity = Math.max(0, Number(row.amountHalala || 0) - alreadyConfirmed);
+    if (!capacity) continue;
+
+    const applied = Math.min(capacity, remaining);
+    const providerConfirmedHalala = alreadyConfirmed + applied;
+    const fullyConfirmed = providerConfirmedHalala >= Number(row.amountHalala || 0);
+    const existingSettled = Math.max(0, Number(row.settlement && row.settlement.settledAmountHalala || 0));
+    const settledAmountHalala = Math.max(existingSettled, providerConfirmedHalala);
+
+    await PaymentRefund.updateOne(
+      { _id: row._id },
+      {
+        $set: {
+          "settlement.status": fullyConfirmed ? "settled" : "partially_settled",
+          "settlement.method": "moyasar",
+          "settlement.settledAmountHalala": settledAmountHalala,
+          ...(fullyConfirmed ? { "settlement.settledAt": snapshot.refundedAt || new Date() } : {}),
+          "settlement.source": "moyasar_webhook_reconciliation",
+          "settlement.providerConfirmedHalala": providerConfirmedHalala,
+          "settlement.providerRefundId": snapshot.providerRefundId || undefined,
+          "settlement.providerPaymentId": snapshot.providerPaymentId || payment.providerPaymentId || undefined,
+        },
+      }
+    );
+    remaining -= applied;
+  }
+
+  return remaining;
+}
+
 async function recordMoyasarRefundWebhook({
   payload,
   data,
@@ -105,26 +188,41 @@ async function recordMoyasarRefundWebhook({
       error.status = 404;
       throw error;
     }
+    if (snapshot.cumulativeRefundedHalala > Number(payment.amount || 0)) {
+      const error = new Error("Refund exceeds original payment amount");
+      error.code = "REFUND_AMOUNT_MISMATCH";
+      error.status = 409;
+      throw error;
+    }
 
     const existing = await PaymentRefund.findOne({
       provider: "moyasar",
       idempotencyKey,
     });
-    if (existing) return { refund: existing.toObject(), alreadyProcessed: true };
+    if (existing) {
+      await Payment.updateOne(
+        { _id: payment._id },
+        {
+          $set: {
+            status: "paid",
+            "metadata.providerRefundStatus": snapshot.cumulativeRefundedHalala >= Number(payment.amount)
+              ? "refunded"
+              : "partially_refunded",
+            "metadata.providerRefundedHalala": snapshot.cumulativeRefundedHalala,
+          },
+        }
+      );
+      return { refund: existing.toObject(), alreadyProcessed: true };
+    }
 
-    const previouslyRecorded = await PaymentRefund.aggregate([
-      {
-        $match: {
-          paymentId: payment._id,
-          provider: "moyasar",
-          status: { $in: ["confirmed", "needs_review"] },
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$amountHalala" } } },
+    const [providerLedgerHalala, reconciledAccountingHalala] = await Promise.all([
+      sumMoyasarProviderLedger(payment._id),
+      sumMoyasarReconciledAccounting(payment._id),
     ]);
-    const recordedHalala = Number(previouslyRecorded[0] && previouslyRecorded[0].total || 0);
-    const amountHalala = snapshot.cumulativeRefundedHalala - recordedHalala;
-    if (amountHalala <= 0) {
+    const alreadyReconciledHalala = providerLedgerHalala + reconciledAccountingHalala;
+    let newProviderDelta = snapshot.cumulativeRefundedHalala - alreadyReconciledHalala;
+
+    if (newProviderDelta <= 0) {
       await Payment.updateOne(
         { _id: payment._id },
         {
@@ -139,38 +237,50 @@ async function recordMoyasarRefundWebhook({
       );
       return { refund: null, alreadyProcessed: true, staleSnapshot: true };
     }
-    if (
-      snapshot.cumulativeRefundedHalala > Number(payment.amount)
-      || recordedHalala + amountHalala > Number(payment.amount)
-    ) {
-      const error = new Error("Refund exceeds original payment amount");
-      error.code = "REFUND_AMOUNT_MISMATCH";
-      error.status = 409;
-      throw error;
-    }
 
-    const vat = calculateVatBreakdownFromInclusiveTotal(amountHalala);
-    const created = await PaymentRefund.create({
-      paymentId: payment._id,
-      subscriptionId: payment.subscriptionId,
-      orderId: payment.orderId,
-      provider: "moyasar",
-      providerRefundId: snapshot.providerRefundId || undefined,
-      providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
-      amountHalala,
-      vatHalala: vat.vatHalala,
-      refundedAt: snapshot.refundedAt || undefined,
-      status: snapshot.refundedAt ? "confirmed" : "needs_review",
-      idempotencyKey,
-      rawReference: {
-        webhookId: snapshot.webhookId || null,
-        providerPaymentId: snapshot.providerPaymentId || null,
-        cumulativeRefundedHalala: snapshot.cumulativeRefundedHalala,
-      },
+    newProviderDelta = await reconcileAccountingRowsWithMoyasar({
+      payment,
+      snapshot,
+      amountHalala: newProviderDelta,
     });
 
-    // Each write is independently durable. The immutable refund ledger is the
-    // accounting source of truth; Payment remains gross-paid provider history.
+    let created = null;
+    if (newProviderDelta > 0) {
+      const vat = calculateVatBreakdownFromInclusiveTotal(newProviderDelta);
+      created = await PaymentRefund.create({
+        paymentId: payment._id,
+        subscriptionId: payment.subscriptionId,
+        orderId: payment.orderId,
+        provider: "moyasar",
+        providerRefundId: snapshot.providerRefundId || undefined,
+        providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
+        amountHalala: newProviderDelta,
+        vatHalala: vat.vatHalala,
+        refundedAt: snapshot.refundedAt || undefined,
+        status: snapshot.refundedAt ? "confirmed" : "needs_review",
+        idempotencyKey,
+        executionMode: "provider_confirmed",
+        refundChannel: "moyasar",
+        settlement: {
+          status: "settled",
+          method: "moyasar",
+          settledAmountHalala: newProviderDelta,
+          settledAt: snapshot.refundedAt || new Date(),
+          source: "moyasar_webhook",
+          providerConfirmedHalala: newProviderDelta,
+          providerRefundId: snapshot.providerRefundId || undefined,
+          providerPaymentId: snapshot.providerPaymentId || payment.providerPaymentId,
+        },
+        rawReference: {
+          webhookId: snapshot.webhookId || null,
+          providerPaymentId: snapshot.providerPaymentId || null,
+          cumulativeRefundedHalala: snapshot.cumulativeRefundedHalala,
+        },
+      });
+    }
+
+    // Provider state is tracked separately from the accounting recognition rows.
+    // No outbound provider request happens in this service.
     await Payment.updateOne(
       { _id: payment._id },
       {
@@ -183,7 +293,11 @@ async function recordMoyasarRefundWebhook({
         },
       }
     );
-    return { refund: created.toObject(), alreadyProcessed: false };
+    return {
+      refund: created ? created.toObject() : null,
+      alreadyProcessed: false,
+      reconciledAccountingOnly: !created,
+    };
   } catch (error) {
     if (!duplicateKey(error)) throw error;
     const existing = await PaymentRefund.findOne({
