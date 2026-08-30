@@ -141,7 +141,7 @@ function canonicalPaymentMethod(payment = {}) {
 }
 
 function normalizeExistingItemAxes(item = {}) {
-  const provider = safeString(item.paymentProvider || item.provider).toLowerCase();
+  const provider = safeString(item.provider).toLowerCase();
   let paymentProvider = safeString(item.paymentProvider, "unknown").toLowerCase();
   let sourceChannel = safeString(item.sourceChannel, "unknown").toLowerCase();
   let paymentMethod = safeString(item.paymentMethod, "unknown").toLowerCase();
@@ -169,6 +169,9 @@ function normalizeExistingItemAxes(item = {}) {
 
   if (["visa", "moyasar"].includes(paymentMethod)) paymentMethod = "card";
 
+  const accountingOnlyRefund = item.movementType === "refund" && item.executionMode === "recorded_only";
+  const settlementStatus = safeString(item.settlement && item.settlement.status, "pending").toLowerCase();
+
   return {
     ...item,
     paymentMethod,
@@ -177,6 +180,14 @@ function normalizeExistingItemAxes(item = {}) {
     sourceChannelLabelAr: sourceChannelLabelAr(sourceChannel),
     paymentProvider,
     paymentProviderLabelAr: paymentProviderLabelAr(paymentProvider),
+    ...(accountingOnlyRefund ? {
+      movementTypeLabelAr: settlementStatus === "settled"
+        ? "استرجاع محاسبي — تمت التسوية"
+        : "استرجاع محاسبي — بانتظار التسوية",
+      accountingTreatmentAr: settlementStatus === "settled"
+        ? "استرجاع مسجل محاسبيًا وتم تأكيد رد المبلغ خارج النظام؛ لا ينفذ النظام تحويلًا ماليًا."
+        : "استرجاع مسجل محاسبيًا ويؤثر على صافي الإيراد، لكنه لا يثبت أن المبلغ رُد للعميل بعد.",
+    } : {}),
   };
 }
 
@@ -565,6 +576,8 @@ function decorateReport(report, orphanItems, includeDetails) {
         "طريقة الدفع وقناة المصدر ومزود الدفع محاور مستقلة؛ ميسر يظهر كمزود داخل تحصيل البطاقات ولا يُجمع مرتين.",
       missingSubscriptionTreatment:
         "الدفعة المالية لا تُحذف من التقرير عند فقد سجل الاشتراك؛ تظهر ضمن الإجمالي مع تحذير مراجعة واضح.",
+      refundTreatment:
+        "الاسترجاع المحاسبي يُخصم من صافي الإيراد عند تسجيله، لكنه لا يعني أن الأموال تحركت فعليًا. تأكيد التسوية منفصل ويُسجل بعد رد المبلغ خارج النظام.",
     },
   };
 }
