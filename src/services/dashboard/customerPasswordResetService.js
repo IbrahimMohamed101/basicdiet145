@@ -90,6 +90,7 @@ async function resetCustomerPasswordDirect({ id, reason, actorId, actorRole }) {
   }
   const passwordHash = await hashAppPassword(password);
   const now = new Date();
+  const currentAuthVersion = Number(currentUser.authVersion || 0);
   const authMethods = Array.from(
     new Set([...(Array.isArray(currentUser.authMethods) ? currentUser.authMethods : []), "password"])
   );
@@ -99,12 +100,16 @@ async function resetCustomerPasswordDirect({ id, reason, actorId, actorRole }) {
   // a new password while an old refresh session remains usable.
   await revokeAllUserSessions(currentUser._id, "admin_password_reset");
 
+  const authVersionFilter = currentAuthVersion === 0
+    ? { $or: [{ authVersion: 0 }, { authVersion: { $exists: false } }] }
+    : { authVersion: currentAuthVersion };
+
   const updatedUser = await User.findOneAndUpdate(
     {
       _id: currentUser._id,
       role: "client",
       isActive: { $ne: false },
-      authVersion: Number(currentUser.authVersion || 0),
+      ...authVersionFilter,
     },
     {
       $set: {
