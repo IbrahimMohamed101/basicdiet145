@@ -58,6 +58,8 @@ const PaymentRefundSchema = new mongoose.Schema(
       validate: Number.isInteger,
       immutable: true,
     },
+    // For recorded_only rows this is the accounting recognition timestamp,
+    // not proof that cash/card funds already moved to the customer.
     refundedAt: {
       type: Date,
       immutable: true,
