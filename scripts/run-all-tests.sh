@@ -13,7 +13,7 @@ TIMEOUT_LOG="$REPORT_DIR/timeout-tests.log"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ "${USE_MONGODB_MEMORY_REPLSET:-}" = "true" ] && [ -z "${MONGO_URI:-}" ] && [ -z "${USE_MONGODB_MEMORY_REPLSET_STARTED:-}" ]; then
+if [ "${USE_MONGODB_MEMORY_REPLSET:-}" = "true" ] && [ -z "${MONGO_URI_TEST:-}" ] && [ -z "${USE_MONGODB_MEMORY_REPLSET_STARTED:-}" ]; then
   exec node "$SCRIPT_DIR/with-memory-replset.js" -- bash "$0" "$@"
 fi
 
@@ -47,15 +47,16 @@ done
 HAS_MONGO=false
 BASE_MONGO_URI=""
 BASE_DB_NAME=""
+TEST_MONGO_GUARD="--require=$SCRIPT_DIR/../tests/helpers/installMongoTestSafetyGuard.js"
 
-if [ -n "${MONGO_URI:-}" ]; then
+if [ -n "${MONGO_URI_TEST:-}" ]; then
   HAS_MONGO=true
-  BASE_MONGO_URI="$MONGO_URI"
+  BASE_MONGO_URI="$MONGO_URI_TEST"
   BASE_DB_NAME=$(assert_safe_base_test_mongo_uri "$BASE_MONGO_URI") || exit 1
   echo "Using base MONGO_URI: $(mask_mongo_uri "$BASE_MONGO_URI")" | tee -a "$FULL_LOG"
   echo "Base database: $BASE_DB_NAME" | tee -a "$FULL_LOG"
 else
-  echo "WARNING: MONGO_URI is not set. Mongo-backed tests will be skipped." | tee -a "$FULL_LOG"
+  echo "WARNING: MONGO_URI_TEST is not set. Mongo-backed tests will be skipped." | tee -a "$FULL_LOG"
 fi
 
 if [ -n "$FORCE_TEST_DB" ]; then
@@ -97,7 +98,7 @@ for test_entry in "${TEST_MANIFEST[@]}"; do
     continue
   fi
 
-  TEST_MONGO_URI="${MONGO_URI:-}"
+  TEST_MONGO_URI="${MONGO_URI_TEST:-}"
   TEST_DB_NAME=""
 
   if [ "$REQUIRES_MONGO" = true ]; then
@@ -129,7 +130,8 @@ for test_entry in "${TEST_MANIFEST[@]}"; do
     RUN_COMMAND="$RUN_COMMAND $QUOTED_ARG"
   done
 
-  MONGO_URI="$TEST_MONGO_URI" MONGODB_URI="$TEST_MONGO_URI" NODE_ENV=test \
+  MONGO_URI_TEST="$TEST_MONGO_URI" MONGO_URI="$TEST_MONGO_URI" MONGODB_URI="$TEST_MONGO_URI" NODE_ENV=test \
+    NODE_OPTIONS="${NODE_OPTIONS:-} $TEST_MONGO_GUARD" \
     timeout "$TIMEOUT_SECONDS" \
     bash -c "$RUN_COMMAND" \
     >"$TMP_OUT" 2>&1

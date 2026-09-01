@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )/.." && pwd)"
 cd "$ROOT_DIR"
 
 export NODE_ENV=test
+export NODE_OPTIONS="${NODE_OPTIONS:-} --require=$ROOT_DIR/tests/helpers/installMongoTestSafetyGuard.js"
 
 echo "[baseline] running the repository test suite"
 npm test

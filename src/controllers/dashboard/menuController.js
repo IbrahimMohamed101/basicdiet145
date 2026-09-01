@@ -11,6 +11,9 @@ function actorFromRequest(req) {
 function listOptions(req) {
   return {
     includeInactive: String(req.query.includeInactive || "").toLowerCase() === "true",
+    includeQuarantined:
+      ["admin", "superadmin"].includes(String(req.dashboardUserRole || "")) &&
+      String(req.query.includeQuarantined || "").toLowerCase() === "true",
     isActive: req.query.isActive,
     isVisible: req.query.isVisible,
     isAvailable: req.query.isAvailable,

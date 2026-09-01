@@ -1,3 +1,4 @@
+require("../helpers/installMongoTestSafetyGuard");
 /**
  * Integrity & Response Contract Smoke Tests
  *

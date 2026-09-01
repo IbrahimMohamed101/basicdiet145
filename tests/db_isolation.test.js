@@ -1,7 +1,11 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { getDbNameFromUri, resolveMongoUri } = require("../src/utils/mongoUriResolver");
+const {
+  assertSafeTestMongoUri,
+  getDbNameFromUri,
+  resolveMongoUri,
+} = require("../src/utils/mongoUriResolver");
 const { validateEnv } = require("../src/utils/validateEnv");
 
 async function runTests() {
@@ -57,6 +61,15 @@ async function runTests() {
 
     setEnv({ NODE_ENV: "test", MONGO_URI_TEST: "mongodb://localhost/local_dev_test" });
     assert.strictEqual(resolveMongoUri(), "mongodb://localhost/local_dev_test");
+
+    setEnv({ NODE_ENV: "test", MONGO_URI_TEST: "mongodb://localhost/test" });
+    assert.throws(() => resolveMongoUri(), /reserved and is not allowed/);
+
+    setEnv({ NODE_ENV: "test", MONGO_URI_TEST: "mongodb://hayabusa.proxy.rlwy.net:59730/basicdiet_ci_test" });
+    assert.throws(() => resolveMongoUri(), /known production host/);
+
+    setEnv({ NODE_ENV: "production", MONGO_URI_TEST: "mongodb://localhost/basicdiet_ci_test" });
+    assert.throws(() => assertSafeTestMongoUri(process.env.MONGO_URI_TEST), /NODE_ENV must be "test"/);
 
     // Fails if missing
     setEnv({ NODE_ENV: "test" });

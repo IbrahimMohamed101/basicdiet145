@@ -1,3 +1,10 @@
+const {
+  decorateDashboardGroup,
+  isVerifiedFixtureGroup,
+  normalDashboardGroupQuery,
+  normalDashboardProductQuery,
+} = require("./menuOptionGroupDashboardPolicy");
+
 function createMenuCatalogAdminService(deps) {
   const {
     mongoose,
@@ -77,6 +84,22 @@ function createMenuCatalogAdminService(deps) {
   const hasOwn = (source, fieldName) => Object.prototype.hasOwnProperty.call(source || {}, fieldName);
   const isProvided = (source, fieldName) => hasOwn(source, fieldName) && source[fieldName] !== undefined;
 
+  function assertGroupNotQuarantined(group) {
+    if (isVerifiedFixtureGroup(group)) {
+      throw new MenuValidationError(
+        "Quarantined test fixture groups are read-only in Dashboard",
+        "MENU_OPTION_GROUP_QUARANTINED",
+        409
+      );
+    }
+  }
+
+  async function assertOptionNotInQuarantinedGroup(option) {
+    if (!option?.groupId) return;
+    const group = await MenuOptionGroup.findById(option.groupId).lean();
+    assertGroupNotQuarantined(group);
+  }
+
   function assertNonNullablePatchFields(body, existing, fieldNames) {
     if (!existing) return;
     const fieldName = fieldNames.find((field) => hasOwn(body, field) && body[field] === null);
@@ -107,7 +130,7 @@ function createMenuCatalogAdminService(deps) {
   }
 
   function serializeDashboardOptionGroup(group) {
-    return serializeDoc(group);
+    return decorateDashboardGroup(serializeDoc(group), group);
   }
 
   function serializeDashboardProductGroupRelation(relation) {
@@ -396,6 +419,7 @@ function createMenuCatalogAdminService(deps) {
 
   async function listProducts(options = {}) {
     const query = buildProductFilter(options);
+    Object.assign(query, normalDashboardProductQuery(options.includeQuarantined === true));
     const isPickerView = options.view === "picker" || options.view === "addon_plan_picker";
     if (isPickerView && !options.includeInactive) {
       query.isActive = true;
@@ -433,10 +457,22 @@ function createMenuCatalogAdminService(deps) {
   }
 
   async function listOptions(options = {}) {
+    const extraQuery = options && options.groupId
+      ? { groupId: assertObjectId(options.groupId, "groupId") }
+      : (options.includeQuarantined === true
+        ? {}
+        : { groupId: normalDashboardGroupQuery(false)._id });
+    if (options && options.groupId) {
+      const group = await MenuOptionGroup.findById(options.groupId).lean();
+      if (!group) throw new MenuNotFoundError("Option group not found");
+      if (isVerifiedFixtureGroup(group) && options.includeQuarantined !== true) {
+        throw new MenuNotFoundError("Option group not found");
+      }
+    }
     return listModel(
       MenuOption,
       options,
-      options && options.groupId ? { groupId: assertObjectId(options.groupId, "groupId") } : {},
+      extraQuery,
       serializeDashboardOption
     );
   }
@@ -507,7 +543,12 @@ function createMenuCatalogAdminService(deps) {
   }
 
   async function listOptionGroups(options = {}) {
-    return listModel(MenuOptionGroup, options, {}, serializeDashboardOptionGroup);
+    return listModel(
+      MenuOptionGroup,
+      options,
+      normalDashboardGroupQuery(options.includeQuarantined === true),
+      serializeDashboardOptionGroup
+    );
   }
 
   async function getModel(Model, id, extraQuery = {}) {
@@ -600,6 +641,7 @@ function createMenuCatalogAdminService(deps) {
     assertObjectId(id);
     const group = await MenuOptionGroup.findById(id).lean();
     if (!group) throw new MenuNotFoundError();
+    if (isVerifiedFixtureGroup(group) && options.includeQuarantined !== true) throw new MenuNotFoundError();
     const [optionsRows, linkedProductIds] = await Promise.all([
       MenuOption.find({
         groupId: id,
@@ -616,8 +658,8 @@ function createMenuCatalogAdminService(deps) {
         linkedProductsCount: linkedProductIds.length,
       },
       actions: {
-        canAddOptions: true,
-        canReorderOptions: true,
+        canAddOptions: !isVerifiedFixtureGroup(group),
+        canReorderOptions: !isVerifiedFixtureGroup(group),
       },
     };
   }
@@ -631,6 +673,7 @@ function createMenuCatalogAdminService(deps) {
       option.groupId ? MenuOptionGroup.findById(option.groupId).lean() : null,
       ProductGroupOption.distinct("productId", { optionId: id, isActive: true }),
     ]);
+    if (isVerifiedFixtureGroup(group) && options.includeQuarantined !== true) throw new MenuNotFoundError();
 
     return {
       contractVersion: "dashboard_option_detail.v3",
@@ -994,11 +1037,14 @@ function createMenuCatalogAdminService(deps) {
     }
 
     if (Model === MenuOptionGroup) {
+      assertGroupNotQuarantined(row);
       const relationCount = await ProductOptionGroup.countDocuments({ groupId: id, isActive: true });
       if (relationCount > 0) {
         throw new MenuValidationError(`Cannot delete option group currently linked to ${relationCount} products`, "GROUP_IN_USE", 400, { relationCount });
       }
     }
+
+    if (Model === MenuOption) await assertOptionNotInQuarantinedGroup(row);
 
     const before = row.toObject();
     row.isActive = false;
@@ -1200,6 +1246,8 @@ function createMenuCatalogAdminService(deps) {
     }
     const existing = await Model.findById(id).lean();
     if (!existing) throw new MenuNotFoundError();
+    if (Model === MenuOptionGroup) assertGroupNotQuarantined(existing);
+    if (Model === MenuOption) await assertOptionNotInQuarantinedGroup(existing);
     const updated = await updateEntity(Model, id, {
       [fieldName]: normalizeBoolean(value, fieldName, truthyByDefault(existing[fieldName])),
     }, { entityType, actor, action });
@@ -1275,6 +1323,9 @@ function createMenuCatalogAdminService(deps) {
 
   async function createOption(body, actor) {
     const payload = normalizeOptionPayload(body);
+    const ownerGroup = await MenuOptionGroup.findById(payload.groupId).lean();
+    if (!ownerGroup) throw new MenuValidationError("groupId does not reference an option group", "GROUP_NOT_FOUND", 404);
+    assertGroupNotQuarantined(ownerGroup);
     if (!payload.key) {
       payload.key = await generateUniqueKey({
         name: payload.name,
@@ -1338,6 +1389,7 @@ function createMenuCatalogAdminService(deps) {
   async function updateOptionGroup(id, body, actor) {
     const existing = await MenuOptionGroup.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
+    assertGroupNotQuarantined(existing);
     const payload = normalizeGroupPayload(body, existing);
     return serializeDashboardOptionGroup(
       await updateEntity(MenuOptionGroup, id, payload, { entityType: "menu_option_group", actor, action: changeAction(payload) })
@@ -1347,6 +1399,7 @@ function createMenuCatalogAdminService(deps) {
   async function updateOption(id, body, actor) {
     const existing = await MenuOption.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
+    await assertOptionNotInQuarantinedGroup(existing);
     const payload = normalizeOptionPayload(body, existing);
     if (hasOwn(payload, "catalogItemId") && payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
       await assertCatalogItemLinkable(payload.catalogItemId);
@@ -1904,7 +1957,7 @@ function createMenuCatalogAdminService(deps) {
   }
 
   function serializeLibraryGroup(group = {}) {
-    return {
+    return decorateDashboardGroup({
       id: String(group._id),
       key: group.key || "",
       name: group.name || { ar: "", en: "" },
@@ -1912,7 +1965,7 @@ function createMenuCatalogAdminService(deps) {
       displayStyle: normalizeGroupUiMetadata(group.ui).displayStyle,
       enabled: truthyByDefault(group.isActive) && truthyByDefault(group.isVisible) && truthyByDefault(group.isAvailable),
       sortOrder: Number(group.sortOrder || 0),
-    };
+    }, group);
   }
 
   function serializeLibraryOption(option = {}, group = null) {
@@ -1932,9 +1985,13 @@ function createMenuCatalogAdminService(deps) {
   }
 
   async function getCustomizationLibrary(options = {}) {
+    const groupVisibilityQuery = normalDashboardGroupQuery(options.includeQuarantined === true);
     const [groups, optionRows] = await Promise.all([
-      MenuOptionGroup.find({ ...buildListQuery({ ...options, includeInactive: true }) }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-      MenuOption.find({ ...buildListQuery({ ...options, includeInactive: true }) }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      MenuOptionGroup.find({ ...buildListQuery({ ...options, includeInactive: true }), ...groupVisibilityQuery }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      MenuOption.find({
+        ...buildListQuery({ ...options, includeInactive: true }),
+        ...(options.includeQuarantined === true ? {} : { groupId: groupVisibilityQuery._id }),
+      }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ]);
     const groupsById = new Map(groups.map((group) => [String(group._id), group]));
     return {
@@ -1980,6 +2037,7 @@ function createMenuCatalogAdminService(deps) {
     ]);
     if (!product) throw new MenuNotFoundError("Product not found");
     if (!group) throw new MenuNotFoundError("Option group not found");
+    assertGroupNotQuarantined(group);
 
     const existing = await ProductOptionGroup.findOne({ productId, groupId: payload.groupId }).lean();
     const relation = existing

@@ -251,7 +251,8 @@ async function run() {
       .set(auth)
       .send({});
     assert.strictEqual(res.status, 200, `canonical confirm status: ${JSON.stringify(res.body)}`);
-    const confirmedSlot = res.body.data.mealSlots[0];
+    const confirmedDayDoc = await SubscriptionDay.findOne({ subscriptionId: subscription._id, date }).lean();
+    const confirmedSlot = confirmedDayDoc.mealSlots[0];
     assertObject(confirmedSlot.confirmationSnapshot, "confirmation snapshot");
     assert.strictEqual(confirmedSlot.confirmationSnapshot.product.key, "basic_meal", "snapshot product key");
     assert.strictEqual(confirmedSlot.confirmationSnapshot.selectedOptions.length, 2, "snapshot options");
@@ -262,7 +263,7 @@ async function run() {
       .set(auth)
       .send(canonicalBody);
     assert.strictEqual(res.status, 422, `inactive relation rejected: ${JSON.stringify(res.body)}`);
-    assert.strictEqual(res.body.error.code, "PLANNER_OPTION_RELATION_INACTIVE", "inactive option relation code");
+    assert.strictEqual(res.body.error.code, "PLANNER_PRODUCT_OPTION_RELATION_UNAVAILABLE", "inactive option relation code");
 
     await ProductGroupOption.updateOne({ _id: fixture.carbRelation._id }, { $set: { isActive: true } });
     await MenuProduct.updateOne({ _id: fixture.product._id }, { $set: { isActive: false } });

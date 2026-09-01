@@ -748,7 +748,7 @@ module.exports = {
   hasPublishedMenuCatalog,
   listCategories: (options) => menuCatalogAdminService.listCategories(options),
   listProducts,
-  listOptionGroups: (options) => listModel(MenuOptionGroup, options),
+  listOptionGroups: (options) => menuCatalogAdminService.listOptionGroups(options),
   listOptions,
   getCategory: getCategoryDetail,
   getProduct: getProductDetail,

@@ -4,20 +4,10 @@ process.env.NODE_ENV = "test";
 
 const mongoose = require("mongoose");
 const { ensureSafeForDestructiveOp } = require("../../src/utils/dbSafety");
+const { resolveMongoUri } = require("../../src/utils/mongoUriResolver");
 
 async function resetCheckoutIntegrationDatabase() {
-  const uri =
-    process.env.MONGO_URI_TEST ||
-    process.env.MONGO_URI ||
-    process.env.MONGODB_URI ||
-    "";
-
-  if (!uri) {
-    console.log(
-      "Checkout database reset skipped: no external test Mongo URI is configured"
-    );
-    return;
-  }
+  const uri = resolveMongoUri();
 
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   ensureSafeForDestructiveOp("resetCheckoutIntegrationDatabase");

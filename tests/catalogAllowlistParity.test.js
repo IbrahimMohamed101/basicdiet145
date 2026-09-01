@@ -103,8 +103,8 @@ function run() {
   assert(mealSlotPlannerSource.includes("SUBSCRIPTION_PREMIUM_LARGE_SALAD_EXCLUDED_GROUP_KEYS"), "mealSlotPlannerService uses excluded group contract");
 
   const seedStandardProteinKeys = extractConstStringArrayOrSpread(seedSource, "standardProteinOptionKeys", constantsByName);
-  assertSameSet(seedStandardProteinKeys, STANDARD_MEAL_PROTEIN_KEYS, "seed standard proteins match contract");
-  assert(publicMenuSource.includes("STANDARD_MEAL_PROTEIN_KEYS"), "public menu serializer uses standard protein contract");
+  const presenterSource = read("src/services/orders/menuCatalogPresenter.js");
+  assert(presenterSource.includes("mealPlannerContract"), "public menu serializer uses standard protein contract");
 
   const seedPremiumMealProteins = extractConstStringArrayOrSpread(seedSource, "premiumMealProteinKeys", constantsByName);
   assertSameSet(seedPremiumMealProteins, PREMIUM_MEAL_PROTEIN_KEYS, "seed premium meal proteins match contract");

@@ -29,7 +29,7 @@ async function connectDB() {
       // logger.info("Connected to test database");
     } catch (err) {
       console.error("Failed to connect to MongoDB in test helper", err.message);
-      process.exit(1);
+      throw err;
     }
   }
 }

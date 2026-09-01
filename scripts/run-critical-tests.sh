@@ -25,19 +25,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ -n "${MONGO_URI_TEST:-}" ]; then
-  export MONGO_URI="$MONGO_URI_TEST"
-fi
-
-BASE_MONGO_URI="${MONGO_URI:-}"
+BASE_MONGO_URI="${MONGO_URI_TEST:-}"
 BASE_DB_NAME=""
+TEST_MONGO_GUARD="--require=$SCRIPT_DIR/../tests/helpers/installMongoTestSafetyGuard.js"
 
 if [ -n "$BASE_MONGO_URI" ]; then
   BASE_DB_NAME=$(assert_safe_base_test_mongo_uri "$BASE_MONGO_URI") || exit 1
   echo "Using base MONGO_URI: $(mask_mongo_uri "$BASE_MONGO_URI")"
   echo "Base database: $BASE_DB_NAME"
 else
-  echo "WARNING: MONGO_URI is not set. Mongo-backed critical tests may fail or use local defaults."
+  echo "WARNING: MONGO_URI_TEST is not set. Mongo-backed critical tests will fail closed."
 fi
 
 if [ -n "$FORCE_TEST_DB" ]; then
@@ -73,9 +70,12 @@ run_test() {
     echo "  DB: $db_name ($(mask_mongo_uri "$test_uri"))"
     drop_test_db_if_safe "$test_uri" "$db_name"
 
-    MONGO_URI="$test_uri" MONGODB_URI="$test_uri" NODE_ENV=test node "$test_file" "${PASSTHROUGH_ARGS[@]}"
+    MONGO_URI_TEST="$test_uri" MONGO_URI="$test_uri" MONGODB_URI="$test_uri" \
+      NODE_ENV=test NODE_OPTIONS="${NODE_OPTIONS:-} $TEST_MONGO_GUARD" \
+      node "$test_file" "${PASSTHROUGH_ARGS[@]}"
   else
-    NODE_ENV=test node "$test_file" "${PASSTHROUGH_ARGS[@]}"
+    NODE_ENV=test NODE_OPTIONS="${NODE_OPTIONS:-} $TEST_MONGO_GUARD" \
+      node "$test_file" "${PASSTHROUGH_ARGS[@]}"
   fi
 }
 

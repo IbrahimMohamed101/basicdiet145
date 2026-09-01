@@ -8,6 +8,6 @@ assert.strictEqual(typeof bootstrap.printDryRunPlan, "function");
 
 const args = bootstrap.parseArgs(["--dry-run", "--sync"]);
 assert.strictEqual(args.dryRun, true);
-assert.strictEqual(args.sync, true);
+assert.strictEqual(args.requestedSync, true);
 
 console.log("bootstrap module resolution test passed");

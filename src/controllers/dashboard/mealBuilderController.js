@@ -23,6 +23,16 @@ function send(res, data, statusCode = 200) {
   return res.status(statusCode).json({ status: true, data });
 }
 
+function catalogOptions(req, { allowDiagnostic = false } = {}) {
+  return {
+    lang: getRequestLang(req),
+    includeQuarantined:
+      allowDiagnostic &&
+      ["admin", "superadmin"].includes(String(req.dashboardUserRole || "")) &&
+      String(req.query.includeQuarantined || "").toLowerCase() === "true",
+  };
+}
+
 function handleMealBuilderError(err, res) {
   console.error("MealBuilderController error:", err);
   if (err && err.status && err.code) {
@@ -73,7 +83,7 @@ const getMealBuilder = wrap(async (req, res) => {
   const lang = getRequestLang(req);
   const [state, catalog] = await Promise.all([
     mealBuilderService.getDashboardState({ lang }),
-    dashboardCatalogService.getCompleteCatalog({ lang }),
+    dashboardCatalogService.getCompleteCatalog({ lang, includeQuarantined: false }),
   ]);
   return send(res, {
     ...state,
@@ -89,9 +99,7 @@ const getMealBuilder = wrap(async (req, res) => {
 const getCatalog = wrap(async (req, res) =>
   send(
     res,
-    await dashboardCatalogService.getCompleteCatalog({
-      lang: getRequestLang(req),
-    })
+    await dashboardCatalogService.getCompleteCatalog(catalogOptions(req, { allowDiagnostic: true }))
   )
 );
 

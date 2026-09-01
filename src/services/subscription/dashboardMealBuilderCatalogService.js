@@ -14,6 +14,11 @@ const {
 const {
   buildMealPlannerClassification,
 } = require("../catalog/mealProductClassificationService");
+const {
+  decorateDashboardGroup,
+  normalDashboardGroupQuery,
+  normalDashboardProductQuery,
+} = require("../orders/menuOptionGroupDashboardPolicy");
 
 const CONTRACT_VERSION = "dashboard_meal_builder_catalog.v1";
 const DIRECT_ITEM_TYPES = new Set(["cold_sandwich", "full_meal_product"]);
@@ -168,17 +173,20 @@ function serializeOptionNode({ relation, option, catalogItemsById }) {
   };
 }
 
-async function getCompleteCatalog({ lang = "en" } = {}) {
+async function getCompleteCatalog({ lang = "en", includeQuarantined = false } = {}) {
+  const groupQuery = normalDashboardGroupQuery(includeQuarantined === true);
+  const productQuery = normalDashboardProductQuery(includeQuarantined === true);
+  const groupRelationQuery = includeQuarantined === true ? {} : { groupId: groupQuery._id };
   const [categories, products, groups, options, groupRelations, optionRelations] =
     await Promise.all([
       MenuCategory.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-      MenuProduct.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-      MenuOptionGroup.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-      MenuOption.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-      ProductOptionGroup.find({})
+      MenuProduct.find(productQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      MenuOptionGroup.find(groupQuery).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      MenuOption.find(includeQuarantined === true ? {} : { groupId: groupQuery._id }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      ProductOptionGroup.find(groupRelationQuery)
         .sort({ sortOrder: 1, createdAt: -1 })
         .lean(),
-      ProductGroupOption.find({})
+      ProductGroupOption.find(groupRelationQuery)
         .sort({ sortOrder: 1, createdAt: -1 })
         .lean(),
     ]);
@@ -245,12 +253,12 @@ async function getCompleteCatalog({ lang = "en" } = {}) {
           relation: serializeDoc(groupRelation),
           relationStatus,
           group: group
-            ? {
+            ? decorateDashboardGroup({
                 ...serializeDoc(group),
                 labelAr: pickLang(group.name || {}, "ar"),
                 labelEn: pickLang(group.name || {}, "en"),
                 status: groupStatus,
-              }
+              }, group)
             : null,
           groupStatus,
           effectiveStatus: {
@@ -355,11 +363,11 @@ async function getCompleteCatalog({ lang = "en" } = {}) {
       status: serializeStatus(category, catalogItemsById),
     })),
     products: productNodes,
-    optionGroups: groups.map((group) => ({
+    optionGroups: groups.map((group) => decorateDashboardGroup({
       ...serializeDoc(group),
       label: pickLang(group.name || {}, lang),
       status: serializeStatus(group, catalogItemsById),
-    })),
+    }, group)),
     options: options.map((option) => ({
       ...serializeDoc(option),
       label: pickLang(option.name || {}, lang),

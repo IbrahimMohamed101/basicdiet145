@@ -1,3 +1,4 @@
+require("./helpers/installMongoTestSafetyGuard");
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "customer-auth-secret";
 process.env.NODE_ENV = process.env.NODE_ENV || "test";

@@ -1,3 +1,4 @@
+require("./helpers/installMongoTestSafetyGuard");
 /**
  * Meal Planner payment contract verification.
  *

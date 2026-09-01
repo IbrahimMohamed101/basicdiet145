@@ -35,6 +35,7 @@ const { performDaySelectionUpdate } = require("../src/services/subscription/subs
 const { mapSubscriptionPickupRequestToDTO } = require("../src/services/dashboard/dashboardDtoService");
 const { buildKitchenDetailsPayload } = require("../src/services/dashboard/opsPayloadService");
 const { issueDashboardAccessToken } = require("../src/services/dashboardTokenService");
+const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
 
 const TEST_TAG = `pickup-slot-append-${Date.now()}`;
 const TEST_KEY_PREFIX = TEST_TAG.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
@@ -127,7 +128,7 @@ async function test(name, fn) {
 
 async function connect() {
   if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test");
+    await mongoose.connect(resolveMongoUri());
   }
 }
 
@@ -444,14 +445,6 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       const res = await api.get(`/api/subscriptions/${subscription._id}/pickup-availability?date=${TODAY}`).set(auth(token(user._id)));
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const data = res.body.data;
-      
-      require("fs").writeFileSync("scratch/actual_json.json", JSON.stringify(data, null, 2));
-
-      
-      require("fs").writeFileSync("scratch/actual_json.json", JSON.stringify(data, null, 2));
-      console.log("JSON successfully written to scratch/actual_json.json");
-      process.exit(0);
-
       assert(Array.isArray(data.sections), "sections should be present");
       assert.strictEqual(data.summary.titleAr, "عناصر متاحة للاستلام");
       assert.strictEqual(data.summary.titleEn, "Items available for pickup");
@@ -1108,6 +1101,9 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
     await cleanup();
     await mongoose.disconnect();
     console.log(`\nBranch pickup slot append tests: ${results.passed} passed, ${results.failed} failed`);
-    if (results.failed > 0) process.exit(1);
+    if (results.failed > 0) process.exitCode = 1;
   }
-})();
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exitCode = 1;
+});
