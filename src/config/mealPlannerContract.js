@@ -27,14 +27,18 @@ const PREMIUM_LARGE_SALAD_PREMIUM_KEY = MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
 const PREMIUM_LARGE_SALAD_PRESET_KEY = LARGE_SALAD_CATEGORY_KEY;
 const PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA = 2900;
 
+// Exact customer-visible Basic Meal carb menu. Historical/other-context carb
+// records may continue to exist, but they must not be offered for new Basic Meal picks.
 const CUSTOMER_VISIBLE_CARB_KEYS = Object.freeze([
-  "white_rice",
-  "turmeric_rice",
-  "alfredo_pasta",
+  "lentil_rice",
+  "javanese_white_rice",
+  "basmati_white_rice",
+  "mashed_potatoes",
+  "roasted_potatoes",
+  "sweet_potatoes",
+  "mixed_vegetables",
   "red_sauce_pasta",
-  "roasted_potato",
-  "sweet_potato",
-  "grilled_mixed_vegetables",
+  "white_pasta",
 ]);
 
 const STANDARD_MEAL_PROTEIN_KEYS = Object.freeze([
@@ -44,33 +48,30 @@ const STANDARD_MEAL_PROTEIN_KEYS = Object.freeze([
   "eggs",
 ]);
 
-// All protein option keys eligible for display in the standard_meal protein picker.
-// Includes variant proteins (fajita, spicy, meatballs, etc.) that share the same
-// selection type as standard but were previously tagged salad_only.
-// These are display-only tabs; validation eligibility is defined by the DB option record.
+// Exact regular Basic Meal proteins plus the two preserved paid regular options
+// and the three existing premium proteins. Availability is still enforced by
+// MenuOption/ProductGroupOption state; this list only defines recognized picker keys.
 const STANDARD_MEAL_EXTENDED_PROTEIN_KEYS = Object.freeze([
-  // chicken family
-  "chicken",
-  "chicken_fajita",
-  "spicy_chicken",
-  "italian_spiced_chicken",
-  "chicken_tikka",
-  "asian_chicken",
-  "chicken_strips",
+  // final regular chicken family
   "grilled_chicken",
   "mexican_chicken",
-  // beef family
-  "beef",
+  "creamy_chicken",
+  "lemon_bbq_chicken",
+  "chicken_65",
+  "chicken_with_okra",
+  "shish_tawook",
+  "asian_chicken",
+  // final regular beef family
+  "kofta",
+  "mushroom_beef",
+  "asian_beef",
+  // preserved paid regular beef options
   "meatballs",
   "beef_stroganoff",
-  // fish family
-  "fish",
-  "fish_fillet",
-  "tuna",
-  // eggs family
-  "eggs",
-  "boiled_eggs",
-  // premium family (shown in separate Tab)
+  // final regular fish family
+  "creamy_fish",
+  "grilled_fish",
+  // existing premium family (kept unchanged)
   "beef_steak",
   "shrimp",
   "salmon",
@@ -137,23 +138,35 @@ const PROTEIN_VISUAL_FAMILIES = Object.freeze(
 // The "premium" family maps to the premium proteins with extra fee.
 const STANDARD_MEAL_PROTEIN_TAB_KEYS = Object.freeze(["chicken", "beef", "fish", "eggs", "premium"]);
 
-// Maps each protein option key to its visual family tab.
-// Premium proteins (beef_steak, shrimp, salmon) map to "premium" tab,
-// not their biological family, because they appear in the Premium tab in the picker.
-// Standard variants (meatballs, fish_fillet, etc.) map to their biological family.
+// Maps each protein option key to its visual family tab. Keep legacy mappings used
+// by premium salad/other contexts and add the final Basic Meal canonical keys.
 const PROTEIN_VISUAL_FAMILY_OPTION_KEYS = Object.freeze({
+  // final Basic Meal chicken
+  grilled_chicken: "chicken",
+  mexican_chicken: "chicken",
+  creamy_chicken: "chicken",
+  lemon_bbq_chicken: "chicken",
+  chicken_65: "chicken",
+  chicken_with_okra: "chicken",
+  shish_tawook: "chicken",
+  asian_chicken: "chicken",
+  // final Basic Meal beef + preserved paid regular beef
+  kofta: "beef",
+  mushroom_beef: "beef",
+  asian_beef: "beef",
+  meatballs: "beef",
+  beef_stroganoff: "beef",
+  // final Basic Meal fish
+  creamy_fish: "fish",
+  grilled_fish: "fish",
+  // legacy mappings still used outside the normalized Basic Meal regular menu
   chicken: "chicken",
   chicken_fajita: "chicken",
   spicy_chicken: "chicken",
   italian_spiced_chicken: "chicken",
   chicken_tikka: "chicken",
-  asian_chicken: "chicken",
   chicken_strips: "chicken",
-  grilled_chicken: "chicken",
-  mexican_chicken: "chicken",
   beef: "beef",
-  meatballs: "beef",
-  beef_stroganoff: "beef",
   fish: "fish",
   fish_fillet: "fish",
   tuna: "fish",
@@ -334,7 +347,6 @@ function resolveProteinVisualFamilyKey(option = {}) {
   }
 
   // Priority 1: PROTEIN_VISUAL_FAMILY_OPTION_KEYS maps option.key → visual tab
-  // This is the most specific mapping (e.g. beef_steak → "premium", meatballs → "beef")
   const optionKey = String(option.key || option.premiumKey || "").trim().toLowerCase();
   if (optionKey && optionKey in PROTEIN_VISUAL_FAMILY_OPTION_KEYS) {
     const tabKey = PROTEIN_VISUAL_FAMILY_OPTION_KEYS[optionKey];
