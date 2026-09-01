@@ -57,21 +57,48 @@ function firstMoneyValue(...values) {
   return null;
 }
 
-function buildInvoiceNumber(subscription, payment, issuedAt) {
+function buildLegacyInvoiceNumber(subscription) {
+  const createdAt = new Date(subscription.createdAt || subscription.startDate || Date.now());
+  const fallback = new Date();
+  const source = Number.isFinite(createdAt.getTime()) ? createdAt : fallback;
+  const year = source.getUTCFullYear();
+  const month = String(source.getUTCMonth() + 1).padStart(2, "0");
+  const suffix = String(subscription._id || "").slice(-8).toUpperCase();
+  return `INV-${year}${month}-${suffix}`;
+}
+
+function buildInvoiceNumber(subscription, payment, issuedAt, options = {}) {
+  if (!payment || options.preserveLegacy === true) {
+    return buildLegacyInvoiceNumber(subscription);
+  }
+
   const createdAt = new Date(
-    issuedAt ||
-      (payment && (payment.paidAt || payment.createdAt)) ||
-      subscription.createdAt ||
-      subscription.startDate ||
-      Date.now()
+    issuedAt || payment.paidAt || payment.createdAt || subscription.createdAt || subscription.startDate || Date.now()
   );
   const fallback = new Date();
   const source = Number.isFinite(createdAt.getTime()) ? createdAt : fallback;
   const year = source.getUTCFullYear();
   const month = String(source.getUTCMonth() + 1).padStart(2, "0");
-  const identity = payment && payment._id ? payment._id : subscription._id;
-  const suffix = String(identity || "").slice(-10).toUpperCase();
+  const suffix = String(payment._id || "").slice(-10).toUpperCase();
   return `INV-${year}${month}-${suffix}`;
+}
+
+function paymentTimestamp(payment) {
+  const value = payment && (payment.paidAt || payment.createdAt);
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date.getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function findLegacyPrimaryInvoicePayment(payments) {
+  const rows = Array.isArray(payments) ? payments.filter(Boolean) : [];
+  if (rows.length === 0) return null;
+
+  const activationPayments = rows
+    .filter((row) => text(row.type) === "subscription_activation")
+    .sort((a, b) => paymentTimestamp(a) - paymentTimestamp(b));
+  if (activationPayments.length > 0) return activationPayments[0];
+
+  return [...rows].sort((a, b) => paymentTimestamp(a) - paymentTimestamp(b))[0] || null;
 }
 
 function resolvePaymentMethod(payment) {
@@ -429,6 +456,13 @@ async function getSubscriptionInvoice(req, res) {
     });
   }
 
+  const legacyPrimaryPayment = findLegacyPrimaryInvoicePayment(payments);
+  const preserveLegacyInvoiceNumber = Boolean(
+    payment &&
+      legacyPrimaryPayment &&
+      String(payment._id) === String(legacyPrimaryPayment._id)
+  );
+
   const checkoutDraft = await resolveCheckoutDraft(payment);
   const financialSnapshot = buildInvoiceFinancialSnapshot({
     subscription,
@@ -502,7 +536,9 @@ async function getSubscriptionInvoice(req, res) {
   return res.json({
     status: true,
     data: {
-      invoiceNumber: buildInvoiceNumber(subscription, payment, issuedAt),
+      invoiceNumber: buildInvoiceNumber(subscription, payment, issuedAt, {
+        preserveLegacy: preserveLegacyInvoiceNumber,
+      }),
       issuedAt,
       historical: true,
       invoiceType: taxInvoiceEligible ? "simplified_tax_invoice" : "subscription_invoice",
@@ -638,4 +674,5 @@ module.exports = {
   buildInvoiceFinancialSnapshot,
   buildRefundSummary,
   buildInvoiceNumber,
+  findLegacyPrimaryInvoicePayment,
 };
