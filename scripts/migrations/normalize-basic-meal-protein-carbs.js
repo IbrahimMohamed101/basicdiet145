@@ -234,26 +234,39 @@ async function resolveRequiredOptions(definitions, groupId, kind, { strictIdenti
 async function resolvePreservedPaidProteins() {
   const rows = [];
   for (const key of PRESERVED_PAID_PROTEIN_KEYS) {
-    const options = await MenuOption.find({
-      groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
-      key,
-    }).limit(2).lean();
-    if (options.length === 0) throw new Error(`Preserved paid protein missing from canonical group: ${key}`);
-    if (options.length !== 1) throw new Error(`Preserved paid protein is ambiguous in canonical group: ${key}`);
-    const [option] = options;
-    if (!option.publishedAt) throw new Error(`Preserved paid protein is unpublished: ${key}`);
-    if (option.availableForSubscription === false) {
-      throw new Error(`Preserved paid protein is disabled for subscriptions: ${key}`);
-    }
+    const options = await MenuOption.find({ key }).sort({ groupId: 1, _id: 1 }).lean();
+    if (options.length === 0) throw new Error(`Preserved paid protein missing from all contexts: ${key}`);
+
     const relations = await ProductGroupOption.find({
-      productId: BASIC_MEAL_PRODUCT_ID,
-      groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
-      optionId: option._id,
-    }).limit(2).lean();
-    if (relations.length === 0) throw new Error(`Preserved paid protein is not linked to Basic Meal: ${key}`);
-    if (relations.length !== 1) throw new Error(`Preserved paid protein relation is ambiguous for Basic Meal: ${key}`);
-    const [relation] = relations;
-    rows.push({ key, id: strId(option._id), option, relation });
+      optionId: { $in: options.map((option) => option._id) },
+    }).sort({ optionId: 1, productId: 1, groupId: 1, _id: 1 }).lean();
+    const relationsByOptionId = new Map();
+    for (const relation of relations) {
+      const optionId = strId(relation.optionId);
+      if (!relationsByOptionId.has(optionId)) relationsByOptionId.set(optionId, []);
+      relationsByOptionId.get(optionId).push(relation);
+    }
+
+    const contexts = options.map((option) => ({
+      id: strId(option._id),
+      groupId: strId(option.groupId),
+      option,
+      relations: relationsByOptionId.get(strId(option._id)) || [],
+    }));
+    const hasActiveSubscriptionContext = contexts.some(({ option, relations: optionRelations }) => (
+      option.publishedAt
+      && option.availableForSubscription !== false
+      && option.isActive !== false
+      && option.isVisible !== false
+      && option.isAvailable !== false
+      && optionRelations.some((relation) => (
+        relation.isActive !== false && relation.isVisible !== false && relation.isAvailable !== false
+      ))
+    ));
+    if (!hasActiveSubscriptionContext) {
+      throw new Error(`Preserved paid protein has no active subscription context: ${key}`);
+    }
+    rows.push({ key, contexts });
   }
   return rows;
 }
@@ -326,37 +339,21 @@ async function premiumBuilderFingerprint() {
 
 async function paidProteinMetadataFingerprint() {
   const rows = await resolvePreservedPaidProteins();
-  return stableJson(rows.map(({ key, id, option, relation }) => ({
+  return stableJson(rows.map(({ key, contexts }) => ({
     key,
-    id,
-    option: {
-      name: option.name || {},
-      description: option.description || {},
-      extraPriceHalala: option.extraPriceHalala,
-      extraFeeHalala: option.extraFeeHalala,
-      extraWeightUnitGrams: option.extraWeightUnitGrams,
-      extraWeightPriceHalala: option.extraWeightPriceHalala,
-      currency: option.currency,
-      availableFor: option.availableFor || [],
-      availableForSubscription: option.availableForSubscription,
-      nutrition: option.nutrition || {},
-      proteinFamilyKey: option.proteinFamilyKey,
-      displayCategoryKey: option.displayCategoryKey,
-      premiumKey: option.premiumKey,
-      ruleTags: option.ruleTags || [],
-      selectionType: option.selectionType,
-      publishedAt: option.publishedAt,
-    },
-    relation: {
-      extraPriceHalala: relation.extraPriceHalala,
-      extraWeightUnitGrams: relation.extraWeightUnitGrams,
-      extraWeightPriceHalala: relation.extraWeightPriceHalala,
-    },
+    contexts: contexts.map(({ id, groupId, option, relations }) => ({
+      id,
+      groupId,
+      option: clonePlain(option),
+      relations: relations.map(clonePlain),
+    })),
   })));
 }
 
 async function protectedProteinOptionIds(paidRows) {
-  const protectedIds = new Set(paidRows.map((row) => row.id));
+  const protectedIds = new Set(
+    paidRows.flatMap((row) => row.contexts.map((context) => context.id))
+  );
 
   const configs = await PremiumUpgradeConfig.find({
     sourceType: "menu_option",
@@ -559,19 +556,8 @@ async function assertPublishedPlannerFinal() {
   };
 }
 
-async function assertPreservedPaidActive(paidRows) {
-  for (const row of paidRows) {
-    const [option, relation] = await Promise.all([
-      MenuOption.findById(row.id).lean(),
-      ProductGroupOption.findById(row.relation._id).lean(),
-    ]);
-    if (!option || option.isActive === false || option.isVisible === false || option.isAvailable === false) {
-      throw new Error(`Preserved paid protein is not active after normalization: ${row.key}`);
-    }
-    if (!relation || relation.isActive === false || relation.isVisible === false || relation.isAvailable === false) {
-      throw new Error(`Preserved paid protein relation is not active after normalization: ${row.key}`);
-    }
-  }
+async function assertPreservedPaidActive() {
+  await resolvePreservedPaidProteins();
 }
 
 async function deactivateNonApprovedAfterPublish({ execute, regularProteinRows, carbRows, paidRows }) {
@@ -690,10 +676,18 @@ async function runNormalization({
 
     const proteinReport = await activateRequiredRows(regularProteinRows, { execute });
     const carbReport = await activateRequiredRows(carbRows, { execute });
-    const paidReport = await activateRequiredRows(
-      paidRows.map((row) => ({ ...row, groupId: BASIC_MEAL_PROTEIN_GROUP_ID })),
-      { execute, preserveSortOrder: true }
-    );
+    const paidReport = paidRows.map(({ key, contexts }) => ({
+      key,
+      ids: contexts.map((context) => context.id),
+      contexts: contexts.map((context) => ({
+        id: context.id,
+        groupId: context.groupId,
+        activeRelationIds: context.relations
+          .filter((relation) => relation.isActive !== false && relation.isVisible !== false && relation.isAvailable !== false)
+          .map((relation) => strId(relation._id)),
+      })),
+      action: "preserve_in_place",
+    }));
 
     let draftPlan = null;
     let draftResult = null;
@@ -752,7 +746,7 @@ async function runNormalization({
           paidRows,
         });
         publishedVerification = await assertPublishedPlannerFinal();
-        await assertPreservedPaidActive(paidRows);
+        await assertPreservedPaidActive();
       } else {
         deactivationPlans = await deactivateNonApprovedAfterPublish({
           execute: false,

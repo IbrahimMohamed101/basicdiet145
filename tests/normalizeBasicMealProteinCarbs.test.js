@@ -217,12 +217,18 @@ async function setup() {
     { key: "shrimp", family: "fish", selectionType: "premium_meal", displayCategoryKey: "premium", price: 1600 },
     { key: "salmon", family: "fish", selectionType: "premium_meal", displayCategoryKey: "premium", price: 1600 },
   ];
+  const paidOtherGroup = await MenuOptionGroup.create({
+    key: "salad_proteins",
+    name: { ar: "بروتينات السلطة", en: "Salad Proteins" },
+  });
+  const paidOtherProductId = new mongoose.Types.ObjectId();
 
   const paidRows = [];
   for (const definition of paidDefinitions) {
+    const basicMealPremium = definition.selectionType === "premium_meal";
     paidRows.push(await createOptionWithRelation({
-      productId,
-      groupId: proteinGroupId,
+      productId: basicMealPremium ? productId : paidOtherProductId,
+      groupId: basicMealPremium ? proteinGroupId : paidOtherGroup._id,
       option: {
         key: definition.key,
         name: { ar: definition.key, en: definition.key },
@@ -548,10 +554,9 @@ async function runTests() {
       id: String(option._id),
       relation,
     }));
-    const paidRows = seeded.paidRows.map(({ option, relation }) => ({
+    const paidRows = seeded.paidRows.map(({ option }) => ({
       key: option.key,
-      id: String(option._id),
-      relation,
+      contexts: [{ id: String(option._id) }],
     }));
     const deactivationPlans = await deactivateNonApprovedAfterPublish({
       execute: true,
