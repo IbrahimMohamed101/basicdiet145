@@ -33,7 +33,7 @@ const FINAL_PROTEINS = Object.freeze([
   { key: "grilled_chicken", ar: "دجاج مشوي", en: "Grilled Chicken", family: "chicken", order: 4, expectedId: "6a62197b79ee075a57f70128" },
   { key: "mexican_chicken", ar: "دجاج مكسيكي", en: "Mexican Chicken", family: "chicken", order: 5, expectedId: "6a62197379ee075a57f7010c" },
   { key: "creamy_chicken", ar: "دجاج كريمة", en: "Creamy Chicken", family: "chicken", order: 6, expectedId: "6a62197479ee075a57f70110" },
-  { key: "lemon_bbq_chicken", ar: "دجاج ليمون باربكيو", en: "Lemon BBQ Chicken", family: "chicken", order: 7, expectedId: null, allowCreate: true },
+  { key: "lemon_bbq_chicken", ar: "دجاج ليمون باربكيو", en: "Lemon BBQ Chicken", family: "chicken", order: 7, expectedId: null },
   { key: "chicken_65", ar: "دجاج 65", en: "Chicken 65", family: "chicken", order: 8, expectedId: "6a62197579ee075a57f70112" },
   { key: "chicken_with_okra", ar: "دجاج بامية", en: "Chicken with Okra", family: "chicken", order: 9, expectedId: "6a62197879ee075a57f7011e" },
   { key: "shish_tawook", ar: "دجاج شيش طاووق", en: "Shish Tawook Chicken", family: "chicken", order: 10, expectedId: "6a62197b79ee075a57f7012a" },
@@ -54,6 +54,14 @@ const FINAL_CARBS = Object.freeze([
   { key: "white_pasta", ar: "مكرونة بيضاء", en: "White Pasta", order: 9, expectedId: "6a96a00a43e420ebe617bde6" },
 ]);
 
+const PRESERVED_PAID_PROTEIN_KEYS = Object.freeze([
+  "meatballs",
+  "beef_stroganoff",
+  "beef_steak",
+  "shrimp",
+  "salmon",
+]);
+
 function argValue(argv, name) {
   const prefix = `--${name}=`;
   const token = argv.find((item) => String(item).startsWith(prefix));
@@ -68,6 +76,10 @@ function strId(value) {
   if (value == null) return "";
   if (typeof value === "object" && value._id) return String(value._id);
   return String(value);
+}
+
+function clonePlain(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function stableJson(value) {
@@ -98,8 +110,7 @@ function requireLiveConfirmations(argv) {
     ["confirm-carb-group", BASIC_MEAL_CARB_GROUP_ID],
   ];
   for (const [name, expected] of required) {
-    const actual = argValue(argv, name);
-    if (actual !== expected) {
+    if (argValue(argv, name) !== expected) {
       throw new Error(`Refusing live execute: --${name} must equal ${expected}`);
     }
   }
@@ -136,26 +147,136 @@ async function assertCanonicalIdentity() {
       isVisible: true,
       isAvailable: true,
     }).lean();
-
-    const foreignOwners = activeOwners.filter(
-      (relation) => strId(relation.productId) !== BASIC_MEAL_PRODUCT_ID
-    );
+    const foreignOwners = activeOwners.filter((row) => strId(row.productId) !== BASIC_MEAL_PRODUCT_ID);
     if (foreignOwners.length) {
       throw new Error(
         `Refusing normalization: group ${groupId} has another active product owner: ` +
         foreignOwners.map((row) => strId(row.productId)).join(",")
       );
     }
-
-    const own = activeOwners.find(
-      (relation) => strId(relation.productId) === BASIC_MEAL_PRODUCT_ID
-    );
-    if (!own) {
+    if (!activeOwners.some((row) => strId(row.productId) === BASIC_MEAL_PRODUCT_ID)) {
       throw new Error(`Refusing normalization: Basic Meal is not the active owner of group ${groupId}`);
     }
   }
+}
 
-  return { product, proteinGroup, carbGroup };
+function assertSubscriptionReadyOption(option, definition, kind) {
+  if (!option.publishedAt) {
+    throw new Error(`Approved option is unpublished: ${definition.key}`);
+  }
+  if (option.availableForSubscription === false) {
+    throw new Error(`Approved option is disabled for subscriptions: ${definition.key}`);
+  }
+  if (Array.isArray(option.availableFor) && option.availableFor.length && !option.availableFor.includes("subscription")) {
+    throw new Error(`Approved option is not subscription-channel enabled: ${definition.key}`);
+  }
+  if (String(option.selectionType || "").trim() !== "standard_meal") {
+    throw new Error(`Approved option has unexpected selectionType: ${definition.key}`);
+  }
+  if (kind === "protein") {
+    if (String(option.proteinFamilyKey || "").trim() !== definition.family) {
+      throw new Error(`Approved protein family mismatch: ${definition.key}`);
+    }
+    if (String(option.displayCategoryKey || "").trim() !== definition.family) {
+      throw new Error(`Approved protein display category mismatch: ${definition.key}`);
+    }
+    if (String(option.premiumKey || "").trim()) {
+      throw new Error(`Approved regular protein unexpectedly has premiumKey: ${definition.key}`);
+    }
+  } else if (String(option.displayCategoryKey || "").trim() !== "standard_carbs") {
+    throw new Error(`Approved carb display category mismatch: ${definition.key}`);
+  }
+}
+
+async function resolveRequiredOptions(definitions, groupId, kind, { strictIdentityPins }) {
+  const rows = [];
+  for (const definition of definitions) {
+    const option = await MenuOption.findOne({ groupId, key: definition.key }).lean();
+    if (!option) {
+      throw new Error(`Approved option missing from canonical group: ${definition.key}`);
+    }
+    if (strictIdentityPins && definition.expectedId && strId(option._id) !== definition.expectedId) {
+      throw new Error(
+        `Identity pin mismatch for ${definition.key}: expected ${definition.expectedId}, got ${strId(option._id)}`
+      );
+    }
+    assertSubscriptionReadyOption(option, definition, kind);
+
+    const relation = await ProductGroupOption.findOne({
+      productId: BASIC_MEAL_PRODUCT_ID,
+      groupId,
+      optionId: option._id,
+    }).lean();
+    if (!relation) {
+      throw new Error(`Approved option is not linked to Basic Meal: ${definition.key}`);
+    }
+
+    rows.push({
+      key: definition.key,
+      id: strId(option._id),
+      groupId,
+      family: definition.family || "",
+      order: definition.order,
+      option,
+      relation,
+    });
+  }
+  return rows;
+}
+
+async function resolvePreservedPaidProteins() {
+  const rows = [];
+  for (const key of PRESERVED_PAID_PROTEIN_KEYS) {
+    const option = await MenuOption.findOne({
+      groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
+      key,
+    }).lean();
+    if (!option) throw new Error(`Preserved paid protein missing from canonical group: ${key}`);
+    if (!option.publishedAt) throw new Error(`Preserved paid protein is unpublished: ${key}`);
+    if (option.availableForSubscription === false) {
+      throw new Error(`Preserved paid protein is disabled for subscriptions: ${key}`);
+    }
+    const relation = await ProductGroupOption.findOne({
+      productId: BASIC_MEAL_PRODUCT_ID,
+      groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
+      optionId: option._id,
+    }).lean();
+    if (!relation) throw new Error(`Preserved paid protein is not linked to Basic Meal: ${key}`);
+    rows.push({ key, id: strId(option._id), option, relation });
+  }
+  return rows;
+}
+
+async function activateRequiredRows(rows, { execute, preserveSortOrder = false }) {
+  const report = [];
+  for (const row of rows) {
+    const optionPatch = { isActive: true, isVisible: true, isAvailable: true };
+    const relationPatch = { isActive: true, isVisible: true, isAvailable: true };
+    if (!preserveSortOrder) {
+      optionPatch.sortOrder = row.order;
+      relationPatch.sortOrder = row.order;
+    }
+
+    if (execute) {
+      await MenuOption.updateOne(
+        { _id: row.id, groupId: row.groupId || BASIC_MEAL_PROTEIN_GROUP_ID },
+        { $set: optionPatch }
+      );
+      await ProductGroupOption.updateOne(
+        { _id: row.relation._id },
+        { $set: relationPatch }
+      );
+    }
+
+    report.push({
+      key: row.key,
+      id: row.id,
+      action: "reuse",
+      targetActive: true,
+      sortOrder: preserveSortOrder ? Number(row.relation.sortOrder || row.option.sortOrder || 0) : row.order,
+    });
+  }
+  return report;
 }
 
 async function premiumFingerprint() {
@@ -178,45 +299,11 @@ async function premiumFingerprint() {
   })));
 }
 
-async function protectedPremiumOptionIds() {
-  const configs = await PremiumUpgradeConfig.find({
-    sourceType: "menu_option",
-    status: { $ne: "archived" },
-  }).lean();
-
-  const protectedIds = new Set(
-    configs
-      .filter((row) => {
-        const sourceProductId = strId(row.sourceProductId);
-        const sourceGroupId = strId(row.sourceGroupId);
-        return (!sourceProductId || sourceProductId === BASIC_MEAL_PRODUCT_ID)
-          && (!sourceGroupId || sourceGroupId === BASIC_MEAL_PROTEIN_GROUP_ID);
-      })
-      .map((row) => strId(row.sourceId))
-      .filter(Boolean)
-  );
-
-  const configsWithPremiumSections = await MealBuilderConfig.find({
-    status: { $in: ["draft", "published"] },
-    isCurrent: true,
-  }).lean();
-
-  for (const config of configsWithPremiumSections) {
-    const premiumSection = (config.sections || []).find((section) => section.key === "premium");
-    for (const optionId of premiumSection?.selectedOptionIds || []) {
-      protectedIds.add(strId(optionId));
-    }
-  }
-
-  return protectedIds;
-}
-
 async function premiumBuilderFingerprint() {
   const configs = await MealBuilderConfig.find({
     status: { $in: ["draft", "published"] },
     isCurrent: true,
   }).lean();
-
   const rows = configs.map((config) => {
     const premiumSection = (config.sections || []).find((section) => section.key === "premium");
     return {
@@ -236,149 +323,78 @@ async function premiumBuilderFingerprint() {
       } : null,
     };
   }).sort((a, b) => a.status.localeCompare(b.status));
-
   return stableJson(rows);
 }
 
-async function resolveDefinitions(definitions, groupId, { strictIdentityPins }) {
-  const resolved = [];
-  const missing = [];
+async function paidProteinMetadataFingerprint() {
+  const rows = await resolvePreservedPaidProteins();
+  return stableJson(rows.map(({ key, id, option, relation }) => ({
+    key,
+    id,
+    option: {
+      name: option.name || {},
+      description: option.description || {},
+      extraPriceHalala: option.extraPriceHalala,
+      extraFeeHalala: option.extraFeeHalala,
+      extraWeightUnitGrams: option.extraWeightUnitGrams,
+      extraWeightPriceHalala: option.extraWeightPriceHalala,
+      currency: option.currency,
+      availableFor: option.availableFor || [],
+      availableForSubscription: option.availableForSubscription,
+      nutrition: option.nutrition || {},
+      proteinFamilyKey: option.proteinFamilyKey,
+      displayCategoryKey: option.displayCategoryKey,
+      premiumKey: option.premiumKey,
+      ruleTags: option.ruleTags || [],
+      selectionType: option.selectionType,
+      publishedAt: option.publishedAt,
+    },
+    relation: {
+      extraPriceHalala: relation.extraPriceHalala,
+      extraWeightUnitGrams: relation.extraWeightUnitGrams,
+      extraWeightPriceHalala: relation.extraWeightPriceHalala,
+    },
+  })));
+}
 
-  for (const definition of definitions) {
-    const option = await MenuOption.findOne({ groupId, key: definition.key }).lean();
-    if (!option) {
-      if (definition.allowCreate) {
-        missing.push(definition);
-        resolved.push({ definition, option: null, plannedCreate: true });
-        continue;
-      }
-      throw new Error(`Approved option missing from canonical group: ${definition.key}`);
+async function protectedProteinOptionIds(paidRows) {
+  const protectedIds = new Set(paidRows.map((row) => row.id));
+
+  const configs = await PremiumUpgradeConfig.find({
+    sourceType: "menu_option",
+    status: { $ne: "archived" },
+  }).lean();
+  for (const row of configs) {
+    const sourceProductId = strId(row.sourceProductId);
+    const sourceGroupId = strId(row.sourceGroupId);
+    if ((!sourceProductId || sourceProductId === BASIC_MEAL_PRODUCT_ID)
+      && (!sourceGroupId || sourceGroupId === BASIC_MEAL_PROTEIN_GROUP_ID)) {
+      protectedIds.add(strId(row.sourceId));
     }
-
-    if (
-      strictIdentityPins &&
-      definition.expectedId &&
-      strId(option._id) !== definition.expectedId
-    ) {
-      throw new Error(
-        `Identity pin mismatch for ${definition.key}: expected ${definition.expectedId}, got ${strId(option._id)}`
-      );
-    }
-
-    resolved.push({ definition, option, plannedCreate: false });
   }
 
-  return { resolved, missing };
-}
-
-function targetOptionPatch(definition, kind) {
-  return {
-    name: { ar: definition.ar, en: definition.en },
-    availableFor: ["one_time", "subscription"],
-    availableForSubscription: true,
-    selectionType: "standard_meal",
-    proteinFamilyKey: kind === "protein" ? definition.family : "",
-    displayCategoryKey: kind === "protein" ? definition.family : "standard_carbs",
-    premiumKey: "",
-    extraFeeHalala: 0,
-    extraPriceHalala: 0,
-    isActive: true,
-    isVisible: true,
-    isAvailable: true,
-    sortOrder: definition.order,
-  };
-}
-
-async function ensureApprovedOptions(resolution, groupId, kind, { execute }) {
-  const rows = [];
-
-  for (const entry of resolution.resolved) {
-    const { definition } = entry;
-    let option = entry.option;
-
-    if (!option && entry.plannedCreate) {
-      if (!execute) {
-        rows.push({
-          key: definition.key,
-          id: null,
-          action: "create",
-          groupId,
-          nameAr: definition.ar,
-        });
-        continue;
-      }
-
-      option = await MenuOption.create({
-        groupId,
-        key: definition.key,
-        description: { ar: definition.ar, en: definition.en },
-        ...targetOptionPatch(definition, kind),
-        publishedAt: new Date(),
-      });
-      option = option.toObject();
-    } else if (execute) {
-      option = await MenuOption.findOneAndUpdate(
-        { _id: option._id, groupId, key: definition.key },
-        { $set: targetOptionPatch(definition, kind) },
-        { new: true, runValidators: true }
-      ).lean();
+  const currentConfigs = await MealBuilderConfig.find({
+    status: { $in: ["draft", "published"] },
+    isCurrent: true,
+  }).lean();
+  for (const config of currentConfigs) {
+    const premiumSection = (config.sections || []).find((section) => section.key === "premium");
+    for (const optionId of premiumSection?.selectedOptionIds || []) {
+      protectedIds.add(strId(optionId));
     }
-
-    const optionId = strId(option._id);
-    const relationPatch = {
-      isActive: true,
-      isVisible: true,
-      isAvailable: true,
-      sortOrder: definition.order,
-    };
-
-    if (execute) {
-      await ProductGroupOption.updateOne(
-        {
-          productId: BASIC_MEAL_PRODUCT_ID,
-          groupId,
-          optionId,
-        },
-        {
-          $set: relationPatch,
-          $setOnInsert: {
-            productId: BASIC_MEAL_PRODUCT_ID,
-            groupId,
-            optionId,
-            extraPriceHalala: 0,
-            extraWeightPriceHalala: 0,
-            extraWeightUnitGrams: 0,
-          },
-        },
-        { upsert: true, runValidators: true }
-      );
-    }
-
-    rows.push({
-      key: definition.key,
-      id: optionId,
-      action: entry.plannedCreate ? "create" : "reuse",
-      groupId,
-      nameAr: definition.ar,
-    });
   }
 
-  return rows;
+  return protectedIds;
 }
 
-function clonePlain(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function exactIdsByFamily(proteinRows) {
-  const byKey = new Map(proteinRows.map((row) => [row.key, row.id]));
-  const result = { chicken: [], beef: [], fish: [] };
-  for (const definition of FINAL_PROTEINS) {
-    const id = byKey.get(definition.key);
-    if (!id) continue;
-    result[definition.family].push(id);
-  }
-  return result;
+function isBasicMealRegularTargetSection(section) {
+  if (!section) return false;
+  const productId = strId(section.productContextId);
+  const groupId = strId(section.sourceGroupId);
+  if (productId !== BASIC_MEAL_PRODUCT_ID) return false;
+  if (groupId === BASIC_MEAL_CARB_GROUP_ID) return true;
+  return groupId === BASIC_MEAL_PROTEIN_GROUP_ID
+    && String(section.selectionType || "").trim() === "standard_meal";
 }
 
 async function currentDraftNonTargetFingerprint() {
@@ -388,7 +404,7 @@ async function currentDraftNonTargetFingerprint() {
   }).sort({ updatedAt: -1 }).lean();
   if (!draft) return "";
   const protectedSections = (draft.sections || [])
-    .filter((section) => !["chicken", "beef", "fish", "carbs"].includes(section.key))
+    .filter((section) => !isBasicMealRegularTargetSection(section))
     .map((section) => {
       const copy = clonePlain(section);
       delete copy._id;
@@ -397,57 +413,58 @@ async function currentDraftNonTargetFingerprint() {
   return stableJson(protectedSections);
 }
 
-async function buildDraftPlan(proteinRows, carbRows) {
-  if (proteinRows.some((row) => !row.id) || carbRows.some((row) => !row.id)) {
-    return {
-      canSync: false,
-      reason: "one or more approved options still require creation",
-      sections: null,
-    };
+function exactIdsByFamily(proteinRows) {
+  const byKey = new Map(proteinRows.map((row) => [row.key, row.id]));
+  const result = { chicken: [], beef: [], fish: [] };
+  for (const definition of FINAL_PROTEINS) {
+    result[definition.family].push(byKey.get(definition.key));
   }
+  return result;
+}
 
+async function buildDraftPlan(proteinRows, carbRows) {
   const currentDraft = await MealBuilderConfig.findOne({
     status: "draft",
     isCurrent: true,
   }).sort({ updatedAt: -1 });
-
-  if (!currentDraft) {
-    throw new Error("No current Meal Builder draft exists");
-  }
+  if (!currentDraft) throw new Error("No current Meal Builder draft exists");
 
   const sections = clonePlain(currentDraft.sections || []);
   const familyIds = exactIdsByFamily(proteinRows);
-  const carbIds = carbRows.map((row) => row.id);
-
   const expected = {
     chicken: familyIds.chicken,
     beef: familyIds.beef,
     fish: familyIds.fish,
-    carbs: carbIds,
+    carbs: carbRows.map((row) => row.id),
   };
 
   for (const [sectionKey, selectedOptionIds] of Object.entries(expected)) {
     const section = sections.find((item) => item.key === sectionKey);
     if (!section) throw new Error(`Meal Builder draft section missing: ${sectionKey}`);
-
     const expectedGroupId = sectionKey === "carbs"
       ? BASIC_MEAL_CARB_GROUP_ID
       : BASIC_MEAL_PROTEIN_GROUP_ID;
-
     if (strId(section.productContextId) !== BASIC_MEAL_PRODUCT_ID) {
       throw new Error(`Draft section ${sectionKey} productContextId mismatch`);
     }
     if (strId(section.sourceGroupId) !== expectedGroupId) {
       throw new Error(`Draft section ${sectionKey} sourceGroupId mismatch`);
     }
-
     section.selectedOptionIds = selectedOptionIds;
     section.includeMode = "selected";
     section.selectionType = "standard_meal";
+    section.visible = true;
+  }
+
+  for (const section of sections) {
+    if (!isBasicMealRegularTargetSection(section)) continue;
+    if (["chicken", "beef", "fish", "carbs"].includes(section.key)) continue;
+    section.selectedOptionIds = [];
+    section.includeMode = "selected";
+    section.visible = false;
   }
 
   return {
-    canSync: true,
     draftId: strId(currentDraft._id),
     previousRevisionHash: currentDraft.revisionHash || "",
     sections,
@@ -484,10 +501,9 @@ async function assertPublishedPlannerFinal() {
     throw new Error("Published Meal Builder or planner catalog is missing");
   }
 
-  const proteinKeys = collectPlannerKeys(state.plannerCatalog, ["chicken", "beef", "fish"]);
+  const proteinKeys = collectPlannerKeys(state.plannerCatalog, ["chicken", "beef", "fish", "eggs", "other"]);
   const carbKeys = collectPlannerKeys(state.plannerCatalog, ["carbs"]);
-
-  assertSetEqual(proteinKeys, FINAL_PROTEINS.map((row) => row.key), "Published planner proteins");
+  assertSetEqual(proteinKeys, FINAL_PROTEINS.map((row) => row.key), "Published planner regular proteins");
   assertSetEqual(carbKeys, FINAL_CARBS.map((row) => row.key), "Published planner carbs");
 
   if (state.published.revisionHash !== state.plannerCatalog.builderRevisionHash) {
@@ -504,21 +520,25 @@ async function assertPublishedPlannerFinal() {
   };
 }
 
-async function deactivateNonApprovedAfterPublish({ execute }) {
-  const approvedProteinIds = new Set(
-    (await MenuOption.find({
-      groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
-      key: { $in: FINAL_PROTEINS.map((row) => row.key) },
-    }).select("_id").lean()).map((row) => strId(row._id))
-  );
-  const approvedCarbIds = new Set(
-    (await MenuOption.find({
-      groupId: BASIC_MEAL_CARB_GROUP_ID,
-      key: { $in: FINAL_CARBS.map((row) => row.key) },
-    }).select("_id").lean()).map((row) => strId(row._id))
-  );
-  const premiumIds = await protectedPremiumOptionIds();
+async function assertPreservedPaidActive(paidRows) {
+  for (const row of paidRows) {
+    const [option, relation] = await Promise.all([
+      MenuOption.findById(row.id).lean(),
+      ProductGroupOption.findById(row.relation._id).lean(),
+    ]);
+    if (!option || option.isActive === false || option.isVisible === false || option.isAvailable === false) {
+      throw new Error(`Preserved paid protein is not active after normalization: ${row.key}`);
+    }
+    if (!relation || relation.isActive === false || relation.isVisible === false || relation.isAvailable === false) {
+      throw new Error(`Preserved paid protein relation is not active after normalization: ${row.key}`);
+    }
+  }
+}
 
+async function deactivateNonApprovedAfterPublish({ execute, regularProteinRows, carbRows, paidRows }) {
+  const approvedProteinIds = new Set(regularProteinRows.map((row) => row.id));
+  const approvedCarbIds = new Set(carbRows.map((row) => row.id));
+  const protectedProteinIds = await protectedProteinOptionIds(paidRows);
   const plans = [];
 
   for (const { groupId, approvedIds, kind } of [
@@ -533,12 +553,10 @@ async function deactivateNonApprovedAfterPublish({ execute }) {
     for (const relation of relations) {
       const optionId = strId(relation.optionId);
       if (approvedIds.has(optionId)) continue;
-      if (kind === "protein" && premiumIds.has(optionId)) continue;
+      if (kind === "protein" && protectedProteinIds.has(optionId)) continue;
 
       const option = await MenuOption.findById(optionId).lean();
-      if (!option) {
-        throw new Error(`Orphan Basic Meal relation found for option ${optionId}`);
-      }
+      if (!option) throw new Error(`Orphan Basic Meal relation found for option ${optionId}`);
 
       const otherActiveRelations = await ProductGroupOption.find({
         optionId,
@@ -547,8 +565,8 @@ async function deactivateNonApprovedAfterPublish({ execute }) {
         isVisible: true,
         isAvailable: true,
       }).lean();
-
       const canDeactivateOptionDocument = otherActiveRelations.length === 0;
+
       plans.push({
         optionId,
         key: option.key,
@@ -559,12 +577,10 @@ async function deactivateNonApprovedAfterPublish({ execute }) {
       });
 
       if (!execute) continue;
-
       await ProductGroupOption.updateOne(
         { _id: relation._id },
         { $set: { isActive: false, isVisible: false, isAvailable: false } }
       );
-
       if (canDeactivateOptionDocument) {
         await MenuOption.updateOne(
           { _id: optionId, groupId },
@@ -585,23 +601,16 @@ async function runNormalization({
 } = {}) {
   const execute = hasFlag(argv, "execute");
   const publish = hasFlag(argv, "publish");
-  if (publish && !execute) {
-    throw new Error("--publish requires --execute");
-  }
-
+  if (publish && !execute) throw new Error("--publish requires --execute");
   if (execute) requireLiveConfirmations(argv);
   if (publish) requirePublishConfirmation(argv);
 
   const alreadyConnected = mongoose.connection.readyState !== 0;
   const uri = connectionUri || process.env.MONGO_URI || process.env.MONGODB_URI;
-
   if (!alreadyConnected) {
-    if (!uri) {
-      throw new Error("MONGO_URI or MONGODB_URI is required. MONGO_URI_TEST is intentionally ignored.");
-    }
+    if (!uri) throw new Error("MONGO_URI or MONGODB_URI is required. MONGO_URI_TEST is intentionally ignored.");
     await mongoose.connect(uri);
   }
-
   const target = alreadyConnected
     ? { host: mongoose.connection.host || "existing-connection", database: mongoose.connection.name || "unknown" }
     : safeMongoTarget(uri);
@@ -612,30 +621,28 @@ async function runNormalization({
 
     const premiumBefore = await premiumFingerprint();
     const premiumBuilderBefore = await premiumBuilderFingerprint();
+    const paidMetadataBefore = await paidProteinMetadataFingerprint();
     const nonTargetDraftBefore = skipDraftSync ? null : await currentDraftNonTargetFingerprint();
 
-    const proteinResolution = await resolveDefinitions(
+    const regularProteinRows = await resolveRequiredOptions(
       FINAL_PROTEINS,
       BASIC_MEAL_PROTEIN_GROUP_ID,
+      "protein",
       { strictIdentityPins }
     );
-    const carbResolution = await resolveDefinitions(
+    const carbRows = await resolveRequiredOptions(
       FINAL_CARBS,
       BASIC_MEAL_CARB_GROUP_ID,
+      "carb",
       { strictIdentityPins }
     );
+    const paidRows = await resolvePreservedPaidProteins();
 
-    const proteinRows = await ensureApprovedOptions(
-      proteinResolution,
-      BASIC_MEAL_PROTEIN_GROUP_ID,
-      "protein",
-      { execute }
-    );
-    const carbRows = await ensureApprovedOptions(
-      carbResolution,
-      BASIC_MEAL_CARB_GROUP_ID,
-      "carb",
-      { execute }
+    const proteinReport = await activateRequiredRows(regularProteinRows, { execute });
+    const carbReport = await activateRequiredRows(carbRows, { execute });
+    const paidReport = await activateRequiredRows(
+      paidRows.map((row) => ({ ...row, groupId: BASIC_MEAL_PROTEIN_GROUP_ID })),
+      { execute, preserveSortOrder: true }
     );
 
     let draftPlan = null;
@@ -644,16 +651,11 @@ async function runNormalization({
     let deactivationPlans = [];
 
     if (!skipDraftSync) {
-      draftPlan = await buildDraftPlan(proteinRows, carbRows);
-
-      if (execute && !draftPlan.canSync) {
-        throw new Error("Execute created an approved option but draft plan still cannot resolve all IDs");
-      }
-
-      if (execute && draftPlan.canSync) {
+      draftPlan = await buildDraftPlan(regularProteinRows, carbRows);
+      if (execute) {
         draftResult = await updateDraft({
           sections: draftPlan.sections,
-          notes: "Final Basic Meal restaurant menu: 13 regular proteins + 9 carbs",
+          notes: "Final Basic Meal restaurant menu: 13 regular proteins + 9 carbs; preserved paid proteins unchanged",
         });
 
         const draftProteinIds = []
@@ -664,9 +666,8 @@ async function runNormalization({
           )
           .map(strId);
         const draftCarbIds = (draftResult.sections.find((s) => s.key === "carbs")?.selectedOptionIds || []).map(strId);
-
         if (new Set(draftProteinIds).size !== 13) {
-          throw new Error(`Draft protein count is ${new Set(draftProteinIds).size}, expected 13`);
+          throw new Error(`Draft regular protein count is ${new Set(draftProteinIds).size}, expected 13`);
         }
         if (new Set(draftCarbIds).size !== 9) {
           throw new Error(`Draft carb count is ${new Set(draftCarbIds).size}, expected 9`);
@@ -676,36 +677,45 @@ async function runNormalization({
         if (nonTargetDraftBefore !== nonTargetDraftAfter) {
           throw new Error("A non-Basic-Meal draft section changed; refusing to publish");
         }
-
-        const premiumPrePublish = await premiumFingerprint();
-        const premiumBuilderPrePublish = await premiumBuilderFingerprint();
-        if (premiumBefore !== premiumPrePublish || premiumBuilderBefore !== premiumBuilderPrePublish) {
+        if (premiumBefore !== await premiumFingerprint() || premiumBuilderBefore !== await premiumBuilderFingerprint()) {
           throw new Error("Premium state changed during draft preparation; refusing to publish");
+        }
+        if (paidMetadataBefore !== await paidProteinMetadataFingerprint()) {
+          throw new Error("Preserved paid protein pricing/metadata changed during preparation; refusing to publish");
         }
       }
 
       if (publish) {
         await publishDraft({
-          notes: "Publish final Basic Meal restaurant menu (13 proteins / 9 carbs)",
+          notes: "Publish final Basic Meal restaurant menu (13 regular proteins / 9 carbs)",
         });
-
         publishedVerification = await assertPublishedPlannerFinal();
-
-        deactivationPlans = await deactivateNonApprovedAfterPublish({ execute: true });
-
+        deactivationPlans = await deactivateNonApprovedAfterPublish({
+          execute: true,
+          regularProteinRows,
+          carbRows,
+          paidRows,
+        });
         publishedVerification = await assertPublishedPlannerFinal();
+        await assertPreservedPaidActive(paidRows);
       } else {
-        deactivationPlans = await deactivateNonApprovedAfterPublish({ execute: false });
+        deactivationPlans = await deactivateNonApprovedAfterPublish({
+          execute: false,
+          regularProteinRows,
+          carbRows,
+          paidRows,
+        });
       }
     }
 
-    const premiumAfter = await premiumFingerprint();
-    const premiumBuilderAfter = await premiumBuilderFingerprint();
-    if (premiumBefore !== premiumAfter) {
+    if (premiumBefore !== await premiumFingerprint()) {
       throw new Error("PremiumUpgradeConfig fingerprint changed; refusing to certify the migration");
     }
-    if (premiumBuilderBefore !== premiumBuilderAfter) {
+    if (premiumBuilderBefore !== await premiumBuilderFingerprint()) {
       throw new Error("Meal Builder Premium section changed; refusing to certify the migration");
+    }
+    if (paidMetadataBefore !== await paidProteinMetadataFingerprint()) {
+      throw new Error("Preserved paid protein pricing/metadata changed; refusing to certify the migration");
     }
 
     const result = {
@@ -718,22 +728,25 @@ async function runNormalization({
         carbGroup: { id: BASIC_MEAL_CARB_GROUP_ID, key: BASIC_MEAL_CARB_GROUP_KEY },
       },
       finalMenu: {
-        regularProteins: proteinRows,
-        carbs: carbRows,
+        regularProteins: proteinReport,
+        preservedPaidProteins: paidReport,
+        carbs: carbReport,
       },
       draft: draftPlan ? {
-        canSync: draftPlan.canSync,
-        draftId: draftPlan.draftId || null,
+        draftId: draftPlan.draftId,
         previousRevisionHash: draftPlan.previousRevisionHash || "",
         updatedRevisionHash: draftResult?.revisionHash || null,
       } : null,
       publish: publishedVerification,
       deactivationPlans,
       safety: {
+        createdOptions: 0,
+        createdRelations: 0,
         deletedRecords: 0,
         historicalRewrites: 0,
         groupMerges: 0,
         premiumConfigChanges: 0,
+        paidProteinPricingMetadataChanges: 0,
         basicSaladChanges: 0,
         premiumLargeSaladChanges: 0,
         wrongContextMoves: 0,
@@ -767,5 +780,6 @@ module.exports = {
   PUBLISH_CONFIRMATION,
   FINAL_PROTEINS,
   FINAL_CARBS,
+  PRESERVED_PAID_PROTEIN_KEYS,
   runNormalization,
 };
