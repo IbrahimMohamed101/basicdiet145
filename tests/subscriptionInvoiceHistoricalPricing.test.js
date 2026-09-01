@@ -5,6 +5,7 @@ const {
   buildInvoiceFinancialSnapshot,
   buildRefundSummary,
   buildInvoiceNumber,
+  findLegacyPrimaryInvoicePayment,
 } = require("../src/controllers/dashboard/subscriptionInvoiceController");
 
 function sumLineItems(rows) {
@@ -153,26 +154,51 @@ function sumLineItems(rows) {
   assert.strictEqual(refunds.pendingSettlementAmountHalala, 2000);
 }
 
-// Multiple payments on one subscription must receive stable, distinct invoice numbers.
+// Preserve the exact legacy invoice identity for the purchase that the old endpoint used to expose.
+// Additional stacked/renewal purchases receive their own payment-scoped invoice numbers.
 {
   const subscription = {
     _id: "66aaaaaaaaaaaaaaaaaaaaaa",
     createdAt: "2026-08-01T10:00:00.000Z",
   };
-  const invoiceA = buildInvoiceNumber(
+  const activation = {
+    _id: "66bbbbbbbbbbbbbbbbbbbbbb",
+    type: "subscription_activation",
+    paidAt: "2026-08-10T10:00:00.000Z",
+  };
+  const renewal = {
+    _id: "66cccccccccccccccccccccc",
+    type: "subscription_renewal",
+    paidAt: "2026-08-20T10:00:00.000Z",
+  };
+
+  const legacyPrimary = findLegacyPrimaryInvoicePayment([renewal, activation]);
+  assert.strictEqual(String(legacyPrimary._id), String(activation._id));
+
+  const originalInvoiceNumber = buildInvoiceNumber(
     subscription,
-    { _id: "66bbbbbbbbbbbbbbbbbbbbbb", paidAt: "2026-08-10T10:00:00.000Z" },
-    "2026-08-10T10:00:00.000Z"
+    activation,
+    activation.paidAt,
+    { preserveLegacy: true }
   );
-  const invoiceB = buildInvoiceNumber(
+  const renewalInvoiceNumber = buildInvoiceNumber(
     subscription,
-    { _id: "66cccccccccccccccccccccc", paidAt: "2026-08-20T10:00:00.000Z" },
-    "2026-08-20T10:00:00.000Z"
+    renewal,
+    renewal.paidAt,
+    { preserveLegacy: false }
   );
 
-  assert.notStrictEqual(invoiceA, invoiceB);
-  assert.ok(invoiceA.startsWith("INV-202608-"));
-  assert.ok(invoiceB.startsWith("INV-202608-"));
+  assert.strictEqual(originalInvoiceNumber, "INV-202608-AAAAAAAA");
+  assert.ok(renewalInvoiceNumber.startsWith("INV-202608-"));
+  assert.notStrictEqual(originalInvoiceNumber, renewalInvoiceNumber);
+
+  // A single historical renewal-only subscription also keeps the old subscription-based number.
+  const renewalOnlyPrimary = findLegacyPrimaryInvoicePayment([renewal]);
+  assert.strictEqual(String(renewalOnlyPrimary._id), String(renewal._id));
+  assert.strictEqual(
+    buildInvoiceNumber(subscription, renewal, renewal.paidAt, { preserveLegacy: true }),
+    "INV-202608-AAAAAAAA"
+  );
 }
 
 console.log("subscription invoice historical pricing test: PASS");
