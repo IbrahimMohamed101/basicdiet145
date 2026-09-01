@@ -13,7 +13,6 @@ const PremiumUpgradeConfig = require("../../src/models/PremiumUpgradeConfig");
 const {
   getDashboardState,
   publishDraft,
-  updateDraft,
 } = require("../../src/services/subscription/mealBuilderConfigService");
 
 const BASIC_MEAL_PRODUCT_ID = "6a62197079ee075a57f70106";
@@ -191,10 +190,14 @@ function assertSubscriptionReadyOption(option, definition, kind) {
 async function resolveRequiredOptions(definitions, groupId, kind, { strictIdentityPins }) {
   const rows = [];
   for (const definition of definitions) {
-    const option = await MenuOption.findOne({ groupId, key: definition.key }).lean();
-    if (!option) {
+    const options = await MenuOption.find({ groupId, key: definition.key }).limit(2).lean();
+    if (options.length === 0) {
       throw new Error(`Approved option missing from canonical group: ${definition.key}`);
     }
+    if (options.length !== 1) {
+      throw new Error(`Approved option is ambiguous in canonical group: ${definition.key}`);
+    }
+    const [option] = options;
     if (strictIdentityPins && definition.expectedId && strId(option._id) !== definition.expectedId) {
       throw new Error(
         `Identity pin mismatch for ${definition.key}: expected ${definition.expectedId}, got ${strId(option._id)}`
@@ -202,14 +205,18 @@ async function resolveRequiredOptions(definitions, groupId, kind, { strictIdenti
     }
     assertSubscriptionReadyOption(option, definition, kind);
 
-    const relation = await ProductGroupOption.findOne({
+    const relations = await ProductGroupOption.find({
       productId: BASIC_MEAL_PRODUCT_ID,
       groupId,
       optionId: option._id,
-    }).lean();
-    if (!relation) {
+    }).limit(2).lean();
+    if (relations.length === 0) {
       throw new Error(`Approved option is not linked to Basic Meal: ${definition.key}`);
     }
+    if (relations.length !== 1) {
+      throw new Error(`Approved option relation is ambiguous for Basic Meal: ${definition.key}`);
+    }
+    const [relation] = relations;
 
     rows.push({
       key: definition.key,
@@ -227,21 +234,25 @@ async function resolveRequiredOptions(definitions, groupId, kind, { strictIdenti
 async function resolvePreservedPaidProteins() {
   const rows = [];
   for (const key of PRESERVED_PAID_PROTEIN_KEYS) {
-    const option = await MenuOption.findOne({
+    const options = await MenuOption.find({
       groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
       key,
-    }).lean();
-    if (!option) throw new Error(`Preserved paid protein missing from canonical group: ${key}`);
+    }).limit(2).lean();
+    if (options.length === 0) throw new Error(`Preserved paid protein missing from canonical group: ${key}`);
+    if (options.length !== 1) throw new Error(`Preserved paid protein is ambiguous in canonical group: ${key}`);
+    const [option] = options;
     if (!option.publishedAt) throw new Error(`Preserved paid protein is unpublished: ${key}`);
     if (option.availableForSubscription === false) {
       throw new Error(`Preserved paid protein is disabled for subscriptions: ${key}`);
     }
-    const relation = await ProductGroupOption.findOne({
+    const relations = await ProductGroupOption.find({
       productId: BASIC_MEAL_PRODUCT_ID,
       groupId: BASIC_MEAL_PROTEIN_GROUP_ID,
       optionId: option._id,
-    }).lean();
-    if (!relation) throw new Error(`Preserved paid protein is not linked to Basic Meal: ${key}`);
+    }).limit(2).lean();
+    if (relations.length === 0) throw new Error(`Preserved paid protein is not linked to Basic Meal: ${key}`);
+    if (relations.length !== 1) throw new Error(`Preserved paid protein relation is ambiguous for Basic Meal: ${key}`);
+    const [relation] = relations;
     rows.push({ key, id: strId(option._id), option, relation });
   }
   return rows;
@@ -260,11 +271,13 @@ async function activateRequiredRows(rows, { execute, preserveSortOrder = false }
     if (execute) {
       await MenuOption.updateOne(
         { _id: row.id, groupId: row.groupId || BASIC_MEAL_PROTEIN_GROUP_ID },
-        { $set: optionPatch }
+        { $set: optionPatch },
+        { timestamps: false }
       );
       await ProductGroupOption.updateOne(
         { _id: row.relation._id },
-        { $set: relationPatch }
+        { $set: relationPatch },
+        { timestamps: false }
       );
     }
 
@@ -281,22 +294,7 @@ async function activateRequiredRows(rows, { execute, preserveSortOrder = false }
 
 async function premiumFingerprint() {
   const configs = await PremiumUpgradeConfig.find({}).sort({ premiumKey: 1, revision: 1, _id: 1 }).lean();
-  return stableJson(configs.map((row) => ({
-    id: strId(row._id),
-    premiumKey: row.premiumKey,
-    sourceType: row.sourceType,
-    sourceId: strId(row.sourceId),
-    sourceProductId: strId(row.sourceProductId),
-    sourceGroupId: strId(row.sourceGroupId),
-    selectionType: row.selectionType,
-    upgradeDeltaHalala: row.upgradeDeltaHalala,
-    currency: row.currency,
-    isEnabled: row.isEnabled,
-    isVisible: row.isVisible,
-    status: row.status,
-    sortOrder: row.sortOrder,
-    revision: row.revision,
-  })));
+  return stableJson(configs.map(clonePlain));
 }
 
 async function premiumBuilderFingerprint() {
@@ -397,6 +395,14 @@ function isBasicMealRegularTargetSection(section) {
     && String(section.selectionType || "").trim() === "standard_meal";
 }
 
+function sectionsFingerprint(sections) {
+  return stableJson((sections || []).map((section) => {
+    const copy = clonePlain(section);
+    delete copy._id;
+    return copy;
+  }));
+}
+
 async function currentDraftNonTargetFingerprint() {
   const draft = await MealBuilderConfig.findOne({
     status: "draft",
@@ -429,7 +435,8 @@ async function buildDraftPlan(proteinRows, carbRows) {
   }).sort({ updatedAt: -1 });
   if (!currentDraft) throw new Error("No current Meal Builder draft exists");
 
-  const sections = clonePlain(currentDraft.sections || []);
+  const currentSections = clonePlain(currentDraft.sections || []);
+  const sections = clonePlain(currentSections);
   const familyIds = exactIdsByFamily(proteinRows);
   const expected = {
     chicken: familyIds.chicken,
@@ -439,8 +446,10 @@ async function buildDraftPlan(proteinRows, carbRows) {
   };
 
   for (const [sectionKey, selectedOptionIds] of Object.entries(expected)) {
-    const section = sections.find((item) => item.key === sectionKey);
-    if (!section) throw new Error(`Meal Builder draft section missing: ${sectionKey}`);
+    const matchingSections = sections.filter((item) => item.key === sectionKey);
+    if (matchingSections.length === 0) throw new Error(`Meal Builder draft section missing: ${sectionKey}`);
+    if (matchingSections.length !== 1) throw new Error(`Meal Builder draft section is ambiguous: ${sectionKey}`);
+    const [section] = matchingSections;
     const expectedGroupId = sectionKey === "carbs"
       ? BASIC_MEAL_CARB_GROUP_ID
       : BASIC_MEAL_PROTEIN_GROUP_ID;
@@ -467,8 +476,38 @@ async function buildDraftPlan(proteinRows, carbRows) {
   return {
     draftId: strId(currentDraft._id),
     previousRevisionHash: currentDraft.revisionHash || "",
+    currentNotes: currentDraft.notes || "",
+    currentSectionsFingerprint: sectionsFingerprint(currentSections),
+    plannedSectionsFingerprint: sectionsFingerprint(sections),
     sections,
     expected,
+  };
+}
+
+async function updateBasicMealDraftSections(draftPlan, notes) {
+  const draft = await MealBuilderConfig.findById(draftPlan.draftId);
+  if (!draft || draft.status !== "draft" || draft.isCurrent !== true) {
+    throw new Error("Current Meal Builder draft changed while normalization was running");
+  }
+  if (sectionsFingerprint(draft.sections) !== draftPlan.currentSectionsFingerprint) {
+    throw new Error("Meal Builder draft sections changed while normalization was running");
+  }
+
+  for (const plannedSection of draftPlan.sections.filter(isBasicMealRegularTargetSection)) {
+    const currentSection = draft.sections.id(plannedSection._id);
+    if (!currentSection) {
+      throw new Error(`Meal Builder draft target section disappeared: ${plannedSection.key}`);
+    }
+    currentSection.selectedOptionIds = plannedSection.selectedOptionIds;
+    currentSection.includeMode = plannedSection.includeMode;
+    currentSection.selectionType = plannedSection.selectionType;
+    currentSection.visible = plannedSection.visible;
+  }
+  draft.notes = notes;
+  await draft.save();
+  return {
+    revisionHash: draft.revisionHash || "",
+    sections: clonePlain(draft.sections),
   };
 }
 
@@ -566,25 +605,36 @@ async function deactivateNonApprovedAfterPublish({ execute, regularProteinRows, 
         isAvailable: true,
       }).lean();
       const canDeactivateOptionDocument = otherActiveRelations.length === 0;
+      const relationNeedsDeactivation = relation.isActive !== false
+        || relation.isVisible !== false
+        || relation.isAvailable !== false;
+      const optionNeedsDeactivation = canDeactivateOptionDocument && (
+        option.isActive !== false || option.isVisible !== false || option.isAvailable !== false
+      );
+      if (!relationNeedsDeactivation && !optionNeedsDeactivation) continue;
 
       plans.push({
         optionId,
         key: option.key,
         groupId,
-        deactivateRelation: true,
-        deactivateOptionDocument: canDeactivateOptionDocument,
+        deactivateRelation: relationNeedsDeactivation,
+        deactivateOptionDocument: optionNeedsDeactivation,
         protectedOtherProductIds: otherActiveRelations.map((row) => strId(row.productId)),
       });
 
       if (!execute) continue;
-      await ProductGroupOption.updateOne(
-        { _id: relation._id },
-        { $set: { isActive: false, isVisible: false, isAvailable: false } }
-      );
-      if (canDeactivateOptionDocument) {
+      if (relationNeedsDeactivation) {
+        await ProductGroupOption.updateOne(
+          { _id: relation._id },
+          { $set: { isActive: false, isVisible: false, isAvailable: false } },
+          { timestamps: false }
+        );
+      }
+      if (optionNeedsDeactivation) {
         await MenuOption.updateOne(
           { _id: optionId, groupId },
-          { $set: { isActive: false, isVisible: false, isAvailable: false } }
+          { $set: { isActive: false, isVisible: false, isAvailable: false } },
+          { timestamps: false }
         );
       }
     }
@@ -653,10 +703,15 @@ async function runNormalization({
     if (!skipDraftSync) {
       draftPlan = await buildDraftPlan(regularProteinRows, carbRows);
       if (execute) {
-        draftResult = await updateDraft({
-          sections: draftPlan.sections,
-          notes: "Final Basic Meal restaurant menu: 13 regular proteins + 9 carbs; preserved paid proteins unchanged",
-        });
+        const draftNotes = "Final Basic Meal restaurant menu: 13 regular proteins + 9 carbs; preserved paid proteins unchanged";
+        const draftAlreadyCurrent = draftPlan.currentSectionsFingerprint === draftPlan.plannedSectionsFingerprint
+          && draftPlan.currentNotes === draftNotes;
+        draftResult = draftAlreadyCurrent
+          ? {
+            revisionHash: draftPlan.previousRevisionHash,
+            sections: draftPlan.sections,
+          }
+          : await updateBasicMealDraftSections(draftPlan, draftNotes);
 
         const draftProteinIds = []
           .concat(
@@ -781,5 +836,6 @@ module.exports = {
   FINAL_PROTEINS,
   FINAL_CARBS,
   PRESERVED_PAID_PROTEIN_KEYS,
+  deactivateNonApprovedAfterPublish,
   runNormalization,
 };

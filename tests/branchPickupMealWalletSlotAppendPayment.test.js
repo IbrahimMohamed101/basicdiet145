@@ -1,5 +1,7 @@
 "use strict";
 
+process.env.NODE_ENV = "test";
+
 const { setTemporaryEnvironment } = require("./helpers/temporaryEnvironment");
 setTemporaryEnvironment({ SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false" });
 
@@ -8,6 +10,10 @@ process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboar
 process.env.SUBSCRIPTION_AUTO_SETTLEMENT_ENABLED = "false";
 
 require("dotenv").config();
+delete process.env.MONGO_URI_TEST;
+delete process.env.MONGO_URI;
+
+const { connectDB, disconnectDB } = require("./helpers/dbHelper");
 
 const assert = require("assert");
 const jwt = require("jsonwebtoken");
@@ -35,7 +41,6 @@ const { performDaySelectionUpdate } = require("../src/services/subscription/subs
 const { mapSubscriptionPickupRequestToDTO } = require("../src/services/dashboard/dashboardDtoService");
 const { buildKitchenDetailsPayload } = require("../src/services/dashboard/opsPayloadService");
 const { issueDashboardAccessToken } = require("../src/services/dashboardTokenService");
-const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
 
 const TEST_TAG = `pickup-slot-append-${Date.now()}`;
 const TEST_KEY_PREFIX = TEST_TAG.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
@@ -127,9 +132,7 @@ async function test(name, fn) {
 }
 
 async function connect() {
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(resolveMongoUri());
-  }
+  await connectDB();
 }
 
 async function cleanup() {
@@ -1099,7 +1102,7 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
     });
   } finally {
     await cleanup();
-    await mongoose.disconnect();
+    await disconnectDB();
     console.log(`\nBranch pickup slot append tests: ${results.passed} passed, ${results.failed} failed`);
     if (results.failed > 0) process.exitCode = 1;
   }
