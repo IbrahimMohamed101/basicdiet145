@@ -82,14 +82,12 @@ function requireLiveConfirmations(argv) {
   }
 }
 
-function safeMongoTarget(uri) {
-  const raw = String(uri || "");
-  const noCredentials = raw.replace(/\/\/([^/@]+)@/, "//[REDACTED]@");
-  const dbMatch = noCredentials.match(/\/([^/?]+)(?:\?|$)/);
-  const hostMatch = noCredentials.match(/^[^:]+:\/\/(?:\[REDACTED\]@)?([^/]+)/);
+function connectedMongoTarget(connection) {
+  const host = String(connection?.host || "unknown");
+  const port = connection?.port ? `:${connection.port}` : "";
   return {
-    host: hostMatch ? hostMatch[1] : "unknown",
-    database: dbMatch ? dbMatch[1] : "driver-default",
+    host: `${host}${port}`,
+    database: connection?.name || "driver-default",
   };
 }
 
@@ -509,9 +507,7 @@ async function runPreparation({
     }
     await mongoose.connect(uri);
   }
-  const target = alreadyConnected
-    ? { host: mongoose.connection.host || "existing-connection", database: mongoose.connection.name || "unknown" }
-    : safeMongoTarget(uri);
+  const target = connectedMongoTarget(mongoose.connection);
 
   try {
     const now = new Date();

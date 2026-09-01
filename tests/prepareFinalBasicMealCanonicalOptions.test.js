@@ -312,6 +312,11 @@ async function run() {
     const beforeDryRun = await databaseFingerprint();
     const dryRun = await runPreparation({ argv: [], closeConnection: false });
     assert.strictEqual(dryRun.mode, "dry_run");
+    assert.deepStrictEqual(dryRun.target, {
+      host: `${mongoose.connection.host}:${mongoose.connection.port}`,
+      database: mongoose.connection.name,
+    });
+    assert(!JSON.stringify(dryRun.target).includes("@"), "target output must not contain credentials");
     assert.strictEqual(dryRun.plan.lemonBbqChicken.currentState, "missing");
     assert.strictEqual(dryRun.plan.lemonBbqChicken.optionAction, "create_canonical_menu_option");
     assert.strictEqual(dryRun.plan.lemonBbqChicken.relationAction, "create_basic_meal_relation");
