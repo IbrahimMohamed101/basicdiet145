@@ -15,7 +15,8 @@ async function ensureIsolatedTestMongoUri() {
     instance: { dbName },
   });
   previousTestMongoUri = process.env.MONGO_URI_TEST;
-  process.env.MONGO_URI_TEST = ownedMemoryServer.getUri(dbName);
+  const rawUri = ownedMemoryServer.getUri();
+  process.env.MONGO_URI_TEST = rawUri.endsWith("/") ? `${rawUri}${dbName}` : `${rawUri}/${dbName}`;
 }
 
 async function connectDB() {

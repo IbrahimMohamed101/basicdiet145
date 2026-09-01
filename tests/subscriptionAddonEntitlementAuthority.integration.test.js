@@ -177,8 +177,9 @@ function structuredAddonSelection(choice, group) {
 }
 
 async function createUser(label) {
+  createUser.sequence = (createUser.sequence || 0) + 1;
   return User.create({
-    phone: `+9665${String(Date.now() + Math.floor(Math.random() * 9999)).slice(-8)}`,
+    phone: `+96659${String(createUser.sequence).padStart(7, "0")}`,
     name: label,
     role: "client",
     isActive: true,
