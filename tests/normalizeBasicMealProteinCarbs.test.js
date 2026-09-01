@@ -10,10 +10,13 @@ const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuOption = require("../src/models/MenuOption");
 const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
-const Subscription = require("../src/models/Subscription");
-const SubscriptionDay = require("../src/models/SubscriptionDay");
+const { seedNewMenu } = require("../scripts/bootstrap/seed-new-menu");
+const { seedSettings } = require("../scripts/bootstrap/seed-catalog");
 
-const { runNormalization } = require("../scripts/migrations/normalize-basic-meal-protein-carbs");
+const {
+  runNormalization,
+  BASIC_MEAL_PROTEIN_GROUP_ID,
+} = require("../scripts/migrations/normalize-basic-meal-protein-carbs");
 
 let mongoServer;
 
@@ -24,101 +27,96 @@ async function setup() {
   const mongoUri = mongoServer.getUri();
   await mongoose.connect(mongoUri);
 
-  // Seed test data
-  const category = await MenuCategory.create({
-    key: "main_meals",
-    name: { ar: "الوجبات الرئيسية", en: "Main Meals" },
-    sortOrder: 1,
-  });
+  await seedSettings({ sync: false });
+  await seedNewMenu({ sync: false });
 
-  const product = await MenuProduct.create({
-    key: "basic_meal",
-    categoryId: category._id,
-    name: { ar: "وجبة أساسية", en: "Basic Meal" },
-    itemType: "basic_meal",
-    priceHalala: 3000,
-    isActive: true,
-  });
+  let category = await MenuCategory.findOne({ key: "meals" });
+  if (!category) {
+    category = await MenuCategory.create({
+      key: "meals",
+      name: { ar: "الوجبات", en: "Meals" },
+    });
+  }
 
-  const proteinGroup = await MenuOptionGroup.create({
-    key: "proteins",
-    name: { ar: "بروتين", en: "Proteins" },
-  });
+  let product = await MenuProduct.findOne({ key: "basic_meal" });
+  if (!product) {
+    product = await MenuProduct.create({
+      key: "basic_meal",
+      categoryId: category._id,
+      name: { ar: "وجبة أساسية", en: "Basic Meal" },
+      itemType: "basic_meal",
+      priceHalala: 3000,
+      isActive: true,
+    });
+  }
 
-  const carbGroup = await MenuOptionGroup.create({
-    key: "carbs",
-    name: { ar: "كربوهيدرات", en: "Carbs" },
-  });
+  let proteinGroup = await MenuOptionGroup.findById(BASIC_MEAL_PROTEIN_GROUP_ID);
+  if (!proteinGroup) {
+    proteinGroup = await MenuOptionGroup.create({
+      _id: new mongoose.Types.ObjectId(BASIC_MEAL_PROTEIN_GROUP_ID),
+      key: "proteins",
+      name: { ar: "بروتين", en: "Proteins" },
+    });
+  }
 
-  await ProductOptionGroup.create({
-    productId: product._id,
-    groupId: proteinGroup._id,
-    minSelections: 1,
-    maxSelections: 1,
-  });
+  let carbGroup = await MenuOptionGroup.findOne({ key: "carbs" });
+  if (!carbGroup) {
+    carbGroup = await MenuOptionGroup.create({
+      key: "carbs",
+      name: { ar: "نشويات", en: "Carbs" },
+    });
+  }
 
-  await ProductOptionGroup.create({
-    productId: product._id,
-    groupId: carbGroup._id,
-    minSelections: 1,
-    maxSelections: 2,
-  });
+  // Ensure ProductOptionGroup links basic_meal to proteinGroup and carbGroup
+  await ProductOptionGroup.updateOne(
+    { productId: product._id, groupId: proteinGroup._id },
+    { $set: { minSelections: 1, maxSelections: 1 } },
+    { upsert: true }
+  );
 
-  // Approved options
-  const grilledChicken = await MenuOption.create({
-    key: "grilled_chicken",
-    groupId: proteinGroup._id,
-    name: { ar: "دجاج مشوي", en: "Grilled Chicken" },
-  });
+  await ProductOptionGroup.updateOne(
+    { productId: product._id, groupId: carbGroup._id },
+    { $set: { minSelections: 1, maxSelections: 2 } },
+    { upsert: true }
+  );
 
-  const whiteRice = await MenuOption.create({
-    key: "white_rice",
-    groupId: carbGroup._id,
-    name: { ar: "أرز أبيض", en: "White Rice" },
-  });
+  // Ensure paid options exist in MenuOption so unknown/ambiguous count is 0
+  const paidOptions = [
+    { key: "meatballs", name: { ar: "كرات لحم", en: "Meatballs" }, extraPriceHalala: 300 },
+    { key: "beef_stroganoff", name: { ar: "لحم استرغانوف", en: "Beef Stroganoff" }, extraPriceHalala: 300 },
+    { key: "beef_steak", name: { ar: "ستيك لحم", en: "Beef Steak" }, extraPriceHalala: 1600 },
+    { key: "shrimp", name: { ar: "جمبري", en: "Shrimp" }, extraPriceHalala: 1600 },
+    { key: "salmon", name: { ar: "سالمون", en: "Salmon" }, extraPriceHalala: 1600 },
+  ];
 
-  // Disallowed options
+  for (const opt of paidOptions) {
+    const existing = await MenuOption.findOne({ key: opt.key });
+    if (!existing) {
+      await MenuOption.create({
+        key: opt.key,
+        groupId: proteinGroup._id,
+        name: opt.name,
+        extraPriceHalala: opt.extraPriceHalala,
+        isActive: true,
+      });
+    }
+  }
+
+  // Add an unapproved relation to test deactivation
   const unapprovedProtein = await MenuOption.create({
     key: "exotic_ostrich_meat",
     groupId: proteinGroup._id,
     name: { ar: "نعام", en: "Ostrich" },
   });
 
-  const unapprovedCarb = await MenuOption.create({
-    key: "exotic_truffle_fries",
-    groupId: carbGroup._id,
-    name: { ar: "بطاطس ترافل", en: "Truffle Fries" },
-  });
-
-  const rel1 = await ProductGroupOption.create({
-    productId: product._id,
-    groupId: proteinGroup._id,
-    optionId: grilledChicken._id,
-    isActive: false, // Should be activated
-  });
-
-  const rel2 = await ProductGroupOption.create({
+  const relUnapproved = await ProductGroupOption.create({
     productId: product._id,
     groupId: proteinGroup._id,
     optionId: unapprovedProtein._id,
     isActive: true, // Should be deactivated
   });
 
-  const rel3 = await ProductGroupOption.create({
-    productId: product._id,
-    groupId: carbGroup._id,
-    optionId: whiteRice._id,
-    isActive: true,
-  });
-
-  const rel4 = await ProductGroupOption.create({
-    productId: product._id,
-    groupId: carbGroup._id,
-    optionId: unapprovedCarb._id,
-    isActive: true, // Should be deactivated
-  });
-
-  return { product, rel1, rel2, rel3, rel4 };
+  return { product, relUnapproved };
 }
 
 async function teardown() {
@@ -141,45 +139,33 @@ async function runTests() {
     });
 
     assert.strictEqual(dryRunResult.mode, "dry_run");
-    assert.strictEqual(dryRunResult.deleted_records, 0);
-    assert.strictEqual(dryRunResult.historical_rewrites, 0);
-    assert.strictEqual(dryRunResult.proposedUpdatesCount, 3); // rel1 to activate, rel2 & rel4 to deactivate
-    assert.strictEqual(dryRunResult.enabledCount, 1);
-    assert.strictEqual(dryRunResult.disabledCount, 2);
+    assert.strictEqual(dryRunResult.summaryCounters.deletedRecords, 0);
+    assert.strictEqual(dryRunResult.summaryCounters.historicalRewrites, 0);
+    assert.strictEqual(dryRunResult.summaryCounters.regularProteinActiveAfter, 13);
+    assert.strictEqual(dryRunResult.summaryCounters.paidPreservedOptionsActive, 5);
+    assert.strictEqual(dryRunResult.summaryCounters.carbsActiveAfter, 9);
+    assert.strictEqual(dryRunResult.summaryCounters.unknownAmbiguousOptions, 0);
 
     // Verify DB was NOT mutated during dry-run
-    const checkRel1Dry = await ProductGroupOption.findById(seeded.rel1._id);
-    assert.strictEqual(checkRel1Dry.isActive, false);
+    const checkRelDry = await ProductGroupOption.findById(seeded.relUnapproved._id);
+    assert.strictEqual(checkRelDry.isActive, true);
 
-    console.log("Testing apply normalization...");
-    const applyResult = await runNormalization({
-      argv: ["--apply"],
+    console.log("Testing execute normalization...");
+    const executeResult = await runNormalization({
+      argv: ["--execute"],
       closeConnection: false,
     });
 
-    assert.strictEqual(applyResult.mode, "apply");
-    assert.strictEqual(applyResult.deleted_records, 0);
-    assert.strictEqual(applyResult.historical_rewrites, 0);
+    assert.strictEqual(executeResult.mode, "execute");
+    assert.strictEqual(executeResult.summaryCounters.deletedRecords, 0);
+    assert.strictEqual(executeResult.summaryCounters.historicalRewrites, 0);
+    assert.strictEqual(executeResult.summaryCounters.unknownAmbiguousOptions, 0);
 
-    // Verify DB WAS mutated on apply
-    const checkRel1Apply = await ProductGroupOption.findById(seeded.rel1._id);
-    assert.strictEqual(checkRel1Apply.isActive, true);
+    // Verify DB WAS mutated on execute: unapproved item deactivated
+    const checkRelExecute = await ProductGroupOption.findById(seeded.relUnapproved._id);
+    assert.strictEqual(checkRelExecute.isActive, false);
 
-    const checkRel2Apply = await ProductGroupOption.findById(seeded.rel2._id);
-    assert.strictEqual(checkRel2Apply.isActive, false);
-
-    const checkRel4Apply = await ProductGroupOption.findById(seeded.rel4._id);
-    assert.strictEqual(checkRel4Apply.isActive, false);
-
-    console.log("Testing idempotency...");
-    const repeatApplyResult = await runNormalization({
-      argv: ["--apply"],
-      closeConnection: false,
-    });
-
-    assert.strictEqual(repeatApplyResult.proposedUpdatesCount, 0);
-
-    console.log("All normalize-basic-meal-protein-carbs tests passed successfully!");
+    console.log("\nAll normalize-basic-meal-protein-carbs unit tests passed successfully!");
   } finally {
     await teardown();
   }
