@@ -131,7 +131,7 @@ async function run() {
         productId: basicMeal._id,
         groupId: proteins._id,
         minSelections: 1,
-        maxSelections: 1,
+        maxSelections: 2,
         isRequired: true,
         sortOrder: 10,
       },
@@ -174,11 +174,44 @@ async function run() {
       status: "draft",
       isCurrent: true,
       source: "dashboard",
-      sections: [],
+      sections: [
+        {
+          key: "premium",
+          sectionType: "option_group",
+          sourceKind: "premium_visual",
+          selectionType: "premium_meal",
+          productContextId: basicMeal._id,
+          sourceGroupId: proteins._id,
+          selectedOptionIds: [],
+          titleOverride: { ar: "المميز", en: "Premium" },
+          metadata: { cardType: "system_premium", systemManaged: true },
+        },
+      ],
     });
 
     const app = createApp();
     const auth = await dashboardAuth("admin", "option-family-lifecycle");
+
+    for (const premiumAction of [
+      request(app)
+        .patch("/api/dashboard/meal-builder/sections/premium")
+        .set(auth.headers)
+        .send({ visible: false }),
+      request(app)
+        .delete("/api/dashboard/meal-builder/sections/premium")
+        .set(auth.headers),
+      request(app)
+        .post("/api/dashboard/meal-builder/sections/premium/options")
+        .set(auth.headers)
+        .send({ optionIds: [String(fishFillet._id)] }),
+    ]) {
+      const premiumResponse = await premiumAction;
+      expectStatus(premiumResponse, 409, "reject system Premium card mutation");
+      assert.strictEqual(
+        premiumResponse.body.error.code,
+        "MEAL_BUILDER_SYSTEM_CARD_READ_ONLY"
+      );
+    }
 
     const picker = await request(app)
       .get("/api/dashboard/meal-builder/pickers/options")
@@ -268,6 +301,24 @@ async function run() {
       String(tuna._id),
     ]);
 
+    const addItems = await request(app)
+      .post("/api/dashboard/meal-builder/sections/fish_options/options")
+      .set(auth.headers)
+      .send({ optionIds: [String(fishFillet._id), String(fishFillet._id)] });
+    expectStatus(addItems, 200, "add and deduplicate option card items");
+    assert.deepStrictEqual(addItems.body.data.section.selectedOptionIds, [
+      String(tuna._id),
+      String(fishFillet._id),
+    ]);
+
+    const removeItem = await request(app)
+      .delete(`/api/dashboard/meal-builder/sections/fish_options/options/${fishFillet._id}`)
+      .set(auth.headers);
+    expectStatus(removeItem, 200, "remove one option card item");
+    assert.deepStrictEqual(removeItem.body.data.section.selectedOptionIds, [
+      String(tuna._id),
+    ]);
+
     const conflictingCard = await request(app)
       .post("/api/dashboard/meal-builder/sections")
       .set(auth.headers)
@@ -286,6 +337,76 @@ async function run() {
       });
     expectStatus(conflictingCard, 409, "prevent duplicate option assignment");
 
+    const createChickenCard = await request(app)
+      .post("/api/dashboard/meal-builder/sections")
+      .set(auth.headers)
+      .send({
+        cardType: "option_family",
+        key: "chicken_options",
+        titleOverride: { ar: "اختيارات الدجاج", en: "Chicken Options" },
+        optionRole: "protein",
+        familyKey: "chicken",
+        productContextId: String(basicMeal._id),
+        sourceGroupId: String(proteins._id),
+        selectedOptionIds: [String(chicken._id)],
+        selectionType: "standard_meal",
+        maxSelections: 1,
+        visible: true,
+      });
+    expectStatus(createChickenCard, 201, "create unrelated option family card");
+
+    const originalSave = MealBuilderConfig.prototype.save;
+    let waitingSaves = 0;
+    let releaseSaves;
+    const bothRequestsReady = new Promise((resolve) => {
+      releaseSaves = resolve;
+    });
+    MealBuilderConfig.prototype.save = async function concurrentDraftSave(...args) {
+      if (this.status === "draft" && this.isCurrent === true) {
+        waitingSaves += 1;
+        if (waitingSaves === 2) releaseSaves();
+        await bothRequestsReady;
+      }
+      return originalSave.apply(this, args);
+    };
+
+    let concurrentResponses;
+    try {
+      concurrentResponses = await Promise.all([
+        request(app)
+          .patch("/api/dashboard/meal-builder/sections/fish_options")
+          .set(auth.headers)
+          .send({ cardType: "option_family", visible: false }),
+        request(app)
+          .patch("/api/dashboard/meal-builder/sections/chicken_options")
+          .set(auth.headers)
+          .send({
+            cardType: "option_family",
+            titleOverride: { ar: "دجاج محدث", en: "Updated Chicken" },
+          }),
+      ]);
+    } finally {
+      MealBuilderConfig.prototype.save = originalSave;
+    }
+
+    assert.deepStrictEqual(
+      concurrentResponses.map((response) => response.status).sort(),
+      [200, 409],
+      "overlapping scoped edits must detect a conflict instead of silently losing an unrelated update"
+    );
+    const persistedAfterConflict = await MealBuilderConfig.findOne({
+      status: "draft",
+      isCurrent: true,
+    }).lean();
+    assert.ok(
+      persistedAfterConflict.sections.some((section) => section.key === "fish_options"),
+      "conflict handling must not remove the fish card"
+    );
+    assert.ok(
+      persistedAfterConflict.sections.some((section) => section.key === "chicken_options"),
+      "conflict handling must not remove the chicken card"
+    );
+
     const deleteCard = await request(app)
       .delete("/api/dashboard/meal-builder/sections/fish_options")
       .set(auth.headers);
@@ -294,6 +415,21 @@ async function run() {
     assert.strictEqual(
       deleteCard.body.data.draft.sections.some((section) => section.key === "fish_options"),
       false
+    );
+    assert.strictEqual(
+      await MenuProduct.countDocuments({}),
+      1,
+      "card actions must not delete source MenuProduct documents"
+    );
+    assert.strictEqual(
+      await MenuOption.countDocuments({}),
+      4,
+      "card actions must not delete source MenuOption documents"
+    );
+    assert.strictEqual(
+      await MealBuilderConfig.countDocuments({ status: { $in: ["published", "archived"] } }),
+      0,
+      "card actions must not publish or archive Meal Builder versions"
     );
 
     console.log("dashboard Meal Builder option family lifecycle passed");

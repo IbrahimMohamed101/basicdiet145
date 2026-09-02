@@ -56,6 +56,14 @@ function handleMealBuilderError(err, res) {
       err.keyValue || undefined
     );
   }
+  if (err && err.name === "VersionError") {
+    return errorResponse(
+      res,
+      409,
+      "MEAL_BUILDER_CONFLICT",
+      "Meal Builder draft changed while this action was being saved; reload and retry"
+    );
+  }
   return errorResponse(
     res,
     500,
