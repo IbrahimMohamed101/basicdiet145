@@ -174,7 +174,11 @@ async function main() {
     const { headers } = await dashboardAuth("admin", "meal-builder-composer");
 
     let res = await api.get("/api/subscriptions/meal-builder?lang=en");
-    expectStatus(res, 200, "mobile compatibility catalog before first publish");
+    expectStatus(res, 404, "published Meal Builder before first publish");
+    assert.strictEqual(res.body.error.code, "MEAL_BUILDER_NOT_PUBLISHED");
+
+    res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
+    expectStatus(res, 200, "planner compatibility catalog before first publish");
     assert.strictEqual(res.body.data.builderCatalog.contractVersion, "meal_planner_menu.v3");
     assert.strictEqual(res.body.data.builderCatalog.publishedVersionId, null);
     const fallbackCatalogHash = res.body.data.builderCatalog.catalogHash;
@@ -185,7 +189,11 @@ async function main() {
     assert.strictEqual(res.body.data.sections.length, 3);
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
-    expectStatus(res, 200, "mobile compatibility catalog ignores unpublished draft");
+    expectStatus(res, 404, "unpublished draft does not create published Meal Builder");
+    assert.strictEqual(res.body.error.code, "MEAL_BUILDER_NOT_PUBLISHED");
+
+    res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
+    expectStatus(res, 200, "planner compatibility catalog ignores unpublished draft");
     assert.strictEqual(res.body.data.builderCatalog.publishedVersionId, null);
     assert.strictEqual(res.body.data.builderCatalog.catalogHash, fallbackCatalogHash);
 
@@ -199,18 +207,26 @@ async function main() {
     assert(res.body.data.config.revisionHash.startsWith("sha256:"), "published config has revision hash");
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
-    expectStatus(res, 200, "mobile builder after publish");
-    const publishedCatalog = res.body.data.builderCatalog;
-    assert.strictEqual(publishedCatalog.contractVersion, "meal_planner_menu.v3");
-    assert.strictEqual(publishedCatalog.publishedVersionId, null);
-    assert.strictEqual(publishedCatalog.rules.source, "meal_builder_config");
-    assert(publishedCatalog.rules.builderRevisionHash, "published catalog has a builder revision hash");
-    assert.strictEqual(publishedCatalog.sections.length, 3);
-    assert.strictEqual(publishedCatalog.sections[0].products[0].optionGroups[0].options[0].id, String(fixture.chicken._id));
-    assert.strictEqual(publishedCatalog.sections[2].products[0].id, String(fixture.sandwich._id));
+    expectStatus(res, 200, "published Meal Builder contract after publish");
+    assert.strictEqual(res.body.data.contractVersion, "subscription_meal_builder.v1");
+    assert(res.body.data.revisionHash.startsWith("sha256:"), "published read model has revision hash");
+    assert.strictEqual(res.body.data.sections.length, 3);
+    assert.strictEqual(res.body.data.sections[0].items[0].id, String(fixture.chicken._id));
+    assert.strictEqual(res.body.data.sections[2].items[0].id, String(fixture.sandwich._id));
+    const publishedRevisionHash = res.body.data.revisionHash;
 
-    const publishedHash = publishedCatalog.catalogHash;
-    const publishedRevisionHash = publishedCatalog.rules.builderRevisionHash;
+    res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
+    expectStatus(res, 200, "planner v3 contract after builder publish");
+    const publishedPlannerCatalog = res.body.data.builderCatalog;
+    assert.strictEqual(publishedPlannerCatalog.contractVersion, "meal_planner_menu.v3");
+    assert.strictEqual(publishedPlannerCatalog.publishedVersionId, null);
+    assert.strictEqual(publishedPlannerCatalog.rules.source, "meal_builder_config");
+    assert.strictEqual(publishedPlannerCatalog.rules.builderRevisionHash, publishedRevisionHash);
+    assert.strictEqual(publishedPlannerCatalog.sections.length, 3);
+    assert.strictEqual(publishedPlannerCatalog.sections[0].products[0].optionGroups[0].options[0].id, String(fixture.chicken._id));
+    assert.strictEqual(publishedPlannerCatalog.sections[2].products[0].id, String(fixture.sandwich._id));
+    const publishedCatalogHash = publishedPlannerCatalog.catalogHash;
+
     res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({
       sections: builderSections(fixture).slice(0, 2),
       notes: "unpublished draft change",
@@ -218,8 +234,14 @@ async function main() {
     expectStatus(res, 200, "update draft after publish");
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
-    expectStatus(res, 200, "mobile builder ignores unpublished draft");
-    assert.strictEqual(res.body.data.builderCatalog.catalogHash, publishedHash);
+    expectStatus(res, 200, "published Meal Builder ignores later draft edits");
+    assert.strictEqual(res.body.data.contractVersion, "subscription_meal_builder.v1");
+    assert.strictEqual(res.body.data.revisionHash, publishedRevisionHash);
+    assert.strictEqual(res.body.data.sections.length, 3);
+
+    res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
+    expectStatus(res, 200, "planner v3 ignores later unpublished draft edits");
+    assert.strictEqual(res.body.data.builderCatalog.catalogHash, publishedCatalogHash);
     assert.strictEqual(
       res.body.data.builderCatalog.rules.builderRevisionHash,
       publishedRevisionHash
