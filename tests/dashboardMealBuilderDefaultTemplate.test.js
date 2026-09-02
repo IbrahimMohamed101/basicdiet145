@@ -315,25 +315,30 @@ async function main() {
     assert.strictEqual(res.body.data.validation.ready, true, JSON.stringify(res.body.data.validation));
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
-    expectStatus(res, 200, "published Meal Builder v1 read model");
-    assert.strictEqual(res.body.data.contractVersion, "subscription_meal_builder.v1");
-    assert(res.body.data.revisionHash.startsWith("sha256:"), "published Meal Builder has revision hash");
-    const publishedRevisionHash = res.body.data.revisionHash;
-    const premium = res.body.data.sections.find((section) => section.key === "premium");
-    assert(premium, "premium visual section returned by published Meal Builder");
-    const premiumKeys = premium.items.map((item) => item.key);
-    for (const key of ["beef_steak", "shrimp", "salmon", "premium_large_salad"]) {
-      assert(premiumKeys.includes(key), `published Meal Builder premium contains ${key}`);
-    }
-    const publishedSandwich = res.body.data.sections.find((section) => section.key === "sandwich");
-    assert(publishedSandwich, "published Meal Builder contains sandwich section");
-    const publishedSandwichItem = publishedSandwich.items.find(
-      (item) => item.id === String(fixture.sandwich._id)
+    expectStatus(res, 200, "published meal-builder read model");
+    const mealBuilderAliasCatalog = res.body.data.builderCatalog;
+    assert.strictEqual(mealBuilderAliasCatalog.contractVersion, "meal_planner_menu.v3");
+    assert.strictEqual(mealBuilderAliasCatalog.publishedVersionId, null);
+    assert.strictEqual(mealBuilderAliasCatalog.rules.source, "meal_builder_config");
+    assert(mealBuilderAliasCatalog.rules.builderRevisionHash, "published alias has a builder revision hash");
+    const premium = mealBuilderAliasCatalog.sections.find((section) => section.key === "premium");
+    assert(premium, "premium visual section returned");
+    const premiumProductKeys = premium.products.map((item) => item.key);
+    assert(premiumProductKeys.includes("premium_large_salad"), "premium contains premium_large_salad");
+    const premiumOptionKeys = premium.products.flatMap((product) =>
+      product.optionGroups.flatMap((group) => group.options.map((option) => option.key))
     );
-    assert(publishedSandwichItem, "published Meal Builder contains seeded sandwich");
-    assert.strictEqual(publishedSandwichItem.selectionType, "full_meal_product");
-    assert.strictEqual(publishedSandwichItem.action.requiresBuilder, false);
-    assert.strictEqual(publishedSandwichItem.action.treatAsFullMeal, true);
+    for (const key of ["beef_steak", "shrimp", "salmon"]) {
+      assert(premiumOptionKeys.includes(key), `premium contains ${key}`);
+    }
+    const sandwich = mealBuilderAliasCatalog.sections.find((section) => section.key === "sandwich");
+    const aliasedSandwichProduct = sandwich.products.find(
+      (product) => product.id === String(fixture.sandwich._id)
+    );
+    assert(aliasedSandwichProduct, "published direct card contains the seeded sandwich");
+    assert.strictEqual(aliasedSandwichProduct.selectionType, "full_meal_product");
+    assert.strictEqual(aliasedSandwichProduct.action.requiresBuilder, false);
+    assert.strictEqual(aliasedSandwichProduct.action.treatAsFullMeal, true);
 
     res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
     expectStatus(res, 200, "planner menu after builder publish");
@@ -345,9 +350,10 @@ async function main() {
       assert.strictEqual(res.body.data.builderCatalogV2.catalogVersion, "meal_planner_menu.v2", "if builderCatalogV2 is present, it must be v2");
     }
     const planner = res.body.data.builderCatalog;
+    assert.strictEqual(planner.catalogHash, mealBuilderAliasCatalog.catalogHash);
+    assert.strictEqual(planner.publishedVersionId, mealBuilderAliasCatalog.publishedVersionId);
     assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
     assert.strictEqual(planner.rules.source, "meal_builder_config");
-    assert.strictEqual(planner.rules.builderRevisionHash, publishedRevisionHash);
     assert.deepStrictEqual(planner.sections.map((section) => section.key), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
     assert.deepStrictEqual(planner.sections.map((section) => section.sortOrder), [10, 20, 30, 40, 50, 60, 70]);
     const plannerPremium = planner.sections.find((section) => section.key === "premium");
