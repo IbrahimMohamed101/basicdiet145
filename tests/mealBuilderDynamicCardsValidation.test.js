@@ -113,10 +113,16 @@ async function run() {
       .post("/api/dashboard/meal-builder/draft")
       .set(auth.headers)
       .send({});
-    expectStatus(response, 422, "incomplete default seed fails atomically");
-    assert.strictEqual(response.body.error.code, "MEAL_BUILDER_DEFAULT_SEED_INCOMPLETE");
-    assert(response.body.error.details.missingSectionKeys.length > 0);
-    assert.strictEqual(await MealBuilderConfig.countDocuments({ status: "draft", isCurrent: true }), 0);
+    expectStatus(response, 201, "incomplete legacy seed opens independent authoring");
+    assert.strictEqual(response.body.data.status, "draft");
+    assert.strictEqual(response.body.data.bootstrapKey, "independent_dashboard_authoring_v1");
+    assert.deepStrictEqual(response.body.data.sections, []);
+    assert.strictEqual(await MealBuilderConfig.countDocuments({ status: "draft", isCurrent: true }), 1);
+
+    await MealBuilderConfig.updateOne(
+      { _id: response.body.data.id },
+      { $set: { isCurrent: false } }
+    );
 
     await seedCanonicalCatalog({
       reset: true,
@@ -199,8 +205,11 @@ async function run() {
     response = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
     expectStatus(response, 200, "public v3 sandwich-only catalog");
     assert.strictEqual(response.body.data.builderCatalog.contractVersion, "meal_planner_menu.v3");
-    assert.strictEqual(response.body.data.plannerCatalog, undefined);
-    assert.strictEqual(response.body.data.builderCatalogV2, undefined);
+    assert.strictEqual(
+      response.body.data.plannerCatalog.catalogHash,
+      response.body.data.builderCatalog.catalogHash
+    );
+    assert.strictEqual(response.body.data.builderCatalogV2.catalogVersion, "meal_planner_menu.v2");
     assert(response.body.data.builderCatalog.sections.some((section) => section.key === "portable_lunches"));
 
     const customOnly = [
@@ -263,7 +272,8 @@ async function run() {
       .set(auth.headers);
     expectStatus(response, 200, "picker follows renamed carbs card meaning");
     assert.strictEqual(response.body.data.candidateType, "option");
-    assert.strictEqual(response.body.data.rules.maxTotalGrams, 300);
+    assert.strictEqual(response.body.data.rules.optionRole, "carbs");
+    assert.strictEqual(response.body.data.rules.canonicalSelectionType, "standard_meal");
 
     const renamedBeef = {
       ...seededSections.find((section) => section.key === "beef"),
@@ -393,9 +403,11 @@ async function run() {
       .post("/api/dashboard/meal-builder/sections")
       .set(auth.headers)
       .send({
+        cardType: "direct_product",
         key: "second_card",
         titleOverride: { ar: "ثانية", en: "Second" },
         selectedProductIds: [id(directOne), id(directThree)],
+        selectionType: "full_meal_product",
         sortOrder: 12,
       });
     expectStatus(response, 201, "create arbitrary card");

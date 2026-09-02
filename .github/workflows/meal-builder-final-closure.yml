@@ -1,0 +1,76 @@
+name: Meal Builder final closure
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/controllers/dashboard/mealBuilderController.js"
+      - "src/services/subscription/**"
+      - "tests/dashboardMealBuilderComposer.test.js"
+      - "tests/dashboardMealBuilderDefaultTemplate.test.js"
+      - "tests/dashboardMealBuilderFullCycle.test.js"
+      - "tests/dashboardMealBuilderPublishValidation.test.js"
+      - "tests/dashboardMealBuilderHydratedDraft.test.js"
+      - "tests/mealBuilderDynamicCardsValidation.test.js"
+      - "tests/dashboardMealBuilderOptionFamilyLifecycle.test.js"
+      - "tests/dashboardMealBuilderAuthoringCatalog.test.js"
+      - "tests/mealBuilderSourceKindCompatibility.test.js"
+      - "tests/dashboardMealBuilderOptionCatalogClosure.test.js"
+      - "tests/dashboardMealBuilderCompatibleDefaultSeed.test.js"
+      - "tests/dashboardMealBuilderSandwichCardEndToEnd.test.js"
+      - "tests/dashboardMealBuilderFullMealEndToEnd.test.js"
+      - ".github/workflows/meal-builder-final-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Run 13 focused Meal Builder files
+        env:
+          NODE_ENV: test
+        run: |
+          set -euo pipefail
+          files=(
+            tests/dashboardMealBuilderComposer.test.js
+            tests/dashboardMealBuilderDefaultTemplate.test.js
+            tests/dashboardMealBuilderFullCycle.test.js
+            tests/dashboardMealBuilderPublishValidation.test.js
+            tests/dashboardMealBuilderHydratedDraft.test.js
+            tests/mealBuilderDynamicCardsValidation.test.js
+            tests/dashboardMealBuilderOptionFamilyLifecycle.test.js
+            tests/dashboardMealBuilderAuthoringCatalog.test.js
+            tests/mealBuilderSourceKindCompatibility.test.js
+            tests/dashboardMealBuilderOptionCatalogClosure.test.js
+            tests/dashboardMealBuilderCompatibleDefaultSeed.test.js
+            tests/dashboardMealBuilderSandwichCardEndToEnd.test.js
+            tests/dashboardMealBuilderFullMealEndToEnd.test.js
+          )
+
+          passed=0
+          for file in "${files[@]}"; do
+            echo "::group::$file"
+            node "$file"
+            echo "::endgroup::"
+            passed=$((passed + 1))
+          done
+
+          test "$passed" -eq 13
+          echo "Meal Builder focused closure: ${passed}/13 files passed"

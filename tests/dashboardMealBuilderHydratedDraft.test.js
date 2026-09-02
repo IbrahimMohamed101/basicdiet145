@@ -157,8 +157,75 @@ async function seedCatalog() {
     carbsGroup,
     sandwichCategory,
     chicken: proteins.find((option) => option.key === "chicken"),
+    proteins,
+    carbs,
     sandwich,
   };
+}
+
+function authoredSections(fixture) {
+  const proteinCard = (key, sortOrder) => ({
+    key,
+    sectionType: "option_group",
+    sourceKind: "visual_family",
+    productContextId: String(fixture.basicMeal._id),
+    sourceGroupId: String(fixture.proteinsGroup._id),
+    selectedOptionIds: fixture.proteins
+      .filter((option) => option.proteinFamilyKey === key && !option.premiumKey)
+      .map((option) => String(option._id)),
+    selectionType: "standard_meal",
+    titleOverride: { ar: key, en: key },
+    visible: true,
+    sortOrder,
+    metadata: {
+      cardType: "option_family",
+      optionRole: "protein",
+      proteinFamilyKey: key,
+    },
+  });
+
+  return [
+    {
+      key: "sandwich",
+      sectionType: "product_list",
+      sourceKind: "product_list",
+      selectedProductIds: [String(fixture.sandwich._id)],
+      includeMode: "selected",
+      selectionType: "full_meal_product",
+      titleOverride: { ar: "وجبات جاهزة", en: "Direct meals" },
+      visible: true,
+      sortOrder: 10,
+      metadata: {
+        cardType: "direct_product",
+        requiresBuilder: false,
+        treatAsFullMeal: true,
+      },
+    },
+    proteinCard("chicken", 20),
+    proteinCard("beef", 30),
+    proteinCard("fish", 40),
+    proteinCard("eggs", 50),
+    {
+      key: "carbs",
+      sectionType: "option_group",
+      sourceKind: "configurable_product",
+      productContextId: String(fixture.basicMeal._id),
+      sourceGroupId: String(fixture.carbsGroup._id),
+      selectedOptionIds: fixture.carbs.map((option) => String(option._id)),
+      selectionType: "standard_meal",
+      titleOverride: { ar: "كارب", en: "Carbs" },
+      visible: true,
+      sortOrder: 60,
+      maxSelections: 2,
+      metadata: {
+        cardType: "option_family",
+        optionRole: "carbs",
+        visualRole: "carbs",
+        sourceGroupKey: "carbs",
+      },
+      rules: { maxTypes: 2, maxTotalGrams: 300, unit: "grams" },
+    },
+  ];
 }
 
 async function main() {
@@ -223,7 +290,7 @@ async function main() {
     expectStatus(res, 200, "validate legacy five-section draft");
     assert(!res.body.data.errors.some((error) => error.code === "MEAL_BUILDER_LEGACY_VISUAL_TEMPLATE"), JSON.stringify(res.body.data.errors));
 
-    await MealBuilderConfig.create({
+    const legacyDraft = await MealBuilderConfig.create({
       status: "draft",
       isCurrent: true,
       contractVersion: "subscription_meal_builder.v1",
@@ -239,12 +306,46 @@ async function main() {
     assert.strictEqual(res.body.data.validation.summary.migratedFromLegacyTemplate, undefined);
 
     res = await api.post("/api/dashboard/meal-builder/draft").set(headers).send({});
-    expectStatus(res, 201, "create default draft");
+    expectStatus(res, 201, "reuse authoritative current draft");
+    assert.strictEqual(res.body.data.id, String(legacyDraft._id));
+    assert.deepStrictEqual(
+      res.body.data.sections.map((section) => section.selectionType),
+      [
+        "standard_meal",
+        "standard_meal",
+        "premium_meal",
+        "sandwich",
+        "premium_large_salad",
+      ]
+    );
+    assert.strictEqual(
+      await MealBuilderConfig.countDocuments({ status: "draft", isCurrent: true }),
+      1,
+      "opening authoring must not replace the current five-section draft"
+    );
+
+    await MealBuilderConfig.updateOne(
+      { _id: legacyDraft._id },
+      { $set: { isCurrent: false } }
+    );
+    res = await api.post("/api/dashboard/meal-builder/draft").set(headers).send({});
+    expectStatus(res, 201, "create independent draft when no current draft exists");
+    assert.strictEqual(res.body.data.bootstrapKey, "independent_dashboard_authoring_v1");
+    assert.deepStrictEqual(res.body.data.sections, []);
+
+    res = await api
+      .put("/api/dashboard/meal-builder/draft")
+      .set(headers)
+      .send({ sections: authoredSections(fixture) });
+    expectStatus(res, 200, "save explicitly authored two-type draft");
     const sections = res.body.data.sections;
 
     res = await api.get("/api/dashboard/meal-builder/draft/hydrated").set(headers);
-    expectStatus(res, 200, "hydrate default draft");
-    assert.strictEqual(res.body.data.sections.length, 7);
+    expectStatus(res, 200, "hydrate explicitly authored draft");
+    assert.deepStrictEqual(
+      res.body.data.sections.map((section) => section.key),
+      ["sandwich", "chicken", "beef", "fish", "eggs", "carbs"]
+    );
     const chicken = res.body.data.sections.find((section) => section.key === "chicken");
     assert.strictEqual(chicken.type, "option_family");
     assert.strictEqual(chicken.source.kind, "option_family");
@@ -276,16 +377,16 @@ async function main() {
 
     const sandwich = res.body.data.sections.find((section) => section.key === "sandwich");
     assert.strictEqual(sandwich.type, "product_list");
-    assert.strictEqual(sandwich.source.kind, "product_category");
+    assert.strictEqual(sandwich.source.kind, "product_list");
+    assert.strictEqual(sandwich.includeMode, "selected");
     assert.strictEqual(sandwich.selectedProducts[0].productId, String(fixture.sandwich._id));
     assert.strictEqual(sandwich.selectedProducts[0].type, "product");
 
-    const premium = res.body.data.sections.find((section) => section.key === "premium");
-    assert(premium.items.some((item) => item.key === "beef_steak"), "premium hydrates beef_steak");
-    assert(premium.items.some((item) => item.key === "shrimp"), "premium hydrates shrimp");
-    assert(premium.items.some((item) => item.key === "salmon"), "premium hydrates salmon");
-    assert(premium.items.some((item) => item.key === "premium_large_salad"), "premium hydrates salad");
-    assert.strictEqual(premium.items.find((item) => item.key === "premium_large_salad").selectionType, "premium_large_salad");
+    assert.strictEqual(
+      res.body.data.sections.some((section) => section.key === "premium"),
+      false,
+      "system-managed Premium is not persisted as an employee-authored card"
+    );
 
     const carbs = res.body.data.sections.find((section) => section.key === "carbs");
     assert.strictEqual(carbs.type, "option_group");
