@@ -112,7 +112,9 @@ async function seedCatalog() {
 function builderSections(fixture) {
   return [
     {
+      key: "chicken",
       sectionType: "option_group",
+      sourceKind: "visual_family",
       productContextId: String(fixture.basicMeal._id),
       sourceGroupId: String(fixture.proteinsGroup._id),
       selectedOptionIds: [String(fixture.chicken._id)],
@@ -122,9 +124,16 @@ function builderSections(fixture) {
       minSelections: 1,
       maxSelections: 1,
       sortOrder: 1,
+      metadata: {
+        cardType: "option_family",
+        optionRole: "protein",
+        proteinFamilyKey: "chicken",
+      },
     },
     {
+      key: "carbs",
       sectionType: "option_group",
+      sourceKind: "configurable_product",
       productContextId: String(fixture.basicMeal._id),
       sourceGroupId: String(fixture.carbsGroup._id),
       selectedOptionIds: [String(fixture.rice._id)],
@@ -135,14 +144,23 @@ function builderSections(fixture) {
       maxSelections: 2,
       multiSelect: true,
       sortOrder: 2,
+      metadata: { cardType: "option_family", optionRole: "carbs" },
+      rules: { maxTypes: 2, maxTotalGrams: 300, unit: "grams" },
     },
     {
-      sectionType: "product_category",
-      sourceCategoryId: String(fixture.sandwichCategory._id),
-      includeMode: "all",
-      selectionType: "sandwich",
+      key: "sandwich",
+      sectionType: "product_list",
+      sourceKind: "product_list",
+      selectedProductIds: [String(fixture.sandwich._id)],
+      includeMode: "selected",
+      selectionType: "full_meal_product",
       titleOverride: { en: "Sandwiches", ar: "Sandwiches" },
       sortOrder: 3,
+      metadata: {
+        cardType: "direct_product",
+        requiresBuilder: false,
+        treatAsFullMeal: true,
+      },
     },
   ];
 }
@@ -156,13 +174,20 @@ async function main() {
     const { headers } = await dashboardAuth("admin", "meal-builder-composer");
 
     let res = await api.get("/api/subscriptions/meal-builder?lang=en");
-    expectStatus(res, 404, "mobile builder before publish");
-    assert.strictEqual(res.body.error.code, "MEAL_BUILDER_NOT_PUBLISHED");
+    expectStatus(res, 200, "mobile compatibility catalog before first publish");
+    assert.strictEqual(res.body.data.builderCatalog.contractVersion, "meal_planner_menu.v3");
+    assert.strictEqual(res.body.data.builderCatalog.publishedVersionId, null);
+    const fallbackCatalogHash = res.body.data.builderCatalog.catalogHash;
 
     res = await api.post("/api/dashboard/meal-builder/draft").set(headers).send({ sections: builderSections(fixture) });
     expectStatus(res, 201, "create builder draft");
     assert.strictEqual(res.body.data.status, "draft");
     assert.strictEqual(res.body.data.sections.length, 3);
+
+    res = await api.get("/api/subscriptions/meal-builder?lang=en");
+    expectStatus(res, 200, "mobile compatibility catalog ignores unpublished draft");
+    assert.strictEqual(res.body.data.builderCatalog.publishedVersionId, null);
+    assert.strictEqual(res.body.data.builderCatalog.catalogHash, fallbackCatalogHash);
 
     res = await api.post("/api/dashboard/meal-builder/validate").set(headers).send({ sections: builderSections(fixture) });
     expectStatus(res, 200, "validate builder draft payload");
@@ -175,13 +200,17 @@ async function main() {
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
     expectStatus(res, 200, "mobile builder after publish");
-    assert.strictEqual(res.body.data.contractVersion, "subscription_meal_builder.v1");
-    assert.strictEqual(res.body.data.revisionHash, res.body.data.revisionHash);
-    assert.strictEqual(res.body.data.sections.length, 3);
-    assert.strictEqual(res.body.data.sections[0].items[0].id, String(fixture.chicken._id));
-    assert.strictEqual(res.body.data.sections[2].items[0].id, String(fixture.sandwich._id));
+    const publishedCatalog = res.body.data.builderCatalog;
+    assert.strictEqual(publishedCatalog.contractVersion, "meal_planner_menu.v3");
+    assert.strictEqual(publishedCatalog.publishedVersionId, null);
+    assert.strictEqual(publishedCatalog.rules.source, "meal_builder_config");
+    assert(publishedCatalog.rules.builderRevisionHash, "published catalog has a builder revision hash");
+    assert.strictEqual(publishedCatalog.sections.length, 3);
+    assert.strictEqual(publishedCatalog.sections[0].products[0].optionGroups[0].options[0].id, String(fixture.chicken._id));
+    assert.strictEqual(publishedCatalog.sections[2].products[0].id, String(fixture.sandwich._id));
 
-    const publishedHash = res.body.data.revisionHash;
+    const publishedHash = publishedCatalog.catalogHash;
+    const publishedRevisionHash = publishedCatalog.rules.builderRevisionHash;
     res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({
       sections: builderSections(fixture).slice(0, 2),
       notes: "unpublished draft change",
@@ -190,8 +219,12 @@ async function main() {
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
     expectStatus(res, 200, "mobile builder ignores unpublished draft");
-    assert.strictEqual(res.body.data.revisionHash, publishedHash);
-    assert.strictEqual(res.body.data.sections.length, 3);
+    assert.strictEqual(res.body.data.builderCatalog.catalogHash, publishedHash);
+    assert.strictEqual(
+      res.body.data.builderCatalog.rules.builderRevisionHash,
+      publishedRevisionHash
+    );
+    assert.strictEqual(res.body.data.builderCatalog.sections.length, 3);
 
     console.log("dashboard meal builder composer checks passed");
   } finally {

@@ -251,8 +251,12 @@ function assertBuilderCatalogV3Payload(data) {
 
   const sandwichProducts = catalog.sections.find((section) => section.key === "sandwich").products || [];
   assert(sandwichProducts.length > 0, "planner sandwiches render as products");
-  for (const sandwich of sandwichProducts) {
-    assert.strictEqual(sandwich.selectionType, "sandwich");
+  const directAddProducts = sandwichProducts.filter(
+    (product) => product.action.type === "direct_add"
+  );
+  assert(directAddProducts.length > 0, "direct card exposes at least one direct-add product");
+  for (const sandwich of directAddProducts) {
+    assert.strictEqual(sandwich.selectionType, "full_meal_product");
     assert.strictEqual(sandwich.action.type, "direct_add");
     assert.strictEqual(sandwich.action.requiresBuilder, false);
     assert.strictEqual(sandwich.action.treatAsFullMeal, true);
@@ -285,10 +289,20 @@ async function main() {
     assert.deepStrictEqual(res.body.data.sections.map((section) => section.key), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
     assert.deepStrictEqual(res.body.data.sections.map((section) => section.sortOrder), [10, 20, 30, 40, 50, 60, 70]);
     assert.deepStrictEqual(res.body.data.sections.map((section) => section.type), ["mixed", "product_list", "option_family", "option_family", "option_family", "option_family", "option_group"]);
-    assert.deepStrictEqual(res.body.data.sections.map((section) => section.source.kind), ["premium_mixed", "product_category", "option_family", "option_family", "option_family", "option_family", "option_group"]);
+    assert.deepStrictEqual(res.body.data.sections.map((section) => section.source.kind), ["premium_mixed", "product_list", "option_family", "option_family", "option_family", "option_family", "option_group"]);
     assert.strictEqual(res.body.data.sections[2].source.groupKey, "proteins");
     assert.strictEqual(res.body.data.sections[2].source.displayCategoryKey, "chicken");
-    assert.strictEqual(res.body.data.sections[1].source.categoryKey, "sandwich");
+    assert.strictEqual(res.body.data.sections[1].includeMode, "selected");
+    assert.strictEqual(res.body.data.sections[1].selectionType, "full_meal_product");
+    assert(
+      res.body.data.sections[1].selectedProductIds.includes(String(fixture.sandwich._id)),
+      "the canonical direct-product card includes the seeded sandwich"
+    );
+    assert.strictEqual(
+      new Set(res.body.data.sections[1].selectedProductIds).size,
+      res.body.data.sections[1].selectedProductIds.length,
+      "direct-product ids are unique"
+    );
     assert.strictEqual(res.body.data.sections[0].titleOverride.en, "Premium");
     assert.strictEqual(res.body.data.sections[1].metadata.requiresBuilder, false);
     assert.strictEqual(res.body.data.sections[1].metadata.treatAsFullMeal, true);
@@ -302,16 +316,29 @@ async function main() {
 
     res = await api.get("/api/subscriptions/meal-builder?lang=en");
     expectStatus(res, 200, "published meal-builder read model");
-    const premium = res.body.data.sections.find((section) => section.key === "premium");
+    const mealBuilderAliasCatalog = res.body.data.builderCatalog;
+    assert.strictEqual(mealBuilderAliasCatalog.contractVersion, "meal_planner_menu.v3");
+    assert.strictEqual(mealBuilderAliasCatalog.publishedVersionId, null);
+    assert.strictEqual(mealBuilderAliasCatalog.rules.source, "meal_builder_config");
+    assert(mealBuilderAliasCatalog.rules.builderRevisionHash, "published alias has a builder revision hash");
+    const premium = mealBuilderAliasCatalog.sections.find((section) => section.key === "premium");
     assert(premium, "premium visual section returned");
-    const premiumKeys = premium.items.map((item) => item.key);
-    for (const key of ["beef_steak", "shrimp", "salmon", "premium_large_salad"]) {
-      assert(premiumKeys.includes(key), `premium contains ${key}`);
+    const premiumProductKeys = premium.products.map((item) => item.key);
+    assert(premiumProductKeys.includes("premium_large_salad"), "premium contains premium_large_salad");
+    const premiumOptionKeys = premium.products.flatMap((product) =>
+      product.optionGroups.flatMap((group) => group.options.map((option) => option.key))
+    );
+    for (const key of ["beef_steak", "shrimp", "salmon"]) {
+      assert(premiumOptionKeys.includes(key), `premium contains ${key}`);
     }
-    const sandwich = res.body.data.sections.find((section) => section.key === "sandwich");
-    assert.strictEqual(sandwich.items[0].selectionType, "sandwich");
-    assert.strictEqual(sandwich.items[0].action.requiresBuilder, false);
-    assert.strictEqual(sandwich.items[0].action.treatAsFullMeal, true);
+    const sandwich = mealBuilderAliasCatalog.sections.find((section) => section.key === "sandwich");
+    const aliasedSandwichProduct = sandwich.products.find(
+      (product) => product.id === String(fixture.sandwich._id)
+    );
+    assert(aliasedSandwichProduct, "published direct card contains the seeded sandwich");
+    assert.strictEqual(aliasedSandwichProduct.selectionType, "full_meal_product");
+    assert.strictEqual(aliasedSandwichProduct.action.requiresBuilder, false);
+    assert.strictEqual(aliasedSandwichProduct.action.treatAsFullMeal, true);
 
     res = await api.get("/api/subscriptions/meal-planner-menu?lang=en");
     expectStatus(res, 200, "planner menu after builder publish");
@@ -323,6 +350,8 @@ async function main() {
       assert.strictEqual(res.body.data.builderCatalogV2.catalogVersion, "meal_planner_menu.v2", "if builderCatalogV2 is present, it must be v2");
     }
     const planner = res.body.data.builderCatalog;
+    assert.strictEqual(planner.catalogHash, mealBuilderAliasCatalog.catalogHash);
+    assert.strictEqual(planner.publishedVersionId, mealBuilderAliasCatalog.publishedVersionId);
     assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
     assert.strictEqual(planner.rules.source, "meal_builder_config");
     assert.deepStrictEqual(planner.sections.map((section) => section.key), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
@@ -331,7 +360,10 @@ async function main() {
     assert.strictEqual(plannerPremium.source.kind, "premium_mixed");
     assert(plannerPremium.products.some((product) => product.key === "basic_meal"), "premium planner section includes basic meal shell");
     assert(plannerPremium.products.some((product) => product.key === "premium_large_salad" && product.selectionType === "premium_large_salad"), "premium planner section includes salad product");
-    const plannerSandwich = planner.sections.find((section) => section.key === "sandwich").products[0];
+    const plannerSandwich = planner.sections
+      .find((section) => section.key === "sandwich")
+      .products.find((product) => product.productId === String(fixture.sandwich._id));
+    assert(plannerSandwich, "published planner direct card contains the seeded sandwich");
     assert.strictEqual(plannerSandwich.productId, String(fixture.sandwich._id));
     assert.strictEqual(plannerSandwich.action.requiresBuilder, false);
     assert.strictEqual(plannerSandwich.optionGroups.length, 0);
