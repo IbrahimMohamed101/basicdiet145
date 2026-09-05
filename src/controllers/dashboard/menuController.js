@@ -18,9 +18,21 @@ function listOptions(req) {
     includeQuarantined:
       ["admin", "superadmin"].includes(String(req.dashboardUserRole || "")) &&
       String(req.query.includeQuarantined || "").toLowerCase() === "true",
-    isActive: req.query.isActive,
-    isVisible: req.query.isVisible,
-    isAvailable: req.query.isAvailable,
+    isActive: req.query.isActive !== undefined
+      ? req.query.isActive
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
+    isVisible: req.query.isVisible !== undefined
+      ? req.query.isVisible
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
+    isAvailable: req.query.isAvailable !== undefined
+      ? req.query.isAvailable
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
     q: req.query.q,
     published: req.query.published !== undefined
       ? req.query.published
