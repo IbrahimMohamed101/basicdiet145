@@ -412,7 +412,12 @@ function normalizeCheckoutAddonSelectionShape(item, index = 0) {
 
   const productIds = [];
   if (explicitProductId) productIds.push(explicitProductId);
-  for (const id of explicitMenuProductIds) productIds.push(id);
+  // If this selection was forwarded by the plan-availability policy, treat
+  // menuProductIds as metadata only (not an explicit product selection).
+  const isPlanOnlyForwarded = raw && raw.__planOnlyForwarded === true;
+  if (!isPlanOnlyForwarded) {
+    for (const id of explicitMenuProductIds) productIds.push(id);
+  }
 
   return {
     addonPlanId: explicitAddonPlanId || explicitAddonId || null,
@@ -423,6 +428,7 @@ function normalizeCheckoutAddonSelectionShape(item, index = 0) {
     legacyId,
     sourceRequestShape,
     raw,
+    planOnlyForwarded: isPlanOnlyForwarded,
   };
 }
 
@@ -565,21 +571,35 @@ async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = 
 
     const planCategory = normalizeAddonPlanCategory(addonPlan);
     const planProductIds = uniqueStrings(addonPlan.menuProductIds || []);
-    if (!productIds.length) {
-      productIds = planProductIds;
-    }
+
+    // If the customer did not explicitly select any products, treat this as a
+    // plan-only selection. Do NOT promote linked plan menuProductIds into the
+    // customer's selected productIds (they are metadata only). Only when the
+    // customer explicitly supplies product identities do we run product-level
+    // validation (existence, membership in plan, availability for new sale).
     productIds = uniqueStrings(productIds);
+
+    // Validate requested category regardless of explicit product selection.
+    const requestedCategory = shape.category ? normalizeSubscriptionAddonCategory(shape.category) : null;
+    if (shape.category && (!requestedCategory || requestedCategory !== planCategory)) {
+      throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Requested add-on category does not match the add-on plan", "category", {
+        requestedCategory: shape.category,
+        planCategory,
+      });
+    }
+
+    // Plan-only selection: keep menuProductIds metadata for compatibility but
+    // do NOT populate products or run availability checks.
     if (!productIds.length) {
-      if (["meal", "dessert", "premium_meal", "premium_large_salad"].includes(planCategory)) {
-        throw createAddonSelectionError("ADDON_PRODUCT_NOT_FOUND", "Add-on plan has no selectable products", "productId", { addonPlanId });
-      }
       normalizedRows.push({
         id: String(addonPlanId),
         addonPlanId: String(addonPlanId),
         addonId: String(addonPlanId),
         productIds: [],
         productId: null,
-        menuProductIds: [],
+        // Preserve configured plan menuProductIds as metadata (not as an
+        // explicit customer selection).
+        menuProductIds: planProductIds,
         category: planCategory,
         quantityPerDay: shape.quantityPerDay,
         sourceRequestShape: shape.sourceRequestShape,
@@ -589,22 +609,18 @@ async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = 
       continue;
     }
 
+    // From here on, the customer explicitly selected one or more products and
+    // we must validate them strictly.
     const missingProductId = productIds.find((productId) => !productById.has(String(productId)));
     if (missingProductId) {
       throw createAddonSelectionError("ADDON_PRODUCT_NOT_FOUND", "Selected add-on product was not found", "productId", { productId: missingProductId });
     }
+
     const notInPlanProductId = productIds.find((productId) => !planProductIds.includes(String(productId)));
     if (notInPlanProductId) {
       throw createAddonSelectionError("ADDON_PRODUCT_NOT_IN_PLAN", "Selected add-on product does not belong to the selected plan", "productId", { productId: notInPlanProductId, addonPlanId });
     }
 
-    const requestedCategory = shape.category ? normalizeSubscriptionAddonCategory(shape.category) : null;
-    if (shape.category && (!requestedCategory || requestedCategory !== planCategory)) {
-      throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Requested add-on category does not match the add-on plan", "category", {
-        requestedCategory: shape.category,
-        planCategory,
-      });
-    }
     for (const productId of productIds) {
       const product = productById.get(String(productId));
       if (!isNewSaleProductUsable(product)) {

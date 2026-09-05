@@ -100,11 +100,15 @@ function normalizePlanOnlyForwardedSelection(raw, planId, quantityPerDay, produc
   delete base.addonId;
   delete base.productId;
   delete base.menuProductId;
+  // Mark this forwarded selection as produced by the plan-availability policy
+  // so downstream normalizers can treat its menuProductIds as metadata rather
+  // than an explicit customer selection.
   return {
     ...base,
     addonPlanId: planId,
     quantityPerDay,
     menuProductIds: productIds,
+    __planOnlyForwarded: true,
   };
 }
 
