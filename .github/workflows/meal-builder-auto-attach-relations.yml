@@ -1,0 +1,30 @@
+name: Meal Builder option auto-attach
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/controllers/dashboard/mealBuilderController.js"
+      - "src/services/orders/menuCatalogAdminService.js"
+      - "tests/mealBuilderAutoAttachOptionRelations.test.js"
+      - ".github/workflows/meal-builder-auto-attach-relations.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  option-auto-attach:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Auto-attach option relation regression
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/mealBuilderAutoAttachOptionRelations.test.js

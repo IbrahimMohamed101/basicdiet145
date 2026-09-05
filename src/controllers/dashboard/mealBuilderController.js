@@ -2,6 +2,7 @@
 
 const mealBuilderService = require("../../services/subscription/dashboardMealPlannerDashboardService");
 const dashboardCatalogService = require("../../services/subscription/dashboardMealBuilderAuthoringContractService");
+const menuCatalogService = require("../../services/orders/menuCatalogService");
 const errorResponse = require("../../utils/errorResponse");
 const { getRequestLang } = require("../../utils/i18n");
 
@@ -79,6 +80,112 @@ function wrap(handler) {
   };
 }
 
+function selectedOptionIds(payload = {}) {
+  const source = Array.isArray(payload.selectedOptionIds)
+    ? payload.selectedOptionIds
+    : Array.isArray(payload.optionIds)
+      ? payload.optionIds
+      : payload.optionId
+        ? [payload.optionId]
+        : [];
+  return [...new Set(source.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function sectionKeyOf(section = {}) {
+  return String(section.key || section.sectionKey || "").trim().toLowerCase();
+}
+
+async function resolveOptionContext({ payload = {}, sectionKey, actor }) {
+  let productContextId = String(payload.productContextId || "").trim();
+  let sourceGroupId = String(payload.sourceGroupId || "").trim();
+  if ((!productContextId || !sourceGroupId) && sectionKey) {
+    const draft = await mealBuilderService.openWorkingDraft({ actor });
+    const current = (draft.sections || []).find(
+      (section) => sectionKeyOf(section) === String(sectionKey).trim().toLowerCase()
+    );
+    productContextId = productContextId || String(current?.productContextId || "").trim();
+    sourceGroupId = sourceGroupId || String(current?.sourceGroupId || "").trim();
+  }
+  return { productContextId, sourceGroupId };
+}
+
+function mealBuilderMutationError(code, message, status, details) {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  if (details !== undefined) error.details = details;
+  return error;
+}
+
+async function ensureProductScopedOptionRelations({
+  payload = {},
+  sectionKey,
+  actor,
+} = {}) {
+  const optionIds = selectedOptionIds(payload);
+  if (!optionIds.length) return;
+
+  const { productContextId, sourceGroupId } = await resolveOptionContext({
+    payload,
+    sectionKey,
+    actor,
+  });
+  if (!productContextId || !sourceGroupId) return;
+
+  // Selecting an option inside a product-scoped Meal Builder card is an explicit
+  // request to attach that option to this product/group. Keep ProductGroupOption
+  // as the authority, but create/reactivate it here so employees cannot create
+  // a globally-valid option and then hit a relation error simply because they
+  // are editing the card directly.
+  //
+  // Premium/system-managed options remain excluded: a standard Meal Builder
+  // card must never create product relations for them as a side effect.
+  for (const optionId of optionIds) {
+    const detail = await menuCatalogService.getOption(optionId, { includeInactive: true });
+    const option = detail?.option || detail;
+    const premiumLike = Boolean(
+      String(option?.premiumKey || "").trim() ||
+      ["premium_meal", "premium_large_salad"].includes(
+        String(option?.selectionType || "").trim().toLowerCase()
+      )
+    );
+    if (premiumLike) {
+      throw mealBuilderMutationError(
+        "MEAL_BUILDER_PREMIUM_OPTION_SYSTEM_MANAGED",
+        "Premium options are managed by the system Premium card",
+        422,
+        { optionId }
+      );
+    }
+    if (String(option?.groupId || "") !== sourceGroupId) {
+      throw mealBuilderMutationError(
+        "MEAL_BUILDER_OPTION_GROUP_MISMATCH",
+        "An option belongs to a different option group",
+        422,
+        { optionId, sourceGroupId, actualGroupId: String(option?.groupId || "") }
+      );
+    }
+    await menuCatalogService.createProductGroupOption(
+      productContextId,
+      sourceGroupId,
+      {
+        optionId,
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+      },
+      actor
+    );
+  }
+}
+
+async function ensureRelationsForSections(sections, actor) {
+  if (!Array.isArray(sections)) return;
+  for (const section of sections) {
+    await ensureProductScopedOptionRelations({ payload: section || {}, actor });
+  }
+}
+
 const getMealBuilder = wrap(async (req, res) => {
   const lang = getRequestLang(req);
   const [state, catalog] = await Promise.all([
@@ -140,28 +247,32 @@ const resetDraft = wrap(async (req, res) =>
   )
 );
 
-const createDraft = wrap(async (req, res) =>
-  send(
+const createDraft = wrap(async (req, res) => {
+  const actor = actorFromRequest(req);
+  await ensureRelationsForSections(req.body?.sections, actor);
+  return send(
     res,
     await mealBuilderService.createDraft({
       sections: req.body?.sections,
       notes: req.body?.notes,
-      actor: actorFromRequest(req),
+      actor,
     }),
     201
-  )
-);
+  );
+});
 
-const updateDraft = wrap(async (req, res) =>
-  send(
+const updateDraft = wrap(async (req, res) => {
+  const actor = actorFromRequest(req);
+  await ensureRelationsForSections(req.body?.sections, actor);
+  return send(
     res,
     await mealBuilderService.updateDraft({
       sections: req.body?.sections,
       notes: req.body?.notes,
-      actor: actorFromRequest(req),
+      actor,
     })
-  )
-);
+  );
+});
 
 const validateDraft = wrap(async (req, res) => {
   if (Array.isArray(req.body?.sections)) {
@@ -226,27 +337,34 @@ const getReadiness = wrap(async (_req, res) =>
   send(res, await mealBuilderService.getReadinessReport())
 );
 
-const createSection = wrap(async (req, res) =>
-  send(
+const createSection = wrap(async (req, res) => {
+  const actor = actorFromRequest(req);
+  const section = req.body?.section || req.body || {};
+  await ensureProductScopedOptionRelations({ payload: section, actor });
+  return send(
     res,
-    await mealBuilderService.createProductSection({
-      section: req.body?.section || req.body || {},
-      actor: actorFromRequest(req),
-    }),
+    await mealBuilderService.createProductSection({ section, actor }),
     201
-  )
-);
+  );
+});
 
-const updateSection = wrap(async (req, res) =>
-  send(
+const updateSection = wrap(async (req, res) => {
+  const actor = actorFromRequest(req);
+  const patch = req.body?.patch || req.body || {};
+  await ensureProductScopedOptionRelations({
+    payload: patch,
+    sectionKey: req.params.sectionKey,
+    actor,
+  });
+  return send(
     res,
     await mealBuilderService.updateProductSection({
       sectionKey: req.params.sectionKey,
-      patch: req.body?.patch || req.body || {},
-      actor: actorFromRequest(req),
+      patch,
+      actor,
     })
-  )
-);
+  );
+});
 
 const deleteSection = wrap(async (req, res) =>
   send(
@@ -258,17 +376,24 @@ const deleteSection = wrap(async (req, res) =>
   )
 );
 
-const replaceItems = wrap(async (req, res) =>
-  send(
+const replaceItems = wrap(async (req, res) => {
+  const actor = actorFromRequest(req);
+  const optionIds = req.body?.optionIds || req.body?.selectedOptionIds;
+  await ensureProductScopedOptionRelations({
+    payload: { optionIds },
+    sectionKey: req.params.sectionKey,
+    actor,
+  });
+  return send(
     res,
     await mealBuilderService.replaceSectionItems({
       sectionKey: req.params.sectionKey,
       productIds: req.body?.productIds || req.body?.selectedProductIds,
-      optionIds: req.body?.optionIds || req.body?.selectedOptionIds,
-      actor: actorFromRequest(req),
+      optionIds,
+      actor,
     })
-  )
-);
+  );
+});
 
 const addProducts = wrap(async (req, res) =>
   send(
@@ -294,18 +419,25 @@ const removeProduct = wrap(async (req, res) =>
   )
 );
 
-const addOptions = wrap(async (req, res) =>
-  send(
+const addOptions = wrap(async (req, res) => {
+  const actor = actorFromRequest(req);
+  const optionIds =
+    req.body?.optionIds ||
+    (req.body?.optionId ? [req.body.optionId] : []);
+  await ensureProductScopedOptionRelations({
+    payload: { optionIds },
+    sectionKey: req.params.sectionKey,
+    actor,
+  });
+  return send(
     res,
     await mealBuilderService.addOptionsToSection({
       sectionKey: req.params.sectionKey,
-      optionIds:
-        req.body?.optionIds ||
-        (req.body?.optionId ? [req.body.optionId] : []),
-      actor: actorFromRequest(req),
+      optionIds,
+      actor,
     })
-  )
-);
+  );
+});
 
 const removeOption = wrap(async (req, res) =>
   send(

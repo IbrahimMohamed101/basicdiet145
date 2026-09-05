@@ -2039,9 +2039,39 @@ function createMenuCatalogAdminService(deps) {
     if (!group) throw new MenuNotFoundError("Option group not found");
     assertGroupNotQuarantined(group);
 
+    const initialOptionIds = Array.isArray(body.initialOptionIds)
+      ? [...new Set(body.initialOptionIds.map((item) => assertObjectId(item, "initialOptionIds[]")))]
+      : [];
+    const linkAllOptions = normalizeBoolean(body.linkAllOptions, "linkAllOptions", false);
+    const optionRows = linkAllOptions
+      ? await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean()
+      : (initialOptionIds.length ? await MenuOption.find({ _id: { $in: initialOptionIds }, isActive: true }).lean() : []);
+    if (initialOptionIds.length && optionRows.length !== initialOptionIds.length) {
+      throw new MenuValidationError(
+        "One or more initial options do not exist or are globally disabled",
+        "OPTION_NOT_ALLOWED",
+        400
+      );
+    }
+    assertOptionsBelongToGroup(optionRows, payload.groupId);
+    const catalogItemsById = optionRows.length ? await loadCatalogItemsByIdForDocs(optionRows) : new Map();
+    const options = filterGloballyAvailable(optionRows, catalogItemsById);
+    if (initialOptionIds.length && options.length !== optionRows.length) {
+      throw new MenuValidationError(
+        "One or more initial options are not globally available",
+        "OPTION_NOT_AVAILABLE",
+        409
+      );
+    }
+
     const existing = await ProductOptionGroup.findOne({ productId, groupId: payload.groupId }).lean();
     const relation = existing
-      ? await updateEntity(ProductOptionGroup, existing._id, { ...payload, isActive: true }, {
+      ? await updateEntity(ProductOptionGroup, existing._id, {
+        ...payload,
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+      }, {
         entityType: "menu_product_group",
         actor,
         action: "product_group_attached",
@@ -2050,16 +2080,6 @@ function createMenuCatalogAdminService(deps) {
       : await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
 
     await MenuProduct.updateOne({ _id: productId }, { $set: { isCustomizable: true } });
-
-    const initialOptionIds = Array.isArray(body.initialOptionIds)
-      ? [...new Set(body.initialOptionIds.map((item) => assertObjectId(item, "initialOptionIds[]")))]
-      : [];
-    const linkAllOptions = normalizeBoolean(body.linkAllOptions, "linkAllOptions", false);
-    const optionRows = linkAllOptions
-      ? await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean()
-      : (initialOptionIds.length ? await MenuOption.find({ _id: { $in: initialOptionIds }, isActive: true }).lean() : []);
-    const catalogItemsById = optionRows.length ? await loadCatalogItemsByIdForDocs(optionRows) : new Map();
-    const options = filterGloballyAvailable(optionRows, catalogItemsById);
     if (options.length > 0) {
       const optionRelations = options.map((opt) => ({
         productId,
@@ -2164,22 +2184,40 @@ function createMenuCatalogAdminService(deps) {
     return [...new Set(value.map((item) => assertObjectId(item, `${fieldName}[]`)))];
   }
 
+  function assertOptionsBelongToGroup(options, groupId) {
+    const mismatchedOptionIds = options
+      .filter((option) => String(option.groupId || "") !== String(groupId))
+      .map((option) => String(option._id));
+    if (mismatchedOptionIds.length > 0) {
+      throw new MenuValidationError(
+        "One or more options belong to a different option group",
+        "OPTION_GROUP_MISMATCH",
+        422,
+        { groupId: String(groupId), optionIds: mismatchedOptionIds }
+      );
+    }
+  }
+
   async function replaceProductGroupOptions(productId, groupId, body = {}, actor = {}) {
     assertObjectId(productId, "productId");
     assertObjectId(groupId, "groupId");
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     const optionIds = normalizeOptionIds(body.optionIds || []);
     const preserveOverrides = normalizeBoolean(body.preserveOverrides, "preserveOverrides", true);
-    const [product, groupRelation, options] = await Promise.all([
+    const [product, group, groupRelation, options] = await Promise.all([
       MenuProduct.findById(productId).lean(),
+      MenuOptionGroup.findById(groupId).lean(),
       ProductOptionGroup.findOne({ productId, groupId }).lean(),
       optionIds.length ? MenuOption.find({ _id: { $in: optionIds }, isActive: true }).lean() : [],
     ]);
     if (!product) throw new MenuNotFoundError("Product not found");
+    if (!group) throw new MenuNotFoundError("Option group not found");
+    assertGroupNotQuarantined(group);
     if (!groupRelation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
     if (options.length !== optionIds.length) {
       throw new MenuValidationError("One or more options do not exist or are globally disabled", "OPTION_NOT_ALLOWED", 400);
     }
+    assertOptionsBelongToGroup(options, groupId);
     const catalogItemsById = await loadCatalogItemsByIdForDocs(options);
     const globallyAvailableOptions = filterGloballyAvailable(options, catalogItemsById);
     if (globallyAvailableOptions.length !== options.length) {
@@ -2212,9 +2250,12 @@ function createMenuCatalogAdminService(deps) {
             groupId,
             optionId,
             ...overrideFields,
-            isActive: existing ? truthyByDefault(existing.isActive) : true,
-            isVisible: existing ? truthyByDefault(existing.isVisible) : true,
-            isAvailable: existing ? truthyByDefault(existing.isAvailable) : true,
+            // An option present in this product-scoped replacement is explicitly
+            // attached. Restore all relation gates so retrying an attachment is
+            // idempotent and makes the option usable again.
+            isActive: true,
+            isVisible: true,
+            isAvailable: true,
             sortOrder: existing ? Number(existing.sortOrder || 0) : Number(option.sortOrder || 0),
           },
         },
@@ -2307,21 +2348,38 @@ function createMenuCatalogAdminService(deps) {
   async function createProductGroupOption(productId, groupId, body, actor = {}) {
     assertObjectId(productId, "productId");
     assertObjectId(groupId, "groupId");
-    const relation = await ProductOptionGroup.findOne({ productId, groupId }).lean();
-    if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
     const payload = normalizeProductGroupOptionRelationPayload({ ...body, productId, groupId });
-    const option = await MenuOption.findOne({ _id: payload.optionId, isActive: true }).lean();
-    if (!option) throw new MenuValidationError("Option does not exist or is globally disabled", "OPTION_NOT_ALLOWED", 400);
+    const [product, group, relation, option] = await Promise.all([
+      MenuProduct.findById(productId).lean(),
+      MenuOptionGroup.findById(groupId).lean(),
+      ProductOptionGroup.findOne({ productId, groupId }).lean(),
+      MenuOption.findById(payload.optionId).lean(),
+    ]);
+    if (!product) throw new MenuNotFoundError("Product not found");
+    if (!group) throw new MenuNotFoundError("Option group not found");
+    assertGroupNotQuarantined(group);
+    if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
+    if (!option || option.isActive === false) {
+      throw new MenuValidationError("Option does not exist or is globally disabled", "OPTION_NOT_ALLOWED", 400);
+    }
+    assertOptionsBelongToGroup([option], groupId);
+
+    const attachmentPayload = {
+      ...payload,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+    };
     const existing = await ProductGroupOption.findOne({ productId, groupId, optionId: payload.optionId }).lean();
     if (existing) {
-      return updateEntity(ProductGroupOption, existing._id, { ...payload, isActive: true }, {
+      return updateEntity(ProductGroupOption, existing._id, attachmentPayload, {
         entityType: "menu_product_group_option",
         actor,
         action: "product_group_option_attached",
         meta: { productId, groupId, optionId: payload.optionId },
       });
     }
-    const row = await createEntity(ProductGroupOption, payload, { entityType: "menu_product_group_option", actor });
+    const row = await createEntity(ProductGroupOption, attachmentPayload, { entityType: "menu_product_group_option", actor });
     await writeMenuAudit({
       entityType: "menu_product_group_option",
       entityId: row.id,
