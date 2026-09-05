@@ -35,7 +35,22 @@ function catalogOptions(req, { allowDiagnostic = false } = {}) {
 }
 
 function handleMealBuilderError(err, res) {
-  console.error("MealBuilderController error:", err);
+  const handledDomain4xx = Boolean(
+    err &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    err.code
+  );
+  if (handledDomain4xx) {
+    console.warn("MealBuilderController validation:", {
+      code: err.code,
+      status: err.status,
+      message: err.message,
+      details: err.details,
+    });
+  } else {
+    console.error("MealBuilderController error:", err);
+  }
   if (err && err.status && err.code) {
     return errorResponse(res, err.status, err.code, err.message, err.details);
   }
@@ -98,15 +113,24 @@ function sectionKeyOf(section = {}) {
 async function resolveOptionContext({ payload = {}, sectionKey, actor }) {
   let productContextId = String(payload.productContextId || "").trim();
   let sourceGroupId = String(payload.sourceGroupId || "").trim();
-  if ((!productContextId || !sourceGroupId) && sectionKey) {
+  let familyKey = String(
+    payload.familyKey ||
+    payload.metadata?.proteinFamilyKey ||
+    payload.metadata?.familyKey ||
+    ""
+  ).trim().toLowerCase();
+  if ((!productContextId || !sourceGroupId || !familyKey) && sectionKey) {
     const draft = await mealBuilderService.openWorkingDraft({ actor });
     const current = (draft.sections || []).find(
       (section) => sectionKeyOf(section) === String(sectionKey).trim().toLowerCase()
     );
     productContextId = productContextId || String(current?.productContextId || "").trim();
     sourceGroupId = sourceGroupId || String(current?.sourceGroupId || "").trim();
+    familyKey = familyKey || String(
+      current?.metadata?.proteinFamilyKey || current?.metadata?.familyKey || ""
+    ).trim().toLowerCase();
   }
-  return { productContextId, sourceGroupId };
+  return { productContextId, sourceGroupId, familyKey };
 }
 
 function mealBuilderMutationError(code, message, status, details) {
@@ -125,7 +149,7 @@ async function ensureProductScopedOptionRelations({
   const optionIds = selectedOptionIds(payload);
   if (!optionIds.length) return;
 
-  const { productContextId, sourceGroupId } = await resolveOptionContext({
+  const { productContextId, sourceGroupId, familyKey } = await resolveOptionContext({
     payload,
     sectionKey,
     actor,
@@ -143,6 +167,7 @@ async function ensureProductScopedOptionRelations({
   for (const optionId of optionIds) {
     const detail = await menuCatalogService.getOption(optionId, { includeInactive: true });
     const option = detail?.option || detail;
+    const optionGroup = detail?.optionGroup || null;
     const premiumLike = Boolean(
       String(option?.premiumKey || "").trim() ||
       ["premium_meal", "premium_large_salad"].includes(
@@ -163,6 +188,26 @@ async function ensureProductScopedOptionRelations({
         "An option belongs to a different option group",
         422,
         { optionId, sourceGroupId, actualGroupId: String(option?.groupId || "") }
+      );
+    }
+    if (
+      familyKey &&
+      !["protein", "proteins"].includes(
+        String(optionGroup?.key || "").trim().toLowerCase()
+      )
+    ) {
+      throw mealBuilderMutationError(
+        "MEAL_BUILDER_OPTION_ROLE_GROUP_MISMATCH",
+        "The selected option group does not match the card option role",
+        422,
+        { sourceGroupId, groupKey: optionGroup?.key || "" }
+      );
+    }
+    if (familyKey) {
+      await menuCatalogService.ensureOptionProteinFamilyForCard(
+        optionId,
+        { groupId: sourceGroupId, familyKey },
+        actor
       );
     }
     await menuCatalogService.createProductGroupOption(

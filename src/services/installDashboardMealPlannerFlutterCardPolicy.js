@@ -7,7 +7,11 @@ const MenuOptionGroup = require("../models/MenuOptionGroup");
 const MenuOption = require("../models/MenuOption");
 const ProductOptionGroup = require("../models/ProductOptionGroup");
 const ProductGroupOption = require("../models/ProductGroupOption");
-const { MEAL_SELECTION_TYPES } = require("../config/mealPlannerContract");
+const {
+  MEAL_SELECTION_TYPES,
+  PROTEIN_FAMILY_KEYS,
+  resolveProteinFamilyClassification,
+} = require("../config/mealPlannerContract");
 const {
   isLinkedDocGloballyAvailable,
   loadCatalogItemsByIdForDocs,
@@ -843,28 +847,66 @@ function installDashboardMealPlannerFlutterCardPolicy() {
       throw error("Option group does not match requested role", "MEAL_BUILDER_OPTION_ROLE_GROUP_MISMATCH", 422, { optionRole: role, groupKey: group.key });
     }
     const relationIds = relations.map((relation) => String(relation.optionId));
-    const optionDocs = relationIds.length ? await MenuOption.find({ _id: { $in: relationIds } }).lean() : [];
+    const optionDocs = role === OPTION_ROLES.PROTEIN
+      ? await MenuOption.find({ groupId }).sort({ sortOrder: 1, createdAt: 1 }).lean()
+      : relationIds.length
+        ? await MenuOption.find({ _id: { $in: relationIds } }).lean()
+        : [];
     const optionById = new Map(optionDocs.map((option) => [String(option._id), option]));
     const relationById = new Map(relations.map((relation) => [String(relation.optionId), relation]));
     const catalogItemsById = await loadCatalogItemsByIdForDocs([product], optionDocs);
     const selected = new Set(optionIds(current || {}));
     const assigned = optionAssignmentMap(sections, productId, groupId, current ? sectionKey(current) : targetKey);
+    const explicitFamilyKey = token(
+      options.familyKey ||
+      current?.metadata?.familyKey ||
+      current?.metadata?.proteinFamilyKey
+    );
+    const cardFamilyKey = token(targetKey || requestedKey);
+    const requestedFamilyKey = PROTEIN_FAMILY_KEYS.includes(explicitFamilyKey)
+      ? explicitFamilyKey
+      : PROTEIN_FAMILY_KEYS.includes(cardFamilyKey)
+        ? cardFamilyKey
+        : "";
     const search = token(options.q || options.search);
-    const includeUnavailable = [true, "true", "1"].includes(options.includeUnavailable);
+    const includeUnavailable = token(options.include) === "all" ||
+      [true, "true", "1"].includes(options.includeUnavailable);
     const onlyUnassigned = ![false, "false", "0"].includes(options.unassignedOnly);
     const page = Math.max(1, Number.parseInt(options.page || "1", 10) || 1);
     const limit = Math.min(MAX_PICKER_LIMIT, Math.max(1, Number.parseInt(options.limit || "100", 10) || 100));
-    let candidates = relationIds
+    const candidateIds = role === OPTION_ROLES.PROTEIN
+      ? optionDocs.map((option) => String(option._id))
+      : relationIds;
+    let candidates = candidateIds
       .map((optionId) => {
         const option = optionById.get(optionId);
         if (!option) return null;
         if (search && ![option.key, option.name?.ar, option.name?.en].some((value) => token(value).includes(search))) return null;
         const status = entityState(option, catalogItemsById, "OPTION");
-        const relation = relationState(relationById.get(optionId));
+        const storedRelation = relationById.get(optionId) || null;
+        const storedRelationState = relationState(storedRelation);
+        const effectiveRelation = storedRelationState.effective ? storedRelation : null;
+        const relation = relationState(effectiveRelation);
         const isSelected = selected.has(optionId);
         const assignedSectionKey = assigned.get(optionId) || null;
         const isPremium = premiumOption(option);
-        const assignable = status.eligible && relation.effective && !assignedSectionKey && !isPremium;
+        const familyResolution = resolveProteinFamilyClassification(option);
+        const optionKey = token(option.key);
+        const familyMatches = role !== OPTION_ROLES.PROTEIN || (
+          Boolean(requestedFamilyKey) &&
+          familyResolution.valid === true &&
+          familyResolution.premium !== true &&
+          familyResolution.familyKey === requestedFamilyKey
+        );
+        if (
+          !isSelected &&
+          role === OPTION_ROLES.PROTEIN &&
+          (!familyMatches || optionKey.startsWith("extra_") || isPremium)
+        ) return null;
+        const relationAttachable = relation.effective || (
+          role === OPTION_ROLES.PROTEIN && relationState(groupRelation).effective
+        );
+        const assignable = status.eligible && relationAttachable && !assignedSectionKey && !isPremium && familyMatches;
         return {
           id: optionId,
           optionId,
@@ -879,6 +921,8 @@ function installDashboardMealPlannerFlutterCardPolicy() {
           selectionType: option.selectionType || MEAL_SELECTION_TYPES.STANDARD_MEAL,
           proteinFamilyKey: option.proteinFamilyKey || "",
           displayCategoryKey: option.displayCategoryKey || "",
+          resolvedFamilyKey: familyResolution.familyKey || "",
+          familyResolutionSource: familyResolution.source,
           isPremium,
           extraPriceHalala:
             relationById.get(optionId)?.extraPriceHalala ?? option.extraPriceHalala ?? 0,
@@ -889,6 +933,8 @@ function installDashboardMealPlannerFlutterCardPolicy() {
           assignable,
           eligible: isSelected || assignable,
           relationStatus: relation,
+          linked: relation.effective,
+          relationExists: relation.exists,
           ...status,
           reasonCodes: isSelected
             ? ["SELECTED", ...status.reasonCodes]
@@ -896,18 +942,30 @@ function installDashboardMealPlannerFlutterCardPolicy() {
               ? ["PREMIUM_SYSTEM_MANAGED", ...status.reasonCodes]
               : assignedSectionKey
                 ? ["ASSIGNED_TO_OTHER_CARD", ...status.reasonCodes]
-                : !relation.effective
-                  ? ["RELATION_UNAVAILABLE", ...status.reasonCodes]
+                : !relation.effective && assignable
+                  ? ["ATTACH_TO_PRODUCT_ON_SAVE", "NOT_LINKED_TO_PRODUCT_GROUP", ...status.reasonCodes]
+                  : !relation.effective
+                    ? ["RELATION_UNAVAILABLE", ...status.reasonCodes]
                   : status.eligible
                     ? ["ELIGIBLE"]
                     : status.reasonCodes,
-          state: isSelected ? "selected" : assignable ? "eligible" : assignedSectionKey ? "assigned_elsewhere" : "unavailable",
+          state: isSelected
+            ? "selected"
+            : assignable
+              ? "addable"
+                : assignedSectionKey
+                  ? "assigned_elsewhere"
+                  : "unavailable",
           sortOrder: Number(relationById.get(optionId)?.sortOrder ?? option.sortOrder ?? 0),
         };
       })
       .filter(Boolean)
       .filter((candidate) => candidate.selected || includeUnavailable || candidate.available);
-    if (onlyUnassigned) candidates = candidates.filter((candidate) => candidate.selected || candidate.assignable);
+    if (onlyUnassigned) {
+      candidates = candidates.filter(
+        (candidate) => candidate.selected || candidate.assignable || includeUnavailable
+      );
+    }
     candidates.sort((left, right) => Number(right.selected) - Number(left.selected) || Number(right.assignable) - Number(left.assignable) || left.sortOrder - right.sortOrder);
     const total = candidates.length;
     return {
@@ -930,10 +988,21 @@ function installDashboardMealPlannerFlutterCardPolicy() {
         requiresCompanionCard: true,
         flutterSlotField: role === OPTION_ROLES.CARBS ? "carbs[].carbId" : "proteinId",
         premiumManagedSeparately: true,
+        familyKey: role === OPTION_ROLES.PROTEIN ? requestedFamilyKey || null : null,
         uniquenessScope: "product_context_and_group",
       },
       candidates: candidates.slice((page - 1) * limit, page * limit),
       meta: { page, limit, total, pages: total ? Math.ceil(total / limit) : 0 },
+      ...(options.diagnostics
+        ? {
+            diagnostics: {
+              codePath: "protein_family_metadata_catalog_discovery",
+              classificationAuthority: "resolveProteinFamilyClassification",
+              familyKey: role === OPTION_ROLES.PROTEIN ? requestedFamilyKey || null : null,
+              candidateKeys: candidates.map((candidate) => candidate.key),
+            },
+          }
+        : {}),
     };
   }
 

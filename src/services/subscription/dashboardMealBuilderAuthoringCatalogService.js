@@ -2,7 +2,7 @@
 
 const baseCatalogService = require("./dashboardMealBuilderCatalogService");
 const {
-  resolveProteinVisualFamilyKey,
+  resolveProteinFamilyClassification,
 } = require("../../config/mealPlannerContract");
 
 const AUTHORING_CONTRACT_VERSION = "dashboard_meal_builder_authoring.v1";
@@ -64,7 +64,8 @@ function optionFromNode(node = {}) {
       relationStatus.effective !== false && status.customerReady !== false,
   };
   const premium = isPremiumOption(option);
-  const familyKey = String(resolveProteinVisualFamilyKey(option) || "")
+  const familyResolution = resolveProteinFamilyClassification(option);
+  const familyKey = String(familyResolution.familyKey || "")
     .trim()
     .toLowerCase();
 
@@ -78,9 +79,11 @@ function optionFromNode(node = {}) {
     relationStatus,
     effectiveStatus,
     pricing: node.pricing || option.pricing || null,
-    proteinFamilyKey: option.proteinFamilyKey || familyKey,
-    displayCategoryKey: option.displayCategoryKey || familyKey,
+    proteinFamilyKey: option.proteinFamilyKey || "",
+    displayCategoryKey: option.displayCategoryKey || "",
     familyKey,
+    resolvedFamilyKey: familyKey,
+    familyResolutionSource: familyResolution.source,
     isPremium: premium,
     selectionType: premium
       ? option.selectionType || "premium_meal"
