@@ -133,15 +133,16 @@ async function ensureProductScopedOptionRelations({
   if (!productContextId || !sourceGroupId) return;
 
   // Selecting an option inside a product-scoped Meal Builder card is an explicit
-  // request to attach that option to this product/group. Keep the existing
-  // ProductGroupOption relation as the authority, but create/reactivate it here
-  // so employees cannot create a globally-valid option and then hit a relation
-  // error simply because they are editing the card directly.
+  // request to attach that option to this product/group. Keep ProductGroupOption
+  // as the authority, but create/reactivate it here so employees cannot create
+  // a globally-valid option and then hit a relation error simply because they
+  // are editing the card directly.
   //
-  // Premium/system-managed options remain excluded: the standard Meal Builder
+  // Premium/system-managed options remain excluded: a standard Meal Builder
   // card must never create product relations for them as a side effect.
   for (const optionId of optionIds) {
-    const option = await menuCatalogService.getOption(optionId, { includeInactive: true });
+    const detail = await menuCatalogService.getOption(optionId, { includeInactive: true });
+    const option = detail?.option || detail;
     const premiumLike = Boolean(
       String(option?.premiumKey || "").trim() ||
       ["premium_meal", "premium_large_salad"].includes(
