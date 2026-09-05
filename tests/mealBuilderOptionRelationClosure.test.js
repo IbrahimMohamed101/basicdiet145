@@ -22,6 +22,7 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const mealBuilderService = require("../src/services/subscription/dashboardMealPlannerDashboardService");
 const { dashboardAuth } = require("./helpers/dashboardAuthHelper");
 const {
   GROUP: REPAIR_GROUP,
@@ -195,12 +196,24 @@ function carbsCard(fixture, optionIds, key = "carbs_relation_closure") {
   };
 }
 
+async function assertCoreRelationGuardRejects(action, expectedCode, label) {
+  await assert.rejects(
+    action,
+    (error) => {
+      assert.equal(error?.code, expectedCode, `${label}: unexpected error ${error?.code}`);
+      return true;
+    },
+    label
+  );
+}
+
 async function testAuthoringAndMealBuilderClosure() {
   const api = request(createApp());
   const auth = await dashboardAuth("admin", "meal-builder-option-relation-closure");
   const protectedBefore = await protectedCounts();
   const fixture = await createMenuFixture(api, auth.headers);
   const firstOption = fixture.options[0];
+  const actor = { userId: new mongoose.Types.ObjectId(), role: "admin" };
 
   let response = await api
     .post("/api/dashboard/meal-builder/draft")
@@ -208,23 +221,38 @@ async function testAuthoringAndMealBuilderClosure() {
     .send({ sections: [], notes: "option relation closure test" });
   expectStatus(response, 201, "create isolated Meal Builder draft");
 
+  await assertCoreRelationGuardRejects(
+    () => mealBuilderService.createProductSection({
+      section: carbsCard(fixture, [firstOption.id]),
+      actor,
+    }),
+    "MEAL_BUILDER_OPTION_RELATION_INVALID",
+    "core Meal Builder guard still rejects a missing product relation"
+  );
+
   response = await api
     .post("/api/dashboard/meal-builder/sections")
     .set(auth.headers)
     .send(carbsCard(fixture, [firstOption.id]));
-  expectStatus(response, 422, "Meal Builder rejects group member missing product relation");
-  assert.equal(response.body.error.code, "MEAL_BUILDER_OPTION_RELATION_INVALID");
+  expectStatus(response, 201, "product-scoped Meal Builder save auto-attaches missing relation");
 
-  const attachPath = `/api/dashboard/menu/products/${fixture.product._id}/option-groups/${fixture.carbs._id}/options`;
-  response = await api.post(attachPath).set(auth.headers).send({ optionId: firstOption.id });
-  expectStatus(response, 201, "product-scoped attach creates ProductGroupOption");
-  const relationId = String(response.body.data.id || response.body.data._id);
-  assert.equal(await ProductGroupOption.countDocuments({
+  const attachedByMealBuilder = await ProductGroupOption.findOne({
     productId: fixture.product._id,
     groupId: fixture.carbs._id,
     optionId: firstOption.id,
-  }), 1);
+  }).lean();
+  assert(attachedByMealBuilder, "Meal Builder save must create ProductGroupOption");
+  assert.deepEqual(
+    {
+      isActive: attachedByMealBuilder.isActive,
+      isVisible: attachedByMealBuilder.isVisible,
+      isAvailable: attachedByMealBuilder.isAvailable,
+    },
+    { isActive: true, isVisible: true, isAvailable: true }
+  );
+  const relationId = String(attachedByMealBuilder._id);
 
+  const attachPath = `/api/dashboard/menu/products/${fixture.product._id}/option-groups/${fixture.carbs._id}/options`;
   response = await api.post(attachPath).set(auth.headers).send({ optionId: firstOption.id });
   expectStatus(response, 201, "retry product-scoped attach");
   assert.equal(String(response.body.data.id || response.body.data._id), relationId);
@@ -234,38 +262,31 @@ async function testAuthoringAndMealBuilderClosure() {
     optionId: firstOption.id,
   }), 1, "retry must not duplicate ProductGroupOption");
 
-  response = await api
-    .post("/api/dashboard/meal-builder/sections")
-    .set(auth.headers)
-    .send(carbsCard(fixture, [firstOption.id]));
-  expectStatus(response, 201, "Meal Builder accepts option after product attachment");
-
   await ProductGroupOption.updateOne(
     { productId: fixture.product._id, groupId: fixture.carbs._id, optionId: firstOption.id },
     { $set: { isActive: false, isVisible: false, isAvailable: false } }
   );
+
+  await assertCoreRelationGuardRejects(
+    () => mealBuilderService.replaceSectionItems({
+      sectionKey: "carbs_relation_closure",
+      optionIds: [firstOption.id],
+      actor,
+    }),
+    "MEAL_BUILDER_OPTION_CARD_UNAVAILABLE",
+    "core Meal Builder guard still rejects an inactive product relation"
+  );
+
   response = await api
     .put("/api/dashboard/meal-builder/sections/carbs_relation_closure/items")
     .set(auth.headers)
     .send({ optionIds: [firstOption.id] });
-  expectStatus(response, 422, "Meal Builder rejects inactive relation");
-  assert.equal(response.body.error.code, "MEAL_BUILDER_OPTION_CARD_UNAVAILABLE");
-
-  response = await api
-    .post(attachPath)
-    .set(auth.headers)
-    .send({ optionId: firstOption.id, isActive: false, isVisible: false, isAvailable: false });
-  expectStatus(response, 201, "re-attach inactive relation");
+  expectStatus(response, 200, "product-scoped Meal Builder save reactivates inactive relation");
   const reactivated = await ProductGroupOption.findById(relationId).lean();
   assert.deepEqual(
     { isActive: reactivated.isActive, isVisible: reactivated.isVisible, isAvailable: reactivated.isAvailable },
     { isActive: true, isVisible: true, isAvailable: true }
   );
-  response = await api
-    .put("/api/dashboard/meal-builder/sections/carbs_relation_closure/items")
-    .set(auth.headers)
-    .send({ optionIds: [firstOption.id] });
-  expectStatus(response, 200, "Meal Builder accepts reactivated relation");
 
   response = await api
     .post(attachPath)
@@ -435,7 +456,7 @@ async function run() {
   try {
     await testAuthoringAndMealBuilderClosure();
     await testProductionRepairMechanism();
-    console.log("mealBuilderOptionRelationClosure.test.js passed (11 closure cases + repair safety)");
+    console.log("mealBuilderOptionRelationClosure.test.js passed (strict guard + attach-on-save + repair safety)");
   } finally {
     if (mongoose.connection.readyState === 1) await mongoose.connection.dropDatabase();
     await disconnect();
