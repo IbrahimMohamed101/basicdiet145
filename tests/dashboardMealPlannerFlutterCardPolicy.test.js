@@ -386,6 +386,15 @@ async function run() {
       "MEAL_BUILDER_OPTION_ALREADY_ASSIGNED"
     );
 
+    assert.equal(
+      await ProductGroupOption.countDocuments({
+        productId: baseMeal._id,
+        groupId: proteinsGroup._id,
+        optionId: unlinkedBeef._id,
+      }),
+      0,
+      "fixture starts with no product relation for the new beef option"
+    );
     response = await api
       .post("/api/dashboard/meal-builder/sections")
       .set(auth.headers)
@@ -399,10 +408,29 @@ async function run() {
         sourceGroupId: String(proteinsGroup._id),
         selectedOptionIds: [String(unlinkedBeef._id)],
       });
-    expectStatus(response, 422, "reject unlinked option");
+    expectStatus(response, 201, "product-scoped save attaches previously unlinked option");
+    const attachedUnlinkedBeef = await ProductGroupOption.findOne({
+      productId: baseMeal._id,
+      groupId: proteinsGroup._id,
+      optionId: unlinkedBeef._id,
+    }).lean();
+    assert(attachedUnlinkedBeef, "explicit Meal Builder selection creates product option relation");
+    assert.deepEqual(
+      {
+        isActive: attachedUnlinkedBeef.isActive,
+        isVisible: attachedUnlinkedBeef.isVisible,
+        isAvailable: attachedUnlinkedBeef.isAvailable,
+      },
+      { isActive: true, isVisible: true, isAvailable: true }
+    );
     assert.equal(
-      response.body.error.code,
-      "MEAL_BUILDER_OPTION_RELATION_INVALID"
+      await ProductGroupOption.countDocuments({
+        productId: baseMeal._id,
+        groupId: proteinsGroup._id,
+        optionId: unlinkedBeef._id,
+      }),
+      1,
+      "attach-on-save remains unique"
     );
 
     response = await api
@@ -441,13 +469,12 @@ async function run() {
       ),
       "picker includes linked beef option"
     );
-    assert.equal(
-      response.body.data.candidates.some(
-        (candidate) => candidate.optionId === String(unlinkedBeef._id)
-      ),
-      false,
-      "picker is scoped to Product + Group + Option relations"
+    const autoAttachedCandidate = response.body.data.candidates.find(
+      (candidate) => candidate.optionId === String(unlinkedBeef._id)
     );
+    assert(autoAttachedCandidate, "picker includes auto-attached beef option");
+    assert.equal(autoAttachedCandidate.relationExists, true);
+    assert.equal(autoAttachedCandidate.assignedSectionKey, "unlinked_beef");
 
     response = await api
       .post("/api/dashboard/meal-builder/validate")
