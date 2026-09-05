@@ -9,6 +9,10 @@ function actorFromRequest(req) {
 }
 
 function listOptions(req) {
+  const isAddonPlanPicker =
+    String(req.query.context || "").trim() === "addon_plan" ||
+    String(req.query.linkableFor || "").trim() === "addon_plan" ||
+    String(req.query.view || "").trim() === "addon_plan_picker";
   return {
     includeInactive: String(req.query.includeInactive || "").toLowerCase() === "true",
     includeQuarantined:
@@ -18,7 +22,11 @@ function listOptions(req) {
     isVisible: req.query.isVisible,
     isAvailable: req.query.isAvailable,
     q: req.query.q,
-    published: req.query.published,
+    published: req.query.published !== undefined
+      ? req.query.published
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
     groupId: req.query.groupId,
     categoryId: req.query.categoryId,
     availableFor: req.query.availableFor,
