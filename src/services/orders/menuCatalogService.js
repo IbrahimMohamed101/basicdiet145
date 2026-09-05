@@ -635,6 +635,10 @@ function createProductGroupOption(productId, groupId, body, actor) {
   return menuCatalogAdminService.createProductGroupOption(productId, groupId, body, actor);
 }
 
+function ensureOptionProteinFamilyForCard(optionId, context, actor) {
+  return menuCatalogAdminService.ensureOptionProteinFamilyForCard(optionId, context, actor);
+}
+
 function deleteProductGroupOption(productId, groupId, optionId, actor) {
   return menuCatalogAdminService.deleteProductGroupOption(productId, groupId, optionId, actor);
 }
@@ -793,6 +797,7 @@ module.exports = {
   replaceProductGroupOptions,
   getProductGroupOptionPool,
   createProductGroupOption,
+  ensureOptionProteinFamilyForCard,
   updateProductGroupOption,
   deleteProductGroupOption,
   updateProductGroupOptionVisibility: (productId, groupId, optionId, body, actor) => updateProductGroupOption(productId, groupId, optionId, { isVisible: body.isVisible }, actor, "visibility_changed"),

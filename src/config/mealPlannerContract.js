@@ -336,31 +336,114 @@ function getProteinVisualFamilyDefinition(value) {
   return normalized ? (PROTEIN_VISUAL_FAMILIES.find((family) => family.key === normalized) || null) : null;
 }
 
-function resolveProteinVisualFamilyKey(option = {}) {
+function normalizeExplicitProteinFamilyKey(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return PROTEIN_FAMILY_KEYS.includes(raw) ? raw : "";
+}
+
+/**
+ * Canonical MenuOption family policy shared by customer serialization,
+ * Dashboard pickers, and Meal Builder write validation.
+ *
+ * Priority for normal proteins:
+ *   1. valid explicit proteinFamilyKey
+ *   2. compatible explicit displayCategoryKey
+ *   3. legacy static option-key mapping
+ *   4. unknown (fail closed)
+ *
+ * Premium remains a separate visual/system-managed classification. Invalid or
+ * conflicting explicit metadata never falls through to a legacy key mapping.
+ */
+function resolveProteinFamilyClassification(option = {}) {
   // Final catalog metadata is authoritative. Dashboard premium configuration may
   // promote any protein option, including one whose default visual family is
   // defined below, so premium overrides must win before sections are generated.
   const displayCategoryKey = String(option.displayCategoryKey || "").trim().toLowerCase();
   const selectionType = String(option.selectionType || "").trim().toLowerCase();
   if (option.isPremium === true || displayCategoryKey === "premium" || selectionType === "premium_meal") {
-    return "premium";
+    return { familyKey: "premium", source: "premium", valid: true, premium: true, reasonCode: "" };
   }
 
-  // Priority 1: PROTEIN_VISUAL_FAMILY_OPTION_KEYS maps option.key → visual tab
+  const rawProteinFamilyKey = String(option.proteinFamilyKey || "").trim().toLowerCase();
+  const explicitFamilyKey = normalizeExplicitProteinFamilyKey(rawProteinFamilyKey);
+  if (rawProteinFamilyKey && !explicitFamilyKey) {
+    return {
+      familyKey: "",
+      source: "proteinFamilyKey",
+      valid: false,
+      premium: false,
+      reasonCode: "INVALID_PROTEIN_FAMILY_KEY",
+    };
+  }
+
+  const displayFamilyDefinition = getProteinVisualFamilyDefinition(displayCategoryKey);
+  const displayFamilyKey = displayFamilyDefinition && displayFamilyDefinition.key !== "premium"
+    ? displayFamilyDefinition.key
+    : "";
+  if (displayCategoryKey && !displayFamilyKey) {
+    return {
+      familyKey: "",
+      source: "displayCategoryKey",
+      valid: false,
+      premium: false,
+      reasonCode: "INVALID_PROTEIN_DISPLAY_CATEGORY_KEY",
+    };
+  }
+  if (explicitFamilyKey && displayFamilyKey && explicitFamilyKey !== displayFamilyKey) {
+    return {
+      familyKey: "",
+      source: "explicit_conflict",
+      valid: false,
+      premium: false,
+      reasonCode: "PROTEIN_FAMILY_DISPLAY_CONFLICT",
+    };
+  }
+  if (explicitFamilyKey) {
+    return {
+      familyKey: explicitFamilyKey,
+      source: "proteinFamilyKey",
+      valid: true,
+      premium: false,
+      reasonCode: "",
+    };
+  }
+  if (displayFamilyKey) {
+    return {
+      familyKey: displayFamilyKey,
+      source: "displayCategoryKey",
+      valid: true,
+      premium: false,
+      reasonCode: "",
+    };
+  }
+
+  // Legacy compatibility only. New authoring must persist explicit metadata.
   const optionKey = String(option.key || option.premiumKey || "").trim().toLowerCase();
   if (optionKey && optionKey in PROTEIN_VISUAL_FAMILY_OPTION_KEYS) {
     const tabKey = PROTEIN_VISUAL_FAMILY_OPTION_KEYS[optionKey];
     const tabFamily = getProteinVisualFamilyDefinition(tabKey);
-    if (tabFamily) return tabFamily.key;
+    if (tabFamily) {
+      return {
+        familyKey: tabFamily.key,
+        source: "legacy_static_key",
+        valid: true,
+        premium: false,
+        reasonCode: "",
+      };
+    }
   }
 
-  // Priority 2: explicit proteinFamilyKey from option (biological family)
-  const explicit = getProteinVisualFamilyDefinition(option.proteinFamilyKey);
-  if (explicit) return explicit.key;
+  return {
+    familyKey: "",
+    source: "unknown",
+    valid: false,
+    premium: false,
+    reasonCode: "PROTEIN_FAMILY_UNKNOWN",
+  };
+}
 
-  // Priority 3: displayCategoryKey
-  const display = getProteinVisualFamilyDefinition(option.displayCategoryKey);
-  return display ? display.key : "";
+function resolveProteinVisualFamilyKey(option = {}) {
+  return resolveProteinFamilyClassification(option).familyKey;
 }
 
 function getProteinFamilyNameI18n(optionOrFamilyKey = {}) {
@@ -435,6 +518,8 @@ module.exports = {
   getMealPlannerCategoryDefinition,
   getMealPlannerRules,
   resolveProteinVisualFamilyKey,
+  resolveProteinFamilyClassification,
+  normalizeExplicitProteinFamilyKey,
   normalizeProteinDisplayCategoryKey,
   normalizeProteinFamilyKey,
   normalizeSaladIngredientGroupKey,

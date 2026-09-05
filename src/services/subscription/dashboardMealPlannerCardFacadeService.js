@@ -9,7 +9,9 @@ const ProductOptionGroup = require("../../models/ProductOptionGroup");
 const ProductGroupOption = require("../../models/ProductGroupOption");
 const { pickLang } = require("../../utils/i18n");
 const {
+  PROTEIN_FAMILY_KEYS,
   STANDARD_CARB_RULES,
+  resolveProteinFamilyClassification,
   resolveProteinVisualFamilyKey,
 } = require("../../config/mealPlannerContract");
 const {
@@ -340,13 +342,7 @@ function isPremiumOption(option = {}) {
 }
 
 function optionFamilyKey(option = {}) {
-  const explicit = String(
-    option.proteinFamilyKey || option.displayCategoryKey || ""
-  )
-    .trim()
-    .toLowerCase();
-  if (explicit) return explicit;
-  return String(resolveProteinVisualFamilyKey(option) || "")
+  return String(resolveProteinFamilyClassification(option).familyKey || "")
     .trim()
     .toLowerCase();
 }
@@ -456,6 +452,14 @@ async function assertOptionFamilyAssignable({
   const actualRole = assertRoleMatchesGroup(optionRole, context.group);
   const normalizedFamilyKey =
     actualRole === "protein" ? String(familyKey || "").trim().toLowerCase() : "";
+  if (actualRole === "protein" && !PROTEIN_FAMILY_KEYS.includes(normalizedFamilyKey)) {
+    throw mealBuilderError(
+      "A valid protein family is required for protein option cards",
+      "MEAL_BUILDER_PROTEIN_FAMILY_INVALID",
+      422,
+      { familyKey: normalizedFamilyKey, allowedValues: [...PROTEIN_FAMILY_KEYS] }
+    );
+  }
 
   const [relations, options] = await Promise.all([
     ProductGroupOption.find({
@@ -771,6 +775,7 @@ async function getExplicitOptionPicker({
       const premium = isPremiumOption(option);
       const familyMatches =
         !normalizedFamilyKey || optionFamilyKey(option) === normalizedFamilyKey;
+      const familyResolution = resolveProteinFamilyClassification(option);
       if (!selected && actualRole === "protein" && !familyMatches) return null;
       if (!selected && premium) return null;
       if (
@@ -830,6 +835,8 @@ async function getExplicitOptionPicker({
         selectionType: STANDARD_SELECTION_TYPE,
         proteinFamilyKey: option.proteinFamilyKey || "",
         displayCategoryKey: option.displayCategoryKey || "",
+        resolvedFamilyKey: familyResolution.familyKey || "",
+        familyResolutionSource: familyResolution.source,
         isPremium: premium,
         pricing: {
           defaultExtraPriceHalala: defaultPrice,
