@@ -202,7 +202,19 @@ function resolveDeliverySlotOrThrow(slot, windows, lang) {
     throw createDeliverySlotError("DELIVERY_WINDOW_MISSING", "delivery.slotId is required for delivery subscriptions");
   }
 
-  const resolved = options.find((option) => option.id === slotId || option.slotId === slotId);
+  let resolved = options.find((option) => option.id === slotId || option.slotId === slotId);
+
+  // Older dashboard builds used a display-derived id such as
+  // `delivery-12:00-14:00`. The configured window is the authoritative
+  // selection, so it can safely recover that legacy id only when it identifies
+  // one configured slot. This lives in the core validator rather than a route
+  // wrapper so every checkout composition receives the same compatibility.
+  if (!resolved && requestedWindow) {
+    const matchingWindows = options.filter((option) => option.window === requestedWindow);
+    if (matchingWindows.length === 1) {
+      [resolved] = matchingWindows;
+    }
+  }
 
   if (!resolved) {
     throw createDeliverySlotError("INVALID_DELIVERY_SLOT", "Invalid delivery slot");
@@ -1371,6 +1383,7 @@ async function resolveCheckoutQuoteOrThrow(
 
 module.exports = {
   applySameDayDeliveryPickupOverride,
+  resolveDeliverySlotOrThrow,
   resolveCheckoutQuoteOrThrow,
   buildAddonBalanceRowsFromQuote,
   resolveCheckoutAddonSelectionsOrThrow,
