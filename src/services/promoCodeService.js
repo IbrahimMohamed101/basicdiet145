@@ -12,6 +12,7 @@ const {
 const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 
 const SYSTEM_CURRENCY = "SAR";
+const BESKDIET30_CODE = "BESKDIET30";
 
 const PROMO_ERROR_MESSAGES = {
   PROMO_NOT_FOUND: "Promo code was not found",
@@ -212,6 +213,18 @@ async function validatePromoEligibilityOrThrow({
     }
   }
 
+  // BESKDIET30 is deliberately the only code with criteria that cannot be
+  // represented by the existing plan-id/day-count promo configuration.
+  // Quote values are produced and validated by the subscription quote service;
+  // the same values are reconstructed from CheckoutDraft before reservation.
+  if (normalizePromoCodeInput(promo.code) === BESKDIET30_CODE) {
+    const daysCount = Number(quote && quote.plan && quote.plan.daysCount || 0);
+    const mealsPerDay = Number(quote && quote.mealsPerDay || 0);
+    if (daysCount <= 7 || mealsPerDay <= 1) {
+      throw createPromoError("PROMO_NOT_ELIGIBLE");
+    }
+  }
+
   if (Array.isArray(promo.allowedUserIds) && promo.allowedUserIds.length > 0) {
     const isAllowedUser = promo.allowedUserIds.some((id) => String(id) === String(userId));
     if (!isAllowedUser) {
@@ -372,6 +385,7 @@ async function reservePromoCodeUsageForCheckout({
       userId,
       quote: {
         plan: { _id: draft.planId, daysCount: draft.daysCount },
+        mealsPerDay: draft.mealsPerDay,
         breakdown: {
           basePlanPriceHalala: draft.breakdown.basePlanPriceHalala,
           premiumTotalHalala: draft.breakdown.premiumTotalHalala,
