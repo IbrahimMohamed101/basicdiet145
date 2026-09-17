@@ -18,6 +18,23 @@ function isProjectionEnabled(env = process.env) {
   return ["1", "true", "yes", "on"].includes(value);
 }
 
+function hasEntitlementBatchAggregate(subscription = {}) {
+  const stacking =
+    subscription.stacking
+    && typeof subscription.stacking === "object"
+    && !Array.isArray(subscription.stacking)
+      ? subscription.stacking
+      : null;
+
+  return Boolean(
+    stacking
+    && stacking.hasEntitlementBatches === true
+    && stacking.aggregateBalance
+    && typeof stacking.aggregateBalance === "object"
+    && !Array.isArray(stacking.aggregateBalance)
+  );
+}
+
 function resolveDashboardMealBalanceProjection(subscription = {}) {
   if (!subscription || typeof subscription !== "object" || Array.isArray(subscription)) {
     return null;
@@ -44,11 +61,7 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
       ? subscription.stacking
       : null;
   const aggregate =
-    stacking
-    && stacking.hasEntitlementBatches === true
-    && stacking.aggregateBalance
-    && typeof stacking.aggregateBalance === "object"
-    && !Array.isArray(stacking.aggregateBalance)
+    hasEntitlementBatchAggregate(subscription)
       ? stacking.aggregateBalance
       : null;
 
@@ -135,10 +148,23 @@ function projectDashboardSubscriptionBalance(subscription = {}) {
     && !Array.isArray(subscription.mealBalance)
       ? subscription.mealBalance
       : {};
+  const usesEntitlementBatchAggregate = hasEntitlementBatchAggregate(subscription);
+  const currentBalances =
+    subscription.balances
+    && typeof subscription.balances === "object"
+    && !Array.isArray(subscription.balances)
+      ? subscription.balances
+      : {};
+  const currentRegularMeals =
+    currentBalances.regularMeals
+    && typeof currentBalances.regularMeals === "object"
+    && !Array.isArray(currentBalances.regularMeals)
+      ? currentBalances.regularMeals
+      : {};
 
   return {
     ...subscription,
-    // Backward-compatible dashboard display field. Write paths and reservation
+    // Backward-compatible dashboard display fields. Write paths and reservation
     // services never consume this projected response.
     remainingMeals: projection.displayRemainingMeals,
     availableMeals: projection.availableMeals,
@@ -146,6 +172,20 @@ function projectDashboardSubscriptionBalance(subscription = {}) {
     consumedMeals: projection.consumedMeals,
     forfeitedMeals: projection.forfeitedMeals,
     displayRemainingMeals: projection.displayRemainingMeals,
+    ...(usesEntitlementBatchAggregate
+      ? {
+          totalMeals: projection.totalMeals,
+          balances: {
+            ...currentBalances,
+            regularMeals: {
+              ...currentRegularMeals,
+              total: projection.totalMeals,
+              remaining: projection.displayRemainingMeals,
+              consumed: projection.consumedMeals,
+            },
+          },
+        }
+      : {}),
     mealBalance: {
       ...currentMealBalance,
       totalMeals: projection.totalMeals,
@@ -228,6 +268,7 @@ function projectDashboardSubscriptionResponse(payload, {
 module.exports = {
   DASHBOARD_MEAL_BALANCE_FLAG,
   DASHBOARD_MEAL_BALANCE_PROJECTION_VERSION,
+  hasEntitlementBatchAggregate,
   isProjectionEnabled,
   isSubscriptionReadModel,
   nonNegativeIntegerOrNull,
