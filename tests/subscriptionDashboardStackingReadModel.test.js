@@ -34,6 +34,11 @@ async function testProjectsPackagesAndTransactionsWithoutChangingParentIdentity(
     status: true,
     data: [
       subscription(parentId, {
+        totalMeals: 0,
+        remainingMeals: 0,
+        reservedMeals: 0,
+        consumedMeals: 0,
+        forfeitedMeals: 0,
         planName: "Legacy parent label",
         selectedGrams: 200,
       }),
@@ -108,6 +113,13 @@ async function testProjectsPackagesAndTransactionsWithoutChangingParentIdentity(
   assert.strictEqual(row.stacking.isCombinedPackage, true);
   assert.strictEqual(row.stacking.manualDeductionAllowed, false);
   assert.strictEqual(row.stacking.packageCount, 2);
+  assert.deepStrictEqual(row.stacking.aggregateBalance, {
+    totalMeals: 130,
+    remainingMeals: 72,
+    reservedMeals: 0,
+    consumedMeals: 58,
+    forfeitedMeals: 0,
+  });
   assert.deepStrictEqual(
     row.stacking.packages.map((item) => [
       item.planName,
