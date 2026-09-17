@@ -7,6 +7,12 @@ const {
   resolveAdminSubscriptionFiltersOrThrow,
   serializeSubscriptionAdminFromCatalog,
 } = require("../subscription/subscriptionOperationsReadService");
+const {
+  projectDashboardStackingReadModel,
+} = require("./subscriptionDashboardStackingReadService");
+const {
+  projectDashboardSubscriptionBalance,
+} = require("../subscription/subscriptionDashboardMealBalanceProjectionService");
 
 const ALLOWED_FULFILLMENT_METHODS = new Set(["delivery", "pickup"]);
 
@@ -52,6 +58,24 @@ function resolvePaginationOrThrow(query = {}) {
   };
 }
 
+async function projectStackedSubscriptionRows(subscriptions, lang) {
+  const payload = await projectDashboardStackingReadModel(
+    { data: subscriptions },
+    { lang }
+  );
+  const rows = Array.isArray(payload && payload.data)
+    ? payload.data
+    : subscriptions;
+
+  return rows.map((subscription) => {
+    const stacking = subscription && subscription.stacking;
+    if (!stacking || stacking.hasEntitlementBatches !== true) {
+      return subscription;
+    }
+    return projectDashboardSubscriptionBalance(subscription);
+  });
+}
+
 async function listSubscriptionsByFulfillment(query = {}) {
   const filters = await resolveAdminSubscriptionFiltersOrThrow(query, {
     includeStatus: true,
@@ -87,7 +111,14 @@ async function listSubscriptionsByFulfillment(query = {}) {
     : [];
   const userMap = new Map(users.map((user) => [String(user._id), user]));
   const lang = String(query.lang || "ar");
-  const catalog = await loadSubscriptionSummaryCatalog(subscriptions, lang);
+  const projectedSubscriptions = await projectStackedSubscriptionRows(
+    subscriptions,
+    lang
+  );
+  const catalog = await loadSubscriptionSummaryCatalog(
+    projectedSubscriptions,
+    lang
+  );
 
   return {
     filters: {
@@ -96,7 +127,7 @@ async function listSubscriptionsByFulfillment(query = {}) {
     },
     pagination,
     total,
-    data: subscriptions.map((subscription) =>
+    data: projectedSubscriptions.map((subscription) =>
       serializeSubscriptionAdminFromCatalog(
         subscription,
         userMap.get(String(subscription.userId)) || null,
