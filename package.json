@@ -75,7 +75,6 @@
     "test:one-time-menu": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/oneTimeMenuCatalog.test.js",
     "test:weight-pricing": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/weightStepPricingContract.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/testWeightPricingBackfill.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/weightPricingAuthorityContract.test.js",
     "test:builder-catalog-v2-contract": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/builderCatalogV2Contract.test.js",
->>>>>>> origin/main
     "test:premium-lifecycle": "NODE_ENV=test bash scripts/run-premium-meal-backend-lifecycle.sh",
     "test:database-reset-safety": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/databaseHandoverResetSafety.test.js",
     "test:subscription-plan-seed": "node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/seedSubscriptionPlans.test.js",
