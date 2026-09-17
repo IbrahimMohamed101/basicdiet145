@@ -117,6 +117,26 @@ function buildContext({ subscription, batches, planNames, payments }) {
     if (item.payment) transactionById.set(item.payment.id, item.payment);
   }
 
+  const aggregateBalance = packages.length > 0 ? packages.reduce((acc, item) => ({
+    totalMeals: acc.totalMeals + Number(item.totalMeals || 0),
+    remainingMeals: acc.remainingMeals + Number(item.remainingMeals || 0),
+    reservedMeals: acc.reservedMeals + Number(item.reservedMeals || 0),
+    consumedMeals: acc.consumedMeals + Number(item.consumedMeals || 0),
+    forfeitedMeals: acc.forfeitedMeals + Number(item.forfeitedMeals || 0),
+  }), {
+    totalMeals: 0,
+    remainingMeals: 0,
+    reservedMeals: 0,
+    consumedMeals: 0,
+    forfeitedMeals: 0,
+  }) : {
+    totalMeals: Number(subscription.totalMeals || 0),
+    remainingMeals: Number(subscription.remainingMeals || 0),
+    reservedMeals: Number(subscription.reservedMeals || 0),
+    consumedMeals: Number(subscription.consumedMeals || 0),
+    forfeitedMeals: Number(subscription.forfeitedMeals || 0),
+  };
+
   return {
     version: DASHBOARD_STACKING_READ_VERSION,
     hasEntitlementBatches: packages.length > 0,
@@ -125,13 +145,7 @@ function buildContext({ subscription, batches, planNames, payments }) {
     parentSubscriptionId: stringId(subscription._id || subscription.id),
     parentRole: "operational_container",
     manualDeductionAllowed: packages.length === 0,
-    aggregateBalance: {
-      totalMeals: Number(subscription.totalMeals || 0),
-      remainingMeals: Number(subscription.remainingMeals || 0),
-      reservedMeals: Number(subscription.reservedMeals || 0),
-      consumedMeals: Number(subscription.consumedMeals || 0),
-      forfeitedMeals: Number(subscription.forfeitedMeals || 0),
-    },
+    aggregateBalance,
     packages,
     transactions: Array.from(transactionById.values()),
   };
