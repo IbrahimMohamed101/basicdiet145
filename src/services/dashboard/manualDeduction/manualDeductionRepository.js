@@ -60,7 +60,10 @@ function buildPremiumRemainingExpression() {
 
 function buildRegularRemainingExpression() {
   return {
-    $subtract: ["$remainingMeals", buildPremiumRemainingExpression()],
+    $subtract: [
+      { $ifNull: ["$stacking.aggregateBalance", "$remainingMeals"] },
+      buildPremiumRemainingExpression(),
+    ],
   };
 }
 
@@ -69,7 +72,6 @@ async function deductAtomically({ subscription, counts, session }) {
   const filter = {
     _id: subscription._id,
     status: ACTIVE_STATUS,
-    remainingMeals: { $gte: counts.total },
   };
 
   const andClauses = [];
@@ -80,6 +82,16 @@ async function deductAtomically({ subscription, counts, session }) {
       },
     });
   }
+
+  // Ensure total available (either legacy remainingMeals or new stacking.aggregateBalance)
+  andClauses.push({
+    $expr: {
+      $gte: [
+        { $ifNull: ["$stacking.aggregateBalance", "$remainingMeals"] },
+        counts.total,
+      ],
+    },
+  });
 
   if (allocations.length) {
     andClauses.push(...allocations.map((allocation) => ({

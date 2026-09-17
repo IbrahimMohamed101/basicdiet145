@@ -44,6 +44,7 @@
     "test:meal-planner-card-actions": "NODE_ENV=test node tests/mealPlannerCardLifecycle.test.js",
     "test:meal-planner-v4": "NODE_ENV=test node tests/dynamicMealPlannerV4Contract.test.js",
     "test:dashboard-manual-deduction": "NODE_ENV=test node tests/dashboardManualDeductionAndOrderPickup.test.js",
+    "backfill:stacking-aggregateBalance": "node scripts/backfill-subscription-stacking-aggregateBalance.js",
     "test:dashboard-subscription-create": "NODE_ENV=test node tests/dashboardSubscriptionCreationContract.test.js",
     "test:dashboard-accounting": "NODE_ENV=test node tests/dashboardAccountingDailyReport.test.js",
     "test:one-time-menu": "NODE_ENV=test node tests/oneTimeMenuCatalog.test.js",

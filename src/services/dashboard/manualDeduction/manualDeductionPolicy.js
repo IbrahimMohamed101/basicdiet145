@@ -17,7 +17,10 @@ function resolvePremiumRemaining(subscription) {
 
 function resolveBalances(subscription) {
   const totalMeals = Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
-  const remainingMeals = Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
+  const rawRemaining = (subscription && subscription.stacking && typeof subscription.stacking.aggregateBalance === "number")
+    ? subscription.stacking.aggregateBalance
+    : (subscription && subscription.remainingMeals);
+  const remainingMeals = Math.max(0, Math.floor(Number(rawRemaining) || 0));
   const remainingPremiumMeals = resolvePremiumRemaining(subscription);
   const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
   return {
