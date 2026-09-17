@@ -37,6 +37,59 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
     return null;
   }
 
+  const stacking =
+    subscription.stacking
+    && typeof subscription.stacking === "object"
+    && !Array.isArray(subscription.stacking)
+      ? subscription.stacking
+      : null;
+  const aggregate =
+    stacking
+    && stacking.hasEntitlementBatches === true
+    && stacking.aggregateBalance
+    && typeof stacking.aggregateBalance === "object"
+    && !Array.isArray(stacking.aggregateBalance)
+      ? stacking.aggregateBalance
+      : null;
+
+  if (aggregate) {
+    const totalMeals = nonNegativeIntegerOrNull(aggregate.totalMeals);
+    const remainingMeals = nonNegativeIntegerOrNull(aggregate.remainingMeals);
+    const reservedMeals = nonNegativeIntegerOrNull(aggregate.reservedMeals);
+    const consumedMeals = nonNegativeIntegerOrNull(aggregate.consumedMeals);
+    const forfeitedMeals = nonNegativeIntegerOrNull(aggregate.forfeitedMeals);
+
+    if (
+      totalMeals === null
+      || remainingMeals === null
+      || reservedMeals === null
+      || consumedMeals === null
+      || forfeitedMeals === null
+    ) {
+      return null;
+    }
+
+    // Entitlement-batch remainingMeals represents all unconsumed meals,
+    // including reservations. Available meals therefore exclude reservations.
+    const availableMeals = Math.max(0, remainingMeals - reservedMeals);
+    const accountedMeals = remainingMeals + consumedMeals + forfeitedMeals;
+
+    // Fail closed on incomplete/corrupt aggregates. Never manufacture customer
+    // credit when the persisted entitlement counters do not reconcile exactly.
+    if (accountedMeals !== totalMeals || availableMeals + reservedMeals !== remainingMeals) {
+      return null;
+    }
+
+    return {
+      totalMeals,
+      availableMeals,
+      reservedMeals,
+      consumedMeals,
+      forfeitedMeals,
+      displayRemainingMeals: remainingMeals,
+    };
+  }
+
   const totalMeals = nonNegativeIntegerOrNull(subscription.totalMeals);
   const availableMeals = nonNegativeIntegerOrNull(subscription.remainingMeals);
   const reservedMeals = nonNegativeIntegerOrNull(subscription.reservedMeals);
