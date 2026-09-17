@@ -64,7 +64,7 @@ function buildPremiumRemainingExpression() {
 function buildRegularRemainingExpression() {
   return {
     $subtract: [
-      { $ifNull: ["$stacking.aggregateBalance", "$remainingMeals"] },
+      { $ifNull: ["$stacking.aggregateBalance.remainingMeals", "$remainingMeals"] },
       buildPremiumRemainingExpression(),
     ],
   };
@@ -165,7 +165,7 @@ function buildDeductionAtomicMutation({ subscription, counts }) {
   andClauses.push({
     $expr: {
       $gte: [
-        { $ifNull: ["$stacking.aggregateBalance", "$remainingMeals"] },
+        { $ifNull: ["$stacking.aggregateBalance.remainingMeals", "$remainingMeals"] },
         counts.total,
       ],
     },
