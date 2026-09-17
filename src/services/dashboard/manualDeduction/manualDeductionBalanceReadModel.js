@@ -11,25 +11,45 @@ function nonNegativeInteger(value) {
 }
 
 function buildManualDeductionBalanceReadModel(subscription = {}, suppliedBalances = null) {
+  const projection = resolveDashboardMealBalanceProjection(subscription);
+  const projectedStackingBalance = projection
+    && subscription.stacking
+    && subscription.stacking.hasEntitlementBatches === true
+    && subscription.stacking.aggregateBalance
+    && typeof subscription.stacking.aggregateBalance === "object"
+    ? projection
+    : null;
+
+  // Stacked entitlement batches are the authoritative balance. Never fall back
+  // to the legacy parent subscription counters when their aggregate is present.
   const balances = suppliedBalances || resolveBalances(subscription);
   const entitlementVersion = nonNegativeInteger(subscription.entitlementVersion);
-  const availableMeals = nonNegativeInteger(balances.remainingMeals);
-  const reservedMeals = entitlementVersion >= 2
-    ? nonNegativeInteger(subscription.reservedMeals)
-    : 0;
-  const deductibleMeals = availableMeals + reservedMeals;
-  const consumedMeals = nonNegativeInteger(balances.consumedMeals);
-  const forfeitedMeals = entitlementVersion >= 2
-    ? nonNegativeInteger(subscription.forfeitedMeals)
-    : 0;
-  const totalMeals = nonNegativeInteger(balances.totalMeals);
+  const availableMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.availableMeals)
+    : nonNegativeInteger(balances.remainingMeals);
+  const reservedMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.reservedMeals)
+    : (entitlementVersion >= 2 ? nonNegativeInteger(subscription.reservedMeals) : 0);
+  const deductibleMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.displayRemainingMeals)
+    : availableMeals + reservedMeals;
+  const consumedMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.consumedMeals)
+    : nonNegativeInteger(balances.consumedMeals);
+  const forfeitedMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.forfeitedMeals)
+    : (entitlementVersion >= 2 ? nonNegativeInteger(subscription.forfeitedMeals) : 0);
+  const totalMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.totalMeals)
+    : nonNegativeInteger(balances.totalMeals);
   const accountedMeals = availableMeals + reservedMeals + consumedMeals + forfeitedMeals;
   const equationDifference = totalMeals - accountedMeals;
-  const projection = resolveDashboardMealBalanceProjection(subscription);
-  const projectionApplied = Boolean(projection);
-  const displayRemainingMeals = projectionApplied
-    ? nonNegativeInteger(projection.displayRemainingMeals)
-    : availableMeals;
+  const projectionApplied = Boolean(projectedStackingBalance || projection);
+  const displayRemainingMeals = projectedStackingBalance
+    ? nonNegativeInteger(projectedStackingBalance.displayRemainingMeals)
+    : (projectionApplied
+      ? nonNegativeInteger(projection.displayRemainingMeals)
+      : availableMeals);
 
   return {
     totalMeals,
@@ -41,7 +61,7 @@ function buildManualDeductionBalanceReadModel(subscription = {}, suppliedBalance
     forfeitedMeals,
     accountedMeals,
     equationDifference,
-    balanced: entitlementVersion < 2 || equationDifference === 0,
+    balanced: Boolean(projectedStackingBalance) || entitlementVersion < 2 || equationDifference === 0,
     projectionApplied,
     canManualDeduct: deductibleMeals > 0,
     manualDeductionMaxMeals: deductibleMeals,
