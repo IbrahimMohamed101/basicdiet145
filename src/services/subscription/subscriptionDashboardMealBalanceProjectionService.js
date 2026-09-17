@@ -40,17 +40,8 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
     return null;
   }
 
-  // Limit the compatibility projection to active subscriptions with the modern
-  // entitlement lifecycle. Legacy records remain byte-for-byte compatible until
-  // their reservation/consumption source of truth is explicit.
+  // Limit the compatibility projection to active subscriptions.
   if (String(subscription.status || "").toLowerCase() !== "active") {
-    return null;
-  }
-
-  const entitlementVersion = nonNegativeIntegerOrNull(
-    subscription.entitlementVersion
-  );
-  if (entitlementVersion === null || entitlementVersion < 2) {
     return null;
   }
 
@@ -65,6 +56,8 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
       ? stacking.aggregateBalance
       : null;
 
+  // Stacked entitlement batches are already an explicit source of truth.
+  // Project their aggregate regardless of the legacy entitlementVersion field.
   if (aggregate) {
     const totalMeals = nonNegativeIntegerOrNull(aggregate.totalMeals);
     const remainingMeals = nonNegativeIntegerOrNull(aggregate.remainingMeals);
@@ -101,6 +94,14 @@ function resolveDashboardMealBalanceProjection(subscription = {}) {
       forfeitedMeals,
       displayRemainingMeals: remainingMeals,
     };
+  }
+
+  // Non-stacked records retain the modern entitlementVersion guard.
+  const entitlementVersion = nonNegativeIntegerOrNull(
+    subscription.entitlementVersion
+  );
+  if (entitlementVersion === null || entitlementVersion < 2) {
+    return null;
   }
 
   const totalMeals = nonNegativeIntegerOrNull(subscription.totalMeals);
