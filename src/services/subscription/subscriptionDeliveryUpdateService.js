@@ -13,6 +13,10 @@ const {
 } = require("./subscriptionCutoffPolicyService");
 const { getRestaurantBusinessTomorrow } = require("../restaurantHoursService");
 const {
+  getPickupLocationId,
+  resolveSinglePickupLocations,
+} = require("../../utils/singlePickupLocation");
+const {
   assertSubscriptionActiveAndOwned,
 } = require("./subscriptionDateRangeHelperService");
 
@@ -93,7 +97,9 @@ const defaultRuntime = {
     return Zone.findById(zoneId).lean();
   },
   async getPickupLocations() {
-    return getSettingValue("pickup_locations", []);
+    return resolveSinglePickupLocations(
+      await getSettingValue("pickup_locations", [])
+    );
   },
   resolvePickupLocationSelection(pickupLocations, locationId, lang, windows) {
     return resolvePickupLocationSelection(pickupLocations, locationId, lang, windows);
@@ -135,7 +141,7 @@ async function resolveSubscriptionDeliveryDefaultsUpdate({
   const deliveryWindow = normalizeDeliveryWindow(payload);
   const deliveryAddress = normalizeDeliveryAddress(payload);
   const deliveryZoneId = normalizeDeliveryZoneId(payload);
-  const pickupLocationId = normalizePickupLocationId(payload);
+  const requestedPickupLocationId = normalizePickupLocationId(payload);
 
   if (requestedType === "delivery") {
     if (deliveryAddress === undefined && deliveryWindow === undefined && deliveryZoneId === undefined) {
@@ -200,14 +206,16 @@ async function resolveSubscriptionDeliveryDefaultsUpdate({
     };
   }
 
-  if (pickupLocationId === undefined) {
-    throw createDeliveryUpdateError(400, "INVALID", "pickupLocationId is required for pickup subscriptions");
-  }
-  if (!pickupLocationId) {
-    throw createDeliveryUpdateError(400, "INVALID", "pickupLocationId is required for pickup subscriptions");
-  }
+  const singlePickupLocations = resolveSinglePickupLocations(pickupLocations);
+  const pickupLocationId = requestedPickupLocationId
+    || getPickupLocationId(singlePickupLocations[0]);
 
-  const resolvedPickupLocation = runtime.resolvePickupLocationSelection(pickupLocations, pickupLocationId, lang, windows);
+  const resolvedPickupLocation = runtime.resolvePickupLocationSelection(
+    singlePickupLocations,
+    pickupLocationId,
+    lang,
+    windows
+  );
   if (!resolvedPickupLocation) {
     throw createDeliveryUpdateError(400, "INVALID", "Invalid pickup location");
   }

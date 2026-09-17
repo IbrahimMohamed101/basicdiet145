@@ -1,10 +1,19 @@
 "use strict";
 
+process.env.NODE_ENV = "test";
+
+const { setTemporaryEnvironment } = require("./helpers/temporaryEnvironment");
+setTemporaryEnvironment({ SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false" });
+
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
 process.env.SUBSCRIPTION_AUTO_SETTLEMENT_ENABLED = "false";
 
 require("dotenv").config();
+delete process.env.MONGO_URI_TEST;
+delete process.env.MONGO_URI;
+
+const { connectDB, disconnectDB } = require("./helpers/dbHelper");
 
 const assert = require("assert");
 const jwt = require("jsonwebtoken");
@@ -123,9 +132,7 @@ async function test(name, fn) {
 }
 
 async function connect() {
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test");
-  }
+  await connectDB();
 }
 
 async function cleanup() {
@@ -441,14 +448,6 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       const res = await api.get(`/api/subscriptions/${subscription._id}/pickup-availability?date=${TODAY}`).set(auth(token(user._id)));
       assert.strictEqual(res.status, 200, JSON.stringify(res.body));
       const data = res.body.data;
-      
-      require("fs").writeFileSync("scratch/actual_json.json", JSON.stringify(data, null, 2));
-
-      
-      require("fs").writeFileSync("scratch/actual_json.json", JSON.stringify(data, null, 2));
-      console.log("JSON successfully written to scratch/actual_json.json");
-      process.exit(0);
-
       assert(Array.isArray(data.sections), "sections should be present");
       assert.strictEqual(data.summary.titleAr, "عناصر متاحة للاستلام");
       assert.strictEqual(data.summary.titleEn, "Items available for pickup");
@@ -1070,7 +1069,7 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       assert.notStrictEqual(second.body.data.requestId, first.body.data.requestId);
     });
 
-    await test("no-show consumes credits and leaves selected slot unavailable", async () => {
+    await test("no-show returns credits and makes the selected slot reusable", async () => {
       const { user, subscription } = await seedSubscriptionWithDay({ label: "no-show-lock", remainingMeals: 2, slots: [mealSlot(1)] });
       const headers = auth(token(user._id));
       const requestRes = await api.post(`/api/subscriptions/${subscription._id}/pickup-requests`).set(headers).send({ date: TODAY, selectedMealSlotIds: ["slot_1"] });
@@ -1080,10 +1079,10 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
       const noShow = await dashboardAction(api, adminHeaders, "no_show", requestRes.body.data.requestId, { reason: "customer_no_show" });
       assert.strictEqual(noShow.status, 200, JSON.stringify(noShow.body));
       const sub = await Subscription.findById(subscription._id).lean();
-      assert.strictEqual(sub.remainingMeals, 1);
+      assert.strictEqual(sub.remainingMeals, 2);
       const retry = await api.post(`/api/subscriptions/${subscription._id}/pickup-requests`).set(headers).send({ date: TODAY, selectedMealSlotIds: ["slot_1"] });
-      assert.strictEqual(retry.status, 422, JSON.stringify(retry.body));
-      assert.strictEqual(retry.body.error.code, "MEAL_SLOT_UNAVAILABLE");
+      assert.strictEqual(retry.status, 200, JSON.stringify(retry.body));
+      assert.notStrictEqual(retry.body.data.requestId, requestRes.body.data.requestId);
     });
 
     await test("fulfill consumes once and duplicate fulfill does not double decrement or release slot", async () => {
@@ -1103,8 +1102,11 @@ function legacyBuilderSlot(slotIndex, fixture, { premium = false } = {}) {
     });
   } finally {
     await cleanup();
-    await mongoose.disconnect();
+    await disconnectDB();
     console.log(`\nBranch pickup slot append tests: ${results.passed} passed, ${results.failed} failed`);
-    if (results.failed > 0) process.exit(1);
+    if (results.failed > 0) process.exitCode = 1;
   }
-})();
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exitCode = 1;
+});

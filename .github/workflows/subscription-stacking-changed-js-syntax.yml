@@ -1,0 +1,51 @@
+name: Subscription Stacking Changed JS Syntax
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "**/*.js"
+      - ".github/workflows/subscription-stacking-changed-js-syntax.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "**/*.js"
+      - ".github/workflows/subscription-stacking-changed-js-syntax.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch main
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Check changed JavaScript syntax
+        shell: bash
+        run: |
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- '*.js')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed JavaScript files."
+            exit 0
+          fi
+          printf 'Checking %s changed JavaScript files\n' "${#files[@]}"
+          for file in "${files[@]}"; do
+            node --check "$file"
+          done

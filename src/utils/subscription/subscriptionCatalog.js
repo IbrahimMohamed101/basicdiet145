@@ -1,5 +1,10 @@
 const { pickLang } = require("../i18n");
 const { withDefaultMealNutrition } = require("../mealNutrition");
+const { resolveSinglePickupLocations } = require("../singlePickupLocation");
+const {
+  resolvePlanTimelineExtraDays,
+} = require("../../services/subscription/subscriptionTimelineDurationService");
+const { resolvePlanBasePriceHalala } = require("../pricing");
 
 const SYSTEM_CURRENCY = "SAR";
 const PREMIUM_PROTEIN_SELECTION_TYPE = "premium_protein";
@@ -196,17 +201,8 @@ function formatWindowLabel(windowValue, lang) {
   return `${formatTimeLabel(from, lang)} - ${formatTimeLabel(to, lang)}`;
 }
 
-function resolveSavings(compareAtHalala, priceHalala) {
-  const compareAt = Number(compareAtHalala) || 0;
-  const price = Number(priceHalala) || 0;
-  return Math.max(0, compareAt - price);
-}
-
 function resolvePlanMealOption(mealOption, lang, isDefault = false) {
-  const price = toMoneyParts(mealOption && mealOption.priceHalala);
-  const compareAt = toMoneyParts(mealOption && mealOption.compareAtHalala);
-  const savingsHalala = resolveSavings(compareAt.halala, price.halala);
-  const savings = toMoneyParts(savingsHalala);
+  const price = toMoneyParts(resolvePlanBasePriceHalala(mealOption));
   const mealsPerDay = Number(mealOption && mealOption.mealsPerDay) || 0;
 
   return {
@@ -215,15 +211,15 @@ function resolvePlanMealOption(mealOption, lang, isDefault = false) {
     shortLabel: formatMealsLabel(mealsPerDay, lang, true),
     priceHalala: price.halala,
     priceSar: price.sar,
-    compareAtHalala: compareAt.halala,
-    compareAtSar: compareAt.sar,
-    savingsHalala,
-    savingsSar: savings.sar,
+    // Compatibility fields remain numeric for older mobile clients, but no
+    // longer describe or advertise a static discount.
+    compareAtHalala: 0,
+    compareAtSar: 0,
+    savingsHalala: 0,
+    savingsSar: 0,
     priceLabel: formatCurrencyLabel(price.halala),
-    compareAtLabel: compareAt.halala > 0 ? formatCurrencyLabel(compareAt.halala) : "",
-    savingsLabel: savingsHalala > 0
-      ? localizeText(lang, `وفر ${formatCompactMoney(savings.sar)} ${SYSTEM_CURRENCY}`, `Save ${formatCompactMoney(savings.sar)} ${SYSTEM_CURRENCY}`)
-      : "",
+    compareAtLabel: "",
+    savingsLabel: "",
     isDefault,
   };
 }
@@ -269,15 +265,18 @@ function resolvePlanCatalogEntry(plan, lang) {
     ? defaultGramsOption.mealsOptions[0] || null
     : null;
   const startsFromHalala = defaultMealsOption ? defaultMealsOption.priceHalala : 0;
-  const compareAtStartsFromHalala = defaultMealsOption ? defaultMealsOption.compareAtHalala : 0;
-  const savingsStartsFromHalala = resolveSavings(compareAtStartsFromHalala, startsFromHalala);
+  const compareAtStartsFromHalala = 0;
+  const savingsStartsFromHalala = 0;
   const skipPolicy = plan && plan.skipPolicy && typeof plan.skipPolicy === "object" ? plan.skipPolicy : {};
+  const timelineExtraDays = resolvePlanTimelineExtraDays(plan);
 
   return {
     id: String(plan._id),
     key: plan.key || null,
     name: pickLang(plan.name, lang),
     daysCount: Number(plan.daysCount || 0),
+    timelineExtraDays,
+    timelineDays: Number(plan.daysCount || 0) + timelineExtraDays,
     durationDays: Number(plan.durationDays || plan.daysCount || 0),
     daysLabel: formatDaysLabel(plan.daysCount, lang),
     currency: plan.currency || SYSTEM_CURRENCY,
@@ -537,7 +536,16 @@ function resolvePickupLocationEntry(rawLocation, index, lang, fallbackSlots) {
     };
 
   return {
-    id: String(rawLocation.id || rawLocation.locationId || `pickup_location_${index + 1}`),
+    id: String(
+      rawLocation.id
+      || rawLocation.locationId
+      || rawLocation.key
+      || rawLocation.code
+      || rawLocation.slug
+      || rawLocation.branchId
+      || rawLocation.pickupLocationId
+      || `pickup_location_${index + 1}`
+    ),
     name: plainName,
     label: plainName,
     address,
@@ -582,11 +590,9 @@ function resolveDeliveryCatalog({
       .filter(Boolean)
     : [];
   const hasAreaPricing = resolvedAreas.length > 0;
-  const resolvedPickupLocations = Array.isArray(pickupLocations)
-    ? pickupLocations
+  const resolvedPickupLocations = resolveSinglePickupLocations(pickupLocations)
       .map((location, index) => resolvePickupLocationEntry(location, index, lang, []))
-      .filter(Boolean)
-    : [];
+      .filter(Boolean);
 
   return {
     methods: [
@@ -650,7 +656,8 @@ function resolvePickupLocationSelection(pickupLocations, locationId, lang, windo
       .filter(Boolean)
     : [];
 
-  return resolvedLocations.find((location) => location.id === normalizedId) || null;
+  return resolvedLocations.find((location) => location.id === normalizedId)
+    || (resolvedLocations.length === 1 ? resolvedLocations[0] : null);
 }
 
 function resolveCheckoutLineItem(kind, label, amountHalala) {

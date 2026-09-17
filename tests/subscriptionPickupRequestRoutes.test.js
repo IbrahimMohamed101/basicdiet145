@@ -1,5 +1,7 @@
 "use strict";
 
+require("./helpers/installMongoTestSafetyGuard");
+
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
 require("dotenv").config();

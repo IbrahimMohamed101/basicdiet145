@@ -4,7 +4,9 @@ const MealsOptionSchema = new mongoose.Schema(
   {
     mealsPerDay: { type: Number, required: true },
     priceHalala: { type: Number, required: true },
-    compareAtHalala: { type: Number, required: true },
+    // Deprecated display field. Kept in storage for backward compatibility;
+    // new dashboard writes always normalize it to zero.
+    compareAtHalala: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
   },
@@ -33,6 +35,7 @@ const PlanSchema = new mongoose.Schema(
       en: { type: String, default: "" },
     },
     daysCount: { type: Number, required: true },
+    timelineExtraDays: { type: Number, min: 0, max: 365 },
     durationDays: { type: Number, min: 1 },
     currency: { type: String, default: "SAR" },
     gramsOptions: { type: [GramsOptionSchema], default: [] },

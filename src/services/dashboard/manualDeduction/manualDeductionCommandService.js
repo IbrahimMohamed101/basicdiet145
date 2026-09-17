@@ -9,8 +9,35 @@ const {
   validateSubscriptionCanDeduct,
 } = require("./manualDeductionPolicy");
 const { buildDeductionLog, buildDeductionResponse } = require("./manualDeductionPresenter");
+const {
+  executeStackedManualDeduction,
+  hasEntitlementBatches,
+} = require("./stackedManualDeductionService");
+const {
+  repairLegacyBatchValidityEndDates,
+} = require("./legacyBatchCompatibility");
 
-function createManualDeductionCommandService({ repository, getBusinessDate, runTransactionWithRetry }) {
+function buildResidualCounts(counts, consumedReservedRegularMeals = 0) {
+  const consumedReserved = Math.min(
+    Math.max(0, Math.floor(Number(consumedReservedRegularMeals) || 0)),
+    counts.regularMeals
+  );
+  const regularMeals = counts.regularMeals - consumedReserved;
+  return {
+    ...counts,
+    regularMeals,
+    total: regularMeals + counts.premiumMeals,
+  };
+}
+
+function createManualDeductionCommandService({
+  repository,
+  getBusinessDate,
+  runTransactionWithRetry,
+  entitlementBatchDetector = hasEntitlementBatches,
+  stackedManualDeductionExecutor = executeStackedManualDeduction,
+  legacyBatchValidityRepair = repairLegacyBatchValidityEndDates,
+}) {
   async function validateSubscriptionCustomerExists(subscription, session) {
     const customer = await repository.customerExists(subscription.userId, session);
     if (!customer) {
@@ -30,7 +57,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     }
   }
 
-  async function manualDeduction({ subscriptionId, body, actorId, actorRole }) {
+  async function manualDeduction({ subscriptionId, body, actorId, actorRole, idempotencyKey }) {
     assertCashierOrAdminRole(actorRole);
     if (!repository.isValidObjectId(subscriptionId)) {
       throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
@@ -39,14 +66,78 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
     const counts = validateCounts(body || {});
     const businessDate = await getBusinessDate();
 
+    // Stacked subscriptions use entitlement batches as their balance/date
+    // source of truth. Keep the parent subscription as the lifecycle/identity
+    // guard, but do not reject a valid batch because the aggregate mirror is
+    // temporarily stale. The stacked executor performs package-level balance
+    // validation, idempotency, leasing and reconciliation atomically.
+    if (await entitlementBatchDetector(subscriptionId)) {
+      await legacyBatchValidityRepair(subscriptionId);
+      const subscription = await repository.findSubscriptionById(subscriptionId, null);
+      if (!subscription) {
+        throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
+      }
+      if (String(subscription.status || "") !== "active") {
+        throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
+      }
+      await validateSubscriptionCustomerExists(subscription, null);
+      return stackedManualDeductionExecutor({
+        subscriptionId,
+        counts,
+        body: body || {},
+        actorId,
+        actorRole,
+        businessDate,
+        idempotencyKey,
+      });
+    }
+
     try {
       return await runTransactionWithRetry(async (session) => {
         const subscription = await repository.findSubscriptionById(subscriptionId, session);
-        validateSubscriptionCanDeduct(subscription);
+        validateSubscriptionCanDeduct(subscription, businessDate);
         await validateSubscriptionCustomerExists(subscription, session);
         await ensureNoDeliveryDeductionToday(subscription, businessDate, session);
         const before = validateBalances(subscription, counts);
-        const updated = await repository.deductAtomically({ subscription, counts, session });
+
+        // For entitlement-ledger subscriptions, a reserved meal is selected but
+        // not received. Consume matching regular reservations first, then debit
+        // only the residual request from unreserved remainingMeals. This keeps
+        // remainingMeals non-negative and prevents double-debiting a reservation.
+        let mutationSubscription = subscription;
+        let writeCounts = counts;
+        if (
+          counts.regularMeals > 0
+          && Number(subscription.entitlementVersion || 0) >= 2
+          && typeof repository.consumeReservedRegularMeals === "function"
+        ) {
+          const reservedConsumption = await repository.consumeReservedRegularMeals({
+            subscription,
+            quantity: counts.regularMeals,
+            session,
+          });
+          const consumedReservedMeals = Number(
+            reservedConsumption && reservedConsumption.consumedMeals || 0
+          );
+          if (consumedReservedMeals > 0) {
+            writeCounts = buildResidualCounts(counts, consumedReservedMeals);
+            mutationSubscription = await repository.findSubscriptionById(subscriptionId, session);
+            if (!mutationSubscription) {
+              throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
+            }
+          }
+        }
+
+        const needsAtomicWrite = writeCounts.total > 0
+          || (Array.isArray(writeCounts.addons) && writeCounts.addons.length > 0);
+        const updated = needsAtomicWrite
+          ? await repository.deductAtomically({
+            subscription: mutationSubscription,
+            counts: writeCounts,
+            session,
+          })
+          : mutationSubscription;
+
         const after = resolveBalances(updated);
         const afterAddonBalances = resolveAddonBalances(updated);
 
@@ -89,4 +180,7 @@ function createManualDeductionCommandService({ repository, getBusinessDate, runT
   return { manualDeduction };
 }
 
-module.exports = { createManualDeductionCommandService };
+module.exports = {
+  buildResidualCounts,
+  createManualDeductionCommandService,
+};

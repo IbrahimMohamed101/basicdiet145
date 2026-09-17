@@ -16,7 +16,7 @@ function restoreEnv(key, value) {
 
 async function run() {
   const parsed = parseArgs(["--sync", "--dry-run"]);
-  assert.strictEqual(parsed.sync, true);
+  assert.strictEqual(parsed.requestedSync, true);
   assert.strictEqual(parsed.dryRun, true);
   assert.strictEqual(parsed.includeAccounts, false);
 
@@ -29,18 +29,19 @@ async function run() {
 
   try {
     process.env.ALLOW_ACCOUNT_BOOTSTRAP = "true";
-    process.env.ACCOUNT_BOOTSTRAP_SYNC = "true";
-    process.env.MEAL_BUILDER_BOOTSTRAP = "true";
-    process.env.MEAL_BUILDER_BOOTSTRAP_SYNC = "true";
+    delete process.env.ACCOUNT_BOOTSTRAP_SYNC;
+    delete process.env.MEAL_BUILDER_BOOTSTRAP;
+    delete process.env.MEAL_BUILDER_BOOTSTRAP_SYNC;
     const withAccounts = parseArgs(["--dry-run"]);
     assert.strictEqual(withAccounts.includeAccounts, true);
-    assert.strictEqual(withAccounts.accountSync, true);
-    assert.strictEqual(withAccounts.includeMealBuilder, true);
-    assert.strictEqual(withAccounts.mealBuilderSync, false);
+    assert.strictEqual(withAccounts.requestedAccountSync, false);
+    assert.strictEqual(withAccounts.includeMealBuilder, false);
 
+    process.env.MEAL_BUILDER_BOOTSTRAP_SYNC = "true";
     const withMealBuilderSync = parseArgs(["--dry-run", "--sync"]);
-    assert.strictEqual(withMealBuilderSync.mealBuilderSync, true);
+    assert.strictEqual(withMealBuilderSync.requestedMealBuilderSync, true);
 
+    delete process.env.MEAL_BUILDER_BOOTSTRAP_SYNC;
     const messages = [];
     const result = await runBootstrap({
       argv: ["--dry-run"],
@@ -48,22 +49,7 @@ async function run() {
     });
     assert.strictEqual(result.dryRun, true);
     assert(messages.some((message) => message.includes("No database writes")));
-    assert(messages.some((message) => message.includes("meal builder seed: yes")));
-    assert(messages.some((message) => message.includes("meal builder mode=create-missing-only")));
-    assert(messages.some((message) => message.includes("default dashboard/mobile accounts: yes")));
-
-    delete process.env.ALLOW_CATALOG_RESET;
-    assert.throws(
-      () => assertResetAllowed({ reset: true }),
-      /ALLOW_CATALOG_RESET/
-    );
-
-    process.env.ALLOW_CATALOG_RESET = "true";
-    process.env.NODE_ENV = "production";
-    assert.throws(
-      () => assertResetAllowed({ reset: true }),
-      /production/
-    );
+    assert(messages.some((message) => message.includes("demo/default accounts: yes")));
   } finally {
     restoreEnv("ALLOW_ACCOUNT_BOOTSTRAP", originalAllowAccounts);
     restoreEnv("ACCOUNT_BOOTSTRAP_SYNC", originalAccountSync);

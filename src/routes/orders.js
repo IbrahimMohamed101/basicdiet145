@@ -4,14 +4,21 @@ const customSaladController = require("../controllers/customSaladController");
 const customMealController = require("../controllers/customMealController");
 const { authMiddleware } = require("../middleware/auth");
 const optionalMenuAccessAuth = require("../middleware/menuAccessAuth");
+const mobileHomeProductKeyCompatibility = require("../middleware/mobileHomeProductKeyCompatibility");
 const { checkoutLimiter } = require("../middleware/rateLimit");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = Router();
 
 // Shared by public/mobile menu rendering and dashboard order-menu preview.
-// Accepts no auth, app/guest auth, or dashboard_access auth for allowed dashboard roles.
-router.get("/menu", optionalMenuAccessAuth, asyncHandler(controller.getOrderMenu));
+// Public/app clients receive stable Home shortcut aliases while dashboard
+// authoring continues to see the canonical database product keys.
+router.get(
+  "/menu",
+  optionalMenuAccessAuth,
+  mobileHomeProductKeyCompatibility,
+  asyncHandler(controller.getOrderMenu)
+);
 
 router.use(authMiddleware);
 

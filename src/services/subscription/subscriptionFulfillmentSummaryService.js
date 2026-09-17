@@ -9,10 +9,11 @@ const {
 } = require("../../utils/subscription/subscriptionCatalog");
 const { resolveEffectiveDeliveryWindow } = require("./subscriptionDayModificationPolicyService");
 const { resolveReadLabel } = require("../../utils/subscription/subscriptionLocalizationCommon");
+const { resolveSinglePickupLocations } = require("../../utils/singlePickupLocation");
 
 async function getPickupLocationsSetting() {
   const setting = await Setting.findOne({ key: "pickup_locations" }).lean();
-  return Array.isArray(setting && setting.value) ? setting.value : [];
+  return resolveSinglePickupLocations(setting && setting.value);
 }
 
 function cleanString(value) {

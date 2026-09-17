@@ -103,6 +103,41 @@ async function markPaymentInitiationFailed(payment, reason) {
   );
 }
 
+async function releasePaymentInitiationReservations({
+  subscriptionId,
+  entitlementReservation,
+  reason,
+  newlyReservedOnly = false,
+}) {
+  const rawKeys = newlyReservedOnly
+    ? entitlementReservation && entitlementReservation.newlyReservedKeys
+    : entitlementReservation && entitlementReservation.allocationKeys;
+  const allocationKeys = [...new Set((Array.isArray(rawKeys) ? rawKeys : [])
+    .map((key) => String(key || ""))
+    .filter(Boolean))];
+
+  let releasedCount = 0;
+  for (const allocationKey of allocationKeys) {
+    try {
+      const result = await transitionAllocation({
+        subscriptionId,
+        allocationKey,
+        toState: "released",
+      });
+      if (result.changed) releasedCount += 1;
+    } catch (err) {
+      logger.error("Unified day payment initiation: entitlement release failed", {
+        subscriptionId: String(subscriptionId || ""),
+        allocationKey,
+        reason,
+        code: err.code || "ENTITLEMENT_RELEASE_FAILED",
+        error: err.message,
+      });
+    }
+  }
+  return releasedCount;
+}
+
 function buildPendingPremiumSnapshot(day) {
   const pending = (Array.isArray(day && day.mealSlots) ? day.mealSlots : [])
     .filter((slot) => slot && slot.isPremium && slot.premiumSource === "pending_payment");
@@ -370,14 +405,30 @@ async function createUnifiedDayPaymentFlow({
       fallbackResponseShape: UNIFIED_DAY_PAYMENT_TYPE,
       runtime,
     });
-    if (!idempotency.ok) return idempotency;
+    if (!idempotency.ok) {
+      await releasePaymentInitiationReservations({
+        subscriptionId: sub._id,
+        entitlementReservation,
+        reason: "idempotency_rejected",
+        newlyReservedOnly: true,
+      });
+      return idempotency;
+    }
     if (!idempotency.shouldContinue) {
       const reusedPayment = await runtime.findReusableInitiatedPaymentByHash({
         userId,
         operationScope: UNIFIED_DAY_PAYMENT_TYPE,
         operationRequestHash: idempotency.operationRequestHash,
       });
-      if (!reusedPayment) return idempotency;
+      if (!reusedPayment) {
+        await releasePaymentInitiationReservations({
+          subscriptionId: sub._id,
+          entitlementReservation,
+          reason: "idempotency_reuse_missing",
+          newlyReservedOnly: true,
+        });
+        return idempotency;
+      }
 
       const metadata = getPaymentMetadata(reusedPayment);
       const publicPaymentId = String(reusedPayment._id);
@@ -435,15 +486,22 @@ async function createUnifiedDayPaymentFlow({
         metadata: providerInvoiceMetadata,
       });
     } catch (err) {
-      for (const allocationKey of entitlementReservation.newlyReservedKeys) {
-        await transitionAllocation({ subscriptionId: sub._id, allocationKey, toState: "released" });
-      }
+      await releasePaymentInitiationReservations({
+        subscriptionId: sub._id,
+        entitlementReservation,
+        reason: "provider_invoice_creation_failed",
+      });
       logger.error("Unified day payment initiation: createInvoice failed", { error: err.message, subscriptionId, date });
       return buildErrorResult(err.status || 502, "PAYMENT_PROVIDER_ERROR", "Failed to create payment provider invoice");
     }
 
     const invoiceCurrency = normalizeCurrencyValue(invoice.currency || SYSTEM_CURRENCY);
     if (invoiceCurrency !== SYSTEM_CURRENCY) {
+      await releasePaymentInitiationReservations({
+        subscriptionId: sub._id,
+        entitlementReservation,
+        reason: "provider_invoice_currency_mismatch",
+      });
       return buildErrorResult(500, "CONFIG", `Invoice currency must use ${SYSTEM_CURRENCY}`);
     }
 
@@ -473,17 +531,41 @@ async function createUnifiedDayPaymentFlow({
           : {}),
       });
     } catch (err) {
+      await releasePaymentInitiationReservations({
+        subscriptionId: sub._id,
+        entitlementReservation,
+        reason: "payment_persistence_failed",
+      });
       logger.error("Unified day payment initiation: createPayment failed", { error: err.message, code: err.code, subscriptionId, date });
       return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to record payment initiation");
     }
 
     const paymentId = payment && payment._id ? payment._id : payment && payment.id ? payment.id : null;
-    if (paymentId && entitlementReservation.allocationKeys.length) {
-      await linkPaymentToAllocations({
+    if (!paymentId) {
+      await releasePaymentInitiationReservations({
         subscriptionId: sub._id,
-        allocationKeys: entitlementReservation.allocationKeys,
-        paymentId,
+        entitlementReservation,
+        reason: "payment_identifier_missing",
       });
+      return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to record payment initiation");
+    }
+    if (entitlementReservation.allocationKeys.length) {
+      try {
+        await linkPaymentToAllocations({
+          subscriptionId: sub._id,
+          allocationKeys: entitlementReservation.allocationKeys,
+          paymentId,
+        });
+      } catch (err) {
+        await releasePaymentInitiationReservations({
+          subscriptionId: sub._id,
+          entitlementReservation,
+          reason: "payment_allocation_link_failed",
+        });
+        await markPaymentInitiationFailed(payment, "payment_allocation_link_failed");
+        logger.error("Unified day payment initiation: allocation link failed", { error: err.message, subscriptionId, date });
+        return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to reserved meal entitlement");
+      }
     }
     if (premiumAmountHalala > 0 || addonsAmountHalala > 0) {
       let dayUpdateResult;
@@ -526,6 +608,11 @@ async function createUnifiedDayPaymentFlow({
           updateDoc
         );
       } catch (err) {
+        await releasePaymentInitiationReservations({
+          subscriptionId: sub._id,
+          entitlementReservation,
+          reason: "subscription_day_update_failed",
+        });
         logger.error("Unified day payment initiation: day update failed", { error: err.message, subscriptionId, date });
         await markPaymentInitiationFailed(payment, "subscription_day_update_failed");
         return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
@@ -534,12 +621,22 @@ async function createUnifiedDayPaymentFlow({
       const matchedCount = getUpdateMatchedCount(dayUpdateResult);
       const modifiedCount = getUpdateModifiedCount(dayUpdateResult);
       if (matchedCount === 0) {
+        await releasePaymentInitiationReservations({
+          subscriptionId: sub._id,
+          entitlementReservation,
+          reason: "subscription_day_not_open",
+        });
         await markPaymentInitiationFailed(payment, "subscription_day_not_open");
         return buildErrorResult(409, "LOCKED", "Day is locked");
       }
       if (modifiedCount === 0) {
         const latestDay = await SubscriptionDay.findById(day._id).lean();
         if (!isDayLinkedToPayment(latestDay, payment, derivedDay.plannerRevisionHash)) {
+          await releasePaymentInitiationReservations({
+            subscriptionId: sub._id,
+            entitlementReservation,
+            reason: "subscription_day_link_not_persisted",
+          });
           await markPaymentInitiationFailed(payment, "subscription_day_update_failed");
           return buildErrorResult(500, "PAYMENT_PERSISTENCE_ERROR", "Failed to link payment to meal planner day");
         }

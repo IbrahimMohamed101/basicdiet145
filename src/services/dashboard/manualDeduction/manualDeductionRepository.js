@@ -5,6 +5,9 @@ const ActivityLog = require("../../../models/ActivityLog");
 const Plan = require("../../../models/Plan");
 const Subscription = require("../../../models/Subscription");
 const User = require("../../../models/User");
+const {
+  transitionPickupEntitlements,
+} = require("../../subscription/subscriptionMealEntitlementService");
 const { ACTIVE_STATUS, MANUAL_DEDUCTION_ACTION } = require("./constants");
 const { ManualDeductionError } = require("./ManualDeductionError");
 const { buildPremiumAllocation } = require("./manualDeductionPolicy");
@@ -28,7 +31,7 @@ async function findLastManualDeduction(subscriptionId, businessDate = null, sess
 }
 
 function findUserByPhone(phone) {
-  return User.findOne({ phone }).lean();
+  return User.findOne({ phone, role: "client" }).lean();
 }
 
 function findActiveSubscriptionsByUserId(userId) {
@@ -43,7 +46,7 @@ function findPlansByIds(planIds) {
 }
 
 async function customerExists(customerId, session) {
-  return User.exists({ _id: customerId }).session(session);
+  return User.exists({ _id: customerId, role: "client" }).session(session);
 }
 
 function findSubscriptionById(subscriptionId, session) {
@@ -67,14 +70,89 @@ function buildRegularRemainingExpression() {
   };
 }
 
-async function deductAtomically({ subscription, counts, session }) {
+function isReservedRegularAllocation(allocation) {
+  if (!allocation || String(allocation.state || "") !== "reserved") return false;
+  const premiumSource = String(
+    allocation.premiumFunding && allocation.premiumFunding.source || "none"
+  );
+  return premiumSource === "none";
+}
+
+function compareReservedAllocations(left, right) {
+  const dateCompare = String(left && left.date || "").localeCompare(String(right && right.date || ""));
+  if (dateCompare !== 0) return dateCompare;
+  const slotCompare = String(left && left.slotKey || "").localeCompare(String(right && right.slotKey || ""));
+  if (slotCompare !== 0) return slotCompare;
+  return String(left && left.allocationKey || "").localeCompare(String(right && right.allocationKey || ""));
+}
+
+function selectReservedRegularAllocationKeys(subscription, requestedCount) {
+  const count = Math.max(0, Math.floor(Number(requestedCount) || 0));
+  if (count <= 0 || Number(subscription && subscription.entitlementVersion || 0) < 2) return [];
+  return (Array.isArray(subscription && subscription.baseMealAllocations)
+    ? subscription.baseMealAllocations
+    : [])
+    .filter(isReservedRegularAllocation)
+    .slice()
+    .sort(compareReservedAllocations)
+    .slice(0, count)
+    .map((allocation) => String(allocation.allocationKey || ""))
+    .filter(Boolean);
+}
+
+async function consumeReservedRegularMeals({ subscription, quantity, session }) {
+  const allocationKeys = selectReservedRegularAllocationKeys(subscription, quantity);
+  if (!allocationKeys.length) {
+    return { consumedMeals: 0, allocationKeys: [] };
+  }
+
+  const transitioned = await transitionPickupEntitlements({
+    subscriptionId: subscription._id,
+    allocationKeys,
+    toState: "consumed",
+    session,
+  });
+  if (!transitioned || transitioned.changedCount !== allocationKeys.length) {
+    throw new ManualDeductionError(
+      "RESERVED_MEAL_CONSUMPTION_CONFLICT",
+      "Reserved meal balance changed during manual deduction",
+      409,
+      {
+        requestedReservedMeals: allocationKeys.length,
+        consumedReservedMeals: transitioned ? Number(transitioned.changedCount || 0) : 0,
+      }
+    );
+  }
+
+  return {
+    consumedMeals: allocationKeys.length,
+    allocationKeys,
+  };
+}
+
+function buildDeductionAtomicMutation({ subscription, counts }) {
   const allocations = buildPremiumAllocation(subscription, counts.premiumMeals);
+  const usesEntitlementLedger = Number(subscription.entitlementVersion || 0) >= 2;
   const filter = {
     _id: subscription._id,
     status: ACTIVE_STATUS,
   };
 
   const andClauses = [];
+  // Never allow a concurrent legacy-to-v2 migration to leave the canonical
+  // ledger half-updated. A failed compare-and-set is safer than a corrupt row.
+  if (usesEntitlementLedger) {
+    filter.entitlementVersion = subscription.entitlementVersion;
+  } else {
+    andClauses.push({
+      $or: [
+        { entitlementVersion: { $exists: false } },
+        { entitlementVersion: null },
+        { entitlementVersion: { $lt: 2 } },
+      ],
+    });
+  }
+
   if (counts.regularMeals > 0) {
     andClauses.push({
       $expr: {
@@ -115,18 +193,15 @@ async function deductAtomically({ subscription, counts, session }) {
     })));
   }
 
-  if (andClauses.length > 0) {
-    filter.$and = andClauses;
-  }
+  if (andClauses.length > 0) filter.$and = andClauses;
 
   const update = {};
   if (counts.total > 0) {
     update.$inc = { remainingMeals: -counts.total };
+    if (usesEntitlementLedger) update.$inc.consumedMeals = counts.total;
   }
 
-  const options = { new: true, session };
   const arrayFilters = [];
-
   if (allocations.length) {
     if (!update.$inc) update.$inc = {};
     allocations.forEach((allocation, index) => {
@@ -145,6 +220,12 @@ async function deductAtomically({ subscription, counts, session }) {
     });
   }
 
+  return { filter, update, arrayFilters, usesEntitlementLedger };
+}
+
+async function deductAtomically({ subscription, counts, session }) {
+  const { filter, update, arrayFilters } = buildDeductionAtomicMutation({ subscription, counts });
+  const options = { new: true, session };
   if (arrayFilters.length > 0) {
     options.arrayFilters = arrayFilters;
   }
@@ -169,6 +250,8 @@ function listManualDeductionLogs(subscriptionId, limit) {
 }
 
 module.exports = {
+  buildDeductionAtomicMutation,
+  consumeReservedRegularMeals,
   createDeductionLog,
   customerExists,
   deductAtomically,
@@ -177,6 +260,8 @@ module.exports = {
   findPlansByIds,
   findSubscriptionById,
   findUserByPhone,
+  isReservedRegularAllocation,
   isValidObjectId,
   listManualDeductionLogs,
+  selectReservedRegularAllocationKeys,
 };

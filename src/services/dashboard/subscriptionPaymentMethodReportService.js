@@ -1,0 +1,1431 @@
+"use strict";
+
+const ActivityLog = require("../../models/ActivityLog");
+const DashboardUser = require("../../models/DashboardUser");
+const Payment = require("../../models/Payment");
+const PaymentRefund = require("../../models/PaymentRefund");
+const Plan = require("../../models/Plan");
+const Subscription = require("../../models/Subscription");
+const User = require("../../models/User");
+const { calculateVatBreakdownFromInclusiveTotal, VAT_PERCENTAGE } = require("../../config/vat");
+const dateUtils = require("../../utils/date");
+const accountingDailyReportService = require("./accountingDailyReportService");
+
+const PAYMENT_TYPES = ["subscription_activation", "subscription_renewal"];
+const PAYMENT_AUDIT_ACTIONS = [
+  "subscription_cash_payment_collected",
+  "subscription_visa_payment_recorded",
+];
+
+const AR_LABELS = Object.freeze({
+  paymentMethod: {
+    cash: "نقدي",
+    card: "بطاقة",
+    bank_transfer: "تحويل بنكي",
+    visa: "بوابة دفع إلكتروني",
+    moyasar: "ميسر",
+    unknown: "غير محدد",
+  },
+  sourceChannel: {
+    app: "التطبيق",
+    dashboard: "لوحة التحكم",
+    unknown: "غير محدد",
+  },
+  paymentProvider: {
+    moyasar: "ميسر",
+    manual_gateway: "بوابة مسجلة يدويًا",
+    none: "بدون مزود",
+    unknown: "غير محدد",
+  },
+  provider: {
+    moyasar: "بوابة ميسر",
+    cash: "نقدي",
+    manual: "تسجيل يدوي",
+    unknown: "غير محدد",
+  },
+  paymentStatus: {
+    initiated: "بانتظار الدفع",
+    paid: "مدفوع",
+    failed: "فشل الدفع",
+    canceled: "ملغي",
+    expired: "منتهي",
+    refunded: "مسترد",
+    unknown: "غير محدد",
+  },
+  fulfillmentMethod: {
+    all: "الكل",
+    pickup: "استلام من الفرع",
+    delivery: "توصيل",
+    unknown: "غير محدد",
+  },
+  subscriptionStatus: {
+    pending_payment: "بانتظار الدفع",
+    active: "نشط",
+    frozen: "مجمد",
+    expired: "منتهي",
+    canceled: "ملغي",
+    completed: "مكتمل",
+    unknown: "غير محدد",
+  },
+  paymentType: {
+    subscription_activation: "تفعيل اشتراك",
+    subscription_renewal: "تجديد اشتراك",
+    unknown: "دفعة اشتراك",
+  },
+  recordingMode: {
+    dashboard_manual: "تسجيل يدوي من لوحة التحكم",
+    moyasar_gateway: "تحصيل إلكتروني عبر ميسر",
+    unknown: "غير محدد",
+  },
+  role: {
+    superadmin: "مدير عام",
+    admin: "مدير",
+    cashier: "كاشير",
+    restaurant: "المطعم",
+    kitchen: "المطبخ",
+    courier: "مندوب التوصيل",
+    unknown: "غير محدد",
+  },
+});
+
+const moneyFormatter = new Intl.NumberFormat("ar-AE", {
+  style: "currency",
+  currency: "SAR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const dayFormatter = new Intl.DateTimeFormat("ar-AE", {
+  timeZone: "UTC",
+  weekday: "long",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+const monthFormatter = new Intl.DateTimeFormat("ar-AE", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "long",
+});
+const dateTimeFormatter = new Intl.DateTimeFormat("ar-AE", {
+  timeZone: dateUtils.KSA_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function safeString(value, fallback = "") {
+  const normalized = value === undefined || value === null ? "" : String(value).trim();
+  return normalized || fallback;
+}
+
+function normalizeHalala(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed));
+}
+
+function moneyValue(amountHalala) {
+  const normalized = normalizeHalala(amountHalala);
+  return {
+    amountHalala: normalized,
+    amountSar: normalized / 100,
+    formattedAr: moneyFormatter.format(normalized / 100),
+    currency: "SAR",
+    currencyLabelAr: "ريال سعودي",
+  };
+}
+
+function signedMoneyValue(amountHalala) {
+  const parsed = Number(amountHalala);
+  const normalized = Number.isFinite(parsed) ? Math.round(parsed) : 0;
+  return {
+    amountHalala: normalized,
+    amountSar: normalized / 100,
+    formattedAr: moneyFormatter.format(normalized / 100),
+    currency: "SAR",
+    currencyLabelAr: "ريال سعودي",
+  };
+}
+
+function dateFromDateString(dateString) {
+  const [year, month, day] = safeString(dateString).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day || 1));
+}
+
+function formatBusinessDateAr(dateString) {
+  const date = dateFromDateString(dateString);
+  return Number.isNaN(date.getTime()) ? safeString(dateString) : dayFormatter.format(date);
+}
+
+function formatBusinessMonthAr(monthString) {
+  const date = dateFromDateString(`${monthString}-01`);
+  return Number.isNaN(date.getTime()) ? safeString(monthString) : monthFormatter.format(date);
+}
+
+function formatDateTimeAr(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : dateTimeFormatter.format(date);
+}
+
+function labelAr(group, value) {
+  const normalized = safeString(value, "unknown").toLowerCase();
+  const labels = AR_LABELS[group] || {};
+  return labels[normalized] || labels.unknown || "غير محدد";
+}
+
+function normalizeFulfillmentMethod(value) {
+  const normalized = safeString(value, "all").toLowerCase();
+  if (!["all", "pickup", "delivery"].includes(normalized)) {
+    throw new accountingDailyReportService.AccountingReportError(
+      "INVALID_FULFILLMENT_METHOD",
+      "طريقة التنفيذ غير صحيحة",
+      400
+    );
+  }
+  return normalized;
+}
+
+function parseIncludeDetails(value) {
+  if (value === undefined || value === null || value === "") return true;
+  const normalized = safeString(value).toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new accountingDailyReportService.AccountingReportError(
+    "INVALID_INCLUDE_DETAILS",
+    "قيمة عرض التفاصيل غير صحيحة",
+    400
+  );
+}
+
+function normalizeMonth(value) {
+  const normalized = safeString(value);
+  if (!/^\d{4}-\d{2}$/.test(normalized)) {
+    throw new accountingDailyReportService.AccountingReportError(
+      "INVALID_MONTH",
+      "صيغة الشهر غير صحيحة. استخدم YYYY-MM",
+      400
+    );
+  }
+  const [year, month] = normalized.split("-").map(Number);
+  if (year < 2000 || month < 1 || month > 12) {
+    throw new accountingDailyReportService.AccountingReportError(
+      "INVALID_MONTH",
+      "الشهر غير صالح",
+      400
+    );
+  }
+  return normalized;
+}
+
+function listMonthDates(monthString) {
+  const [year, month] = normalizeMonth(monthString).split("-").map(Number);
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Array.from({ length: days }, (_, index) => (
+    `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`
+  ));
+}
+
+function normalizeMethodToken(value) {
+  const raw = safeString(value).toLowerCase();
+  if (["cash", "cod", "cash_on_delivery", "cash-on-delivery", "نقدي", "كاش"].includes(raw)) {
+    return "cash";
+  }
+  if (["moyasar", "ميسر"].includes(raw)) {
+    return "moyasar";
+  }
+  if ([
+    "visa",
+    "card",
+    "credit_card",
+    "credit-card",
+    "debit_card",
+    "debit-card",
+    "mada",
+    "apple_pay",
+    "apple-pay",
+    "stc_pay",
+    "manual",
+    "بطاقة",
+    "فيزا",
+  ].includes(raw)) {
+    return "visa";
+  }
+  return null;
+}
+
+function resolvePaymentMethodClassification(payment = {}, audit = null) {
+  const metadata = payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const auditMeta = audit && audit.meta && typeof audit.meta === "object" ? audit.meta : {};
+  const candidates = [
+    [payment.method, "payment.method"],
+    [metadata.paymentMethod, "payment.metadata.paymentMethod"],
+    [metadata.method, "payment.metadata.method"],
+    [metadata.brand, "payment.metadata.brand"],
+    [auditMeta.paymentMethod, "activity_log.paymentMethod"],
+    [payment.source, "payment.source"],
+  ];
+  for (const [candidate, source] of candidates) {
+    const method = normalizeMethodToken(candidate);
+    if (method) return { method, source, recoveredFromLegacyAudit: source.startsWith("activity_log") };
+  }
+
+  const auditAction = safeString(audit && audit.action).toLowerCase();
+  if (auditAction === "subscription_cash_payment_collected") {
+    return { method: "cash", source: "activity_log.action", recoveredFromLegacyAudit: true };
+  }
+  if (auditAction === "subscription_visa_payment_recorded") {
+    return { method: "visa", source: "activity_log.action", recoveredFromLegacyAudit: true };
+  }
+
+  const provider = safeString(payment.provider, "unknown").toLowerCase();
+  if (provider === "cash") {
+    return { method: "cash", source: "payment.provider", recoveredFromLegacyAudit: false };
+  }
+  if (provider === "moyasar") {
+    return { method: "moyasar", source: "payment.provider", recoveredFromLegacyAudit: false };
+  }
+  if (provider === "manual") {
+    return { method: "visa", source: "payment.provider", recoveredFromLegacyAudit: false };
+  }
+
+  return { method: "unknown", source: "unresolved", recoveredFromLegacyAudit: false };
+}
+
+function normalizeRecordedPaymentMethod(payment = {}, audit = null) {
+  return resolvePaymentMethodClassification(payment, audit).method;
+}
+
+function canonicalPaymentMethod(legacyMethod) {
+  if (legacyMethod === "cash") return "cash";
+  if (legacyMethod === "visa" || legacyMethod === "moyasar") return "card";
+  return "unknown";
+}
+
+function resolveSourceChannel(payment = {}) {
+  const metadata = payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const source = safeString(payment.source).toLowerCase();
+  const origin = safeString(metadata.paymentOrigin || metadata.source).toLowerCase();
+  if (source.startsWith("dashboard_") || origin === "dashboard" || metadata.recordingMode === "dashboard_manual") {
+    return "dashboard";
+  }
+  if (
+    source === "mobile_app_subscription"
+    || origin === "mobile_app"
+    || origin === "app"
+    || metadata.recordingMode === "moyasar_gateway"
+  ) {
+    return "app";
+  }
+  return "unknown";
+}
+
+function resolvePaymentProvider(payment = {}, paymentMethod = "unknown") {
+  const provider = safeString(payment.provider).toLowerCase();
+  if (provider === "moyasar") return "moyasar";
+  if (provider === "manual") return "manual_gateway";
+  if (provider === "cash" || paymentMethod === "cash") return "none";
+  return "unknown";
+}
+
+function localizedName(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return safeString(value.ar || value.en || value.name || value.value);
+  }
+  return "";
+}
+
+function paymentOccurredAt(payment = {}) {
+  return payment.paidAt || payment.createdAt || null;
+}
+
+function resolveStoredVatBreakdown(amountHalala, subscription = {}) {
+  const amount = normalizeHalala(amountHalala);
+  const storedTotal = normalizeHalala(subscription.totalPriceHalala);
+  const storedVat = normalizeHalala(subscription.vatHalala);
+  const storedNet = normalizeHalala(
+    subscription.subtotalBeforeVatHalala !== undefined
+      ? subscription.subtotalBeforeVatHalala
+      : subscription.basePlanNetHalala
+  );
+  if (storedTotal === amount && storedVat <= amount && (storedVat > 0 || storedNet > 0)) {
+    const netHalala = storedNet > 0 && storedNet + storedVat === amount
+      ? storedNet
+      : amount - storedVat;
+    return {
+      source: "subscription_snapshot",
+      sourceLabelAr: "بيانات الاشتراك المحفوظة",
+      vatIncluded: true,
+      vatPercentage: Number(subscription.vatPercentage || VAT_PERCENTAGE),
+      totalHalala: amount,
+      subtotalExcludingVatHalala: netHalala,
+      vatHalala: storedVat,
+    };
+  }
+  return {
+    ...calculateVatBreakdownFromInclusiveTotal(amount),
+    source: "system_fallback",
+    sourceLabelAr: "احتساب النظام لضريبة شاملة",
+  };
+}
+
+function findPeriodForPayment(payment, periods) {
+  const occurredAt = paymentOccurredAt(payment);
+  if (!occurredAt) return null;
+  const instant = new Date(occurredAt);
+  if (Number.isNaN(instant.getTime())) return null;
+  return periods.find((period) => instant >= period.start && instant <= period.end) || null;
+}
+
+function buildAuditIndex(audits = []) {
+  const byPaymentId = new Map();
+  const bySubscriptionId = new Map();
+  for (const audit of audits) {
+    const paymentId = safeString(audit.meta && audit.meta.paymentId);
+    const subscriptionId = safeString(audit.entityId);
+    if (paymentId && !byPaymentId.has(paymentId)) byPaymentId.set(paymentId, audit);
+    if (subscriptionId) {
+      const rows = bySubscriptionId.get(subscriptionId) || [];
+      rows.push(audit);
+      bySubscriptionId.set(subscriptionId, rows);
+    }
+  }
+  return { byPaymentId, bySubscriptionId };
+}
+
+function closestAuditForPayment(payment, subscriptionId, auditIndex) {
+  const direct = auditIndex.byPaymentId.get(String(payment._id));
+  if (direct) return direct;
+  const candidates = auditIndex.bySubscriptionId.get(subscriptionId) || [];
+  if (!candidates.length) return null;
+  const occurredAt = new Date(paymentOccurredAt(payment) || 0).getTime();
+  return candidates.reduce((closest, candidate) => {
+    if (!closest) return candidate;
+    const candidateTime = new Date(candidate.createdAt || 0).getTime();
+    const closestTime = new Date(closest.createdAt || 0).getTime();
+    return Math.abs(candidateTime - occurredAt) < Math.abs(closestTime - occurredAt) ? candidate : closest;
+  }, null);
+}
+
+function buildReviewReasons({ paymentMethod, subscriptionStatus, amountMismatch, customerId, vatSource }) {
+  const reasons = [];
+  if (paymentMethod === "unknown") reasons.push("طريقة الدفع غير مصنفة");
+  if (subscriptionStatus === "canceled") reasons.push("الاشتراك ملغي مع وجود دفعة محصلة");
+  if (amountMismatch) reasons.push("قيمة الدفعة لا تطابق إجمالي الاشتراك المحفوظ");
+  if (!customerId) reasons.push("الدفعة غير مرتبطة بعميل");
+  if (vatSource === "system_fallback") reasons.push("تفصيل الضريبة غير محفوظ وتم احتسابه بواسطة النظام");
+  return reasons;
+}
+
+function serializePaymentItem({ payment, subscription, user, plan, collector, audit, businessDate }) {
+  const customerId = safeString(payment.userId || subscription && subscription.userId);
+  const amountHalala = normalizeHalala(payment.amount);
+  const methodClassification = resolvePaymentMethodClassification(payment, audit);
+  const legacyPaymentMethod = methodClassification.method;
+  const paymentMethod = canonicalPaymentMethod(legacyPaymentMethod);
+  const sourceChannel = resolveSourceChannel(payment);
+  const paymentProvider = resolvePaymentProvider(payment, paymentMethod);
+  const provider = safeString(payment.provider, "unknown").toLowerCase();
+  const status = safeString(payment.status, "unknown").toLowerCase();
+  const fulfillmentMethod = safeString(subscription && subscription.deliveryMode, "unknown").toLowerCase();
+  const subscriptionStatus = safeString(subscription && subscription.status, "unknown").toLowerCase();
+  const paymentType = safeString(payment.type, "unknown").toLowerCase();
+  const metadata = payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  const recordingMode = safeString(
+    metadata.recordingMode,
+    provider === "moyasar" && (metadata.gatewayUsed === true || payment.providerPaymentId || payment.providerInvoiceId)
+      ? "moyasar_gateway"
+      : "unknown"
+  ).toLowerCase();
+  const vat = resolveStoredVatBreakdown(amountHalala, subscription || {});
+  const subscriptionTotal = normalizeHalala(subscription && subscription.totalPriceHalala);
+  const amountMismatch = subscriptionTotal > 0 && subscriptionTotal !== amountHalala;
+  const reviewReasonsAr = buildReviewReasons({
+    paymentMethod,
+    subscriptionStatus,
+    amountMismatch,
+    customerId,
+    vatSource: vat.source,
+  });
+  const amount = moneyValue(amountHalala);
+  const tax = moneyValue(vat.vatHalala);
+  const netBeforeVat = moneyValue(vat.subtotalExcludingVatHalala);
+  const paidAt = payment.paidAt ? new Date(payment.paidAt).toISOString() : null;
+  const createdAt = payment.createdAt ? new Date(payment.createdAt).toISOString() : null;
+  const paymentReference = safeString(
+    payment.providerPaymentId || payment.providerInvoiceId,
+    `PAY-${String(payment._id).slice(-8).toUpperCase()}`
+  );
+  const accountingTreatmentAr = subscriptionStatus === "canceled"
+    ? "تحصيل قائم لاشتراك ملغي — لا يُخصم من الإيراد إلا عند تسجيل مرتجع مالي"
+    : "تحصيل اشتراك مدفوع";
+
+  return {
+    movementId: String(payment._id),
+    movementType: "collection",
+    movementTypeLabelAr: "تحصيل",
+    paymentId: String(payment._id),
+    paymentReference,
+    subscriptionId: safeString(payment.subscriptionId),
+    customerId,
+    customerName: user ? safeString(user.name, user.phone) : "",
+    customerPhone: user ? safeString(user.phone) : "",
+    planId: safeString(subscription && subscription.planId),
+    planNameAr: plan ? localizedName(plan.name) : "",
+    paymentType,
+    paymentTypeLabelAr: labelAr("paymentType", paymentType),
+    paymentMethod,
+    paymentMethodLabelAr: labelAr("paymentMethod", paymentMethod),
+    legacyPaymentMethod,
+    legacyPaymentMethodLabelAr: labelAr("paymentMethod", legacyPaymentMethod),
+    paymentMethodClassificationSource: methodClassification.source,
+    paymentMethodClassificationSourceAr: methodClassification.recoveredFromLegacyAudit
+      ? "تم استرجاعها من سجل الحركة القديم"
+      : methodClassification.source === "unresolved"
+        ? "لم يتم العثور على مصدر موثوق"
+        : "بيانات الدفعة",
+    provider,
+    providerLabelAr: labelAr("provider", provider),
+    sourceChannel,
+    sourceChannelLabelAr: labelAr("sourceChannel", sourceChannel),
+    paymentProvider,
+    paymentProviderLabelAr: labelAr("paymentProvider", paymentProvider),
+    status,
+    statusLabelAr: labelAr("paymentStatus", status),
+    amountHalala,
+    amountSar: amount.amountSar,
+    amountFormattedAr: amount.formattedAr,
+    grossCollectionHalala: amountHalala,
+    grossCollectionFormattedAr: amount.formattedAr,
+    refundsHalala: 0,
+    refundsFormattedAr: moneyValue(0).formattedAr,
+    netMovementHalala: amountHalala,
+    netMovementFormattedAr: amount.formattedAr,
+    currency: safeString(payment.currency, "SAR").toUpperCase(),
+    currencyLabelAr: "ريال سعودي",
+    vatIncluded: true,
+    vatPercentage: Number(vat.vatPercentage || VAT_PERCENTAGE),
+    vatHalala: tax.amountHalala,
+    vatSar: tax.amountSar,
+    vatFormattedAr: tax.formattedAr,
+    netBeforeVatHalala: netBeforeVat.amountHalala,
+    netBeforeVatSar: netBeforeVat.amountSar,
+    netBeforeVatFormattedAr: netBeforeVat.formattedAr,
+    vatCalculationSource: vat.source,
+    vatCalculationSourceAr: vat.sourceLabelAr,
+    fulfillmentMethod,
+    fulfillmentMethodLabelAr: labelAr("fulfillmentMethod", fulfillmentMethod),
+    subscriptionStatus,
+    subscriptionStatusLabelAr: labelAr("subscriptionStatus", subscriptionStatus),
+    subscriptionStartDate: subscription && subscription.startDate ? dateUtils.toKSADateString(subscription.startDate) : null,
+    subscriptionEndDate: subscription && (subscription.validityEndDate || subscription.endDate)
+      ? dateUtils.toKSADateString(subscription.validityEndDate || subscription.endDate)
+      : null,
+    selectedGrams: Number(subscription && subscription.selectedGrams || 0) || null,
+    selectedMealsPerDay: Number(subscription && subscription.selectedMealsPerDay || 0) || null,
+    totalMeals: Number(subscription && subscription.totalMeals || 0),
+    pickupLocationId: safeString(subscription && subscription.pickupLocationId),
+    deliveryZoneName: safeString(subscription && subscription.deliveryZoneName),
+    gatewayUsed: Boolean(metadata.gatewayUsed || provider === "moyasar" && (payment.providerPaymentId || payment.providerInvoiceId)),
+    gatewayUsedLabelAr: Boolean(metadata.gatewayUsed || provider === "moyasar" && (payment.providerPaymentId || payment.providerInvoiceId)) ? "نعم" : "لا",
+    recordingMode,
+    recordingModeLabelAr: labelAr("recordingMode", recordingMode),
+    source: safeString(payment.source),
+    providerInvoiceId: safeString(payment.providerInvoiceId) || null,
+    providerPaymentId: safeString(payment.providerPaymentId) || null,
+    collectedBy: collector ? {
+      id: String(collector._id),
+      name: safeString(collector.email),
+      role: safeString(collector.role, "unknown"),
+      roleLabelAr: labelAr("role", collector.role),
+    } : null,
+    businessDate,
+    businessDateLabelAr: formatBusinessDateAr(businessDate),
+    paidAt,
+    paidAtLabelAr: formatDateTimeAr(paidAt),
+    createdAt,
+    createdAtLabelAr: formatDateTimeAr(createdAt),
+    accountingTreatmentAr,
+    needsReview: reviewReasonsAr.length > 0,
+    reviewReasonsAr,
+    subscriptionPricing: {
+      storedTotalHalala: subscriptionTotal,
+      storedTotalFormattedAr: moneyValue(subscriptionTotal).formattedAr,
+      basePlanHalala: normalizeHalala(subscription && (subscription.basePlanGrossHalala || subscription.basePlanPriceHalala)),
+      discountHalala: normalizeHalala(subscription && subscription.discountHalala),
+      deliveryFeeHalala: normalizeHalala(subscription && subscription.deliveryFeeHalala),
+    },
+  };
+}
+
+function percentage(part, total) {
+  if (!total) return 0;
+  return Math.round((Number(part || 0) / total) * 10000) / 100;
+}
+
+function buildBucketRows(items, key, group) {
+  const buckets = new Map();
+  for (const item of items) {
+    const value = safeString(item[key], "unknown");
+    const customerId = safeString(item.customerId);
+    const current = buckets.get(value) || {
+      value,
+      count: 0,
+      totalHalala: 0,
+      customerIds: new Set(),
+    };
+    current.count += 1;
+    current.totalHalala += normalizeHalala(item.amountHalala);
+    if (customerId) current.customerIds.add(customerId);
+    buckets.set(value, current);
+  }
+  const grandTotal = items.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  return Array.from(buckets.values())
+    .map((bucket) => {
+      const money = moneyValue(bucket.totalHalala);
+      return {
+        [key === "paymentMethod" ? "method" : key]: bucket.value,
+        labelAr: labelAr(group, bucket.value),
+        count: bucket.count,
+        uniqueCustomersCount: bucket.customerIds.size,
+        totalHalala: bucket.totalHalala,
+        totalSar: money.amountSar,
+        totalFormattedAr: money.formattedAr,
+        percentage: percentage(bucket.totalHalala, grandTotal),
+      };
+    })
+    .sort((left, right) => right.totalHalala - left.totalHalala);
+}
+
+function buildPaymentMethodSummary(items = [], refundItems = []) {
+  const collectionItems = items.filter((item) => item.movementType !== "refund");
+  const countedRefunds = refundItems.filter((item) => item.countedInTotals !== false);
+  const byPaymentMethod = buildBucketRows(collectionItems, "paymentMethod", "paymentMethod");
+  const byMethod = new Map(byPaymentMethod.map((row) => [row.method, row]));
+  const empty = { count: 0, uniqueCustomersCount: 0, totalHalala: 0, totalSar: 0, totalFormattedAr: moneyValue(0).formattedAr };
+  const cash = byMethod.get("cash") || empty;
+  const card = byMethod.get("card") || byMethod.get("visa") || empty;
+  const moyasarItems = collectionItems.filter(
+    (item) => item.paymentProvider === "moyasar" || item.paymentMethod === "moyasar"
+  );
+  const moyasarTotalHalala = moyasarItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const unknown = byMethod.get("unknown") || empty;
+  const customerIds = new Set(collectionItems.map((item) => safeString(item.customerId)).filter(Boolean));
+  const grossCollectionHalala = collectionItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const salesVatHalala = collectionItems.reduce((sum, item) => sum + normalizeHalala(item.vatHalala), 0);
+  const salesBeforeVatHalala = collectionItems.reduce((sum, item) => sum + normalizeHalala(item.netBeforeVatHalala), 0);
+  const refundsHalala = countedRefunds.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const refundVatHalala = countedRefunds.reduce((sum, item) => sum + normalizeHalala(item.vatHalala), 0);
+  const refundBeforeVatHalala = refundsHalala - refundVatHalala;
+  const netCollectionHalala = grossCollectionHalala - refundsHalala;
+  const netVatHalala = salesVatHalala - refundVatHalala;
+  const netBeforeVatHalala = salesBeforeVatHalala - refundBeforeVatHalala;
+  const canceledItems = collectionItems.filter((item) => item.subscriptionStatus === "canceled");
+  const canceledTotalHalala = canceledItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const reviewItems = [...collectionItems, ...refundItems].filter((item) => item.needsReview);
+  const activeItems = collectionItems.filter((item) => item.subscriptionStatus === "active");
+  const activeTotalHalala = activeItems.reduce((sum, item) => sum + normalizeHalala(item.amountHalala), 0);
+  const gross = moneyValue(grossCollectionHalala);
+  const refunds = moneyValue(refundsHalala);
+  const netCollection = signedMoneyValue(netCollectionHalala);
+  const salesVat = moneyValue(salesVatHalala);
+  const refundVat = moneyValue(refundVatHalala);
+  const netVat = signedMoneyValue(netVatHalala);
+  const salesBeforeVat = moneyValue(salesBeforeVatHalala);
+  const netBeforeVat = signedMoneyValue(netBeforeVatHalala);
+  const canceled = moneyValue(canceledTotalHalala);
+  const average = moneyValue(collectionItems.length ? Math.round(grossCollectionHalala / collectionItems.length) : 0);
+
+  return {
+    totalPaymentsCount: collectionItems.length,
+    uniqueCustomersCount: customerIds.size,
+    totalHalala: grossCollectionHalala,
+    totalSar: gross.amountSar,
+    totalFormattedAr: gross.formattedAr,
+    grossCollectionHalala,
+    grossCollectionSar: gross.amountSar,
+    grossCollectionFormattedAr: gross.formattedAr,
+    grossCollectionsHalala: grossCollectionHalala,
+    grossCollectionsSar: gross.amountSar,
+    grossCollectionsFormattedAr: gross.formattedAr,
+    refundsCount: countedRefunds.length,
+    refundsHalala,
+    refundsSar: refunds.amountSar,
+    refundsFormattedAr: refunds.formattedAr,
+    refundsTrackingStatus: refundItems.some((item) => item.countedInTotals === false)
+      ? "needs_review"
+      : "available",
+    refundsTrackingStatusAr: refundItems.some((item) => item.countedInTotals === false)
+      ? "توجد مرتجعات بلا تاريخ فعلي وتحتاج مراجعة"
+      : "يتم احتساب المرتجعات حسب تاريخ الاسترداد الفعلي",
+    netCollectionHalala,
+    netCollectionSar: netCollection.amountSar,
+    netCollectionFormattedAr: netCollection.formattedAr,
+    netCashMovementHalala: netCollectionHalala,
+    netCashMovementFormattedAr: netCollection.formattedAr,
+    netBeforeVatHalala,
+    netBeforeVatSar: netBeforeVat.amountSar,
+    netBeforeVatFormattedAr: netBeforeVat.formattedAr,
+    salesBeforeVatHalala,
+    salesBeforeVatFormattedAr: salesBeforeVat.formattedAr,
+    refundBeforeVatHalala,
+    refundBeforeVatFormattedAr: moneyValue(refundBeforeVatHalala).formattedAr,
+    vatIncluded: true,
+    vatPercentage: VAT_PERCENTAGE,
+    vatHalala: salesVatHalala,
+    vatSar: salesVat.amountSar,
+    vatFormattedAr: salesVat.formattedAr,
+    salesVatHalala,
+    salesVatFormattedAr: salesVat.formattedAr,
+    refundVatHalala,
+    refundVatFormattedAr: refundVat.formattedAr,
+    netVatHalala,
+    netVatFormattedAr: netVat.formattedAr,
+    averagePaymentHalala: average.amountHalala,
+    averagePaymentFormattedAr: average.formattedAr,
+    cashCount: cash.count,
+    cashCustomersCount: cash.uniqueCustomersCount,
+    cashTotalHalala: cash.totalHalala,
+    cashTotalSar: cash.totalSar,
+    cashTotalFormattedAr: cash.totalFormattedAr,
+    cardCount: card.count,
+    cardCustomersCount: card.uniqueCustomersCount,
+    cardTotalHalala: card.totalHalala,
+    cardTotalSar: card.totalSar,
+    cardTotalFormattedAr: card.totalFormattedAr,
+    visaCount: card.count,
+    visaCustomersCount: card.uniqueCustomersCount,
+    visaTotalHalala: card.totalHalala,
+    visaTotalSar: card.totalSar,
+    visaTotalFormattedAr: card.totalFormattedAr,
+    moyasarCount: moyasarItems.length,
+    moyasarCustomersCount: new Set(moyasarItems.map((item) => item.customerId).filter(Boolean)).size,
+    moyasarTotalHalala,
+    moyasarTotalSar: moyasarTotalHalala / 100,
+    moyasarTotalFormattedAr: moneyValue(moyasarTotalHalala).formattedAr,
+    unknownCount: unknown.count,
+    unknownCustomersCount: unknown.uniqueCustomersCount,
+    unknownTotalHalala: unknown.totalHalala,
+    unknownTotalSar: unknown.totalSar,
+    unknownTotalFormattedAr: unknown.totalFormattedAr,
+    paymentMethodCoveragePercent: percentage(grossCollectionHalala - unknown.totalHalala, grossCollectionHalala),
+    activeSubscriptionsPaymentsCount: activeItems.length,
+    activeSubscriptionsTotalHalala: activeTotalHalala,
+    activeSubscriptionsTotalFormattedAr: moneyValue(activeTotalHalala).formattedAr,
+    canceledSubscriptionsPaymentsCount: canceledItems.length,
+    canceledSubscriptionsTotalHalala: canceledTotalHalala,
+    canceledSubscriptionsTotalFormattedAr: canceled.formattedAr,
+    reviewItemsCount: reviewItems.length,
+    byPaymentMethod,
+  };
+}
+
+function buildWarnings(items, summary) {
+  const warnings = [];
+  if (summary.unknownCount > 0) {
+    warnings.push({
+      code: "UNKNOWN_PAYMENT_METHOD",
+      titleAr: "طرق دفع غير مصنفة",
+      message: `يوجد ${summary.unknownCount} دفعة لا يمكن تحديد هل هي نقدية أم بطاقة بنكية.`,
+      messageAr: `يوجد ${summary.unknownCount} دفعة لا يمكن تحديد هل هي نقدية أم بطاقة بنكية.`,
+      count: summary.unknownCount,
+      totalHalala: summary.unknownTotalHalala,
+      totalFormattedAr: summary.unknownTotalFormattedAr,
+      severity: "warning",
+    });
+  }
+  if (summary.canceledSubscriptionsPaymentsCount > 0) {
+    warnings.push({
+      code: "PAID_CANCELED_SUBSCRIPTION",
+      titleAr: "اشتراكات ملغاة لها مبالغ محصلة",
+      message: "الإلغاء لا يعني أن المبلغ تم رده. يجب مراجعة حالة المرتجع أو إثبات بقاء المبلغ مستحقًا.",
+      messageAr: "الإلغاء لا يعني أن المبلغ تم رده. يجب مراجعة حالة المرتجع أو إثبات بقاء المبلغ مستحقًا.",
+      count: summary.canceledSubscriptionsPaymentsCount,
+      totalHalala: summary.canceledSubscriptionsTotalHalala,
+      totalFormattedAr: summary.canceledSubscriptionsTotalFormattedAr,
+      severity: "critical",
+    });
+  }
+  const mismatchItems = items.filter((item) => item.reviewReasonsAr.includes("قيمة الدفعة لا تطابق إجمالي الاشتراك المحفوظ"));
+  if (mismatchItems.length) {
+    const mismatchTotal = mismatchItems.reduce((sum, item) => sum + item.amountHalala, 0);
+    warnings.push({
+      code: "PAYMENT_SUBSCRIPTION_TOTAL_MISMATCH",
+      titleAr: "اختلاف بين الدفعة وإجمالي الاشتراك",
+      message: `يوجد ${mismatchItems.length} دفعة تحتاج مراجعة تفاصيل التسعير.`,
+      messageAr: `يوجد ${mismatchItems.length} دفعة تحتاج مراجعة تفاصيل التسعير.`,
+      count: mismatchItems.length,
+      totalHalala: mismatchTotal,
+      totalFormattedAr: moneyValue(mismatchTotal).formattedAr,
+      severity: "warning",
+    });
+  }
+  const missingCustomers = items.filter((item) => !item.customerId).length;
+  if (missingCustomers) {
+    warnings.push({
+      code: "PAYMENT_MISSING_CUSTOMER",
+      titleAr: "دفعات غير مرتبطة بعميل",
+      message: `يوجد ${missingCustomers} دفعة تحتاج ربطًا بالعميل.`,
+      messageAr: `يوجد ${missingCustomers} دفعة تحتاج ربطًا بالعميل.`,
+      count: missingCustomers,
+      totalHalala: 0,
+      totalFormattedAr: moneyValue(0).formattedAr,
+      severity: "critical",
+    });
+  }
+  const undatedRefunds = items.filter(
+    (item) => item.movementType === "refund" && item.countedInTotals === false
+  );
+  if (undatedRefunds.length) {
+    const undatedTotal = undatedRefunds.reduce(
+      (sum, item) => sum + normalizeHalala(item.amountHalala),
+      0
+    );
+    warnings.push({
+      code: "REFUND_DATE_MISSING",
+      titleAr: "مرتجعات بلا تاريخ فعلي",
+      message: `يوجد ${undatedRefunds.length} مرتجع قديم غير منسوب إلى الفترة ويحتاج مراجعة تاريخ الاسترداد.`,
+      messageAr: `يوجد ${undatedRefunds.length} مرتجع قديم غير منسوب إلى الفترة ويحتاج مراجعة تاريخ الاسترداد.`,
+      count: undatedRefunds.length,
+      totalHalala: undatedTotal,
+      totalFormattedAr: moneyValue(undatedTotal).formattedAr,
+      severity: "critical",
+    });
+  }
+  return warnings;
+}
+
+function buildDashboardCards(summary) {
+  const cards = [
+    {
+      key: "gross_collections",
+      titleAr: "إجمالي التحصيل",
+      valueHalala: summary.grossCollectionsHalala,
+      valueSar: summary.grossCollectionsSar,
+      valueFormattedAr: summary.grossCollectionsFormattedAr,
+      subtitleAr: `${summary.totalPaymentsCount} عملية دفع`,
+      severity: "normal",
+    },
+    {
+      key: "refunds",
+      titleAr: "المرتجعات",
+      valueHalala: summary.refundsHalala,
+      valueSar: summary.refundsSar,
+      valueFormattedAr: summary.refundsFormattedAr,
+      subtitleAr: `${summary.refundsCount} حركة استرداد`,
+      severity: summary.refundsHalala ? "warning" : "normal",
+    },
+    {
+      key: "net_collection",
+      titleAr: "صافي الحركة",
+      valueHalala: summary.netCollectionHalala,
+      valueSar: summary.netCollectionSar,
+      valueFormattedAr: summary.netCollectionFormattedAr,
+      subtitleAr: "التحصيل ناقص المرتجعات",
+      severity: summary.netCollectionHalala < 0 ? "critical" : "normal",
+    },
+    {
+      key: "net_before_vat",
+      titleAr: "الصافي قبل الضريبة",
+      valueHalala: summary.netBeforeVatHalala,
+      valueSar: summary.netBeforeVatSar,
+      valueFormattedAr: summary.netBeforeVatFormattedAr,
+      subtitleAr: "بعد خصم صافي المرتجعات",
+      severity: "normal",
+    },
+    {
+      key: "sales_vat",
+      titleAr: "ضريبة المبيعات",
+      valueHalala: summary.salesVatHalala,
+      valueSar: summary.salesVatHalala / 100,
+      valueFormattedAr: summary.salesVatFormattedAr,
+      subtitleAr: `ضريبة شاملة بنسبة ${summary.vatPercentage}%`,
+      severity: "normal",
+    },
+    {
+      key: "refund_vat",
+      titleAr: "ضريبة المرتجعات",
+      valueHalala: summary.refundVatHalala,
+      valueSar: summary.refundVatHalala / 100,
+      valueFormattedAr: summary.refundVatFormattedAr,
+      subtitleAr: "الضريبة المعكوسة مع المرتجعات",
+      severity: summary.refundVatHalala ? "warning" : "normal",
+    },
+    {
+      key: "net_vat",
+      titleAr: "صافي الضريبة",
+      valueHalala: summary.netVatHalala,
+      valueSar: summary.netVatHalala / 100,
+      valueFormattedAr: summary.netVatFormattedAr,
+      subtitleAr: "ضريبة المبيعات ناقص ضريبة المرتجعات",
+      severity: summary.netVatHalala < 0 ? "critical" : "normal",
+    },
+    {
+      key: "cash",
+      titleAr: "التحصيل النقدي",
+      valueHalala: summary.cashTotalHalala,
+      valueSar: summary.cashTotalSar,
+      valueFormattedAr: summary.cashTotalFormattedAr,
+      subtitleAr: `${summary.cashCount} عملية`,
+      severity: "normal",
+    },
+    {
+      key: "cards",
+      titleAr: "بوابة دفع إلكتروني",
+      valueHalala: summary.visaTotalHalala,
+      valueSar: summary.visaTotalSar,
+      valueFormattedAr: summary.visaTotalFormattedAr,
+      subtitleAr: `${summary.visaCount} عملية`,
+      severity: "normal",
+    },
+    {
+      key: "moyasar",
+      titleAr: "ميسر",
+      valueHalala: summary.moyasarTotalHalala,
+      valueSar: summary.moyasarTotalSar,
+      valueFormattedAr: summary.moyasarTotalFormattedAr,
+      subtitleAr: `${summary.moyasarCount} عملية`,
+      severity: "normal",
+    },
+    {
+      key: "unclassified",
+      titleAr: "مبالغ غير مصنفة",
+      valueHalala: summary.unknownTotalHalala,
+      valueSar: summary.unknownTotalSar,
+      valueFormattedAr: summary.unknownTotalFormattedAr,
+      subtitleAr: `${summary.unknownCount} عملية تحتاج مراجعة`,
+      severity: summary.unknownCount ? "warning" : "normal",
+    },
+    {
+      key: "paid_canceled_subscriptions",
+      titleAr: "مدفوعات اشتراكات ملغاة",
+      valueHalala: summary.canceledSubscriptionsTotalHalala,
+      valueSar: summary.canceledSubscriptionsTotalHalala / 100,
+      valueFormattedAr: summary.canceledSubscriptionsTotalFormattedAr,
+      subtitleAr: `${summary.canceledSubscriptionsPaymentsCount} اشتراك`,
+      severity: summary.canceledSubscriptionsPaymentsCount ? "critical" : "normal",
+    },
+  ];
+  return cards.map((card) => ({
+    ...card,
+    amountHalala: card.valueHalala,
+    amountSar: card.valueSar,
+    amountFormattedAr: card.valueFormattedAr,
+    descriptionAr: card.subtitleAr,
+  }));
+}
+
+function buildReconciliation(summary, warnings) {
+  // Providers are an independent axis: Moyasar is already included in the
+  // card payment-method bucket and must not be allocated a second time.
+  const allocatedHalala = summary.byPaymentMethod.reduce(
+    (sum, bucket) => sum + normalizeHalala(bucket.totalHalala),
+    0
+  );
+  const differenceHalala = summary.totalHalala - allocatedHalala;
+  const movementDifferenceHalala = summary.netCollectionHalala
+    - (summary.grossCollectionHalala - summary.refundsHalala);
+  const vatDifferenceHalala = summary.netCollectionHalala
+    - (summary.netBeforeVatHalala + summary.netVatHalala);
+  const needsReview = warnings.length > 0
+    || differenceHalala !== 0
+    || movementDifferenceHalala !== 0
+    || vatDifferenceHalala !== 0;
+  return {
+    status: needsReview ? "needs_review" : "balanced",
+    statusLabelAr: needsReview ? "يحتاج مراجعة" : "متوازن",
+    recordedCollectionsHalala: summary.totalHalala,
+    recordedCollectionsFormattedAr: summary.totalFormattedAr,
+    allocatedByPaymentMethodHalala: allocatedHalala,
+    allocatedByPaymentMethodFormattedAr: moneyValue(allocatedHalala).formattedAr,
+    differenceHalala,
+    differenceFormattedAr: moneyValue(Math.abs(differenceHalala)).formattedAr,
+    grossCollectionHalala: summary.grossCollectionHalala,
+    refundsHalala: summary.refundsHalala,
+    netCollectionHalala: summary.netCollectionHalala,
+    movementDifferenceHalala,
+    movementDifferenceFormattedAr: moneyValue(Math.abs(movementDifferenceHalala)).formattedAr,
+    netBeforeVatHalala: summary.netBeforeVatHalala,
+    netVatHalala: summary.netVatHalala,
+    vatDifferenceHalala,
+    vatDifferenceFormattedAr: moneyValue(Math.abs(vatDifferenceHalala)).formattedAr,
+    unresolvedPaymentsCount: summary.unknownCount,
+    reviewItemsCount: summary.reviewItemsCount,
+    noteAr: needsReview
+      ? "راجع التحذيرات قبل إغلاق الفترة المحاسبية."
+      : "إجمالي الدفعات يساوي مجموع طرق الدفع ولا توجد حالات معلقة.",
+  };
+}
+
+async function serializePaymentRows({ paymentsWithPeriods, fulfillmentMethod }) {
+  const subscriptionIds = Array.from(new Set(
+    paymentsWithPeriods.map(({ payment }) => safeString(payment.subscriptionId)).filter(Boolean)
+  ));
+  const subscriptions = subscriptionIds.length
+    ? await Subscription.find({ _id: { $in: subscriptionIds } })
+      .select([
+        "_id", "userId", "planId", "deliveryMode", "status", "startDate", "endDate", "validityEndDate",
+        "selectedGrams", "selectedMealsPerDay", "totalMeals", "pickupLocationId", "deliveryZoneName",
+        "basePlanPriceHalala", "basePlanGrossHalala", "basePlanNetHalala", "discountHalala",
+        "subtotalBeforeVatHalala", "vatPercentage", "vatHalala", "totalPriceHalala", "deliveryFeeHalala",
+      ].join(" "))
+      .lean()
+    : [];
+  const subscriptionMap = new Map(subscriptions.map((row) => [String(row._id), row]));
+  const filteredRows = paymentsWithPeriods.filter(({ payment }) => {
+    const subscription = subscriptionMap.get(safeString(payment.subscriptionId));
+    if (!subscription) return false;
+    return fulfillmentMethod === "all" || safeString(subscription.deliveryMode).toLowerCase() === fulfillmentMethod;
+  });
+
+  const userIds = Array.from(new Set(filteredRows.map(({ payment }) => {
+    const subscription = subscriptionMap.get(safeString(payment.subscriptionId));
+    return safeString(payment.userId || subscription && subscription.userId);
+  }).filter(Boolean)));
+  const planIds = Array.from(new Set(filteredRows.map(({ payment }) => {
+    const subscription = subscriptionMap.get(safeString(payment.subscriptionId));
+    return safeString(subscription && subscription.planId);
+  }).filter(Boolean)));
+  const collectorIds = Array.from(new Set(filteredRows.map(({ payment }) => safeString(payment.collectedBy)).filter(Boolean)));
+  const paymentIds = filteredRows.map(({ payment }) => String(payment._id));
+  const relevantSubscriptionIds = Array.from(new Set(filteredRows.map(({ payment }) => safeString(payment.subscriptionId)).filter(Boolean)));
+
+  const [users, plans, collectors, audits] = await Promise.all([
+    userIds.length ? User.find({ _id: { $in: userIds } }).select("_id name phone").lean() : [],
+    planIds.length ? Plan.find({ _id: { $in: planIds } }).select("_id name daysCount").lean() : [],
+    collectorIds.length ? DashboardUser.find({ _id: { $in: collectorIds } }).select("_id email role").lean() : [],
+    relevantSubscriptionIds.length ? ActivityLog.find({
+      entityType: "subscription",
+      action: { $in: PAYMENT_AUDIT_ACTIONS },
+      $or: [
+        { entityId: { $in: relevantSubscriptionIds } },
+        { "meta.paymentId": { $in: paymentIds } },
+      ],
+    }).sort({ createdAt: -1, _id: -1 }).lean() : [],
+  ]);
+  const userMap = new Map(users.map((row) => [String(row._id), row]));
+  const planMap = new Map(plans.map((row) => [String(row._id), row]));
+  const collectorMap = new Map(collectors.map((row) => [String(row._id), row]));
+  const auditIndex = buildAuditIndex(audits);
+
+  return filteredRows.map(({ payment, period }) => {
+    const subscriptionId = safeString(payment.subscriptionId);
+    const subscription = subscriptionMap.get(subscriptionId);
+    const customerId = safeString(payment.userId || subscription && subscription.userId);
+    const planId = safeString(subscription && subscription.planId);
+    const collectorId = safeString(payment.collectedBy);
+    return serializePaymentItem({
+      payment,
+      subscription,
+      user: userMap.get(customerId),
+      plan: planMap.get(planId),
+      collector: collectorMap.get(collectorId),
+      audit: closestAuditForPayment(payment, subscriptionId, auditIndex),
+      businessDate: period.businessDate,
+    });
+  });
+}
+
+async function loadSubscriptionPaymentItems({ periods, fulfillmentMethod }) {
+  const rangeStart = periods[0].start;
+  const rangeEnd = periods[periods.length - 1].end;
+  const candidatePayments = await Payment.find({
+    type: { $in: PAYMENT_TYPES },
+    status: { $in: ["paid", "refunded"] },
+    $or: [
+      { paidAt: { $gte: rangeStart, $lte: rangeEnd } },
+      { paidAt: null, createdAt: { $gte: rangeStart, $lte: rangeEnd } },
+    ],
+  }).sort({ paidAt: 1, createdAt: 1, _id: 1 }).lean();
+  const paymentsWithPeriods = candidatePayments
+    .map((payment) => ({ payment, period: findPeriodForPayment(payment, periods) }))
+    .filter((row) => row.period);
+  return serializePaymentRows({ paymentsWithPeriods, fulfillmentMethod });
+}
+
+function serializeRefundItem({ refund, baseItem, businessDate, legacy = false }) {
+  const amountHalala = normalizeHalala(refund.amountHalala);
+  const vatHalala = normalizeHalala(refund.vatHalala);
+  const refundBeforeVatHalala = amountHalala - vatHalala;
+  const netBeforeVatHalala = -refundBeforeVatHalala;
+  const refundedAt = refund.refundedAt ? new Date(refund.refundedAt).toISOString() : null;
+  const countedInTotals = Boolean(refundedAt) && refund.status === "confirmed";
+  const reviewReasonsAr = [
+    ...(baseItem.reviewReasonsAr || []),
+    ...(!refundedAt ? ["تاريخ الاسترداد الفعلي غير محفوظ؛ لم يُنسب المرتجع إلى إجمالي الفترة"] : []),
+  ];
+  return {
+    ...baseItem,
+    movementId: legacy ? `legacy-refund:${baseItem.paymentId}` : String(refund._id),
+    movementType: "refund",
+    movementTypeLabelAr: countedInTotals ? "مرتجع" : "مرتجع يحتاج مراجعة",
+    refundId: legacy ? null : String(refund._id),
+    providerRefundId: safeString(refund.providerRefundId) || null,
+    refundStatus: safeString(refund.status, "needs_review"),
+    refundStatusLabelAr: countedInTotals ? "مؤكد" : "يحتاج مراجعة",
+    amountHalala,
+    amountSar: amountHalala / 100,
+    amountFormattedAr: moneyValue(amountHalala).formattedAr,
+    grossCollectionHalala: 0,
+    grossCollectionFormattedAr: moneyValue(0).formattedAr,
+    refundsHalala: amountHalala,
+    refundsFormattedAr: moneyValue(amountHalala).formattedAr,
+    netMovementHalala: -amountHalala,
+    netMovementFormattedAr: signedMoneyValue(-amountHalala).formattedAr,
+    vatHalala,
+    vatSar: vatHalala / 100,
+    vatFormattedAr: moneyValue(vatHalala).formattedAr,
+    refundVatHalala: vatHalala,
+    refundVatFormattedAr: moneyValue(vatHalala).formattedAr,
+    netBeforeVatHalala,
+    netBeforeVatSar: netBeforeVatHalala / 100,
+    netBeforeVatFormattedAr: signedMoneyValue(netBeforeVatHalala).formattedAr,
+    status: safeString(refund.status, "needs_review"),
+    statusLabelAr: countedInTotals ? "مرتجع مؤكد" : "مرتجع يحتاج مراجعة",
+    businessDate,
+    businessDateLabelAr: formatBusinessDateAr(businessDate),
+    refundedAt,
+    refundedAtLabelAr: formatDateTimeAr(refundedAt),
+    countedInTotals,
+    accountingTreatmentAr: countedInTotals
+      ? "حركة استرداد مستقلة تُخصم في تاريخ الاسترداد الفعلي"
+      : "مرتجع قديم بلا تاريخ فعلي؛ ظاهر للمراجعة ولا يُخصم تلقائيًا من الفترة",
+    needsReview: reviewReasonsAr.length > 0,
+    reviewReasonsAr,
+  };
+}
+
+async function loadSubscriptionRefundItems({ periods, fulfillmentMethod, collectionItems }) {
+  const rangeStart = periods[0].start;
+  const rangeEnd = periods[periods.length - 1].end;
+  const collectionPaymentIds = collectionItems.map((item) => item.paymentId).filter(Boolean);
+  const [datedRefunds, undatedRefunds, legacyRefundedPayments] = await Promise.all([
+    PaymentRefund.find({
+      status: "confirmed",
+      refundedAt: { $gte: rangeStart, $lte: rangeEnd },
+    }).sort({ refundedAt: 1, _id: 1 }).lean(),
+    collectionPaymentIds.length
+      ? PaymentRefund.find({
+        status: "needs_review",
+        refundedAt: null,
+        paymentId: { $in: collectionPaymentIds },
+      }).sort({ createdAt: 1, _id: 1 }).lean()
+      : [],
+    collectionPaymentIds.length
+      ? Payment.find({
+        _id: { $in: collectionPaymentIds },
+        type: { $in: PAYMENT_TYPES },
+        status: "refunded",
+      }).lean()
+      : [],
+  ]);
+  const refunds = [...datedRefunds, ...undatedRefunds];
+  const paymentIds = Array.from(new Set(refunds.map((refund) => safeString(refund.paymentId))));
+  const payments = paymentIds.length
+    ? await Payment.find({ _id: { $in: paymentIds }, type: { $in: PAYMENT_TYPES } }).lean()
+    : [];
+  const paymentMap = new Map(payments.map((payment) => [String(payment._id), payment]));
+  const collectionMap = new Map(collectionItems.map((item) => [item.paymentId, item]));
+  const refundPeriod = (refund) => {
+    if (refund.refundedAt) {
+      const instant = new Date(refund.refundedAt);
+      return periods.find((period) => instant >= period.start && instant <= period.end) || null;
+    }
+    const collection = collectionMap.get(safeString(refund.paymentId));
+    return collection
+      ? periods.find((period) => period.businessDate === collection.businessDate) || null
+      : null;
+  };
+  const uniquePaymentRows = [];
+  const seenPayments = new Set();
+  for (const refund of refunds) {
+    const payment = paymentMap.get(safeString(refund.paymentId));
+    const period = refundPeriod(refund);
+    if (!payment || !period || seenPayments.has(String(payment._id))) continue;
+    seenPayments.add(String(payment._id));
+    uniquePaymentRows.push({ payment, period });
+  }
+  const hydrated = await serializePaymentRows({
+    paymentsWithPeriods: uniquePaymentRows,
+    fulfillmentMethod,
+  });
+  const hydratedMap = new Map(hydrated.map((item) => [item.paymentId, item]));
+  const rows = refunds.flatMap((refund) => {
+    const baseItem = hydratedMap.get(safeString(refund.paymentId));
+    const period = refundPeriod(refund);
+    return baseItem && period
+      ? [serializeRefundItem({ refund, baseItem, businessDate: period.businessDate })]
+      : [];
+  });
+
+  const refundPaymentIds = new Set(refunds.map((refund) => safeString(refund.paymentId)));
+  for (const payment of legacyRefundedPayments) {
+    if (refundPaymentIds.has(String(payment._id))) continue;
+    const baseItem = collectionMap.get(String(payment._id));
+    if (!baseItem) continue;
+    const vat = resolveStoredVatBreakdown(payment.amount, {});
+    rows.push(serializeRefundItem({
+      refund: {
+        amountHalala: payment.amount,
+        vatHalala: vat.vatHalala,
+        refundedAt: null,
+        status: "needs_review",
+      },
+      baseItem,
+      businessDate: baseItem.businessDate,
+      legacy: true,
+    }));
+  }
+  return rows;
+}
+
+function buildCommonReportSections(collectionItems, refundItems) {
+  const summary = buildPaymentMethodSummary(collectionItems, refundItems);
+  const allItems = [...collectionItems, ...refundItems].sort((left, right) => {
+    const leftAt = left.refundedAt || left.paidAt || left.createdAt || "";
+    const rightAt = right.refundedAt || right.paidAt || right.createdAt || "";
+    return String(leftAt).localeCompare(String(rightAt));
+  });
+  const warnings = buildWarnings(allItems, summary);
+  const byPaymentMethod = summary.byPaymentMethod;
+  const byFulfillmentMethod = buildBucketRows(collectionItems, "fulfillmentMethod", "fulfillmentMethod");
+  const bySubscriptionStatus = buildBucketRows(collectionItems, "subscriptionStatus", "subscriptionStatus");
+  const byPaymentType = buildBucketRows(collectionItems, "paymentType", "paymentType");
+  return {
+    summary,
+    dashboardCards: buildDashboardCards(summary),
+    byPaymentMethod,
+    byFulfillmentMethod,
+    bySubscriptionStatus,
+    byPaymentType,
+    reconciliation: buildReconciliation(summary, warnings),
+    warnings,
+    items: allItems,
+  };
+}
+
+function buildAccountingPolicyAr() {
+  return {
+    basis: "أساس نقدي للتحصيل",
+    basisDescription: "تُدرج الدفعة في paidAt والمرتجع في refundedAt، ضمن اليوم الكامل من 00:00:00 إلى 23:59:59 بتوقيت الرياض.",
+    vatTreatment: `المبالغ شاملة ضريبة القيمة المضافة بنسبة ${VAT_PERCENTAGE}%، ويتم فصل الضريبة من الإجمالي لا إضافتها عليه.`,
+    cancellationTreatment: "إلغاء الاشتراك لا يُعتبر مرتجعًا ماليًا تلقائيًا. تظل الدفعة ضمن التحصيل حتى يتم تسجيل عملية استرداد مستقلة.",
+    refundTreatment: "كل مرتجع حركة مستقلة. المرتجعات بلا تاريخ فعلي تظهر للمراجعة ولا تُنسب تلقائيًا إلى فترة.",
+    paymentMethodTreatment: "طريقة الدفع تعتمد على حقل الدفعة أولًا، ثم بياناتها الوصفية، ثم سجل الحركة القديم لاسترجاع البيانات التاريخية.",
+  };
+}
+
+async function buildDailySubscriptionPaymentReport({
+  date,
+  fulfillmentMethod = "all",
+  includeDetails = true,
+} = {}) {
+  const selectedFulfillment = normalizeFulfillmentMethod(fulfillmentMethod);
+  const details = parseIncludeDetails(includeDetails);
+  const period = accountingDailyReportService.resolveFullDayPeriod(date);
+  const collectionItems = await loadSubscriptionPaymentItems({
+    periods: [period],
+    fulfillmentMethod: selectedFulfillment,
+  });
+  const refundItems = await loadSubscriptionRefundItems({
+    periods: [period],
+    fulfillmentMethod: selectedFulfillment,
+    collectionItems,
+  });
+  const sections = buildCommonReportSections(collectionItems, refundItems);
+
+  return {
+    reportType: "daily",
+    reportTypeLabelAr: "تقرير تحصيل الاشتراكات اليومي",
+    titleAr: `تقرير تحصيل الاشتراكات — ${formatBusinessDateAr(period.businessDate)}`,
+    locale: "ar-AE",
+    businessDate: period.businessDate,
+    businessDateLabelAr: formatBusinessDateAr(period.businessDate),
+    timezone: period.timezone,
+    timezoneLabelAr: "توقيت الرياض",
+    currency: "SAR",
+    currencyLabelAr: "ريال سعودي",
+    moneyUnit: "halala",
+    moneyUnitLabelAr: "هللة",
+    filters: {
+      date: period.businessDate,
+      dateLabelAr: formatBusinessDateAr(period.businessDate),
+      fulfillmentMethod: selectedFulfillment,
+      fulfillmentMethodLabelAr: labelAr("fulfillmentMethod", selectedFulfillment),
+      includeDetails: details,
+      includeDetailsLabelAr: details ? "مع التفاصيل" : "ملخص فقط",
+    },
+    period: {
+      timezone: period.timezone,
+      openTime: period.openTime,
+      closeTime: period.closeTime,
+      start: period.start.toISOString(),
+      end: period.end.toISOString(),
+      startLabelAr: formatDateTimeAr(period.start),
+      endLabelAr: formatDateTimeAr(period.end),
+      labelAr: `من ${formatDateTimeAr(period.start)} إلى ${formatDateTimeAr(period.end)}`,
+    },
+    ...sections,
+    items: details ? sections.items : [],
+    accountingPolicyAr: buildAccountingPolicyAr(),
+    generatedAt: new Date().toISOString(),
+    generatedAtLabelAr: formatDateTimeAr(new Date()),
+  };
+}
+
+function compactDailySummary(period, collectionItems, refundItems) {
+  const summary = buildPaymentMethodSummary(collectionItems, refundItems);
+  return {
+    businessDate: period.businessDate,
+    businessDateLabelAr: formatBusinessDateAr(period.businessDate),
+    paymentsCount: summary.totalPaymentsCount,
+    uniqueCustomersCount: summary.uniqueCustomersCount,
+    totalHalala: summary.totalHalala,
+    totalSar: summary.totalSar,
+    totalFormattedAr: summary.totalFormattedAr,
+    grossCollectionHalala: summary.grossCollectionHalala,
+    grossCollectionFormattedAr: summary.grossCollectionFormattedAr,
+    refundsHalala: summary.refundsHalala,
+    refundsFormattedAr: summary.refundsFormattedAr,
+    netCollectionHalala: summary.netCollectionHalala,
+    netCollectionFormattedAr: summary.netCollectionFormattedAr,
+    netBeforeVatHalala: summary.netBeforeVatHalala,
+    netBeforeVatFormattedAr: summary.netBeforeVatFormattedAr,
+    vatHalala: summary.vatHalala,
+    vatFormattedAr: summary.vatFormattedAr,
+    cashTotalHalala: summary.cashTotalHalala,
+    cashTotalFormattedAr: summary.cashTotalFormattedAr,
+    visaTotalHalala: summary.visaTotalHalala,
+    visaTotalFormattedAr: summary.visaTotalFormattedAr,
+    moyasarTotalHalala: summary.moyasarTotalHalala,
+    moyasarTotalFormattedAr: summary.moyasarTotalFormattedAr,
+    unknownTotalHalala: summary.unknownTotalHalala,
+    unknownTotalFormattedAr: summary.unknownTotalFormattedAr,
+    canceledSubscriptionsTotalHalala: summary.canceledSubscriptionsTotalHalala,
+    canceledSubscriptionsTotalFormattedAr: summary.canceledSubscriptionsTotalFormattedAr,
+    needsReview: summary.reviewItemsCount > 0,
+  };
+}
+
+function buildMonthlyStatistics(dailyBreakdown) {
+  const daysWithPayments = dailyBreakdown.filter((row) => row.paymentsCount > 0);
+  const totalHalala = dailyBreakdown.reduce((sum, row) => sum + row.totalHalala, 0);
+  const highest = daysWithPayments.reduce((best, row) => (!best || row.totalHalala > best.totalHalala ? row : best), null);
+  const averageCalendar = moneyValue(dailyBreakdown.length ? Math.round(totalHalala / dailyBreakdown.length) : 0);
+  const averageActive = moneyValue(daysWithPayments.length ? Math.round(totalHalala / daysWithPayments.length) : 0);
+  return {
+    daysInMonth: dailyBreakdown.length,
+    daysWithPayments: daysWithPayments.length,
+    daysWithoutPayments: dailyBreakdown.length - daysWithPayments.length,
+    averagePerCalendarDayHalala: averageCalendar.amountHalala,
+    averagePerCalendarDayFormattedAr: averageCalendar.formattedAr,
+    averagePerActiveDayHalala: averageActive.amountHalala,
+    averagePerActiveDayFormattedAr: averageActive.formattedAr,
+    highestCollectionDay: highest ? {
+      businessDate: highest.businessDate,
+      businessDateLabelAr: highest.businessDateLabelAr,
+      totalHalala: highest.totalHalala,
+      totalFormattedAr: highest.totalFormattedAr,
+    } : null,
+  };
+}
+
+async function buildMonthlySubscriptionPaymentReport({
+  month,
+  fulfillmentMethod = "all",
+  includeDetails = true,
+} = {}) {
+  const selectedMonth = normalizeMonth(month);
+  const selectedFulfillment = normalizeFulfillmentMethod(fulfillmentMethod);
+  const details = parseIncludeDetails(includeDetails);
+  const dates = listMonthDates(selectedMonth);
+  const periods = dates.map((date) => accountingDailyReportService.resolveFullDayPeriod(date));
+  const collectionItems = await loadSubscriptionPaymentItems({
+    periods,
+    fulfillmentMethod: selectedFulfillment,
+  });
+  const refundItems = await loadSubscriptionRefundItems({
+    periods,
+    fulfillmentMethod: selectedFulfillment,
+    collectionItems,
+  });
+  const sections = buildCommonReportSections(collectionItems, refundItems);
+  const collectionsByDate = new Map();
+  const refundsByDate = new Map();
+  for (const item of collectionItems) {
+    const rows = collectionsByDate.get(item.businessDate) || [];
+    rows.push(item);
+    collectionsByDate.set(item.businessDate, rows);
+  }
+  for (const item of refundItems) {
+    const rows = refundsByDate.get(item.businessDate) || [];
+    rows.push(item);
+    refundsByDate.set(item.businessDate, rows);
+  }
+  const dailyBreakdown = periods.map((period) => compactDailySummary(
+    period,
+    collectionsByDate.get(period.businessDate) || [],
+    refundsByDate.get(period.businessDate) || []
+  ));
+
+  return {
+    reportType: "monthly",
+    reportTypeLabelAr: "تقرير تحصيل الاشتراكات الشهري",
+    titleAr: `تقرير تحصيل الاشتراكات — ${formatBusinessMonthAr(selectedMonth)}`,
+    locale: "ar-AE",
+    month: selectedMonth,
+    businessMonth: selectedMonth,
+    businessMonthLabelAr: formatBusinessMonthAr(selectedMonth),
+    timezone: periods[0].timezone,
+    timezoneLabelAr: "توقيت الرياض",
+    currency: "SAR",
+    currencyLabelAr: "ريال سعودي",
+    moneyUnit: "halala",
+    moneyUnitLabelAr: "هللة",
+    filters: {
+      month: selectedMonth,
+      monthLabelAr: formatBusinessMonthAr(selectedMonth),
+      fulfillmentMethod: selectedFulfillment,
+      fulfillmentMethodLabelAr: labelAr("fulfillmentMethod", selectedFulfillment),
+      includeDetails: details,
+      includeDetailsLabelAr: details ? "مع التفاصيل" : "ملخص فقط",
+    },
+    period: {
+      timezone: periods[0].timezone,
+      openTime: periods[0].openTime,
+      closeTime: periods[0].closeTime,
+      startDate: dates[0],
+      endDate: dates[dates.length - 1],
+      start: periods[0].start.toISOString(),
+      end: periods[periods.length - 1].end.toISOString(),
+      startLabelAr: formatDateTimeAr(periods[0].start),
+      endLabelAr: formatDateTimeAr(periods[periods.length - 1].end),
+      labelAr: `من ${formatBusinessDateAr(dates[0])} إلى ${formatBusinessDateAr(dates[dates.length - 1])}`,
+    },
+    ...sections,
+    statistics: buildMonthlyStatistics(dailyBreakdown),
+    dailyBreakdown,
+    items: details ? sections.items : [],
+    accountingPolicyAr: buildAccountingPolicyAr(),
+    generatedAt: new Date().toISOString(),
+    generatedAtLabelAr: formatDateTimeAr(new Date()),
+  };
+}
+
+module.exports = {
+  AR_LABELS,
+  buildDailySubscriptionPaymentReport,
+  buildMonthlySubscriptionPaymentReport,
+  buildPaymentMethodSummary,
+  buildWarnings,
+  formatBusinessDateAr,
+  listMonthDates,
+  moneyValue,
+  normalizeMonth,
+  normalizeRecordedPaymentMethod,
+  resolvePaymentMethodClassification,
+};

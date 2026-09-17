@@ -206,8 +206,8 @@ async function run() {
       publicMenu.body.data.builderCatalog.contractVersion,
       "meal_planner_menu.v3"
     );
-    assert.strictEqual(publicMenu.body.data.plannerCatalog, undefined);
-    assert.strictEqual(publicMenu.body.data.builderCatalogV2, undefined);
+    assert.strictEqual(publicMenu.body.data.plannerCatalog.contractVersion, 'meal_planner_menu.v3');
+    assert.strictEqual(publicMenu.body.data.builderCatalogV2.catalogVersion, 'meal_planner_menu.v2');
     assert.strictEqual(publicMenu.body.data.sections, undefined);
     const publicDirectSection = findDirectProductsSection(
       publicMenu.body.data.builderCatalog

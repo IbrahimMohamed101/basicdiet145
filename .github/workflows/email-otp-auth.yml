@@ -1,0 +1,40 @@
+name: Email OTP Auth
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/email-otp-auth.yml"
+      - ".env.example"
+      - "package.json"
+      - "package-lock.json"
+      - "src/controllers/appAuthController.js"
+      - "src/controllers/authController.js"
+      - "src/controllers/emailAuthController.js"
+      - "src/models/EmailOtpChallenge.js"
+      - "src/models/User.js"
+      - "src/routes/auth.js"
+      - "src/services/emailOtpService.js"
+      - "src/services/gmailEmailService.js"
+      - "src/services/refreshSessionService.js"
+      - "src/utils/security.js"
+      - "scripts/create-production-indexes.js"
+      - "tests/emailOtpAuth.test.js"
+      - "tests/emailOtpSecurityConfig.test.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  email-otp-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:email-auth
+      - run: npm test

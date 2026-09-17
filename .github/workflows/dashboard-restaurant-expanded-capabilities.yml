@@ -1,0 +1,39 @@
+name: Dashboard restaurant expanded capabilities
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/adminMealPlannerMenu.routes.js"
+      - "src/routes/courier.js"
+      - "src/routes/dashboardBoards.js"
+      - "src/routes/dashboardCatalogItems.js"
+      - "src/routes/dashboardMealBuilder.js"
+      - "src/routes/dashboardMenu.js"
+      - "src/routes/dashboardMenuIdentity.js"
+      - "src/routes/dashboardPremiumUpgrades.js"
+      - "src/routes/dashboardRestaurantCapabilities.js"
+      - "src/routes/index.js"
+      - "tests/dashboardRestaurantExpandedCapabilities.test.js"
+      - ".github/workflows/dashboard-restaurant-expanded-capabilities.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify restaurant capability boundaries
+        run: node tests/dashboardRestaurantExpandedCapabilities.test.js

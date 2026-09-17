@@ -9,8 +9,15 @@ const {
 } = require("../src/services/subscription/subscriptionAddonPolicyService");
 const {
   findCurrentActiveSubscriptionForUser,
+  isWithinSubscriptionDateWindow,
   selectCurrentSubscription,
 } = require("../src/services/subscription/subscriptionCurrentResolverService");
+const {
+  buildMealBalance,
+} = require("../src/services/subscription/subscriptionClientSupportService");
+const {
+  buildClientAddonBalance,
+} = require("../src/services/subscription/subscriptionAddonBalanceService");
 
 function subscription({ id, createdAt, startDate, endDate, status = "active" }) {
   return {
@@ -76,6 +83,47 @@ async function run() {
     selected.evaluated.filter((row) => !row.evaluation.eligible).map((row) => row.evaluation.reason),
     ["not_started", "date_window_ended"]
   );
+
+  const upcomingOnly = selectCurrentSubscription(
+    [future, expiredNewest],
+    { businessDate, includeUpcoming: true }
+  );
+  assert.strictEqual(upcomingOnly.subscription, future);
+  assert.strictEqual(upcomingOnly.reason, "nearest_active_upcoming_subscription");
+
+  const strictCurrentOnly = selectCurrentSubscription(
+    [future, expiredNewest],
+    { businessDate }
+  );
+  assert.strictEqual(strictCurrentOnly.subscription, null);
+
+  assert.strictEqual(isWithinSubscriptionDateWindow(future, businessDate), false);
+  assert.strictEqual(isWithinSubscriptionDateWindow(currentNew, businessDate), true);
+
+  const upcomingBalanceSource = {
+    ...future,
+    totalMeals: 14,
+    remainingMeals: 10,
+    entitlementVersion: 2,
+    reservedMeals: 2,
+    consumedMeals: 1,
+    forfeitedMeals: 1,
+    addonBalance: [{
+      addonId: new mongoose.Types.ObjectId(),
+      addonPlanId: new mongoose.Types.ObjectId(),
+      category: "snack",
+      includedTotalQty: 7,
+      purchasedQty: 7,
+      remainingQty: 7,
+      consumedQty: 0,
+    }],
+  };
+  const upcomingMealBalance = buildMealBalance(upcomingBalanceSource, businessDate);
+  assert.strictEqual(upcomingMealBalance.canConsumeNow, false);
+  assert.strictEqual(upcomingMealBalance.maxConsumableMealsNow, 0);
+  assert.strictEqual(upcomingMealBalance.consumedMeals, 1, "v2 reads the canonical consumed counter only");
+  const upcomingAddonBalance = buildClientAddonBalance(upcomingBalanceSource, businessDate);
+  assert.strictEqual(upcomingAddonBalance.snack.canConsumeNow, false);
 
   // The resolver performs a fresh query on every call. A newly created/current
   // subscription therefore replaces the old result without cache invalidation.

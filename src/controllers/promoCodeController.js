@@ -6,10 +6,17 @@ const { writeLog } = require("../utils/log");
 const {
   serializePromoCodeForAdmin,
   normalizePromoPayload,
+  assertPromoCodeAvailableOrThrow,
   applyPromoCodeToSubscriptionQuote,
 } = require("../services/promoCodeService");
+const {
+  serializePublicSubscriptionPromoOffer,
+  resolveAdminSubscriptionPromoSelection,
+  setSelectedAppPromoCode,
+  clearSelectedAppPromoCodeIfMatches,
+} = require("../services/subscriptionPromoDisplayService");
 
-async function writePromoActivityLog(req, promo, action) {
+async function writePromoActivityLog(req, promo, action, extraMeta = {}) {
   try {
     await writeLog({
       entityType: "promo_code",
@@ -17,11 +24,22 @@ async function writePromoActivityLog(req, promo, action) {
       action,
       byUserId: req.dashboardUserId || req.userId,
       byRole: req.dashboardUserRole || req.userRole,
-      meta: { code: promo.code },
+      meta: { code: promo.code, ...extraMeta },
     });
   } catch (_err) {
     // Activity logging must never make catalog administration fail.
   }
+}
+
+function serializeAppPromoSelection(selection) {
+  const promo = selection && selection.promo ? selection.promo : null;
+  return {
+    promoCodeId: selection && selection.promoCodeId ? selection.promoCodeId : null,
+    promoCode: promo ? serializePromoCodeForAdmin(promo) : null,
+    promoOffer: promo ? serializePublicSubscriptionPromoOffer(promo) : null,
+    isPubliclyDisplayable: Boolean(selection && selection.isPubliclyDisplayable),
+    issues: Array.isArray(selection && selection.issues) ? selection.issues : [],
+  };
 }
 
 function buildPromoQuery(includeDeleted = false) {
@@ -124,9 +142,59 @@ async function getPromoCodeAdmin(req, res) {
   });
 }
 
+async function getAppPromoSelectionAdmin(_req, res) {
+  const selection = await resolveAdminSubscriptionPromoSelection();
+  return res.status(200).json({
+    status: true,
+    data: serializeAppPromoSelection(selection),
+  });
+}
+
+async function updateAppPromoSelectionAdmin(req, res) {
+  const body = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(body, "promoCodeId")) {
+    return errorResponse(res, 400, "INVALID", "promoCodeId is required; use null to clear the selection");
+  }
+  if (
+    body.promoCodeId !== null
+    && (typeof body.promoCodeId !== "string" || !body.promoCodeId.trim())
+  ) {
+    return errorResponse(res, 400, "INVALID", "promoCodeId must be a non-empty string or null");
+  }
+
+  const previous = await resolveAdminSubscriptionPromoSelection();
+  try {
+    const selection = await setSelectedAppPromoCode(body.promoCodeId);
+    const logPromo = selection.promo || previous.promo;
+    if (logPromo) {
+      await writePromoActivityLog(
+        req,
+        logPromo,
+        selection.promoCodeId
+          ? "app_promo_selected_by_admin"
+          : "app_promo_selection_cleared_by_admin",
+        {
+          previousPromoCodeId: previous.promoCodeId,
+          selectedPromoCodeId: selection.promoCodeId,
+        }
+      );
+    }
+    return res.status(200).json({
+      status: true,
+      data: serializeAppPromoSelection(selection),
+    });
+  } catch (err) {
+    if (["INVALID_ID", "PROMO_NOT_FOUND", "PROMO_NOT_APPLICABLE_TO_SUBSCRIPTIONS"].includes(err.code)) {
+      return errorResponse(res, err.status || 422, err.code, err.message);
+    }
+    throw err;
+  }
+}
+
 async function createPromoCodeAdmin(req, res) {
   try {
     const normalized = normalizePromoPayload(req.body || {});
+    await assertPromoCodeAvailableOrThrow({ promoCode: normalized.code });
     const promo = await PromoCode.create(normalized);
     await writePromoActivityLog(req, promo, "promo_code_created_by_admin");
     return res.status(201).json({
@@ -136,6 +204,9 @@ async function createPromoCodeAdmin(req, res) {
   } catch (err) {
     if (err && err.code === 11000) {
       return errorResponse(res, 409, "CONFLICT", "Promo code already exists");
+    }
+    if (err && err.code === "PROMO_ALREADY_EXISTS") {
+      return errorResponse(res, 409, "CONFLICT", err.message);
     }
     if (String(err.code || "").startsWith("PROMO_")) {
       return errorResponse(res, 422, err.code, err.message);
@@ -163,6 +234,10 @@ async function updatePromoCodeAdmin(req, res) {
       ...req.body,
       code: req.body && req.body.code !== undefined ? req.body.code : existing.code,
     });
+    await assertPromoCodeAvailableOrThrow({
+      promoCode: normalized.code,
+      excludeId: existing._id,
+    });
     Object.assign(existing, normalized);
     await existing.save();
     await writePromoActivityLog(req, existing, "promo_code_updated_by_admin");
@@ -173,6 +248,9 @@ async function updatePromoCodeAdmin(req, res) {
   } catch (err) {
     if (err && err.code === 11000) {
       return errorResponse(res, 409, "CONFLICT", "Promo code already exists");
+    }
+    if (err && err.code === "PROMO_ALREADY_EXISTS") {
+      return errorResponse(res, 409, "CONFLICT", err.message);
     }
     if (String(err.code || "").startsWith("PROMO_")) {
       return errorResponse(res, 422, err.code, err.message);
@@ -229,6 +307,7 @@ async function deletePromoCodeAdmin(req, res) {
   promo.deletedAt = new Date();
   promo.isActive = false;
   await promo.save();
+  await clearSelectedAppPromoCodeIfMatches(promo._id);
   await writePromoActivityLog(req, promo, "promo_code_deleted_by_admin");
 
   return res.status(200).json({
@@ -277,6 +356,8 @@ async function validatePromoCodeAdmin(req, res) {
 module.exports = {
   listPromoCodesAdmin,
   getPromoCodeAdmin,
+  getAppPromoSelectionAdmin,
+  updateAppPromoSelectionAdmin,
   createPromoCodeAdmin,
   updatePromoCodeAdmin,
   togglePromoCodeActive,

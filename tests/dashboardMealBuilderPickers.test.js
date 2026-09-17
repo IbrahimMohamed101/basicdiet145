@@ -86,22 +86,26 @@ async function seedCatalog() {
     { key: "italian_spiced_chicken", family: "chicken" },
     { key: "chicken_tikka", family: "chicken" },
     { key: "asian_chicken", family: "chicken" },
-    { key: "chicken_strips", family: "chicken", unpublished: true },
+    { key: "chicken_strips", family: "chicken" },
     { key: "grilled_chicken", family: "chicken" },
     { key: "mexican_chicken", family: "chicken" },
+    { key: "future_chicken_recipe_without_static_key", family: "chicken" },
+    { key: "future_unmapped_protein", family: "" },
     { key: "hidden_chicken", family: "chicken", isActive: false },
-    { key: "ranch", family: "chicken" },
-    { key: "mango", family: "chicken" },
-    { key: "cashew", family: "chicken" },
-    { key: "tomato", family: "chicken" },
+    { key: "ranch", family: "other" },
+    { key: "mango", family: "other" },
+    { key: "cashew", family: "other" },
+    { key: "tomato", family: "other" },
     { key: "extra_chicken_50g", family: "chicken" },
     { key: "extra_protein_50g", family: "chicken" },
     { key: "beef", family: "beef" },
     { key: "meatballs", family: "beef" },
     { key: "beef_stroganoff", family: "beef" },
+    { key: "future_beef_recipe_without_static_key", family: "beef" },
     { key: "fish", family: "fish" },
     { key: "tuna", family: "fish" },
     { key: "fish_fillet", family: "fish" },
+    { key: "future_fish_recipe_without_static_key", family: "fish" },
     { key: "eggs", family: "eggs" },
     { key: "boiled_eggs", family: "eggs" },
     { key: "beef_steak", family: "beef", premium: true, price: 3000 },
@@ -125,7 +129,7 @@ async function seedCatalog() {
     ...proteinOptions,
     MenuOption.create({
       groupId: carbsGroup._id,
-      key: "white_rice",
+      key: "basmati_white_rice",
       name: { en: "White Rice", ar: "White Rice" },
       availableFor: ["subscription"],
       availableForSubscription: true,
@@ -164,7 +168,7 @@ async function seedCatalog() {
     isAvailable: false,
     sortOrder: 100,
   });
-  await ProductGroupOption.create({ productId: basicMeal._id, groupId: carbsGroup._id, optionId: byKey.get("white_rice")._id, sortOrder: 1 });
+  await ProductGroupOption.create({ productId: basicMeal._id, groupId: carbsGroup._id, optionId: byKey.get("basmati_white_rice")._id, sortOrder: 1 });
   await ProductOptionGroup.create({ productId: premiumLargeSalad._id, groupId: proteinsGroup._id, minSelections: 1, maxSelections: 1, isRequired: true, sortOrder: 1 });
   await ProductGroupOption.create({ productId: premiumLargeSalad._id, groupId: proteinsGroup._id, optionId: byKey.get("grilled_chicken")._id, sortOrder: 1 });
 
@@ -252,6 +256,7 @@ async function main() {
       "chicken_strips",
       "grilled_chicken",
       "mexican_chicken",
+      "future_chicken_recipe_without_static_key",
     ];
     assert(res.body.data.meta.total >= 9, JSON.stringify(res.body.data.meta));
     for (const key of expectedChickenKeys) {
@@ -272,6 +277,7 @@ async function main() {
     assert(!keys.includes("extra_chicken_50g"), "extra chicken add-on excluded from chicken picker");
     assert(!keys.includes("extra_protein_50g"), "extra protein add-on excluded from chicken picker");
     assert(!keys.includes("beef"), "beef excluded from chicken picker");
+    assert(!keys.includes("future_unmapped_protein"), "missing-family protein fails closed");
     const linked = res.body.data.candidates.find((item) => item.key === "grilled_chicken");
     assert.strictEqual(linked.state, "addable");
     assert.strictEqual(linked.linked, true);
@@ -294,9 +300,9 @@ async function main() {
 
     res = await api.get("/api/dashboard/meal-builder/pickers/chicken?include=all&diagnostics=true").set(headers);
     expectStatus(res, 200, "chicken picker diagnostics");
-    assert.strictEqual(res.body.data.diagnostics.runtime.marker, "meal_builder_picker_v3_option_family_catalog_discovery");
-    assert.strictEqual(res.body.data.diagnostics.codePath, "option_family_catalog_discovery");
-    assert(res.body.data.diagnostics.extendedFamilyKeys.includes("chicken_fajita"), JSON.stringify(res.body.data.diagnostics));
+    assert.strictEqual(res.body.data.diagnostics.codePath, "protein_family_metadata_catalog_discovery");
+    assert.strictEqual(res.body.data.diagnostics.classificationAuthority, "resolveProteinFamilyClassification");
+    assert(res.body.data.diagnostics.candidateKeys.includes("chicken_fajita"), JSON.stringify(res.body.data.diagnostics));
 
     res = await api.get("/api/dashboard/meal-builder/pickers/beef").set(headers);
     expectStatus(res, 200, "beef picker");
@@ -304,6 +310,7 @@ async function main() {
     assert(keys.includes("beef"), "beef returned");
     assert(keys.includes("meatballs"), "meatballs returned");
     assert(keys.includes("beef_stroganoff"), "beef stroganoff returned");
+    assert(keys.includes("future_beef_recipe_without_static_key"), "new explicit beef returned without a static key mapping");
     assert.strictEqual(res.body.data.candidates.find((item) => item.key === "beef").selected, true);
     for (const key of ["meatballs", "beef_stroganoff"]) {
       const candidate = res.body.data.candidates.find((item) => item.key === key);
@@ -320,6 +327,7 @@ async function main() {
     assert(keys.includes("fish"), "fish returned");
     assert(keys.includes("tuna"), "tuna returned");
     assert(keys.includes("fish_fillet"), "fish fillet returned");
+    assert(keys.includes("future_fish_recipe_without_static_key"), "new explicit fish returned without a static key mapping");
     assert.strictEqual(res.body.data.candidates.find((item) => item.key === "fish").selected, true);
     for (const key of ["tuna", "fish_fillet"]) {
       const candidate = res.body.data.candidates.find((item) => item.key === key);
@@ -345,7 +353,7 @@ async function main() {
     assert.strictEqual(res.body.data.rules.maxTypes, 2);
     assert.strictEqual(res.body.data.rules.maxTotalGrams, 300);
     keys = res.body.data.candidates.map((item) => item.key);
-    assert(keys.includes("white_rice"), "visible carb returned");
+    assert(keys.includes("basmati_white_rice"), "visible carb returned");
     assert(!keys.includes("internal_carb"), "non-customer carb excluded");
 
     res = await api.get("/api/dashboard/meal-builder/pickers/sandwich").set(headers);

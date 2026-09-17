@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { DASHBOARD_JWT_SECRET } = require("../services/dashboardTokenService");
 const DashboardUser = require("../models/DashboardUser");
+const { dashboardRoleHasPermission } = require("../constants/dashboardRoles");
 const errorResponse = require("../utils/errorResponse");
 
 /**
@@ -21,6 +22,14 @@ function decodeDashboardToken(token) {
   } catch (_err) {
     return { ok: false, error: { code: "UNAUTHORIZED", messageKey: "errors.dashboardAuth.invalidToken" } };
   }
+}
+
+function wasDashboardTokenRevokedByPasswordChange(user, decoded) {
+  if (!user || !user.passwordChangedAt || !decoded || !decoded.issuedAt) {
+    return false;
+  }
+  const changedAtSec = Math.floor(new Date(user.passwordChangedAt).getTime() / 1000);
+  return changedAtSec > Number(decoded.issuedAt);
 }
 
 /**
@@ -60,11 +69,8 @@ async function dashboardAuthMiddleware(req, res, next) {
   }
 
   // If the user changed their password after this token was issued, invalidate it.
-  if (user.passwordChangedAt && decoded.issuedAt) {
-    const changedAtSec = Math.floor(new Date(user.passwordChangedAt).getTime() / 1000);
-    if (changedAtSec > decoded.issuedAt) {
-      return errorResponse(res, 401, "TOKEN_REVOKED", { messageKey: "errors.dashboardAuth.tokenRevoked" });
-    }
+  if (wasDashboardTokenRevokedByPasswordChange(user, decoded)) {
+    return errorResponse(res, 401, "TOKEN_REVOKED", { messageKey: "errors.dashboardAuth.tokenRevoked" });
   }
 
   // Use current DB role — not the potentially stale token role
@@ -100,7 +106,11 @@ async function dashboardOptionalAuthMiddleware(req, _res, next) {
       .select("_id role isActive passwordChangedAt")
       .lean();
 
-    if (user && user.isActive !== false) {
+    if (
+      user
+      && user.isActive !== false
+      && !wasDashboardTokenRevokedByPasswordChange(user, decoded)
+    ) {
       req.dashboardUser = user;
       req.dashboardUserId = String(user._id);
       req.dashboardUserRole = String(user.role);
@@ -123,7 +133,7 @@ function dashboardRoleMiddleware(allowedRoles) {
     if (role === "superadmin") {
       return next();
     }
-    if (!allowedRoles.includes(role)) {
+    if (!dashboardRoleHasPermission(role, allowedRoles)) {
       return errorResponse(res, 403, "FORBIDDEN", { messageKey: "errors.dashboardAuth.insufficientPermissions" });
     }
     return next();

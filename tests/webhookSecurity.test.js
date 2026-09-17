@@ -1,15 +1,19 @@
 "use strict";
 
+require("./helpers/installMongoTestSafetyGuard");
+
 require("dotenv").config();
 
 const assert = require("assert");
 const mongoose = require("mongoose");
+const { MongoMemoryServer } = require("mongodb-memory-server");
 const request = require("supertest");
 
 const { createApp } = require("../src/app");
 const ActivityLog = require("../src/models/ActivityLog");
 const Order = require("../src/models/Order");
 const Payment = require("../src/models/Payment");
+const moyasarService = require("../src/services/moyasarService");
 
 const TEST_TAG = `webhook-security-${Date.now()}`;
 const VALID_WEBHOOK_SECRET = `${TEST_TAG}-secret`;
@@ -17,6 +21,7 @@ const VALID_IP = "192.168.1.100";
 const INVALID_IP = "192.168.1.200";
 
 const results = { passed: 0, failed: 0 };
+let ownedMemoryServer = null;
 
 async function test(name, fn) {
   try {
@@ -32,9 +37,17 @@ async function test(name, fn) {
 
 async function connect() {
   if (mongoose.connection.readyState !== 0) return;
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "mongodb://localhost:27017/basicdiet_test";
+  let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || "";
+  if (!mongoUri && process.env.NODE_ENV === "test") {
+    const dbName = `webhook_security_${process.pid}_${Date.now()}_test`;
+    ownedMemoryServer = await MongoMemoryServer.create({
+      instance: { dbName },
+    });
+    mongoUri = ownedMemoryServer.getUri(dbName);
+  }
+  if (!mongoUri) mongoUri = "mongodb://localhost:27017/basicdiet_test";
   try {
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 });
   } catch (err) {
     console.error("Database connection failed with exact error:");
     console.error(err && err.stack ? err.stack : err);
@@ -43,6 +56,7 @@ async function connect() {
 }
 
 async function cleanup() {
+  if (mongoose.connection.readyState !== 1) return;
   const orders = await Order.find({ orderNumber: { $regex: TEST_TAG } }).select("_id paymentId").lean();
   const orderIds = orders.map((order) => order._id);
   const paymentIds = orders.map((order) => order.paymentId).filter(Boolean);
@@ -225,6 +239,60 @@ function setWebhookEnv({ secret = VALID_WEBHOOK_SECRET, allowedIps } = {}) {
       assert.strictEqual(payment.applied, true);
       assert.strictEqual(activityLogs.length, 1, `expected one webhook confirmation log, got ${activityLogs.length}`);
     });
+
+    await test("invoice callback without webhook token is verified with Moyasar before applying", async () => {
+      setWebhookEnv({ secret: VALID_WEBHOOK_SECRET });
+      const seeded = await seedPendingOneTimeOrder();
+      const invoicePayload = paidWebhookPayload(seeded).data;
+      const originalGetInvoice = moyasarService.getInvoice;
+      let verifiedInvoiceId = null;
+      moyasarService.getInvoice = async (invoiceId) => {
+        verifiedInvoiceId = String(invoiceId);
+        return invoicePayload;
+      };
+
+      try {
+        const res = await api.post("/api/webhooks/moyasar").send(invoicePayload);
+        assert.strictEqual(res.status, 200, `expected 200, got ${res.status} ${JSON.stringify(res.body)}`);
+        assert.strictEqual(verifiedInvoiceId, seeded.invoiceId);
+
+        const [order, payment] = await Promise.all([
+          Order.findById(seeded.order._id).lean(),
+          Payment.findById(seeded.payment._id).lean(),
+        ]);
+        assert.strictEqual(order.status, "confirmed");
+        assert.strictEqual(order.paymentStatus, "paid");
+        assert.strictEqual(payment.status, "paid");
+        assert.strictEqual(payment.applied, true);
+        assert.strictEqual(payment.providerInvoiceId, seeded.invoiceId);
+        assert.ok(payment.providerPaymentId, "verified invoice payment attempt should be stored");
+      } finally {
+        moyasarService.getInvoice = originalGetInvoice;
+      }
+    });
+
+    await test("invoice callback is not trusted when Moyasar verification fails", async () => {
+      setWebhookEnv({ secret: VALID_WEBHOOK_SECRET });
+      const seeded = await seedPendingOneTimeOrder();
+      const invoicePayload = paidWebhookPayload(seeded).data;
+      const originalGetInvoice = moyasarService.getInvoice;
+      moyasarService.getInvoice = async () => {
+        const err = new Error("provider unavailable");
+        err.status = 503;
+        throw err;
+      };
+
+      try {
+        const res = await api.post("/api/webhooks/moyasar").send(invoicePayload);
+        assert.strictEqual(res.status, 502, `expected 502, got ${res.status} ${JSON.stringify(res.body)}`);
+
+        const payment = await Payment.findById(seeded.payment._id).lean();
+        assert.strictEqual(payment.status, "initiated");
+        assert.strictEqual(payment.applied, false);
+      } finally {
+        moyasarService.getInvoice = originalGetInvoice;
+      }
+    });
   } finally {
     if (originalSecret === undefined) delete process.env.MOYASAR_WEBHOOK_SECRET;
     else process.env.MOYASAR_WEBHOOK_SECRET = originalSecret;
@@ -236,11 +304,21 @@ function setWebhookEnv({ secret = VALID_WEBHOOK_SECRET, allowedIps } = {}) {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
+    if (ownedMemoryServer) {
+      await ownedMemoryServer.stop();
+      ownedMemoryServer = null;
+    }
   }
 
   console.log(`\nResult: ${results.passed} passed, ${results.failed} failed`);
   if (results.failed > 0) process.exit(1);
-})().catch((err) => {
+})().catch(async (err) => {
   console.error(err && err.stack ? err.stack : err);
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect().catch(() => {});
+  }
+  if (ownedMemoryServer) {
+    await ownedMemoryServer.stop().catch(() => {});
+  }
   process.exit(1);
 });

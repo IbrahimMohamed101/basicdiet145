@@ -56,6 +56,9 @@ function mockQuery(result) {
     select() {
       return this;
     },
+    limit() {
+      return this;
+    },
     lean() {
       return Promise.resolve(result);
     },

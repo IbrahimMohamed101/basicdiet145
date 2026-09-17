@@ -20,6 +20,9 @@ const {
   getRestaurantBusinessDate,
   getRestaurantBusinessTomorrow,
 } = require("../restaurantHoursService");
+const {
+  isWithinSubscriptionDateWindow,
+} = require("./subscriptionCurrentResolverService");
 
 function resolveEffectiveSubscriptionStatus(subscription, today = dateUtils.getTodayKSADate()) {
   if (!subscription || typeof subscription !== "object") return null;
@@ -316,10 +319,12 @@ function serializeSubscriptionForClientFromCatalog(subscription, catalog, contra
   // ── Additive meal balance fields (new policy) ──────────────────────────────
   const remainingMeals = Number(data.remainingMeals || 0);
   const totalMeals = Number(data.totalMeals || 0);
-  const consumedMeals = Math.max(0, totalMeals - remainingMeals);
+  const consumedMeals = Number(data.entitlementVersion || 0) >= 2
+    ? Math.max(0, Number(data.consumedMeals || 0))
+    : Math.max(0, totalMeals - remainingMeals);
   const isSubscriptionActive = data.status === "active";
-  const validityEndDateStr = data.validityEndDate ? dateUtils.toKSADateString(data.validityEndDate) : (data.endDate ? dateUtils.toKSADateString(data.endDate) : null);
-  const canConsumeNow = isSubscriptionActive && (!validityEndDateStr || businessDate <= validityEndDateStr);
+  const canConsumeNow = isSubscriptionActive
+    && isWithinSubscriptionDateWindow(data, businessDate);
   const maxConsumableMealsNow = canConsumeNow ? remainingMeals : 0;
   
   const mealBalance = {

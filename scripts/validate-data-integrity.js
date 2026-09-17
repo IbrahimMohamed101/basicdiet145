@@ -14,6 +14,7 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const Order = require("../src/models/Order");
 const Payment = require("../src/models/Payment");
+const Subscription = require("../src/models/Subscription");
 
 const REQUIRED_FLAG = process.env.VALIDATE_DATA_INTEGRITY === "true";
 const READ_ONLY_PRODUCTION_AUDIT = process.env.READ_ONLY_PRODUCTION_AUDIT === "true";
@@ -225,6 +226,85 @@ async function checkOrdersPayments() {
   pass("recent order/payment consistency checks completed");
 }
 
+async function checkSubscriptionBalances() {
+  const activeSubscriptions = await Subscription.find({ status: "active" })
+    .select("userId totalMeals remainingMeals entitlementVersion reservedMeals consumedMeals forfeitedMeals premiumBalance addonBalance")
+    .limit(5000)
+    .lean();
+
+  if (activeSubscriptions.length === 5000) {
+    addWarning("Subscription balance audit reached its 5000-row safety limit");
+  }
+
+  const activeByUser = new Map();
+  activeSubscriptions.forEach((subscription) => {
+    const label = `subscription ${subscription._id}`;
+    const userId = String(subscription.userId || "");
+    activeByUser.set(userId, (activeByUser.get(userId) || 0) + 1);
+
+    const totalMeals = Number(subscription.totalMeals || 0);
+    const remainingMeals = Number(subscription.remainingMeals || 0);
+    [
+      ["totalMeals", totalMeals],
+      ["remainingMeals", remainingMeals],
+    ].forEach(([field, value]) => {
+      if (!isNonNegativeInteger(value)) addIssue(`${label} ${field} must be a non-negative integer`);
+    });
+
+    const premiumRemaining = (subscription.premiumBalance || []).reduce(
+      (sum, row) => sum + Number(row.remainingQty || 0),
+      0
+    );
+    if (premiumRemaining > remainingMeals) {
+      addIssue(`${label} Premium remaining (${premiumRemaining}) exceeds base remainingMeals (${remainingMeals})`);
+    }
+
+    (subscription.premiumBalance || []).forEach((row, index) => {
+      const purchased = Number(row.purchasedQty || 0);
+      const actual = Number(row.remainingQty || 0) + Number(row.reservedQty || 0) + Number(row.consumedQty || 0);
+      if (![row.purchasedQty, row.remainingQty, row.reservedQty, row.consumedQty].every((value) => isNonNegativeInteger(value || 0))) {
+        addIssue(`${label} premiumBalance[${index}] contains a negative or non-integer quantity`);
+      } else if (purchased !== actual) {
+        addIssue(`${label} premiumBalance[${index}] purchasedQty=${purchased} but remaining+reserved+consumed=${actual}`);
+      }
+    });
+
+    (subscription.addonBalance || []).forEach((row, index) => {
+      const purchased = Math.max(
+        Number(row.purchasedQty || 0),
+        Number(row.includedTotalQty || 0) + Number(row.extraPurchasedQty || 0)
+      );
+      const actual = Number(row.remainingQty || 0) + Number(row.reservedQty || 0) + Number(row.consumedQty || 0);
+      if ([row.purchasedQty, row.includedTotalQty, row.extraPurchasedQty, row.remainingQty, row.reservedQty, row.consumedQty]
+        .some((value) => !isNonNegativeInteger(value || 0))) {
+        addIssue(`${label} addonBalance[${index}] contains a negative or non-integer quantity`);
+      } else if (purchased !== actual) {
+        addIssue(`${label} addonBalance[${index}] purchasedQty=${purchased} but remaining+reserved+consumed=${actual}`);
+      }
+    });
+
+    if (Number(subscription.entitlementVersion || 0) >= 2) {
+      const reservedMeals = Number(subscription.reservedMeals || 0);
+      const consumedMeals = Number(subscription.consumedMeals || 0);
+      const forfeitedMeals = Number(subscription.forfeitedMeals || 0);
+      if (![reservedMeals, consumedMeals, forfeitedMeals].every(isNonNegativeInteger)) {
+        addIssue(`${label} canonical meal ledger contains a negative or non-integer quantity`);
+      } else {
+        const ledgerTotal = remainingMeals + reservedMeals + consumedMeals + forfeitedMeals;
+        if (totalMeals !== ledgerTotal) {
+          addIssue(`${label} totalMeals=${totalMeals} but remaining+reserved+consumed+forfeited=${ledgerTotal}`);
+        }
+      }
+    }
+  });
+
+  [...activeByUser.entries()]
+    .filter(([userId, count]) => userId && count > 1)
+    .forEach(([userId, count]) => addIssue(`user ${userId} has ${count} active subscriptions`));
+
+  pass(`active subscription balance checks completed (${activeSubscriptions.length} rows)`);
+}
+
 async function main() {
   requireGuardrails();
   console.log("BasicDiet read-only data integrity validation");
@@ -243,6 +323,7 @@ async function main() {
 
     checkMenuCatalog({ categories, products, groups, options, productGroups, productOptions });
     await checkOrdersPayments();
+    await checkSubscriptionBalances();
 
     console.log(`\nWarnings: ${warnings.length}`);
     console.log(`Issues: ${issues.length}`);

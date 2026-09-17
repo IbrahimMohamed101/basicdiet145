@@ -9,13 +9,36 @@ function actorFromRequest(req) {
 }
 
 function listOptions(req) {
+  const isAddonPlanPicker =
+    String(req.query.context || "").trim() === "addon_plan" ||
+    String(req.query.linkableFor || "").trim() === "addon_plan" ||
+    String(req.query.view || "").trim() === "addon_plan_picker";
   return {
     includeInactive: String(req.query.includeInactive || "").toLowerCase() === "true",
-    isActive: req.query.isActive,
-    isVisible: req.query.isVisible,
-    isAvailable: req.query.isAvailable,
+    includeQuarantined:
+      ["admin", "superadmin"].includes(String(req.dashboardUserRole || "")) &&
+      String(req.query.includeQuarantined || "").toLowerCase() === "true",
+    isActive: req.query.isActive !== undefined
+      ? req.query.isActive
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
+    isVisible: req.query.isVisible !== undefined
+      ? req.query.isVisible
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
+    isAvailable: req.query.isAvailable !== undefined
+      ? req.query.isAvailable
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
     q: req.query.q,
-    published: req.query.published,
+    published: req.query.published !== undefined
+      ? req.query.published
+      : isAddonPlanPicker
+        ? "true"
+        : undefined,
     groupId: req.query.groupId,
     categoryId: req.query.categoryId,
     availableFor: req.query.availableFor,

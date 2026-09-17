@@ -118,17 +118,75 @@ function buildDayAllocationSpecs({ subscriptionId, day, paymentId = null }) {
   });
 }
 
-function resolveWalletBucket(subscription, funding) {
+function normalizedPremiumKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function premiumBucketIdentity(row) {
+  return JSON.stringify({
+    premiumKey: normalizedPremiumKey(row && row.premiumKey),
+    configId: String(row && row.configId || ""),
+    revision: Number(row && row.revision || 0),
+    proteinId: String(row && row.proteinId || ""),
+    kind: String(row && row.kind || ""),
+    entityType: String(row && row.entityType || ""),
+    selectionType: String(row && row.selectionType || ""),
+    sourceType: String(row && row.sourceType || ""),
+    sourceId: String(row && row.sourceId || ""),
+    sourceProductId: String(row && row.sourceProductId || ""),
+    sourceGroupId: String(row && row.sourceGroupId || ""),
+    sourceGroupKey: String(row && row.sourceGroupKey || ""),
+    sourceKey: String(row && row.sourceKey || ""),
+    unitExtraFeeHalala: Number(row && row.unitExtraFeeHalala || 0),
+    currency: String(row && row.currency || "SAR"),
+  });
+}
+
+function comparePremiumBuckets(left, right) {
+  const leftPurchasedAt = new Date(left && left.purchasedAt || 0).getTime();
+  const rightPurchasedAt = new Date(right && right.purchasedAt || 0).getTime();
+  if (leftPurchasedAt !== rightPurchasedAt) return leftPurchasedAt - rightPurchasedAt;
+  return String(left && left._id || "").localeCompare(String(right && right._id || ""));
+}
+
+function resolveWalletBucket(subscription, funding, { requireRemaining = false, requireReserved = false } = {}) {
   const rows = Array.isArray(subscription && subscription.premiumBalance) ? subscription.premiumBalance : [];
   if (funding.balanceBucketId) {
     return rows.find((row) => String(row._id) === String(funding.balanceBucketId)) || null;
   }
+
+  const premiumKey = normalizedPremiumKey(funding.premiumKey);
+  if (!premiumKey) return null;
+
+  const configId = String(funding.configId || "");
+  const revision = Number(funding.revision || 0);
+  const hasRevisionIdentity = Boolean(configId) || revision > 0;
   const matches = rows.filter((row) => {
-    if (funding.configId && String(row.configId || "") !== String(funding.configId)) return false;
-    if (funding.revision != null && Number(row.revision || 0) !== Number(funding.revision || 0)) return false;
-    return String(row.premiumKey || "").toLowerCase() === String(funding.premiumKey || "").toLowerCase();
+    if (normalizedPremiumKey(row && row.premiumKey) !== premiumKey) return false;
+    if (configId && String(row && row.configId || "") !== configId) return false;
+    if (hasRevisionIdentity && Number(row && row.revision || 0) !== revision) return false;
+    return true;
   });
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) return null;
+
+  // Multiple rows are safely interchangeable only when every immutable Premium
+  // identity field is identical. This supports repeated purchases of the same
+  // Premium entitlement without ever crossing config/revision/product identity.
+  if (new Set(matches.map(premiumBucketIdentity)).size !== 1) return null;
+
+  let eligible = matches;
+  if (requireRemaining) {
+    eligible = eligible.filter((row) => Number(row && row.remainingQty || 0) >= 1);
+  }
+  if (requireReserved) {
+    eligible = eligible.filter((row) => Number(row && row.reservedQty || 0) >= 1);
+  }
+  if (eligible.length === 0) return null;
+
+  // Equivalent buckets represent fungible credits. Pick the oldest bucket first
+  // and persist its exact _id on the allocation so every later transition is exact.
+  return [...eligible].sort(comparePremiumBuckets)[0];
 }
 
 async function reserveOneAllocation({ subscriptionId, spec, session = null }) {
@@ -154,7 +212,7 @@ async function reserveOneAllocation({ subscriptionId, spec, session = null }) {
   const options = { new: true, ...(session ? { session } : {}) };
 
   if (spec.premiumFunding && spec.premiumFunding.source === "wallet") {
-    const bucket = resolveWalletBucket(subscription, spec.premiumFunding);
+    const bucket = resolveWalletBucket(subscription, spec.premiumFunding, { requireRemaining: true });
     if (!bucket) throw serviceError("DATA_INTEGRITY_ERROR", "Premium balance bucket identity is missing or ambiguous", 409);
     spec.premiumFunding.balanceBucketId = bucket._id;
     spec.premiumFunding.configId = bucket.configId || null;
@@ -251,7 +309,7 @@ async function transitionAllocation({ subscriptionId, allocationKey, toState, pa
 
   const funding = allocation.premiumFunding || {};
   if (funding.source === "wallet") {
-    const bucket = resolveWalletBucket(subscription, funding);
+    const bucket = resolveWalletBucket(subscription, funding, { requireReserved: true });
     if (!bucket) throw serviceError("DATA_INTEGRITY_ERROR", "Premium balance bucket identity mismatch", 409);
     filter.premiumBalance = { $elemMatch: { _id: bucket._id, reservedQty: { $gte: 1 } } };
     update.$inc["premiumBalance.$[bucket].reservedQty"] = -1;
@@ -337,7 +395,7 @@ async function reacquireAllocation({ subscriptionId, allocationKey, session = nu
   };
   const funding = allocation.premiumFunding || {};
   if (funding.source === "wallet") {
-    const bucket = resolveWalletBucket(subscription, funding);
+    const bucket = resolveWalletBucket(subscription, funding, { requireRemaining: true });
     if (!bucket) throw serviceError("DATA_INTEGRITY_ERROR", "Premium balance bucket identity mismatch", 409);
     filter.premiumBalance = { $elemMatch: { _id: bucket._id, remainingQty: { $gte: 1 } } };
     update.$inc["premiumBalance.$[bucket].remainingQty"] = -1;

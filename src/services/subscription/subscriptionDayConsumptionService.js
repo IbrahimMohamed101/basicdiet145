@@ -102,9 +102,28 @@ async function consumeSubscriptionDayCredits({
     };
   }
 
+  const usesEntitlementLedger = Number(subscription.entitlementVersion || 0) >= 2;
+  const entitlementVersionGuard = usesEntitlementLedger
+    ? { entitlementVersion: subscription.entitlementVersion }
+    : {
+      $or: [
+        { entitlementVersion: { $exists: false } },
+        { entitlementVersion: null },
+        { entitlementVersion: { $lt: 2 } },
+      ],
+    };
   const updateResult = await Subscription.updateOne(
-    { _id: subscription._id, remainingMeals: { $gte: mealsToDeduct } },
-    { $inc: { remainingMeals: -mealsToDeduct } },
+    {
+      _id: subscription._id,
+      remainingMeals: { $gte: mealsToDeduct },
+      ...entitlementVersionGuard,
+    },
+    {
+      $inc: {
+        remainingMeals: -mealsToDeduct,
+        ...(usesEntitlementLedger ? { consumedMeals: mealsToDeduct } : {}),
+      },
+    },
     { session }
   );
 
@@ -142,7 +161,8 @@ async function consumeSubscriptionDayCredits({
  *   - Writes SubscriptionAuditLog and ActivityLog
  *   - Returns { remainingMealsBefore, remainingMealsAfter, mealCount, deducted: true }
  *
- * All deductions for cashier/restaurant/manual consumption MUST go through this function.
+ * Legacy internal helper. Public dashboard consumption is routed through the
+ * canonical manual-subscription-deduction service.
  */
 async function consumeSubscriptionMealBalance({
   subscriptionId,
@@ -186,14 +206,41 @@ async function consumeSubscriptionMealBalance({
 
   const remainingMealsBefore = Number(subForAudit.remainingMeals || 0);
 
+  const premiumRemainingExpression = {
+    $sum: { $ifNull: ["$premiumBalance.remainingQty", []] },
+  };
+  const usesEntitlementLedger = Number(subForAudit.entitlementVersion || 0) >= 2;
+  const entitlementVersionGuard = usesEntitlementLedger
+    ? { entitlementVersion: subForAudit.entitlementVersion }
+    : {
+      $or: [
+        { entitlementVersion: { $exists: false } },
+        { entitlementVersion: null },
+        { entitlementVersion: { $lt: 2 } },
+      ],
+    };
   const updateResult = await SubscriptionModel.updateOne(
-    { _id: resolvedId, remainingMeals: { $gte: mealCount } },
-    { $inc: { remainingMeals: -mealCount } },
+    {
+      _id: resolvedId,
+      remainingMeals: { $gte: mealCount },
+      $expr: {
+        $gte: [{ $subtract: ["$remainingMeals", premiumRemainingExpression] }, mealCount],
+      },
+      ...entitlementVersionGuard,
+    },
+    {
+      $inc: {
+        remainingMeals: -mealCount,
+        ...(usesEntitlementLedger ? { consumedMeals: mealCount } : {}),
+      },
+    },
     session ? { session } : {}
   );
 
   if (!updateResult.modifiedCount) {
-    const err = new Error("Insufficient meal balance for this subscription");
+    const err = new Error("Insufficient regular meal balance for this subscription");
+    // Keep the legacy public code stable; the canonical manual-deduction route
+    // returns the more precise INSUFFICIENT_REGULAR_MEALS code.
     err.code = "INSUFFICIENT_CREDITS";
     throw err;
   }

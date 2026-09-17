@@ -1,0 +1,79 @@
+name: Meal Builder Premium authority composition
+
+on:
+  push:
+    branches:
+      - agent/fix-meal-builder-premium-authority-composition
+  pull_request:
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installFlutterPublishedSelectionAuthority.js"
+      - "tests/mealBuilderPublishedPremiumComposition.test.js"
+      - "tests/builderCatalogV2Contract.test.js"
+      - "tests/flutterMealPlannerCatalogExpansion.test.js"
+      - ".github/workflows/meal-builder-premium-authority-composition.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  premium-authority-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      JWT_SECRET: meal-builder-premium-composition-test-secret
+      DASHBOARD_JWT_SECRET: meal-builder-premium-composition-dashboard-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installFlutterPublishedSelectionAuthority.js
+          node -c tests/mealBuilderPublishedPremiumComposition.test.js
+
+      - name: Verify published Premium composition stages
+        run: |
+          set -o pipefail
+          node tests/mealBuilderPublishedPremiumComposition.test.js 2>&1 | tee published-premium-composition.log
+
+      - name: Upload published Premium diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meal-builder-published-premium-diagnostics
+          path: published-premium-composition.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Verify Builder Catalog v2 premium parity
+        run: npm run test:builder-catalog-v2-contract
+
+      - name: Verify Flutter Meal Planner catalog expansion
+        run: |
+          set -o pipefail
+          NODE_ENV=test node tests/flutterMealPlannerCatalogExpansion.test.js 2>&1 | tee flutter-meal-planner-expansion.log
+
+      - name: Upload Flutter expansion diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-meal-planner-expansion-diagnostics
+          path: flutter-meal-planner-expansion.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Verify dynamic direct meal catalog
+        run: NODE_ENV=test node tests/dynamicDirectMealCatalogPolicy.test.js

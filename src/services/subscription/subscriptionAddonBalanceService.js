@@ -1,12 +1,14 @@
 "use strict";
 
 const SubscriptionDay = require("../../models/SubscriptionDay");
-const { toKSADateString } = require("../../utils/date");
 const {
   ALL_SUPPORTED_SUBSCRIPTION_ADDON_CATEGORIES,
   normalizeSubscriptionAddonCategory,
   resolveAddonBalanceRemainingQty,
 } = require("./subscriptionAddonPolicyService");
+const {
+  isWithinSubscriptionDateWindow,
+} = require("./subscriptionCurrentResolverService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -115,10 +117,8 @@ function buildClientAddonBalance(subscription, businessDate, auditedConsumptionM
   if (!subscription) return undefined;
 
   const isSubscriptionActive = subscription.status === "active";
-  const validityEndDateStr = subscription.validityEndDate
-    ? toKSADateString(subscription.validityEndDate)
-    : (subscription.endDate ? toKSADateString(subscription.endDate) : null);
-  const isInsideValidity = !validityEndDateStr || (businessDate && businessDate <= validityEndDateStr);
+  const isInsideValidity = Boolean(businessDate)
+    && isWithinSubscriptionDateWindow(subscription, businessDate);
 
   const result = {};
   let needsReviewFlag = false;

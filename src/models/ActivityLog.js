@@ -27,5 +27,17 @@ ActivityLogSchema.index(
     },
   }
 );
+ActivityLogSchema.index(
+  { entityType: 1, action: 1, entityId: 1, "meta.repairKey": 1 },
+  {
+    name: "subscription_manual_deduction_reversal_repair_once",
+    unique: true,
+    partialFilterExpression: {
+      entityType: "subscription",
+      action: "subscription_manual_deduction_reversal",
+      "meta.repairKey": { $type: "string" },
+    },
+  }
+);
 
 module.exports = mongoose.model("ActivityLog", ActivityLogSchema);

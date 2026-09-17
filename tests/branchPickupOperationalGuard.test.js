@@ -1,5 +1,7 @@
 "use strict";
 
+require("./helpers/installMongoTestSafetyGuard");
+
 require("dotenv").config();
 const assert = require("assert");
 const mongoose = require("mongoose");

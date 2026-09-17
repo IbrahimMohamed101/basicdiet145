@@ -1,0 +1,40 @@
+name: Flutter Meal Planner catalog expansion
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installFlutterMealPlannerCatalogExpansion.js"
+      - "tests/flutterMealPlannerCatalogExpansion.test.js"
+      - ".github/workflows/flutter-meal-planner-catalog-expansion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      MONGOMS_VERSION: 7.0.14
+      DASHBOARD_JWT_SECRET: flutter-catalog-dashboard-secret
+      JWT_SECRET: flutter-catalog-app-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Verify Flutter catalog, grams, and membership parity
+        run: node tests/flutterMealPlannerCatalogExpansion.test.js

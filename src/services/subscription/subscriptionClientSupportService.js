@@ -29,6 +29,15 @@ const {
 const {
   buildClientAddonBalance,
 } = require("./subscriptionAddonBalanceService");
+const {
+  isWithinSubscriptionDateWindow,
+} = require("./subscriptionCurrentResolverService");
+const {
+  projectClientMealBalance,
+} = require("./subscriptionClientMealBalanceProjectionService");
+const {
+  serializeMealSlotsForClient,
+} = require("./subscriptionStackingClientContractService");
 const { toKSADateString } = require("../../utils/date");
 const { logger } = require("../../utils/logger");
 
@@ -49,6 +58,14 @@ function serializeSubscriptionDayForClient(subscription, day, runtimeOverrides =
   delete serializedDay.baseAllocationKeys;
   delete serializedDay.entitlementTransitionState;
   delete serializedDay.premiumReservationMode;
+  delete serializedDay.stackingExtraSelectionState;
+
+  if (Array.isArray(day.mealSlots)) {
+    serializedDay.mealSlots = serializeMealSlotsForClient(
+      day.mealSlots,
+      subscription && subscription.selectedGrams
+    );
+  }
 
   const actionType = day.canonicalDayActionType;
   if (actionType !== undefined && actionType !== null) {
@@ -161,6 +178,7 @@ function shapeMealPlannerReadFields({ subscription = null, day, lang = "ar", pic
   delete shaped.baseAllocationKeys;
   delete shaped.entitlementTransitionState;
   delete shaped.premiumReservationMode;
+  delete shaped.stackingExtraSelectionState;
   const commercialStateLabel = resolveReadLabel("commercialStates", shaped.commercialState, lang);
   const premiumExtraPaymentStatus = (shaped.premiumExtraPayment && shaped.premiumExtraPayment.status) || "none";
   const premiumExtraPaymentStatusLabel = resolveReadLabel("premiumExtraPaymentStatuses", premiumExtraPaymentStatus, lang);
@@ -319,16 +337,14 @@ function buildMealBalance(subscription, businessDate) {
   const remainingMeals = Number(subscription.remainingMeals || 0);
   const totalMeals = Number(subscription.totalMeals || 0);
   const hasEntitlementLedger = Number(subscription.entitlementVersion || 0) >= 2;
+  const reservedMeals = hasEntitlementLedger
+    ? Math.max(0, Number(subscription.reservedMeals || 0))
+    : 0;
   const consumedMeals = hasEntitlementLedger
-    ? Math.max(0, Number(subscription.consumedMeals || 0) + Number(subscription.forfeitedMeals || 0))
+    ? Math.max(0, Number(subscription.consumedMeals || 0))
     : Math.max(0, totalMeals - remainingMeals);
   const isSubscriptionActive = subscription.status === "active";
-
-  const validityEndDateStr = subscription.validityEndDate
-    ? toKSADateString(subscription.validityEndDate)
-    : (subscription.endDate ? toKSADateString(subscription.endDate) : null);
-
-  const isInsideValidity = !validityEndDateStr || businessDate <= validityEndDateStr;
+  const isInsideValidity = isWithinSubscriptionDateWindow(subscription, businessDate);
 
   // canConsumeNow is true only if active, in validity, AND has remaining meals
   const canConsumeNow = isSubscriptionActive && isInsideValidity && remainingMeals > 0;
@@ -336,9 +352,11 @@ function buildMealBalance(subscription, businessDate) {
   // maxConsumableMealsNow is remainingMeals if active and in validity, else 0
   const maxConsumableMealsNow = (isSubscriptionActive && isInsideValidity) ? remainingMeals : 0;
 
-  return {
+  const baseMealBalance = {
     totalMeals,
     remainingMeals,
+    availableMeals: remainingMeals,
+    reservedMeals,
     consumedMeals,
     canConsumeNow,
     maxConsumableMealsNow,
@@ -346,6 +364,10 @@ function buildMealBalance(subscription, businessDate) {
     dailyMealLimitEnforced: false,
     dailyMealsDefault: Number(subscription.selectedMealsPerDay || subscription.mealsPerDay || 0),
   };
+
+  return projectClientMealBalance(baseMealBalance, subscription, {
+    businessDate,
+  });
 }
 
 module.exports = {

@@ -1,0 +1,66 @@
+name: Subscription Stacking Deployment Identity
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-remote-certification-20260806
+    paths:
+      - "src/utils/mongoDeploymentIdentity.js"
+      - "src/services/subscription/subscriptionStackingRemoteReadinessService.js"
+      - "scripts/assert-subscription-stacking-deployment-readiness.js"
+      - "tests/mongoDeploymentIdentity.test.js"
+      - "tests/subscriptionStackingRemoteReadiness.test.js"
+      - "tests/subscriptionStackingRemoteReadinessRoute.test.js"
+      - "tests/subscriptionStackingDeploymentReadiness.test.js"
+      - ".github/workflows/subscription-stacking-deployment-identity.yml"
+  pull_request:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/utils/mongoDeploymentIdentity.js"
+      - "src/services/subscription/subscriptionStackingRemoteReadinessService.js"
+      - "scripts/assert-subscription-stacking-deployment-readiness.js"
+      - "tests/mongoDeploymentIdentity.test.js"
+      - "tests/subscriptionStackingRemoteReadiness.test.js"
+      - "tests/subscriptionStackingRemoteReadinessRoute.test.js"
+      - "tests/subscriptionStackingDeploymentReadiness.test.js"
+      - ".github/workflows/subscription-stacking-deployment-identity.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Credential-free Mongo identity contracts
+        run: NODE_ENV=test node tests/mongoDeploymentIdentity.test.js
+
+      - name: Readiness attestation contracts
+        run: NODE_ENV=test node tests/subscriptionStackingRemoteReadiness.test.js
+
+      - name: Authenticated readiness route contracts
+        run: NODE_ENV=test node tests/subscriptionStackingRemoteReadinessRoute.test.js
+
+      - name: Deployed commit and Mongo identity preflight contracts
+        run: NODE_ENV=test node tests/subscriptionStackingDeploymentReadiness.test.js
+
+      - name: Syntax
+        run: |
+          node --check src/utils/mongoDeploymentIdentity.js
+          node --check src/services/subscription/subscriptionStackingRemoteReadinessService.js
+          node --check scripts/assert-subscription-stacking-deployment-readiness.js

@@ -2,12 +2,18 @@ const crypto = require("crypto");
 const { startSafeSession } = require("../utils/mongoTransactionSupport");
 const mongoose = require("mongoose");
 const { addDays } = require("date-fns");
+const {
+  resolvePlanTimelineExtraDays,
+} = require("../services/subscription/subscriptionTimelineDurationService");
 const Plan = require("../models/Plan");
 const Addon = require("../models/Addon");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const Subscription = require("../models/Subscription");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const Payment = require("../models/Payment");
+const {
+  hasMinimumAppliedLink,
+} = require("../services/subscription/subscriptionPaymentApplicationStateService");
 const dateUtils = require("../utils/date");
 const { addDaysToKSADateString } = dateUtils;
 const { canTransitionStatus } = require("../services/dashboard/opsTransitionPolicy");
@@ -34,11 +40,6 @@ const {
   buildPhase1SubscriptionContract,
   buildCanonicalDraftPersistenceFields,
 } = require("../services/subscription/subscriptionContractService");
-const {
-  finalizeSubscriptionDraftPaymentFlow,
-  activateSubscriptionFromCanonicalDraft,
-} = require("../services/subscription/subscriptionActivationService");
-
 const {
   applyPaymentSideEffects,
   SUPPORTED_PHASE1_SHARED_PAYMENT_TYPES,
@@ -157,6 +158,10 @@ const {
   loadWalletCatalogMapsSafely,
   serializeSubscriptionForClient,
 } = require("../services/subscription/subscriptionClientSerializationService");
+const {
+  READ_ERROR_CODE: STACKING_EXTRA_READ_ERROR_CODE,
+  projectSubscriptionStackingExtrasForRead,
+} = require("../services/subscription/subscriptionStackingExtraReadProjectionService");
 const {
   resolveSubscriptionDeliveryDefaultsUpdate,
   performDeliveryDetailsUpdate,
@@ -751,8 +756,8 @@ function buildSubscriptionCheckoutStatusPayload({ draft, payment, providerInvoic
 }
 
 async function autoFinalizePaidCheckoutDraft({ draft, payment, providerInvoice }, runtimeOverrides = null) {
-  if (!draft || !payment || !payment._id || payment.applied) {
-    return { applied: false, alreadyApplied: Boolean(payment && payment.applied) };
+  if (!draft || !payment || !payment._id || hasMinimumAppliedLink(payment)) {
+    return { applied: false, alreadyApplied: hasMinimumAppliedLink(payment) };
   }
   if (String(payment.status).trim().toLowerCase() !== "paid") {
     return { applied: false, reason: "payment_not_paid" };
@@ -783,10 +788,14 @@ async function autoFinalizePaidCheckoutDraft({ draft, payment, providerInvoice }
       session.endSession();
       return { applied: false, reason: "payment_not_found" };
     }
-    if (paymentInSession.applied) {
+    if (hasMinimumAppliedLink(paymentInSession)) {
       await session.commitTransaction();
       session.endSession();
       return { applied: false, alreadyApplied: true };
+    }
+    if (paymentInSession.applied) {
+      paymentInSession.applied = false;
+      await paymentInSession.save({ session });
     }
 
     const claimedPayment = await Payment.findOneAndUpdate(
@@ -1379,7 +1388,11 @@ async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
       });
     }
 
-    if (!paymentInSession.applied) {
+    if (!hasMinimumAppliedLink(paymentInSession)) {
+      if (paymentInSession.applied) {
+        paymentInSession.applied = false;
+        await paymentInSession.save({ session });
+      }
       // Atomic guard: exactly one process can transition applied from false to true
       const claimedPayment = await Payment.findOneAndUpdate(
         { _id: paymentInSession._id, applied: false },
@@ -1496,7 +1509,8 @@ async function activateSubscription(req, res) {
     const start = new Date(sub.startDate);
     if (sub.planId && sub.planId.daysCount) {
       sub.endDate = addDays(start, sub.planId.daysCount - 1);
-      sub.validityEndDate = sub.endDate;
+      sub.timelineExtraDays = resolvePlanTimelineExtraDays(sub.planId);
+      sub.validityEndDate = addDays(sub.endDate, sub.timelineExtraDays);
     }
     await sub.save();
     return res.status(200).json({ status: true, data: await serializeSubscriptionForClient(sub, lang) });
@@ -1550,7 +1564,7 @@ async function activateSubscription(req, res) {
     await paymentInSession.save({ session });
 
     // Run the real canonical activation
-    const result = await finalizeSubscriptionDraftPaymentFlow(
+    const result = await sliceBDefaultRuntime().finalizeSubscriptionDraftPaymentFlow(
       { draft: draftInSession, payment: paymentInSession, session }
     );
 
@@ -1598,10 +1612,17 @@ async function getSubscription(req, res) {
   }
   const lang = getRequestLang(req);
 
-  return res.status(200).json({
-    status: true,
-    data: await serializeSubscriptionForClient(sub, lang),
-  });
+  try {
+    return res.status(200).json({
+      status: true,
+      data: await serializeSubscriptionForClient(sub, lang),
+    });
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
 }
 
 async function getCurrentSubscriptionOverview(req, res) {
@@ -1620,6 +1641,9 @@ async function getCurrentSubscriptionOverview(req, res) {
       stack: err.stack,
       userId: userId ? String(userId) : undefined,
     });
+    if (err && (err.status === 503 || err.code === STACKING_EXTRA_READ_ERROR_CODE)) {
+      return errorResponse(res, 503, err.code || "STACKING_READ_UNAVAILABLE", err.message, err.details);
+    }
     return errorResponse(res, 500, "INTERNAL_CURRENT_OVERVIEW", "Failed to retrieve current subscription");
   }
 }
@@ -2192,12 +2216,21 @@ async function getSubscriptionDays(req, res) {
   }
   // Settlement on read intentionally removed — meals are not consumed by date passage.
   const days = await SubscriptionDay.find({ subscriptionId: id }).sort({ date: 1 }).lean();
-  const serializedDays = days.map((day) => serializeSubscriptionDayForClient(sub, day));
+  const businessDate = await getRestaurantBusinessDate();
+  let readSubscription;
+  try {
+    readSubscription = await projectSubscriptionStackingExtrasForRead(sub, businessDate);
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
+  const serializedDays = days.map((day) => serializeSubscriptionDayForClient(readSubscription, day));
   const catalog = await loadWalletCatalogMaps({ days: serializedDays, lang });
   const pickupLocations = await getPickupLocationsSetting();
-  const businessDate = await getRestaurantBusinessDate();
   const mappedDays = serializedDays.map((day) => shapeMealPlannerReadFields({
-    subscription: sub,
+    subscription: readSubscription,
     day: localizeSubscriptionDayReadPayload(day, {
       lang,
       addonNames: catalog.addonNames,
@@ -2230,7 +2263,16 @@ async function getSubscriptionDay(req, res) {
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found");
   }
-  const serializedDay = serializeSubscriptionDayForClient(sub, day);
+  let readSubscription;
+  try {
+    readSubscription = await projectSubscriptionStackingExtrasForRead(sub, date);
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
+  const serializedDay = serializeSubscriptionDayForClient(readSubscription, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
   const pickupLocations = await getPickupLocationsSetting();
   const localizedDay = localizeSubscriptionDayReadPayload(serializedDay, {
@@ -2240,7 +2282,7 @@ async function getSubscriptionDay(req, res) {
   return res.status(200).json({
     status: true,
     data: shapeMealPlannerReadFields({
-      subscription: sub,
+      subscription: readSubscription,
       day: localizedDay,
       lang,
       pickupLocations,
@@ -2270,7 +2312,16 @@ async function getSubscriptionToday(req, res) {
   if (!day) {
     return errorResponse(res, 404, "NOT_FOUND", "Day not found");
   }
-  const serializedDay = serializeSubscriptionDayForClient(sub, day);
+  let readSubscription;
+  try {
+    readSubscription = await projectSubscriptionStackingExtrasForRead(sub, today);
+  } catch (err) {
+    if (err && err.code === STACKING_EXTRA_READ_ERROR_CODE) {
+      return errorResponse(res, 503, err.code, err.message, err.details);
+    }
+    throw err;
+  }
+  const serializedDay = serializeSubscriptionDayForClient(readSubscription, day);
   const catalog = await loadWalletCatalogMaps({ days: [serializedDay], lang });
   const pickupLocations = await getPickupLocationsSetting();
   const localizedDay = localizeSubscriptionDayReadPayload(serializedDay, {
@@ -2280,7 +2331,7 @@ async function getSubscriptionToday(req, res) {
   return res.status(200).json({
     status: true,
     data: shapeMealPlannerReadFields({
-      subscription: sub,
+      subscription: readSubscription,
       day: localizedDay,
       lang,
       pickupLocations,
@@ -2407,11 +2458,20 @@ async function getSubscriptionAddonChoices(req, res) {
     } else if (req.userId) {
       allowanceSubscription = await findCurrentSubscriptionForUser(req.userId, { SubscriptionModel: Subscription });
     }
+    const businessDate = allowanceSubscription ? await getRestaurantBusinessDate() : null;
+    if (allowanceSubscription) {
+      allowanceSubscription = await projectSubscriptionStackingExtrasForRead(
+        allowanceSubscription,
+        businessDate
+      );
+    }
     const addonChoiceGroups = await buildAddonChoiceGroups({
       lang,
       category: requestedCategory,
       subscription: allowanceSubscription,
       userId: req.userId,
+      businessDate,
+      stackingExtraProjectionApplied: true,
     });
     const responseData = buildAddonChoicesCompatibilityMap(addonChoiceGroups);
     const response = {

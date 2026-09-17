@@ -1,3 +1,7 @@
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
@@ -278,10 +282,26 @@ async function run() {
       config: stalePublishedConfig,
       lang: "en",
     });
-    const publishedSaladProduct = publishedPlannerCatalog.sections
+    const publishedSaladProducts = publishedPlannerCatalog.sections
       .flatMap((section) => section.products || [])
-      .find((product) => product.key === "premium_large_salad");
-    const publishedProteinGroup = publishedSaladProduct.optionGroups.find((group) => group.key === "proteins");
+      .filter((product) => product.key === "premium_large_salad");
+    assert.strictEqual(
+      publishedSaladProducts.length,
+      1,
+      "published planner exposes Premium Large Salad exactly once"
+    );
+    const [publishedSaladProduct] = publishedSaladProducts;
+    assert.strictEqual(
+      publishedSaladProduct.selectionType,
+      "premium_large_salad",
+      "published Premium Large Salad keeps its canonical selection type"
+    );
+    const publishedProteinGroup = publishedSaladProduct.optionGroups.find(
+      (group) => group.key === "protein"
+    );
+    assert(publishedProteinGroup, "published planner exposes the canonical protein group");
+    assert.strictEqual(publishedProteinGroup.canonicalGroupKey, "protein");
+    assert.strictEqual(publishedProteinGroup.sourceKey, "proteins");
     assert.deepStrictEqual(
       publishedProteinGroup.options.map((option) => option.key),
       ["grilled_chicken"],

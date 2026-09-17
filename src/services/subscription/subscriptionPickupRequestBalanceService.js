@@ -2,10 +2,14 @@
 
 const Subscription = require("../../models/Subscription");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
+const SubscriptionEntitlementAllocation = require("../../models/SubscriptionEntitlementAllocation");
+const subscriptionMealEntitlementService = require("./subscriptionMealEntitlementService");
 const {
-  reservePickupEntitlements,
-  transitionPickupEntitlements,
-} = require("./subscriptionMealEntitlementService");
+  reservePlannedStackingPickupEntitlements,
+} = require("./subscriptionStackingPlannedPickupRouterService");
+const {
+  applyLegacyPickupRelease,
+} = require("./subscriptionLegacyMealBalanceOperationService");
 
 function createServiceError(code, message, status = 400) {
   const err = new Error(message);
@@ -33,6 +37,240 @@ function withOptionalSession(options, session) {
   return session ? { ...options, session } : options;
 }
 
+function normalizeSlotKey(value) {
+  if (value === undefined || value === null) return "";
+  return String(value).trim();
+}
+
+function collectPickupSlotKeys(pickupRequest = {}) {
+  const ordered = [];
+  const seen = new Set();
+  const add = (value) => {
+    const key = normalizeSlotKey(value);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(key);
+  };
+
+  (Array.isArray(pickupRequest.selectedMealSlotIds) ? pickupRequest.selectedMealSlotIds : []).forEach(add);
+  (Array.isArray(pickupRequest.selectedPickupItemIds) ? pickupRequest.selectedPickupItemIds : []).forEach(add);
+
+  for (const item of Array.isArray(pickupRequest.selectedPickupItems) ? pickupRequest.selectedPickupItems : []) {
+    if (!item || typeof item !== "object") continue;
+    add(item.slotKey);
+    add(item.slotId);
+    if (item.source === "mealSlot") add(item.sourceId);
+    if (["meal", "premium_meal", "large_salad", "sandwich"].includes(String(item.itemType || ""))) add(item.itemId);
+  }
+
+  const snapshotSlots = pickupRequest.snapshot && Array.isArray(pickupRequest.snapshot.mealSlots)
+    ? pickupRequest.snapshot.mealSlots
+    : [];
+  for (const slot of snapshotSlots) {
+    if (!slot || typeof slot !== "object") continue;
+    add(slot.slotKey || (slot.slotIndex ? `slot_${slot.slotIndex}` : null));
+  }
+
+  return ordered;
+}
+
+async function releaseLinkedDayAllocationClaims({
+  subscriptionId,
+  pickupRequestId,
+  allocationKeys,
+  session = null,
+} = {}) {
+  const keys = Array.isArray(allocationKeys) ? allocationKeys.filter(Boolean) : [];
+  if (!keys.length) return;
+  await Subscription.updateOne(
+    { _id: subscriptionId },
+    { $set: { "baseMealAllocations.$[allocation].pickupRequestId": null } },
+    withOptionalSession({
+      arrayFilters: [{
+        "allocation.allocationKey": { $in: keys },
+        "allocation.pickupRequestId": pickupRequestId,
+      }],
+    }, session)
+  );
+}
+
+async function releaseStackingPickupAllocationClaims({
+  subscriptionId,
+  pickupRequestId,
+  allocationKeys,
+  session = null,
+} = {}) {
+  const keys = Array.isArray(allocationKeys)
+    ? allocationKeys.map((key) => String(key || "")).filter(Boolean)
+    : [];
+  if (!keys.length) return { modifiedCount: 0 };
+  return SubscriptionEntitlementAllocation.updateMany(
+    {
+      containerSubscriptionId: subscriptionId,
+      allocationKey: { $in: keys },
+      state: "reserved",
+      pickupRequestId,
+    },
+    { $set: { pickupRequestId: null } },
+    withOptionalSession({}, session)
+  );
+}
+
+async function claimLinkedDayAllocations({
+  subscriptionId,
+  pickupRequest,
+  mealCount,
+  session = null,
+} = {}) {
+  const linkedDayId = pickupRequest && pickupRequest.subscriptionDayId;
+  if (!linkedDayId) {
+    return { hasLinkedDayAllocations: false, allocationKeys: [], newlyClaimedKeys: [] };
+  }
+
+  const subscriptionQuery = Subscription.findById(subscriptionId).select("baseMealAllocations");
+  if (session) subscriptionQuery.session(session);
+  const subscription = await subscriptionQuery.lean();
+  if (!subscription) {
+    throw createServiceError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
+  }
+
+  const dayAllocations = (Array.isArray(subscription.baseMealAllocations) ? subscription.baseMealAllocations : [])
+    .filter((allocation) => String(allocation.dayId || "") === String(linkedDayId));
+  if (!dayAllocations.length) {
+    return { hasLinkedDayAllocations: false, allocationKeys: [], newlyClaimedKeys: [] };
+  }
+
+  const requestedSlotKeys = collectPickupSlotKeys(pickupRequest);
+  const requestedSet = new Set(requestedSlotKeys);
+  const matching = requestedSet.size > 0
+    ? dayAllocations.filter((allocation) => requestedSet.has(normalizeSlotKey(allocation.slotKey)))
+    : dayAllocations;
+  const eligible = matching.filter((allocation) => (
+    allocation.state === "reserved"
+      && (!allocation.pickupRequestId || String(allocation.pickupRequestId) === String(pickupRequest._id))
+  ));
+
+  const orderedEligible = requestedSlotKeys.length > 0
+    ? requestedSlotKeys.flatMap((slotKey) => eligible.filter((allocation) => normalizeSlotKey(allocation.slotKey) === slotKey))
+    : eligible;
+  const uniqueEligible = [];
+  const seen = new Set();
+  for (const allocation of orderedEligible) {
+    const key = String(allocation.allocationKey || "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    uniqueEligible.push(allocation);
+  }
+
+  if (uniqueEligible.length < mealCount) {
+    throw createServiceError(
+      "MEAL_SLOT_UNAVAILABLE",
+      "Linked day entitlement is not available for this pickup request",
+      409
+    );
+  }
+
+  const allocationKeys = [];
+  const newlyClaimedKeys = [];
+  for (const allocation of uniqueEligible.slice(0, mealCount)) {
+    const allocationKey = String(allocation.allocationKey);
+    if (allocation.pickupRequestId && String(allocation.pickupRequestId) === String(pickupRequest._id)) {
+      allocationKeys.push(allocationKey);
+      continue;
+    }
+
+    const updated = await Subscription.findOneAndUpdate(
+      {
+        _id: subscriptionId,
+        baseMealAllocations: {
+          $elemMatch: {
+            allocationKey,
+            state: "reserved",
+            pickupRequestId: null,
+          },
+        },
+      },
+      { $set: { "baseMealAllocations.$[allocation].pickupRequestId": pickupRequest._id } },
+      withOptionalSession({
+        new: true,
+        arrayFilters: [{
+          "allocation.allocationKey": allocationKey,
+          "allocation.state": "reserved",
+          "allocation.pickupRequestId": null,
+        }],
+      }, session)
+    ).lean();
+
+    if (!updated) {
+      const rereadQuery = Subscription.findById(subscriptionId).select("baseMealAllocations");
+      if (session) rereadQuery.session(session);
+      const reread = await rereadQuery.lean();
+      const current = (reread && reread.baseMealAllocations || [])
+        .find((entry) => String(entry.allocationKey || "") === allocationKey);
+      if (current && current.state === "reserved" && String(current.pickupRequestId || "") === String(pickupRequest._id)) {
+        allocationKeys.push(allocationKey);
+        continue;
+      }
+      await releaseLinkedDayAllocationClaims({
+        subscriptionId,
+        pickupRequestId: pickupRequest._id,
+        allocationKeys: newlyClaimedKeys,
+        session,
+      });
+      throw createServiceError("MEAL_SLOT_UNAVAILABLE", "Linked day entitlement was claimed by another pickup request", 409);
+    }
+
+    allocationKeys.push(allocationKey);
+    newlyClaimedKeys.push(allocationKey);
+  }
+
+  return { hasLinkedDayAllocations: true, allocationKeys, newlyClaimedKeys };
+}
+
+async function cleanupReservationAttempt({
+  subscriptionId,
+  pickupRequestId,
+  newlyReservedKeys = [],
+  newlyClaimedKeys = [],
+  newlyStackingClaimedKeys = [],
+  session = null,
+} = {}) {
+  let firstError = null;
+  for (const allocationKey of newlyReservedKeys) {
+    try {
+      await subscriptionMealEntitlementService.transitionPickupEntitlements({
+        subscriptionId,
+        allocationKeys: [allocationKey],
+        toState: "released",
+        session,
+      });
+    } catch (err) {
+      firstError = firstError || err;
+    }
+  }
+  try {
+    await releaseLinkedDayAllocationClaims({
+      subscriptionId,
+      pickupRequestId,
+      allocationKeys: newlyClaimedKeys,
+      session,
+    });
+  } catch (err) {
+    firstError = firstError || err;
+  }
+  try {
+    await releaseStackingPickupAllocationClaims({
+      subscriptionId,
+      pickupRequestId,
+      allocationKeys: newlyStackingClaimedKeys,
+      session,
+    });
+  } catch (err) {
+    firstError = firstError || err;
+  }
+  if (firstError) throw firstError;
+}
+
 async function findPickupRequestOrThrow(pickupRequestId, session) {
   if (!pickupRequestId) {
     throw createServiceError("INVALID_ARGUMENTS", "pickupRequestId is required", 400);
@@ -45,14 +283,6 @@ async function findPickupRequestOrThrow(pickupRequestId, session) {
     throw createServiceError("PICKUP_REQUEST_NOT_FOUND", "Pickup request not found", 404);
   }
   return pickupRequest;
-}
-
-async function refundReservedDecrement({ subscriptionId, mealCount, session }) {
-  await Subscription.updateOne(
-    { _id: subscriptionId },
-    { $inc: { remainingMeals: mealCount } },
-    withOptionalSession({}, session)
-  );
 }
 
 async function reserveSubscriptionMealsForPickupRequest({
@@ -95,35 +325,100 @@ async function reserveSubscriptionMealsForPickupRequest({
     };
   }
 
-  const reservation = await reservePickupEntitlements({
-    subscriptionId,
-    pickupRequest,
-    session,
-  });
+  let linkedDayClaim = {
+    hasLinkedDayAllocations: false,
+    allocationKeys: [],
+    newlyClaimedKeys: [],
+  };
+  let stackingReservation = { handled: false, reservation: null };
+  let reservation;
+  try {
+    stackingReservation = await reservePlannedStackingPickupEntitlements({
+      subscriptionId,
+      pickupRequest,
+      session,
+    });
+
+    if (stackingReservation.handled) {
+      reservation = stackingReservation.reservation;
+    } else {
+      linkedDayClaim = await claimLinkedDayAllocations({
+        subscriptionId,
+        pickupRequest,
+        mealCount: resolvedMealCount,
+        session,
+      });
+      reservation = linkedDayClaim.hasLinkedDayAllocations
+        ? { allocationKeys: linkedDayClaim.allocationKeys, newlyReservedKeys: [] }
+        : await subscriptionMealEntitlementService.reservePickupEntitlements({
+          subscriptionId,
+          pickupRequest,
+          session,
+        });
+    }
+  } catch (err) {
+    await releaseLinkedDayAllocationClaims({
+      subscriptionId,
+      pickupRequestId: pickupRequest._id,
+      allocationKeys: linkedDayClaim.newlyClaimedKeys,
+      session,
+    }).catch(() => {});
+    await releaseStackingPickupAllocationClaims({
+      subscriptionId,
+      pickupRequestId: pickupRequest._id,
+      allocationKeys: stackingReservation.reservation && stackingReservation.reservation.newlyClaimedKeys,
+      session,
+    }).catch(() => {});
+    throw err;
+  }
 
   const now = new Date();
-  const updatedPickupRequest = await SubscriptionPickupRequest.findOneAndUpdate(
-    { _id: pickupRequestId, creditsReserved: { $ne: true } },
-    {
-      $set: {
-        creditsReserved: true,
-        creditsReservedAt: now,
-        baseAllocationKeys: reservation.allocationKeys,
+  let updatedPickupRequest;
+  try {
+    updatedPickupRequest = await SubscriptionPickupRequest.findOneAndUpdate(
+      { _id: pickupRequestId, creditsReserved: { $ne: true } },
+      {
+        $set: {
+          creditsReserved: true,
+          creditsReservedAt: now,
+          baseAllocationKeys: reservation.allocationKeys,
+          baseAllocationMode: stackingReservation.handled || linkedDayClaim.hasLinkedDayAllocations
+            ? "linked_day"
+            : "standalone",
+        },
       },
-    },
-    withOptionalSession({ new: true }, session)
-  );
+      withOptionalSession({ new: true }, session)
+    );
+  } catch (err) {
+    await cleanupReservationAttempt({
+      subscriptionId,
+      pickupRequestId: pickupRequest._id,
+      newlyReservedKeys: reservation.newlyReservedKeys,
+      newlyClaimedKeys: linkedDayClaim.newlyClaimedKeys,
+      newlyStackingClaimedKeys: reservation.newlyClaimedKeys,
+      session,
+    }).catch(() => {});
+    throw err;
+  }
 
   if (!updatedPickupRequest) {
-    for (const allocationKey of reservation.newlyReservedKeys) {
-      await transitionPickupEntitlements({
+    const currentPickupRequest = await findPickupRequestOrThrow(pickupRequestId, session);
+    const currentKeys = new Set(
+      (Array.isArray(currentPickupRequest.baseAllocationKeys) ? currentPickupRequest.baseAllocationKeys : [])
+        .map((key) => String(key))
+    );
+    const currentOwnsReservation = Boolean(currentPickupRequest.creditsReserved)
+      && reservation.allocationKeys.every((key) => currentKeys.has(String(key)));
+    if (!currentOwnsReservation) {
+      await cleanupReservationAttempt({
         subscriptionId,
-        allocationKeys: [allocationKey],
-        toState: "released",
+        pickupRequestId: pickupRequest._id,
+        newlyReservedKeys: reservation.newlyReservedKeys,
+        newlyClaimedKeys: linkedDayClaim.newlyClaimedKeys,
+        newlyStackingClaimedKeys: reservation.newlyClaimedKeys,
         session,
       });
     }
-    const currentPickupRequest = await findPickupRequestOrThrow(pickupRequestId, session);
     return {
       reserved: false,
       alreadyReserved: Boolean(currentPickupRequest.creditsReserved),
@@ -155,7 +450,7 @@ async function consumeReservedPickupMeals({
     return buildZeroMealResult("consumed", existing);
   }
   if (Array.isArray(existing.baseAllocationKeys) && existing.baseAllocationKeys.length > 0) {
-    await transitionPickupEntitlements({
+    await subscriptionMealEntitlementService.transitionPickupEntitlements({
       subscriptionId: existing.subscriptionId,
       allocationKeys: existing.baseAllocationKeys,
       toState: entitlementState,
@@ -222,11 +517,22 @@ async function releaseReservedPickupMeals({
     }
     return buildZeroMealResult("released", existing);
   }
-  if (Array.isArray(existing.baseAllocationKeys) && existing.baseAllocationKeys.length > 0) {
-    await transitionPickupEntitlements({
+  const mealCount = Number(existing.mealCount || 0);
+  assertPositiveMealCount(mealCount);
+  const hasAllocationKeys = Array.isArray(existing.baseAllocationKeys)
+    && existing.baseAllocationKeys.length > 0;
+  if (hasAllocationKeys) {
+    await subscriptionMealEntitlementService.transitionPickupEntitlements({
       subscriptionId,
       allocationKeys: existing.baseAllocationKeys,
       toState: "released",
+      session,
+    });
+  } else {
+    await applyLegacyPickupRelease({
+      subscriptionId,
+      pickupRequestId,
+      mealCount,
       session,
     });
   }
@@ -262,17 +568,6 @@ async function releaseReservedPickupMeals({
       throw createServiceError("CREDITS_NOT_RESERVED", "Pickup request meals are not reserved", 409);
     }
     throw createServiceError("INVALID_PICKUP_REQUEST_STATE", "Pickup request cannot be released", 409);
-  }
-
-  const mealCount = Number(releasedPickupRequest.mealCount || 0);
-  assertPositiveMealCount(mealCount);
-
-  if (!Array.isArray(releasedPickupRequest.baseAllocationKeys) || releasedPickupRequest.baseAllocationKeys.length === 0) {
-    await Subscription.updateOne(
-      { _id: subscriptionId },
-      { $inc: { remainingMeals: mealCount } },
-      withOptionalSession({}, session)
-    );
   }
 
   return {

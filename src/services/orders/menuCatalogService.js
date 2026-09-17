@@ -370,7 +370,9 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
           return null;
         }
         if (!option || !isCustomerVisibleOption(option, group, product)) return null;
-        return serializePublicOption(optionRelation, option, lang);
+        return serializePublicOption(optionRelation, option, lang, {
+          catalogItem: catalogItemsById.get(String(option.catalogItemId || "")) || null,
+        });
       })
       .filter(Boolean)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -392,7 +394,13 @@ async function getPublishedMenu({ lang = "en", branchId = "" } = {}) {
     const groupsForProduct = Array.isArray(product._publicGroups)
       ? product._publicGroups.sort((a, b) => a.sortOrder - b.sortOrder)
       : [];
-    productsByCategory.get(categoryId).push(serializePublicProduct(product, lang, groupsForProduct, publicCategory._id));
+    productsByCategory.get(categoryId).push(serializePublicProduct(
+      product,
+      lang,
+      groupsForProduct,
+      publicCategory._id,
+      { catalogItem: catalogItemsById.get(String(product.catalogItemId || "")) || null }
+    ));
   });
 
   const serializedCategories = categories
@@ -627,6 +635,10 @@ function createProductGroupOption(productId, groupId, body, actor) {
   return menuCatalogAdminService.createProductGroupOption(productId, groupId, body, actor);
 }
 
+function ensureOptionProteinFamilyForCard(optionId, context, actor) {
+  return menuCatalogAdminService.ensureOptionProteinFamilyForCard(optionId, context, actor);
+}
+
 function deleteProductGroupOption(productId, groupId, optionId, actor) {
   return menuCatalogAdminService.deleteProductGroupOption(productId, groupId, optionId, actor);
 }
@@ -740,7 +752,7 @@ module.exports = {
   hasPublishedMenuCatalog,
   listCategories: (options) => menuCatalogAdminService.listCategories(options),
   listProducts,
-  listOptionGroups: (options) => listModel(MenuOptionGroup, options),
+  listOptionGroups: (options) => menuCatalogAdminService.listOptionGroups(options),
   listOptions,
   getCategory: getCategoryDetail,
   getProduct: getProductDetail,
@@ -785,6 +797,7 @@ module.exports = {
   replaceProductGroupOptions,
   getProductGroupOptionPool,
   createProductGroupOption,
+  ensureOptionProteinFamilyForCard,
   updateProductGroupOption,
   deleteProductGroupOption,
   updateProductGroupOptionVisibility: (productId, groupId, optionId, body, actor) => updateProductGroupOption(productId, groupId, optionId, { isVisible: body.isVisible }, actor, "visibility_changed"),

@@ -304,6 +304,8 @@ router.post(
 );
 router.get("/promo-codes", asyncHandler(promoCodeController.listPromoCodesAdmin));
 router.post("/promo-codes/validate", asyncHandler(promoCodeController.validatePromoCodeAdmin));
+router.get("/promo-codes/app-selection", asyncHandler(promoCodeController.getAppPromoSelectionAdmin));
+router.put("/promo-codes/app-selection", asyncHandler(promoCodeController.updateAppPromoSelectionAdmin));
 router.get("/promo-codes/:id", asyncHandler(promoCodeController.getPromoCodeAdmin));
 router.post("/promo-codes", asyncHandler(promoCodeController.createPromoCodeAdmin));
 router.put("/promo-codes/:id", asyncHandler(promoCodeController.updatePromoCodeAdmin));

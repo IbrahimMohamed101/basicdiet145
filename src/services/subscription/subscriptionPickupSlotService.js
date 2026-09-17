@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const { buildKitchenDetailsPayload } = require("../dashboard/opsPayloadService");
 const { buildDayCommercialState, evaluateAddonChoicePayment } = require("./subscriptionDayCommercialStateService");
+const { hydrateSubscriptionDayMealSources } = require("./subscriptionDayMealSourceService");
 
 const ACTIVE_OR_CONSUMING_PICKUP_STATUSES = ["locked", "in_preparation", "ready_for_pickup", "fulfilled", "no_show"];
 
@@ -605,6 +606,21 @@ function itemTypeForSelectionType(selectionType, isPremium = false) {
   return "unknown";
 }
 
+const BASE_MEAL_PICKUP_ITEM_TYPES = new Set([
+  "meal",
+  "premium_meal",
+  "large_salad",
+  "sandwich",
+]);
+
+function pickupItemConsumesBaseMealCredit(item = {}) {
+  return Boolean(
+    item
+      && item.slotId
+      && BASE_MEAL_PICKUP_ITEM_TYPES.has(String(item.itemType || ""))
+  );
+}
+
 function categoryKeyForItemType(itemType) {
   const map = {
     meal: "meals",
@@ -1030,7 +1046,7 @@ function buildSlotReservationMap(pickupRequests = []) {
       map.set(id, {
         requestId: String(request._id),
         status: request.status,
-        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled" || request.status === "no_show"),
+        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled"),
       });
     }
   }
@@ -1049,7 +1065,7 @@ function buildPickupItemReservationMap(pickupRequests = []) {
       map.set(id, {
         requestId: String(request._id),
         status: request.status,
-        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled" || request.status === "no_show"),
+        consumed: Boolean(request.creditsConsumedAt || request.status === "fulfilled"),
       });
     }
   }
@@ -1136,7 +1152,8 @@ function filterAvailabilityForVisibility(availability, { includeUnavailable = fa
 }
 
 function buildAvailabilityFromDay({ day, pickupRequests = [], subscription = {}, catalogMaps = {}, addonChoiceGroups = null }) {
-  const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(day || {}, catalogMaps);
+  const hydratedDay = hydrateSubscriptionDayMealSources(day || {});
+  const resolvedDay = enrichDayMealSlotsWithResolvedSnapshots(hydratedDay, catalogMaps);
   const commercialState = buildDayCommercialState(resolvedDay || {}, { subscription });
   const addonCategoryAllowances = Array.isArray(commercialState.addonCategoryAllowances)
     ? commercialState.addonCategoryAllowances.map(normalizeAddonCategoryAllowance)
@@ -1265,11 +1282,11 @@ async function assertSelectedPickupItemsAvailable({
     selectedPickupItems: normalizedIds.map((id) => byId.get(id)),
     selectedMealSlotIds: normalizedIds.filter((id) => {
       const item = byId.get(id);
-      return item && item.slotId && ["meal", "premium_meal", "large_salad", "sandwich"].includes(item.itemType);
+      return pickupItemConsumesBaseMealCredit(item);
     }),
     mealCreditCount: normalizedIds.filter((id) => {
       const item = byId.get(id);
-      return item && ["meal", "premium_meal"].includes(item.itemType);
+      return pickupItemConsumesBaseMealCredit(item);
     }).length,
     availability,
   };
@@ -1331,6 +1348,7 @@ module.exports = {
   filterAvailabilityForVisibility,
   normalizeSelectedMealSlotIds,
   normalizeSelectedPickupItemIds,
+  pickupItemConsumesBaseMealCredit,
   resolveCanonicalPaymentReason,
   resolveSlotId,
   expandDayAddonPickupItems,

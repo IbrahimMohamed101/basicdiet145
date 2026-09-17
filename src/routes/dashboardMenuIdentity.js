@@ -4,9 +4,10 @@ const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middlew
 
 const router = Router();
 
-// Dashboard-only read-only endpoints for menu identity mapping
+// Dashboard-only menu identity endpoints. Restaurant staff may review and
+// resolve catalog identity suggestions as part of day-to-day menu management.
 router.use(dashboardAuthMiddleware);
-router.use(dashboardRoleMiddleware(["admin"])); // superadmin also allowed via middleware logic
+router.use(dashboardRoleMiddleware(["admin", "restaurant"])); // superadmin also allowed via middleware logic
 
 router.get("/menu-identities", menuIdentityController.listMenuIdentities);
 router.get("/menu-identities/:id", menuIdentityController.getMenuIdentity);

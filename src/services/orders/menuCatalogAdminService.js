@@ -1,3 +1,27 @@
+const {
+  decorateDashboardGroup,
+  isVerifiedFixtureGroup,
+  normalDashboardGroupQuery,
+  normalDashboardProductQuery,
+} = require("./menuOptionGroupDashboardPolicy");
+const {
+  PROTEIN_FAMILY_KEYS,
+  normalizeExplicitProteinFamilyKey,
+  resolveProteinFamilyClassification,
+} = require("../../config/mealPlannerContract");
+
+const NORMAL_PROTEIN_FAMILY_KEY_SET = new Set(PROTEIN_FAMILY_KEYS);
+
+function isProteinOptionGroup(group = {}) {
+  const explicitRole = String(
+    group.optionRole || group.role || group.metadata?.optionRole || ""
+  ).trim().toLowerCase();
+  if (explicitRole) return explicitRole === "protein";
+  return ["protein", "proteins"].includes(
+    String(group.key || "").trim().toLowerCase()
+  );
+}
+
 function createMenuCatalogAdminService(deps) {
   const {
     mongoose,
@@ -77,6 +101,22 @@ function createMenuCatalogAdminService(deps) {
   const hasOwn = (source, fieldName) => Object.prototype.hasOwnProperty.call(source || {}, fieldName);
   const isProvided = (source, fieldName) => hasOwn(source, fieldName) && source[fieldName] !== undefined;
 
+  function assertGroupNotQuarantined(group) {
+    if (isVerifiedFixtureGroup(group)) {
+      throw new MenuValidationError(
+        "Quarantined test fixture groups are read-only in Dashboard",
+        "MENU_OPTION_GROUP_QUARANTINED",
+        409
+      );
+    }
+  }
+
+  async function assertOptionNotInQuarantinedGroup(option) {
+    if (!option?.groupId) return;
+    const group = await MenuOptionGroup.findById(option.groupId).lean();
+    assertGroupNotQuarantined(group);
+  }
+
   function assertNonNullablePatchFields(body, existing, fieldNames) {
     if (!existing) return;
     const fieldName = fieldNames.find((field) => hasOwn(body, field) && body[field] === null);
@@ -107,7 +147,7 @@ function createMenuCatalogAdminService(deps) {
   }
 
   function serializeDashboardOptionGroup(group) {
-    return serializeDoc(group);
+    return decorateDashboardGroup(serializeDoc(group), group);
   }
 
   function serializeDashboardProductGroupRelation(relation) {
@@ -121,6 +161,7 @@ function createMenuCatalogAdminService(deps) {
   function serializeDashboardOption(option) {
     const payload = serializeDoc(option);
     if (!payload) return null;
+    const familyResolution = resolveProteinFamilyClassification(payload);
 
     const extraPrice = payload.extraPriceHalala || 0;
     const extraFee = (payload.extraFeeHalala !== undefined && payload.extraFeeHalala !== null && payload.extraFeeHalala !== 0)
@@ -145,6 +186,8 @@ function createMenuCatalogAdminService(deps) {
       nutrition: payload.nutrition || { calories: 0, proteinGrams: 0, carbGrams: 0, fatGrams: 0 },
       proteinFamilyKey: payload.proteinFamilyKey || "",
       displayCategoryKey: payload.displayCategoryKey || "",
+      resolvedFamilyKey: familyResolution.familyKey || "",
+      familyResolutionSource: familyResolution.source,
       premiumKey: payload.premiumKey || "",
       ruleTags: payload.ruleTags || [],
       selectionType: payload.selectionType || "",
@@ -199,6 +242,7 @@ function createMenuCatalogAdminService(deps) {
         errors: [],
       })),
     ]);
+    const catalogItemsById = await loadCatalogItemsByIdForDocs(products, options);
 
     const categoryIds = new Set(categories.map((category) => String(category._id)));
     const categoriesById = new Map(categories.map((category) => [String(category._id), category]));
@@ -227,7 +271,9 @@ function createMenuCatalogAdminService(deps) {
         .map((optionRelation) => {
           const option = optionsById.get(String(optionRelation.optionId));
           if (!option) return null;
-          return serializeDashboardPreviewOption(optionRelation, option, lang);
+          return serializeDashboardPreviewOption(optionRelation, option, lang, {
+            catalogItem: catalogItemsById.get(String(option.catalogItemId || "")) || null,
+          });
         })
         .filter(Boolean)
         .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -245,7 +291,13 @@ function createMenuCatalogAdminService(deps) {
       const groupsForProduct = Array.isArray(product._publicGroups)
         ? product._publicGroups.sort((a, b) => a.sortOrder - b.sortOrder)
         : [];
-      productsByCategory.get(categoryId).push(serializeDashboardPreviewProduct(product, lang, groupsForProduct, category._id));
+      productsByCategory.get(categoryId).push(serializeDashboardPreviewProduct(
+        product,
+        lang,
+        groupsForProduct,
+        category._id,
+        { catalogItem: catalogItemsById.get(String(product.catalogItemId || "")) || null }
+      ));
     });
 
     const serializedCategories = categories
@@ -387,6 +439,7 @@ function createMenuCatalogAdminService(deps) {
 
   async function listProducts(options = {}) {
     const query = buildProductFilter(options);
+    Object.assign(query, normalDashboardProductQuery(options.includeQuarantined === true));
     const isPickerView = options.view === "picker" || options.view === "addon_plan_picker";
     if (isPickerView && !options.includeInactive) {
       query.isActive = true;
@@ -424,10 +477,22 @@ function createMenuCatalogAdminService(deps) {
   }
 
   async function listOptions(options = {}) {
+    const extraQuery = options && options.groupId
+      ? { groupId: assertObjectId(options.groupId, "groupId") }
+      : (options.includeQuarantined === true
+        ? {}
+        : { groupId: normalDashboardGroupQuery(false)._id });
+    if (options && options.groupId) {
+      const group = await MenuOptionGroup.findById(options.groupId).lean();
+      if (!group) throw new MenuNotFoundError("Option group not found");
+      if (isVerifiedFixtureGroup(group) && options.includeQuarantined !== true) {
+        throw new MenuNotFoundError("Option group not found");
+      }
+    }
     return listModel(
       MenuOption,
       options,
-      options && options.groupId ? { groupId: assertObjectId(options.groupId, "groupId") } : {},
+      extraQuery,
       serializeDashboardOption
     );
   }
@@ -498,7 +563,12 @@ function createMenuCatalogAdminService(deps) {
   }
 
   async function listOptionGroups(options = {}) {
-    return listModel(MenuOptionGroup, options, {}, serializeDashboardOptionGroup);
+    return listModel(
+      MenuOptionGroup,
+      options,
+      normalDashboardGroupQuery(options.includeQuarantined === true),
+      serializeDashboardOptionGroup
+    );
   }
 
   async function getModel(Model, id, extraQuery = {}) {
@@ -591,6 +661,7 @@ function createMenuCatalogAdminService(deps) {
     assertObjectId(id);
     const group = await MenuOptionGroup.findById(id).lean();
     if (!group) throw new MenuNotFoundError();
+    if (isVerifiedFixtureGroup(group) && options.includeQuarantined !== true) throw new MenuNotFoundError();
     const [optionsRows, linkedProductIds] = await Promise.all([
       MenuOption.find({
         groupId: id,
@@ -607,8 +678,8 @@ function createMenuCatalogAdminService(deps) {
         linkedProductsCount: linkedProductIds.length,
       },
       actions: {
-        canAddOptions: true,
-        canReorderOptions: true,
+        canAddOptions: !isVerifiedFixtureGroup(group),
+        canReorderOptions: !isVerifiedFixtureGroup(group),
       },
     };
   }
@@ -622,6 +693,7 @@ function createMenuCatalogAdminService(deps) {
       option.groupId ? MenuOptionGroup.findById(option.groupId).lean() : null,
       ProductGroupOption.distinct("productId", { optionId: id, isActive: true }),
     ]);
+    if (isVerifiedFixtureGroup(group) && options.includeQuarantined !== true) throw new MenuNotFoundError();
 
     return {
       contractVersion: "dashboard_option_detail.v3",
@@ -836,6 +908,11 @@ function createMenuCatalogAdminService(deps) {
       "extraWeightUnitGrams",
       "extraWeightPriceHalala",
       "availableFor",
+      "availableForSubscription",
+      "proteinFamilyKey",
+      "displayCategoryKey",
+      "selectionType",
+      "ruleTags",
       "isActive",
       "isVisible",
       "isAvailable",
@@ -875,10 +952,166 @@ function createMenuCatalogAdminService(deps) {
     if (!existing || hasOwn(body, "availableFor")) {
       payload.availableFor = normalizeAvailableFor(body.availableFor, "availableFor", ["one_time", "subscription"]);
     }
+    if (!existing || hasOwn(body, "availableForSubscription")) {
+      payload.availableForSubscription = normalizeBoolean(
+        body.availableForSubscription,
+        "availableForSubscription",
+        true
+      );
+    }
+    if (!existing || hasOwn(body, "proteinFamilyKey")) {
+      payload.proteinFamilyKey = String(body.proteinFamilyKey || "").trim().toLowerCase();
+    }
+    if (!existing || hasOwn(body, "displayCategoryKey")) {
+      payload.displayCategoryKey = String(body.displayCategoryKey || "").trim().toLowerCase();
+    }
+    if (!existing || hasOwn(body, "selectionType")) {
+      payload.selectionType = normalizeOptionalString(body.selectionType, "selectionType", "")
+        .toLowerCase();
+    }
+    if (!existing || hasOwn(body, "ruleTags")) {
+      payload.ruleTags = normalizeStringArray(body.ruleTags, "ruleTags");
+    }
     if (!existing || hasOwn(body, "isActive")) payload.isActive = normalizeBoolean(body.isActive, "isActive", true);
     if (!existing || hasOwn(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
     if (!existing || hasOwn(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
     if (!existing || hasOwn(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    return payload;
+  }
+
+  /**
+   * The only normal MenuOption authoring policy for protein classification.
+   * Global authoring requires an explicit family. Product-scoped family-card
+   * authoring may complete blank metadata, but never rewrites a conflict.
+   */
+  function normalizeOptionProteinClassification({
+    body = {},
+    payload = {},
+    existing = null,
+    group,
+    intendedFamilyKey = "",
+    allowBlankCompletion = false,
+  } = {}) {
+    const proteinGroup = isProteinOptionGroup(group);
+    const suppliedFamily = hasOwn(body, "proteinFamilyKey");
+    const suppliedDisplay = hasOwn(body, "displayCategoryKey");
+    const effectiveOption = { ...(existing || {}), ...payload };
+    const existingPremium = Boolean(
+      String(effectiveOption.premiumKey || "").trim() ||
+      ["premium_meal", "premium_large_salad"].includes(
+        String(effectiveOption.selectionType || "").trim().toLowerCase()
+      ) ||
+      String(effectiveOption.displayCategoryKey || "").trim().toLowerCase() === "premium"
+    );
+
+    if (existingPremium) {
+      if (suppliedFamily || suppliedDisplay || intendedFamilyKey) {
+        throw new MenuValidationError(
+          "Premium protein classification is system-managed",
+          "PREMIUM_OPTION_MANAGED_SEPARATELY",
+          422
+        );
+      }
+      return payload;
+    }
+
+    if (!proteinGroup) {
+      if (
+        intendedFamilyKey ||
+        (suppliedFamily && String(body.proteinFamilyKey || "").trim())
+      ) {
+        throw new MenuValidationError(
+          "proteinFamilyKey is only valid for protein option groups",
+          "PROTEIN_FAMILY_NOT_ALLOWED_FOR_GROUP",
+          422
+        );
+      }
+      if (suppliedFamily) delete payload.proteinFamilyKey;
+      return payload;
+    }
+
+    const requestedFamily = String(
+      intendedFamilyKey ||
+      (suppliedFamily ? body.proteinFamilyKey : existing?.proteinFamilyKey) ||
+      ""
+    ).trim().toLowerCase();
+    const familyKey = normalizeExplicitProteinFamilyKey(requestedFamily);
+    if (!familyKey || !NORMAL_PROTEIN_FAMILY_KEY_SET.has(familyKey)) {
+      throw new MenuValidationError(
+        "proteinFamilyKey must be one of: chicken, beef, fish, eggs, other",
+        requestedFamily ? "INVALID_PROTEIN_FAMILY_KEY" : "PROTEIN_FAMILY_REQUIRED",
+        422,
+        { allowedValues: [...PROTEIN_FAMILY_KEYS] }
+      );
+    }
+
+    const current = {
+      ...(existing || {}),
+      ...payload,
+    };
+    const currentClassification = resolveProteinFamilyClassification(current);
+    const rawExistingFamily = String(existing?.proteinFamilyKey || "").trim().toLowerCase();
+    const rawExistingDisplay = String(existing?.displayCategoryKey || "").trim().toLowerCase();
+
+    if (allowBlankCompletion) {
+      if (rawExistingFamily && normalizeExplicitProteinFamilyKey(rawExistingFamily) !== familyKey) {
+        throw new MenuValidationError(
+          "Option belongs to a different protein family",
+          "OPTION_FAMILY_MISMATCH",
+          422,
+          { expectedFamilyKey: familyKey, actualFamilyKey: rawExistingFamily }
+        );
+      }
+      if (
+        rawExistingDisplay &&
+        rawExistingDisplay !== familyKey &&
+        rawExistingDisplay !== "premium"
+      ) {
+        throw new MenuValidationError(
+          "Option display category conflicts with the selected protein family",
+          "OPTION_FAMILY_MISMATCH",
+          422,
+          { expectedFamilyKey: familyKey, actualDisplayCategoryKey: rawExistingDisplay }
+        );
+      }
+      if (
+        !rawExistingFamily &&
+        currentClassification.source === "legacy_static_key" &&
+        currentClassification.familyKey !== familyKey
+      ) {
+        throw new MenuValidationError(
+          "Legacy option classification conflicts with the selected protein family",
+          "OPTION_FAMILY_MISMATCH",
+          422,
+          { expectedFamilyKey: familyKey, actualFamilyKey: currentClassification.familyKey }
+        );
+      }
+      payload.proteinFamilyKey = familyKey;
+      payload.displayCategoryKey = familyKey;
+      return payload;
+    }
+
+    const requestedDisplay = String(
+      suppliedDisplay ? body.displayCategoryKey : (payload.displayCategoryKey || familyKey)
+    ).trim().toLowerCase();
+    if (!requestedDisplay || !NORMAL_PROTEIN_FAMILY_KEY_SET.has(requestedDisplay)) {
+      throw new MenuValidationError(
+        "displayCategoryKey must match a normal protein family",
+        "INVALID_PROTEIN_DISPLAY_CATEGORY_KEY",
+        422,
+        { allowedValues: [...PROTEIN_FAMILY_KEYS] }
+      );
+    }
+    if (requestedDisplay !== familyKey) {
+      throw new MenuValidationError(
+        "proteinFamilyKey and displayCategoryKey must match",
+        "PROTEIN_FAMILY_DISPLAY_CONFLICT",
+        422,
+        { proteinFamilyKey: familyKey, displayCategoryKey: requestedDisplay }
+      );
+    }
+    payload.proteinFamilyKey = familyKey;
+    payload.displayCategoryKey = familyKey;
     return payload;
   }
 
@@ -985,11 +1218,14 @@ function createMenuCatalogAdminService(deps) {
     }
 
     if (Model === MenuOptionGroup) {
+      assertGroupNotQuarantined(row);
       const relationCount = await ProductOptionGroup.countDocuments({ groupId: id, isActive: true });
       if (relationCount > 0) {
         throw new MenuValidationError(`Cannot delete option group currently linked to ${relationCount} products`, "GROUP_IN_USE", 400, { relationCount });
       }
     }
+
+    if (Model === MenuOption) await assertOptionNotInQuarantinedGroup(row);
 
     const before = row.toObject();
     row.isActive = false;
@@ -1191,6 +1427,8 @@ function createMenuCatalogAdminService(deps) {
     }
     const existing = await Model.findById(id).lean();
     if (!existing) throw new MenuNotFoundError();
+    if (Model === MenuOptionGroup) assertGroupNotQuarantined(existing);
+    if (Model === MenuOption) await assertOptionNotInQuarantinedGroup(existing);
     const updated = await updateEntity(Model, id, {
       [fieldName]: normalizeBoolean(value, fieldName, truthyByDefault(existing[fieldName])),
     }, { entityType, actor, action });
@@ -1266,6 +1504,10 @@ function createMenuCatalogAdminService(deps) {
 
   async function createOption(body, actor) {
     const payload = normalizeOptionPayload(body);
+    const ownerGroup = await MenuOptionGroup.findById(payload.groupId).lean();
+    if (!ownerGroup) throw new MenuValidationError("groupId does not reference an option group", "GROUP_NOT_FOUND", 404);
+    assertGroupNotQuarantined(ownerGroup);
+    normalizeOptionProteinClassification({ body, payload, group: ownerGroup });
     if (!payload.key) {
       payload.key = await generateUniqueKey({
         name: payload.name,
@@ -1329,6 +1571,7 @@ function createMenuCatalogAdminService(deps) {
   async function updateOptionGroup(id, body, actor) {
     const existing = await MenuOptionGroup.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
+    assertGroupNotQuarantined(existing);
     const payload = normalizeGroupPayload(body, existing);
     return serializeDashboardOptionGroup(
       await updateEntity(MenuOptionGroup, id, payload, { entityType: "menu_option_group", actor, action: changeAction(payload) })
@@ -1338,7 +1581,13 @@ function createMenuCatalogAdminService(deps) {
   async function updateOption(id, body, actor) {
     const existing = await MenuOption.findById(assertObjectId(id)).lean();
     if (!existing) throw new MenuNotFoundError();
+    await assertOptionNotInQuarantinedGroup(existing);
     const payload = normalizeOptionPayload(body, existing);
+    const ownerGroup = await MenuOptionGroup.findById(existing.groupId).lean();
+    if (!ownerGroup) throw new MenuValidationError("groupId does not reference an option group", "GROUP_NOT_FOUND", 404);
+    if (hasOwn(body, "proteinFamilyKey") || hasOwn(body, "displayCategoryKey")) {
+      normalizeOptionProteinClassification({ body, payload, existing, group: ownerGroup });
+    }
     if (hasOwn(payload, "catalogItemId") && payload.catalogItemId && String(payload.catalogItemId) !== String(existing.catalogItemId || "")) {
       await assertCatalogItemLinkable(payload.catalogItemId);
     }
@@ -1347,6 +1596,52 @@ function createMenuCatalogAdminService(deps) {
       await mirrorCompatibilityImage(BuilderProtein, id, payload.imageUrl);
     }
     return serializeDashboardOption(option);
+  }
+
+  async function ensureOptionProteinFamilyForCard(
+    optionId,
+    { groupId, familyKey } = {},
+    actor = {}
+  ) {
+    assertObjectId(optionId, "optionId");
+    assertObjectId(groupId, "groupId");
+    const [option, group] = await Promise.all([
+      MenuOption.findById(optionId).lean(),
+      MenuOptionGroup.findById(groupId).lean(),
+    ]);
+    if (!option) throw new MenuNotFoundError("Option not found");
+    if (!group) throw new MenuValidationError("Option group not found", "GROUP_NOT_FOUND", 404);
+    if (String(option.groupId || "") !== String(groupId)) {
+      throw new MenuValidationError(
+        "An option belongs to a different option group",
+        "OPTION_GROUP_MISMATCH",
+        422,
+        { optionId: String(option._id), groupId: String(groupId), actualGroupId: String(option.groupId || "") }
+      );
+    }
+    const payload = {};
+    normalizeOptionProteinClassification({
+      body: {},
+      payload,
+      existing: option,
+      group,
+      intendedFamilyKey: familyKey,
+      allowBlankCompletion: true,
+    });
+    const changed =
+      String(option.proteinFamilyKey || "") !== payload.proteinFamilyKey ||
+      String(option.displayCategoryKey || "") !== payload.displayCategoryKey;
+    if (!changed) return serializeDashboardOption(option);
+    return serializeDashboardOption(await updateEntity(MenuOption, optionId, payload, {
+      entityType: "menu_option",
+      actor,
+      action: "protein_family_classification_completed",
+      meta: {
+        source: "meal_builder_family_card",
+        groupId: String(groupId),
+        familyKey: payload.proteinFamilyKey,
+      },
+    }));
   }
 
   function updateCategoryVisibility(id, body, actor) {
@@ -1738,6 +2033,7 @@ function createMenuCatalogAdminService(deps) {
 
   function serializeProductComposerLinkedOptionV4(linkedOption) {
     const option = linkedOption.option || {};
+    const familyResolution = resolveProteinFamilyClassification(option);
     return {
       productOptionId: linkedOption.id,
       optionId: linkedOption.optionId,
@@ -1752,6 +2048,10 @@ function createMenuCatalogAdminService(deps) {
       }, option.currency),
       effectivePricing: serializeEffectivePricing(linkedOption, option),
       nutrition: option.nutrition || {},
+      proteinFamilyKey: option.proteinFamilyKey || "",
+      displayCategoryKey: option.displayCategoryKey || "",
+      resolvedFamilyKey: familyResolution.familyKey || "",
+      familyResolutionSource: familyResolution.source,
       status: statusTriple(option, linkedOption),
       sortOrder: linkedOption.sortOrder,
     };
@@ -1895,7 +2195,7 @@ function createMenuCatalogAdminService(deps) {
   }
 
   function serializeLibraryGroup(group = {}) {
-    return {
+    return decorateDashboardGroup({
       id: String(group._id),
       key: group.key || "",
       name: group.name || { ar: "", en: "" },
@@ -1903,10 +2203,11 @@ function createMenuCatalogAdminService(deps) {
       displayStyle: normalizeGroupUiMetadata(group.ui).displayStyle,
       enabled: truthyByDefault(group.isActive) && truthyByDefault(group.isVisible) && truthyByDefault(group.isAvailable),
       sortOrder: Number(group.sortOrder || 0),
-    };
+    }, group);
   }
 
   function serializeLibraryOption(option = {}, group = null) {
+    const familyResolution = resolveProteinFamilyClassification(option);
     return {
       id: String(option._id),
       key: option.key || "",
@@ -1917,15 +2218,23 @@ function createMenuCatalogAdminService(deps) {
       suggestedGroupKey: group ? group.key : null,
       defaultPricing: serializeDefaultPricing(option),
       nutrition: option.nutrition || {},
+      proteinFamilyKey: option.proteinFamilyKey || "",
+      displayCategoryKey: option.displayCategoryKey || "",
+      resolvedFamilyKey: familyResolution.familyKey || "",
+      familyResolutionSource: familyResolution.source,
       enabled: truthyByDefault(option.isActive) && truthyByDefault(option.isVisible) && truthyByDefault(option.isAvailable),
       sortOrder: Number(option.sortOrder || 0),
     };
   }
 
   async function getCustomizationLibrary(options = {}) {
+    const groupVisibilityQuery = normalDashboardGroupQuery(options.includeQuarantined === true);
     const [groups, optionRows] = await Promise.all([
-      MenuOptionGroup.find({ ...buildListQuery({ ...options, includeInactive: true }) }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
-      MenuOption.find({ ...buildListQuery({ ...options, includeInactive: true }) }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      MenuOptionGroup.find({ ...buildListQuery({ ...options, includeInactive: true }), ...groupVisibilityQuery }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+      MenuOption.find({
+        ...buildListQuery({ ...options, includeInactive: true }),
+        ...(options.includeQuarantined === true ? {} : { groupId: groupVisibilityQuery._id }),
+      }).sort({ sortOrder: 1, createdAt: -1 }).lean(),
     ]);
     const groupsById = new Map(groups.map((group) => [String(group._id), group]));
     return {
@@ -1971,18 +2280,7 @@ function createMenuCatalogAdminService(deps) {
     ]);
     if (!product) throw new MenuNotFoundError("Product not found");
     if (!group) throw new MenuNotFoundError("Option group not found");
-
-    const existing = await ProductOptionGroup.findOne({ productId, groupId: payload.groupId }).lean();
-    const relation = existing
-      ? await updateEntity(ProductOptionGroup, existing._id, { ...payload, isActive: true }, {
-        entityType: "menu_product_group",
-        actor,
-        action: "product_group_attached",
-        meta: { productId, groupId: payload.groupId },
-      })
-      : await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
-
-    await MenuProduct.updateOne({ _id: productId }, { $set: { isCustomizable: true } });
+    assertGroupNotQuarantined(group);
 
     const initialOptionIds = Array.isArray(body.initialOptionIds)
       ? [...new Set(body.initialOptionIds.map((item) => assertObjectId(item, "initialOptionIds[]")))]
@@ -1991,8 +2289,40 @@ function createMenuCatalogAdminService(deps) {
     const optionRows = linkAllOptions
       ? await MenuOption.find({ groupId: payload.groupId, isActive: true }).lean()
       : (initialOptionIds.length ? await MenuOption.find({ _id: { $in: initialOptionIds }, isActive: true }).lean() : []);
+    if (initialOptionIds.length && optionRows.length !== initialOptionIds.length) {
+      throw new MenuValidationError(
+        "One or more initial options do not exist or are globally disabled",
+        "OPTION_NOT_ALLOWED",
+        400
+      );
+    }
+    assertOptionsBelongToGroup(optionRows, payload.groupId);
     const catalogItemsById = optionRows.length ? await loadCatalogItemsByIdForDocs(optionRows) : new Map();
     const options = filterGloballyAvailable(optionRows, catalogItemsById);
+    if (initialOptionIds.length && options.length !== optionRows.length) {
+      throw new MenuValidationError(
+        "One or more initial options are not globally available",
+        "OPTION_NOT_AVAILABLE",
+        409
+      );
+    }
+
+    const existing = await ProductOptionGroup.findOne({ productId, groupId: payload.groupId }).lean();
+    const relation = existing
+      ? await updateEntity(ProductOptionGroup, existing._id, {
+        ...payload,
+        isActive: true,
+        isVisible: true,
+        isAvailable: true,
+      }, {
+        entityType: "menu_product_group",
+        actor,
+        action: "product_group_attached",
+        meta: { productId, groupId: payload.groupId },
+      })
+      : await createEntity(ProductOptionGroup, payload, { entityType: "menu_product_group", actor });
+
+    await MenuProduct.updateOne({ _id: productId }, { $set: { isCustomizable: true } });
     if (options.length > 0) {
       const optionRelations = options.map((opt) => ({
         productId,
@@ -2097,22 +2427,40 @@ function createMenuCatalogAdminService(deps) {
     return [...new Set(value.map((item) => assertObjectId(item, `${fieldName}[]`)))];
   }
 
+  function assertOptionsBelongToGroup(options, groupId) {
+    const mismatchedOptionIds = options
+      .filter((option) => String(option.groupId || "") !== String(groupId))
+      .map((option) => String(option._id));
+    if (mismatchedOptionIds.length > 0) {
+      throw new MenuValidationError(
+        "One or more options belong to a different option group",
+        "OPTION_GROUP_MISMATCH",
+        422,
+        { groupId: String(groupId), optionIds: mismatchedOptionIds }
+      );
+    }
+  }
+
   async function replaceProductGroupOptions(productId, groupId, body = {}, actor = {}) {
     assertObjectId(productId, "productId");
     assertObjectId(groupId, "groupId");
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     const optionIds = normalizeOptionIds(body.optionIds || []);
     const preserveOverrides = normalizeBoolean(body.preserveOverrides, "preserveOverrides", true);
-    const [product, groupRelation, options] = await Promise.all([
+    const [product, group, groupRelation, options] = await Promise.all([
       MenuProduct.findById(productId).lean(),
+      MenuOptionGroup.findById(groupId).lean(),
       ProductOptionGroup.findOne({ productId, groupId }).lean(),
       optionIds.length ? MenuOption.find({ _id: { $in: optionIds }, isActive: true }).lean() : [],
     ]);
     if (!product) throw new MenuNotFoundError("Product not found");
+    if (!group) throw new MenuNotFoundError("Option group not found");
+    assertGroupNotQuarantined(group);
     if (!groupRelation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
     if (options.length !== optionIds.length) {
       throw new MenuValidationError("One or more options do not exist or are globally disabled", "OPTION_NOT_ALLOWED", 400);
     }
+    assertOptionsBelongToGroup(options, groupId);
     const catalogItemsById = await loadCatalogItemsByIdForDocs(options);
     const globallyAvailableOptions = filterGloballyAvailable(options, catalogItemsById);
     if (globallyAvailableOptions.length !== options.length) {
@@ -2145,9 +2493,12 @@ function createMenuCatalogAdminService(deps) {
             groupId,
             optionId,
             ...overrideFields,
-            isActive: existing ? truthyByDefault(existing.isActive) : true,
-            isVisible: existing ? truthyByDefault(existing.isVisible) : true,
-            isAvailable: existing ? truthyByDefault(existing.isAvailable) : true,
+            // An option present in this product-scoped replacement is explicitly
+            // attached. Restore all relation gates so retrying an attachment is
+            // idempotent and makes the option usable again.
+            isActive: true,
+            isVisible: true,
+            isAvailable: true,
             sortOrder: existing ? Number(existing.sortOrder || 0) : Number(option.sortOrder || 0),
           },
         },
@@ -2219,6 +2570,7 @@ function createMenuCatalogAdminService(deps) {
         const optionId = String(option._id);
         const linked = linkedByOptionId.get(optionId) || null;
         const suggestedGroup = groupsById.get(String(option.groupId)) || null;
+        const familyResolution = resolveProteinFamilyClassification(option);
         return {
           optionId,
           key: option.key || "",
@@ -2231,6 +2583,10 @@ function createMenuCatalogAdminService(deps) {
           overridePricing: linked ? serializeOverridePricing(linked, option.currency) : serializeOverridePricing({}, option.currency),
           effectivePricing: linked ? serializeEffectivePricing(linked, option) : serializeDefaultPricing(option),
           nutrition: option.nutrition || {},
+          proteinFamilyKey: option.proteinFamilyKey || "",
+          displayCategoryKey: option.displayCategoryKey || "",
+          resolvedFamilyKey: familyResolution.familyKey || "",
+          familyResolutionSource: familyResolution.source,
           status: statusTriple(option, linked || {}),
         };
       }),
@@ -2240,21 +2596,38 @@ function createMenuCatalogAdminService(deps) {
   async function createProductGroupOption(productId, groupId, body, actor = {}) {
     assertObjectId(productId, "productId");
     assertObjectId(groupId, "groupId");
-    const relation = await ProductOptionGroup.findOne({ productId, groupId }).lean();
-    if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
     const payload = normalizeProductGroupOptionRelationPayload({ ...body, productId, groupId });
-    const option = await MenuOption.findOne({ _id: payload.optionId, isActive: true }).lean();
-    if (!option) throw new MenuValidationError("Option does not exist or is globally disabled", "OPTION_NOT_ALLOWED", 400);
+    const [product, group, relation, option] = await Promise.all([
+      MenuProduct.findById(productId).lean(),
+      MenuOptionGroup.findById(groupId).lean(),
+      ProductOptionGroup.findOne({ productId, groupId }).lean(),
+      MenuOption.findById(payload.optionId).lean(),
+    ]);
+    if (!product) throw new MenuNotFoundError("Product not found");
+    if (!group) throw new MenuNotFoundError("Option group not found");
+    assertGroupNotQuarantined(group);
+    if (!relation) throw new MenuValidationError("Product group relation does not exist", "RELATION_NOT_FOUND", 404);
+    if (!option || option.isActive === false) {
+      throw new MenuValidationError("Option does not exist or is globally disabled", "OPTION_NOT_ALLOWED", 400);
+    }
+    assertOptionsBelongToGroup([option], groupId);
+
+    const attachmentPayload = {
+      ...payload,
+      isActive: true,
+      isVisible: true,
+      isAvailable: true,
+    };
     const existing = await ProductGroupOption.findOne({ productId, groupId, optionId: payload.optionId }).lean();
     if (existing) {
-      return updateEntity(ProductGroupOption, existing._id, { ...payload, isActive: true }, {
+      return updateEntity(ProductGroupOption, existing._id, attachmentPayload, {
         entityType: "menu_product_group_option",
         actor,
         action: "product_group_option_attached",
         meta: { productId, groupId, optionId: payload.optionId },
       });
     }
-    const row = await createEntity(ProductGroupOption, payload, { entityType: "menu_product_group_option", actor });
+    const row = await createEntity(ProductGroupOption, attachmentPayload, { entityType: "menu_product_group_option", actor });
     await writeMenuAudit({
       entityType: "menu_product_group_option",
       entityId: row.id,
@@ -2363,6 +2736,7 @@ function createMenuCatalogAdminService(deps) {
     normalizeProductPayload,
     normalizeGroupPayload,
     normalizeOptionPayload,
+    normalizeOptionProteinClassification,
     normalizeSelectionRulePayload,
     normalizeProductGroupRelationPayload,
     normalizeProductGroupOptionRelationPayload,
@@ -2384,6 +2758,7 @@ function createMenuCatalogAdminService(deps) {
     updateProduct,
     updateOptionGroup,
     updateOption,
+    ensureOptionProteinFamilyForCard,
     updateCategoryVisibility,
     updateCategoryAvailability,
     updateProductVisibility,

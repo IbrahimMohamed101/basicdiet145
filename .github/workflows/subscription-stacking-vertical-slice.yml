@@ -1,0 +1,60 @@
+name: Subscription Stacking Vertical Slice
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-phase-0-1-20260806
+    paths:
+      - "src/models/SubscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionStacking*.js"
+      - "tests/subscriptionStackingVerticalSlice.integration.test.js"
+      - "tests/subscriptionStackingConcurrentPurchases.integration.test.js"
+      - "tests/subscriptionActivationConcurrency.test.js"
+      - ".github/workflows/subscription-stacking-vertical-slice.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/models/SubscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionEntitlement*.js"
+      - "src/services/subscription/subscriptionStacking*.js"
+      - "tests/subscriptionStackingVerticalSlice.integration.test.js"
+      - "tests/subscriptionStackingConcurrentPurchases.integration.test.js"
+      - "tests/subscriptionActivationConcurrency.test.js"
+      - ".github/workflows/subscription-stacking-vertical-slice.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-vertical-slice-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transactional-vertical-slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run stacking vertical slice
+        run: NODE_ENV=test node tests/subscriptionStackingVerticalSlice.integration.test.js
+
+      - name: Run concurrent stacking purchases
+        run: NODE_ENV=test node tests/subscriptionStackingConcurrentPurchases.integration.test.js
+
+      - name: Preserve legacy activation concurrency compatibility
+        run: NODE_ENV=test node tests/subscriptionActivationConcurrency.test.js

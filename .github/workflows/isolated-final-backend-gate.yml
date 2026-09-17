@@ -1,0 +1,106 @@
+name: Isolated final backend gate
+# Runs balance, add-on release, negotiated-language, and lifecycle preflight before the full sequential release suite.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/isolated-final-backend-gate.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-final-backend-${{ github.event.pull_request.number }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  release-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_isolated_test?replicaSet=rs0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh basicdiet-isolated-mongo
+
+      - name: Validate backend syntax and composition
+        run: npm run validate:backend
+
+      - name: Verify pickup reservation balance lifecycle
+        id: pickup_balance
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test node tests/subscriptionBalancePolicy.test.js 2>&1 | tee pickup-balance.log
+
+      - name: Upload pickup balance log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pickup-reservation-balance-log
+          path: pickup-balance.log
+          if-no-files-found: error
+
+      - name: Enforce pickup reservation balance lifecycle
+        if: always() && steps.pickup_balance.outcome == 'failure'
+        run: exit 1
+
+      - name: Verify add-on selection removal releases credits
+        id: addon_release
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          NODE_ENV=test NODE_OPTIONS=--require=./tests/helpers/addonBalanceE2ECollectionWarmup.js node tests/addon_balance_e2e.test.js 2>&1 | tee addon-release.log
+
+      - name: Upload add-on release log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: addon-release-balance-log
+          path: addon-release.log
+          if-no-files-found: error
+
+      - name: Enforce add-on release lifecycle
+        if: always() && steps.addon_release.outcome == 'failure'
+        run: exit 1
+
+      - name: Run final release gates
+        id: final_release_gates
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:release-gates 2>&1 | tee release-gates.log
+
+      - name: Upload final release gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-final-release-gates-log
+          path: release-gates.log
+          if-no-files-found: ignore
+
+      - name: Enforce final release gate result
+        if: always() && steps.final_release_gates.outcome == 'failure'
+        run: exit 1

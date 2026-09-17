@@ -185,6 +185,9 @@ function buildModels() {
     return {
       _id: "507f191e810c19729de86999",
       userId: ids.subscriptionOwner,
+      status: "active",
+      startDate: "2020-01-01",
+      endDate: "2099-12-31",
       addonSubscriptions: [
         {
           addonPlanId: ids.planAddon,
@@ -382,6 +385,9 @@ async function run() {
         ? {
           _id: "507f191e810c19729de86997",
           userId: mismatchedModels.ids.subscriptionOwner,
+          status: "active",
+          startDate: "2020-01-01",
+          endDate: "2099-12-31",
           addonSubscriptions: [{
             addonPlanId: mismatchedModels.ids.mealPlanAddon,
             addonPlanName: "اشتراك وجبات",

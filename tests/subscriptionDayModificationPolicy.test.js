@@ -1,3 +1,7 @@
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "true",
+});
+
 require("dotenv").config();
 
 const {
@@ -5,6 +9,9 @@ const {
   DAY_LOCKED_BEFORE_DELIVERY_CODE,
   DELIVERY_TIME_UNAVAILABLE_CODE,
 } = require("../src/services/subscription/subscriptionDayModificationPolicyService");
+const {
+  PLANNING_WINDOW_REASONS,
+} = require("../src/services/subscription/subscriptionPlanningWindowService");
 
 function assert(condition, message) {
   if (!condition) {
@@ -12,15 +19,32 @@ function assert(condition, message) {
   }
 }
 
+async function openRestaurantStub({ pickupLocationId, deliveryMode } = {}) {
+  return {
+    open: true,
+    pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,
+    deliveryMode: deliveryMode || null,
+  };
+}
+
+function withPolicyTestDependencies(payload) {
+  return {
+    ...payload,
+    assertRestaurantOpenForOrderingFn: payload && payload.assertRestaurantOpenForOrderingFn
+      ? payload.assertRestaurantOpenForOrderingFn
+      : openRestaurantStub,
+  };
+}
+
 async function expectAllowed(name, payload) {
-  const result = await assertSubscriptionDayModifiable(payload);
+  const result = await assertSubscriptionDayModifiable(withPolicyTestDependencies(payload));
   assert(result && result.allowed === true, `${name}: expected allowed result`);
   return result;
 }
 
 async function expectRejected(name, payload, expectedCode) {
   try {
-    await assertSubscriptionDayModifiable(payload);
+    await assertSubscriptionDayModifiable(withPolicyTestDependencies(payload));
   } catch (err) {
     assert(err && err.code === expectedCode, `${name}: expected code ${expectedCode}, got ${err && err.code}`);
     return err;
@@ -28,7 +52,7 @@ async function expectRejected(name, payload, expectedCode) {
   throw new Error(`${name}: expected rejection`);
 }
 
-function buildPickupSubscription() {
+function buildPickupSubscription(overrides = {}) {
   return {
     deliveryMode: "pickup",
     deliverySlot: {
@@ -36,10 +60,11 @@ function buildPickupSubscription() {
       window: "",
       slotId: "",
     },
+    ...overrides,
   };
 }
 
-function buildDeliverySubscription(window = "13:00-16:00") {
+function buildDeliverySubscription(window = "13:00-16:00", overrides = {}) {
   return {
     deliveryMode: "delivery",
     deliveryWindow: window,
@@ -48,14 +73,15 @@ function buildDeliverySubscription(window = "13:00-16:00") {
       window,
       slotId: "slot_1",
     },
+    ...overrides,
   };
 }
 
 async function run() {
   const businessDate = "2026-04-29";
   const getBusinessDateFn = async () => businessDate;
-  const beforeLockNow = new Date("2026-04-29T07:30:00+03:00");  // 10:30 KSA — before 11:00 cutoff for 13:00 window
-  const insideLockNow = new Date("2026-04-29T12:15:00+03:00");  // 12:15 KSA — after 11:00 cutoff for 13:00 window
+  const beforeLockNow = new Date("2026-04-29T07:30:00+03:00");
+  const insideLockNow = new Date("2026-04-29T12:15:00+03:00");
 
   await expectAllowed("1. pickup same-day selection is allowed", {
     subscription: buildPickupSubscription(),
@@ -147,7 +173,81 @@ async function run() {
   }, DELIVERY_TIME_UNAVAILABLE_CODE);
   assert(missingWindowError.details && missingWindowError.details.fulfillmentMethod === "delivery", "12. expected delivery details");
 
-  console.log("subscriptionDayModificationPolicy.test.js: 12/12 checks passed");
+  await expectAllowed("13. default-off weekly policy preserves unrestricted future compatibility", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-04-20",
+      validityEndDate: "2026-05-31",
+    }),
+    date: "2026-05-10",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: false,
+  });
+
+  const fridayResult = await expectAllowed("14. enabled planning policy keeps Friday inside a full seven-day horizon", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-04-20",
+      validityEndDate: "2026-05-31",
+    }),
+    date: "2026-05-01",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: true,
+  });
+  assert(fridayResult.planningWindow, "14. expected planning window metadata");
+  assert(fridayResult.planningWindow.mode === "rolling_7_days", "14. expected rolling mode");
+  assert(fridayResult.planningWindow.planningWindowEnd === "2026-05-05", "14. expected rolling window end");
+
+  const nextSaturdayResult = await expectAllowed("15. enabled planning policy allows the next Saturday", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-04-20",
+      validityEndDate: "2026-05-31",
+    }),
+    date: "2026-05-02",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: true,
+  });
+  assert(nextSaturdayResult.planningWindow.planningWindowEnd === "2026-05-05", "15. expected same rolling horizon");
+
+  const horizonError = await expectRejected("16. enabled planning policy rejects dates beyond seven days", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-04-20",
+      validityEndDate: "2026-05-31",
+    }),
+    date: "2026-05-06",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: true,
+  }, PLANNING_WINDOW_REASONS.OUTSIDE_CURRENT_MENU_WEEK);
+  assert(horizonError.messageAr, "16. expected Arabic planning-window message");
+  assert(horizonError.details.planningWindowStart === "2026-04-29", "16. expected rolling start");
+  assert(horizonError.details.planningWindowEnd === "2026-05-05", "16. expected rolling end");
+  assert(horizonError.details.requestedDate === "2026-05-06", "16. expected requested date details");
+
+  await expectRejected("17. enabled planning policy respects subscription start date", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-05-01",
+      validityEndDate: "2026-05-31",
+    }),
+    date: "2026-04-30",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: true,
+  }, PLANNING_WINDOW_REASONS.BEFORE_SUBSCRIPTION_START);
+
+  await expectRejected("18. enabled planning policy respects subscription validity end", {
+    subscription: buildDeliverySubscription("13:00-16:00", {
+      startDate: "2026-04-20",
+      validityEndDate: "2026-04-30",
+    }),
+    date: "2026-05-01",
+    now: insideLockNow,
+    getBusinessDateFn,
+    weeklyPlanningWindowEnabled: true,
+  }, PLANNING_WINDOW_REASONS.AFTER_SUBSCRIPTION_VALIDITY);
+
+  console.log("subscriptionDayModificationPolicy.test.js: 18/18 checks passed");
 }
 
 run().catch((err) => {

@@ -150,6 +150,7 @@ function appAuth(userId) {
         groupId: group.id,
         key: "chicken",
         name: { en: "Chicken", ar: "دجاج" },
+        proteinFamilyKey: "chicken",
         extraWeightUnitGrams: 50,
         extraWeightPriceHalala: 500,
       });
@@ -205,6 +206,7 @@ function appAuth(userId) {
         groupId: group.id,
         key: "salmon",
         name: { en: "Salmon", ar: "سلمون" },
+        proteinFamilyKey: "fish",
         extraPriceHalala: 1200,
       });
       expectStatus(res, 201, "Create salmon option");
@@ -345,6 +347,7 @@ function appAuth(userId) {
         groupId: group.id,
         key: "beef",
         name: { en: "Beef", ar: "لحم" },
+        proteinFamilyKey: "beef",
         extraPriceHalala: 1000,
       });
       const beefOption = res.body.data;

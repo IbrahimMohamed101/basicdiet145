@@ -4,6 +4,11 @@ const {
   CONTRACT_COMPLETENESS_VALUES,
   CONTRACT_SOURCES,
 } = require("../constants/phase1Contract");
+const {
+  addonBalanceLedgerFields,
+  addonSelectionLifecycleFields,
+} = require("./schemaFragments/subscriptionAddonLifecycleFields");
+
 const PremiumBalanceSchema = new mongoose.Schema(
   {
     configId: { type: mongoose.Schema.Types.ObjectId, ref: "PremiumUpgradeConfig", default: null },
@@ -69,6 +74,25 @@ const BaseMealAllocationSchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Superadmin-only balance grants. Stored on the subscription so the balance
+// mutation and its idempotency/audit record are one atomic document update,
+// including on standalone MongoDB deployments without transaction support.
+const AdminMealCompensationSchema = new mongoose.Schema(
+  {
+    idempotencyKey: { type: String, required: true, trim: true },
+    quantity: { type: Number, required: true, min: 1, max: 100 },
+    reason: { type: String, required: true, trim: true, maxlength: 500 },
+    byUserId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", required: true },
+    byRole: { type: String, default: "superadmin" },
+    beforeTotalMeals: { type: Number, required: true, min: 0 },
+    beforeRemainingMeals: { type: Number, required: true, min: 0 },
+    afterTotalMeals: { type: Number, required: true, min: 0 },
+    afterRemainingMeals: { type: Number, required: true, min: 0 },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 const AddonBalanceSchema = new mongoose.Schema(
   {
     addonPlanId: { type: mongoose.Schema.Types.ObjectId, ref: "Addon", default: null },
@@ -93,6 +117,7 @@ const AddonBalanceSchema = new mongoose.Schema(
     unitPriceHalala: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: "SAR" },
     purchasedAt: { type: Date, default: Date.now },
+    ...addonBalanceLedgerFields(),
   },
   { _id: true }
 );
@@ -159,9 +184,9 @@ const AddonSelectionSchema = new mongoose.Schema(
     consumedAt: { type: Date, default: Date.now },
     // Owned entitlement identity — populated on save so edit/cancel can release the exact bucket.
     // All fields are optional for backward compatibility with historical selections.
-    category:        { type: String, default: "" },
+    category: { type: String, default: "" },
     entitlementCategory: { type: String, default: "" },
-    entitlementKey:  { type: String, default: "" },
+    entitlementKey: { type: String, default: "" },
     balanceBucketId: { type: mongoose.Schema.Types.ObjectId, default: null },
     ownedSnapshot: { type: Boolean, default: false },
     snapshotMissing: { type: Boolean, default: false },
@@ -192,7 +217,8 @@ const AddonSelectionSchema = new mongoose.Schema(
       default: "",
     },
     maxPerDay: { type: Number, min: 1, default: 1 },
-    source:          { type: String, default: "" },
+    source: { type: String, default: "" },
+    ...addonSelectionLifecycleFields(mongoose),
   },
   { _id: true }
 );
@@ -283,10 +309,12 @@ const SubscriptionSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     validityEndDate: { type: Date },
+    timelineExtraDays: { type: Number, min: 0, max: 365, default: 0 },
     canceledAt: { type: Date, default: null },
     cancellationReason: { type: String, trim: true, default: "" },
     replacedBySubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     replacedAt: { type: Date, default: null },
+    replacementState: { type: String, enum: ["", "staged", "switching", "completed"], default: "" },
     totalMeals: { type: Number, required: true },
     remainingMeals: { type: Number, required: true },
     entitlementVersion: { type: Number, default: undefined },
@@ -294,6 +322,12 @@ const SubscriptionSchema = new mongoose.Schema(
     consumedMeals: { type: Number, min: 0, default: undefined },
     forfeitedMeals: { type: Number, min: 0, default: undefined },
     baseMealAllocations: { type: [BaseMealAllocationSchema], default: undefined },
+    compensatedMealsTotal: { type: Number, min: 0, default: 0 },
+    adminMealCompensations: { type: [AdminMealCompensationSchema], default: [] },
+    // Backend-only idempotency ledger for historical pickup requests that were
+    // created before baseMealAllocations existed. New Daily/Pickup operations
+    // use allocationKey instead.
+    legacyMealBalanceOperationKeys: { type: [String], default: undefined },
     addonSubscriptions: { type: [AddonSubscriptionEntitlementSchema], default: [] },
     addonBalance: { type: [AddonBalanceSchema], default: [] },
     addonSelections: { type: [AddonSelectionSchema], default: [] },
@@ -322,6 +356,17 @@ const SubscriptionSchema = new mongoose.Schema(
     contractHash: { type: String, trim: true },
     contractSnapshot: { type: mongoose.Schema.Types.Mixed },
     renewedFromSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
+
+    // Serializes additive paid activations when MongoDB transactions are not
+    // available. The lease is short-lived and source-bound; every mutation in
+    // the standalone activation saga is independently idempotent.
+    stackingActivationLease: {
+      token: { type: String, trim: true, default: "" },
+      sourceKey: { type: String, trim: true, default: "" },
+      acquiredAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+    },
+    stackingRevision: { type: Number, min: 0, default: 0 },
 
     deliveryMode: { type: String, enum: ["delivery", "pickup"], required: true },
     deliveryAddress: {

@@ -94,3 +94,5 @@ ls_output.txt
 changes.patch
 debug_*.js
 scratch*.js
+.claude/
+

@@ -107,6 +107,32 @@ const InvoiceInitializationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const StackingFinalizationSchema = new mongoose.Schema(
+  {
+    version: {
+      type: String,
+      enum: ["subscription_stacking.finalization.v1"],
+      required: true,
+    },
+    mode: {
+      type: String,
+      enum: ["standard_initial", "additive_existing_parent"],
+      required: true,
+    },
+    expectedParentSubscriptionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Subscription",
+      default: null,
+    },
+    decidedAt: { type: Date, required: true },
+    // Versioned, checkout-time authority for future additive extra activation.
+    // Runtime additive purchases remain fail-closed; P2 only persists the
+    // immutable quantities/identities needed by the internal finalizer.
+    extraEntitlements: { type: mongoose.Schema.Types.Mixed, default: null },
+  },
+  { _id: false }
+);
+
 /**
  * Item 9: Pre-Activation Model
  * CheckoutDraft explicitly models the pre-activation state along with its paired Payment.
@@ -169,6 +195,14 @@ const CheckoutDraftSchema = new mongoose.Schema(
     contractHash: { type: String, trim: true },
     contractSnapshot: { type: mongoose.Schema.Types.Mixed },
     renewedFromSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
+    // Immutable checkout-time routing authority. Existing drafts omit this
+    // field and continue through legacy finalization only while stacking write
+    // is disabled. An additive draft can never fall back to replacement.
+    stackingFinalization: {
+      type: StackingFinalizationSchema,
+      default: null,
+      immutable: true,
+    },
 
     breakdown: {
       basePlanPriceHalala: { type: Number, min: 0, required: true },
@@ -192,6 +226,7 @@ const CheckoutDraftSchema = new mongoose.Schema(
     paymentUrl: { type: String, default: "" },
     invoiceInitialization: { type: InvoiceInitializationSchema, default: () => ({}) },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
+    activationSubscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription", default: null },
     completedAt: { type: Date },
     failedAt: { type: Date },
     failureReason: { type: String, default: "" },

@@ -1,4 +1,26 @@
 const mongoose = require("mongoose");
+const { normalizePromoCodeInput } = require("../utils/promoCodeNormalization");
+
+const LocalizedTextSchema = new mongoose.Schema(
+  {
+    ar: { type: String, trim: true, maxlength: 240, default: "" },
+    en: { type: String, trim: true, maxlength: 240, default: "" },
+  },
+  { _id: false }
+);
+
+const PromoAppDisplaySchema = new mongoose.Schema(
+  {
+    isVisible: { type: Boolean, default: false },
+    showOnHome: { type: Boolean, default: true },
+    showOnPlans: { type: Boolean, default: true },
+    priority: { type: Number, min: -1000, max: 1000, default: 0 },
+    title: { type: LocalizedTextSchema, default: () => ({}) },
+    description: { type: LocalizedTextSchema, default: () => ({}) },
+    homeMessage: { type: LocalizedTextSchema, default: () => ({}) },
+  },
+  { _id: false }
+);
 
 const PromoCodeSchema = new mongoose.Schema(
   {
@@ -40,6 +62,7 @@ const PromoCodeSchema = new mongoose.Schema(
       default: [],
     },
     currency: { type: String, default: "SAR" },
+    appDisplay: { type: PromoAppDisplaySchema, default: () => ({}) },
     metadata: { type: mongoose.Schema.Types.Mixed, default: null },
     deletedAt: { type: Date, default: null },
   },
@@ -47,7 +70,7 @@ const PromoCodeSchema = new mongoose.Schema(
 );
 
 PromoCodeSchema.pre("validate", function normalizePromoCodeBeforeValidate(next) {
-  const normalizedCode = String(this.code || "").trim().toUpperCase();
+  const normalizedCode = normalizePromoCodeInput(this.code) || "";
   this.code = normalizedCode;
   this.codeNormalized = normalizedCode;
   next();
@@ -61,5 +84,12 @@ PromoCodeSchema.index(
   }
 );
 PromoCodeSchema.index({ appliesTo: 1, isActive: 1, expiresAt: 1 });
+PromoCodeSchema.index({
+  "appDisplay.isVisible": 1,
+  "appDisplay.priority": -1,
+  isActive: 1,
+  startsAt: 1,
+  expiresAt: 1,
+});
 
 module.exports = mongoose.model("PromoCode", PromoCodeSchema);

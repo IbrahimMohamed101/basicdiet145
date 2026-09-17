@@ -51,6 +51,22 @@ function includesHeaderValue(headerValue, expectedValue) {
     assert.ok(includesHeaderValue(res.headers["access-control-allow-headers"], "Content-Type"));
   });
 
+  await test("allows Railway production dashboard origin by default", async () => {
+  const app = createApp();
+  const res = await request(app)
+    .options("/api/dashboard/auth/me")
+    .set("Origin", "https://clientdashbourd-production.up.railway.app")
+    .set("Access-Control-Request-Method", "GET")
+    .set("Access-Control-Request-Headers", "authorization,content-type");
+
+  assert.strictEqual(res.status, 204);
+  assert.strictEqual(
+    res.headers["access-control-allow-origin"],
+    "https://clientdashbourd-production.up.railway.app"
+  );
+  assert.strictEqual(res.headers["access-control-allow-credentials"], "true");
+});
+
   await test("allows comma-separated configured dashboard origins", async () => {
     process.env.CORS_ORIGINS = "https://dashboard.example.com, https://admin.example.com";
     const app = createApp();

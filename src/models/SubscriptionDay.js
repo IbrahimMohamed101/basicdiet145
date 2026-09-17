@@ -4,6 +4,9 @@ const {
   PREMIUM_LARGE_SALAD_PRESET_KEY,
   PROTEIN_FAMILY_KEYS,
 } = require("../config/mealPlannerContract");
+const {
+  addonSelectionLifecycleFields,
+} = require("./schemaFragments/subscriptionAddonLifecycleFields");
 
 const MealSlotSchema = new mongoose.Schema(
   {
@@ -72,6 +75,7 @@ const MealSlotSchema = new mongoose.Schema(
       default: undefined,
     },
     pricingSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    entitlementSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
     displaySnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
     fulfillmentSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
     confirmationSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
@@ -193,7 +197,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         "fulfilled",
         "consumed_without_preparation",
         // Item 11: Terminal delivery failures.
-        // These statuses do NOT trigger automatic compensation. 
+        // These statuses do NOT trigger automatic compensation.
         // Compensation is strictly admin-controlled via explicit addition of days.
         "delivery_canceled",
         "canceled_at_branch",
@@ -262,6 +266,7 @@ const SubscriptionDaySchema = new mongoose.Schema(
         currency: { type: String, default: "SAR" },
         paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
         consumedAt: { type: Date, default: Date.now },
+        ...addonSelectionLifecycleFields(mongoose),
       },
     ],
     premiumUpgradeSelections: [
@@ -351,6 +356,8 @@ const SubscriptionDaySchema = new mongoose.Schema(
     baseAllocationKeys: { type: [String], default: undefined },
     entitlementTransitionState: { type: String, default: undefined, trim: true },
     premiumReservationMode: { type: String, enum: ["deferred"], default: undefined },
+    // Internal P3 ledger projection. Never serialized to mobile clients.
+    stackingExtraSelectionState: { type: mongoose.Schema.Types.Mixed, default: undefined },
     addonCreditsReleased: { type: Boolean, default: false },
     premiumCreditsReleased: { type: Boolean, default: false },
     autoLocked: { type: Boolean, default: false },

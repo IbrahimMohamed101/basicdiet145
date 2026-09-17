@@ -6,6 +6,9 @@ const {
   processSubscriptionExpiryReminders,
 } = require("../services/notificationSchedulerService");
 const { cleanupAbandonedPromoReservations } = require("../services/promoCodeService");
+const {
+  processPaidSubscriptionPaymentRecoveries,
+} = require("../services/subscription/subscriptionPaymentRecoveryService");
 const Setting = require("../models/Setting");
 const { KSA_TIMEZONE } = require("../utils/date");
 const { logger } = require("../utils/logger");
@@ -37,6 +40,18 @@ function startJobs() {
         await processDueDeliveryArrivingSoon(now);
       } catch (err) {
         logger.error("Arriving soon job failed", { error: err.message, stack: err.stack });
+      }
+
+      try {
+        const recoveryStats = await processPaidSubscriptionPaymentRecoveries();
+        if (recoveryStats.recovered > 0 || recoveryStats.failed > 0) {
+          logger.info("Paid subscription payment recovery completed", recoveryStats);
+        }
+      } catch (err) {
+        logger.error("Paid subscription payment recovery job failed", {
+          error: err.message,
+          stack: err.stack,
+        });
       }
 
       if (now.getTime() - lastPromoCleanupRunTime >= 15 * 60 * 1000) {

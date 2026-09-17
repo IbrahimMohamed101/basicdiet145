@@ -1,5 +1,7 @@
 "use strict";
 
+require("./helpers/installMongoTestSafetyGuard");
+
 // Canonical command requested by the dashboard contract. The detailed
 // integration suite remains in one place to avoid two suites mutating the same
 // accounting fixtures independently.

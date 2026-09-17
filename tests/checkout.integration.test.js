@@ -375,7 +375,7 @@ if (proteinsWithoutKey.length >= 2) {
         {
           grams: 300,
           mealsOptions: [
-            { mealsPerDay: 2, priceHalala: 49000, compareAtHalala: 49000 },
+            { mealsPerDay: 2, priceHalala: 49000, compareAtHalala: 55000 },
           ],
         },
       ],
@@ -665,6 +665,7 @@ async function runTests() {
     const res = await makeRequest('POST', '/api/subscriptions/quote', buildBaseSubscriptionPayload());
     assertEqual(res.status, 200, 'quote status');
     assertEqual(res.body.status, true, 'status');
+    assertEqual(Number(res.body.data?.breakdown?.basePlanPriceHalala || 0), 55000, 'quote charges the higher legacy value as the base plan price');
     assertEqual((res.body.data?.summary?.addons || []).length, 0, 'summary addons is empty');
     assertEqual(Number(res.body.data?.breakdown?.addonsTotalHalala || 0), 0, 'addons total is zero');
   });

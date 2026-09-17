@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+export NODE_ENV=test
+export NODE_OPTIONS="${NODE_OPTIONS:-} --require=$ROOT_DIR/tests/helpers/installMongoTestSafetyGuard.js"
+
 run() {
   printf '\n==> %s\n' "$1"
   shift
@@ -8,10 +13,17 @@ run() {
 }
 
 run "Unit baseline" npm test
+run "Subscription repair startup composition" node tests/subscriptionRepairCompositionStartup.test.js
+run "Subscription planning transient transaction retry" node tests/subscriptionPlanningTransientRetry.test.js
 run "Catalog and validator consistency" npm run test:catalog-validator-consistency
 run "Dashboard and mobile menu parity" npm run test:menu-dashboard-mobile-parity
+run "Flutter premium meal image contract" node tests/builderPremiumMealsImageContract.test.js
 run "Meal Builder dashboard/mobile parity" npm run test:meal-builder-dashboard-mobile-parity
 run "Premium salad eligibility" npm run test:premium-salad-eligibility
+run "Flutter planner payload compatibility" node tests/flutterMealPlannerPayloadCompatibility.test.js
+run "Flutter premium salad legacy payload integration" node tests/flutterPremiumLargeSaladLegacyPayload.integration.test.js
+run "Premium upgrade base meal credit lifecycle" node tests/premiumBaseMealCreditLifecycle.integration.test.js
+run "Premium salad kitchen snapshot projection" node tests/kitchenPremiumSaladProjectionFallback.test.js
 run "Subscription quote and checkout lifecycle" npm run test:checkout
 run "Subscription lifecycle and wallet policies" npm run test:subscriptions
 run "Meal planner integration" npm run test:integration

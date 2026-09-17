@@ -11,7 +11,7 @@ const dateUtils = require("../../utils/date");
 const validateObjectId = require("../../utils/validateObjectId");
 const { pickLang } = require("../../utils/i18n");
 const { SYSTEM_CURRENCY, assertSystemCurrencyOrThrow } = require("../../utils/currency");
-const { computeInclusiveVatBreakdown } = require("../../utils/pricing");
+const { computeInclusiveVatBreakdown, resolvePlanBasePriceHalala } = require("../../utils/pricing");
 const { VAT_PERCENTAGE } = require("../../config/vat");
 const {
   resolvePickupLocationSelection,
@@ -38,6 +38,10 @@ const {
 const {
   normalizeSubscriptionAddonCategory,
 } = require("./subscriptionAddonPolicyService");
+const {
+  getPickupLocationId,
+  resolveSinglePickupLocations,
+} = require("../../utils/singlePickupLocation");
 
 async function findMenuPremiumOptionsByIds(ids) {
   if (!ids.length) return [];
@@ -198,7 +202,19 @@ function resolveDeliverySlotOrThrow(slot, windows, lang) {
     throw createDeliverySlotError("DELIVERY_WINDOW_MISSING", "delivery.slotId is required for delivery subscriptions");
   }
 
-  const resolved = options.find((option) => option.id === slotId || option.slotId === slotId);
+  let resolved = options.find((option) => option.id === slotId || option.slotId === slotId);
+
+  // Older dashboard builds used a display-derived id such as
+  // `delivery-12:00-14:00`. The configured window is the authoritative
+  // selection, so it can safely recover that legacy id only when it identifies
+  // one configured slot. This lives in the core validator rather than a route
+  // wrapper so every checkout composition receives the same compatibility.
+  if (!resolved && requestedWindow) {
+    const matchingWindows = options.filter((option) => option.window === requestedWindow);
+    if (matchingWindows.length === 1) {
+      [resolved] = matchingWindows;
+    }
+  }
 
   if (!resolved) {
     throw createDeliverySlotError("INVALID_DELIVERY_SLOT", "Invalid delivery slot");
@@ -408,7 +424,12 @@ function normalizeCheckoutAddonSelectionShape(item, index = 0) {
 
   const productIds = [];
   if (explicitProductId) productIds.push(explicitProductId);
-  for (const id of explicitMenuProductIds) productIds.push(id);
+  // If this selection was forwarded by the plan-availability policy, treat
+  // menuProductIds as metadata only (not an explicit product selection).
+  const isPlanOnlyForwarded = raw && raw.__planOnlyForwarded === true;
+  if (!isPlanOnlyForwarded) {
+    for (const id of explicitMenuProductIds) productIds.push(id);
+  }
 
   return {
     addonPlanId: explicitAddonPlanId || explicitAddonId || null,
@@ -419,6 +440,7 @@ function normalizeCheckoutAddonSelectionShape(item, index = 0) {
     legacyId,
     sourceRequestShape,
     raw,
+    planOnlyForwarded: isPlanOnlyForwarded,
   };
 }
 
@@ -561,21 +583,35 @@ async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = 
 
     const planCategory = normalizeAddonPlanCategory(addonPlan);
     const planProductIds = uniqueStrings(addonPlan.menuProductIds || []);
-    if (!productIds.length) {
-      productIds = planProductIds;
-    }
+
+    // If the customer did not explicitly select any products, treat this as a
+    // plan-only selection. Do NOT promote linked plan menuProductIds into the
+    // customer's selected productIds (they are metadata only). Only when the
+    // customer explicitly supplies product identities do we run product-level
+    // validation (existence, membership in plan, availability for new sale).
     productIds = uniqueStrings(productIds);
+
+    // Validate requested category regardless of explicit product selection.
+    const requestedCategory = shape.category ? normalizeSubscriptionAddonCategory(shape.category) : null;
+    if (shape.category && (!requestedCategory || requestedCategory !== planCategory)) {
+      throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Requested add-on category does not match the add-on plan", "category", {
+        requestedCategory: shape.category,
+        planCategory,
+      });
+    }
+
+    // Plan-only selection: keep menuProductIds metadata for compatibility but
+    // do NOT populate products or run availability checks.
     if (!productIds.length) {
-      if (["meal", "dessert", "premium_meal", "premium_large_salad"].includes(planCategory)) {
-        throw createAddonSelectionError("ADDON_PRODUCT_NOT_FOUND", "Add-on plan has no selectable products", "productId", { addonPlanId });
-      }
       normalizedRows.push({
         id: String(addonPlanId),
         addonPlanId: String(addonPlanId),
         addonId: String(addonPlanId),
         productIds: [],
         productId: null,
-        menuProductIds: [],
+        // Preserve configured plan menuProductIds as metadata (not as an
+        // explicit customer selection).
+        menuProductIds: planProductIds,
         category: planCategory,
         quantityPerDay: shape.quantityPerDay,
         sourceRequestShape: shape.sourceRequestShape,
@@ -585,22 +621,18 @@ async function resolveCheckoutAddonSelectionsOrThrow(rawItems, { basePlanId } = 
       continue;
     }
 
+    // From here on, the customer explicitly selected one or more products and
+    // we must validate them strictly.
     const missingProductId = productIds.find((productId) => !productById.has(String(productId)));
     if (missingProductId) {
       throw createAddonSelectionError("ADDON_PRODUCT_NOT_FOUND", "Selected add-on product was not found", "productId", { productId: missingProductId });
     }
+
     const notInPlanProductId = productIds.find((productId) => !planProductIds.includes(String(productId)));
     if (notInPlanProductId) {
       throw createAddonSelectionError("ADDON_PRODUCT_NOT_IN_PLAN", "Selected add-on product does not belong to the selected plan", "productId", { productId: notInPlanProductId, addonPlanId });
     }
 
-    const requestedCategory = shape.category ? normalizeSubscriptionAddonCategory(shape.category) : null;
-    if (shape.category && (!requestedCategory || requestedCategory !== planCategory)) {
-      throw createAddonSelectionError("ADDON_CATEGORY_MISMATCH", "Requested add-on category does not match the add-on plan", "category", {
-        requestedCategory: shape.category,
-        planCategory,
-      });
-    }
     for (const productId of productIds) {
       const product = productById.get(String(productId));
       if (!isNewSaleProductUsable(product)) {
@@ -728,45 +760,6 @@ function toKsaMidnightDate(dateStr) {
   return new Date(`${dateStr}T00:00:00+03:00`);
 }
 
-function createSameDayPickupLocationError(message = "A default active pickup location is required for same-day delivery starts") {
-  const err = new Error(message);
-  err.code = "SAME_DAY_PICKUP_LOCATION_NOT_CONFIGURED";
-  err.status = 422;
-  return err;
-}
-
-function isActivePickupLocation(location) {
-  return Boolean(location)
-    && typeof location === "object"
-    && !Array.isArray(location)
-    && location.isActive !== false
-    && location.active !== false
-    && location.enabled !== false
-    && location.isEnabled !== false
-    && location.isAvailable !== false
-    && location.available !== false
-    && location.pickupEnabled !== false
-    && location.isPickupEnabled !== false
-    && location.supportsPickup !== false
-    && location.pickupAvailable !== false
-    && location.availableForPickup !== false
-    && location.acceptsPickup !== false;
-}
-
-function getPickupLocationId(location) {
-  if (!location || typeof location !== "object") return "";
-  return String(
-    location.id
-    || location.locationId
-    || location.pickupLocationId
-    || location.branchId
-    || location.key
-    || location.code
-    || location.slug
-    || ""
-  ).trim();
-}
-
 function normalizeFirstDayOverride(override) {
   if (!override) return null;
   const type = typeof override === "object" ? override.type : override;
@@ -789,36 +782,18 @@ function normalizeFirstDayOverrideOrThrow(override) {
     err.code = "VALIDATION_ERROR";
     throw err;
   }
-  if (!pickupLocationId) {
-    const err = new Error("firstDayFulfillmentOverride.pickupLocationId is required");
-    err.code = "VALIDATION_ERROR";
-    throw err;
-  }
-  return { type: "pickup", pickupLocationId };
-}
-
-function resolveAutomaticSameDayPickupLocation(activePickupLocations = []) {
-  const defaults = activePickupLocations.filter((location) => location && location.isDefault === true);
-  if (defaults.length === 1) {
-    const pickupLocationId = getPickupLocationId(defaults[0]);
-    if (pickupLocationId) return pickupLocationId;
-  }
-  if (defaults.length > 1) {
-    throw createSameDayPickupLocationError("Multiple default pickup locations are configured");
-  }
-  if (activePickupLocations.length === 1) {
-    const pickupLocationId = getPickupLocationId(activePickupLocations[0]);
-    if (pickupLocationId) return pickupLocationId;
-  }
-  throw createSameDayPickupLocationError();
+  return { type: "pickup", pickupLocationId: pickupLocationId || null };
 }
 
 function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations, lang }) {
   const normalized = normalizeFirstDayOverrideOrThrow(override);
   if (!normalized) return null;
+  const singlePickupLocations = resolveSinglePickupLocations(activePickupLocations);
+  const pickupLocationId = normalized.pickupLocationId
+    || getPickupLocationId(singlePickupLocations[0]);
   const resolvedPickupLocation = resolvePickupLocationSelection(
-    activePickupLocations,
-    normalized.pickupLocationId,
+    singlePickupLocations,
+    pickupLocationId,
     lang,
     []
   );
@@ -827,16 +802,22 @@ function validateFirstDayPickupOverrideOrThrow({ override, activePickupLocations
     err.code = "VALIDATION_ERROR";
     throw err;
   }
-  return normalized;
+  return { type: "pickup", pickupLocationId: resolvedPickupLocation.id };
 }
 
-async function applySameDayDeliveryPickupOverride({ delivery, requestedStartDate, currentBusinessDate, lang }) {
+async function applySameDayDeliveryPickupOverride({ delivery, lang }) {
   if (!delivery || delivery.type !== "delivery") return delivery;
 
+  // A first-day pickup is an explicit customer choice. For a normal same-day
+  // delivery request, preserve delivery mode and let resolveFirstServiceDate
+  // move service to the next available delivery day.
+  if (!delivery.firstDayFulfillmentOverride) {
+    delivery.firstDayFulfillmentOverride = null;
+    return delivery;
+  }
+
   const pickupLocations = await getSettingValue("pickup_locations", []);
-  const activePickupLocations = Array.isArray(pickupLocations)
-    ? pickupLocations.filter(isActivePickupLocation)
-    : [];
+  const activePickupLocations = resolveSinglePickupLocations(pickupLocations);
   const existingOverride = validateFirstDayPickupOverrideOrThrow({
     override: delivery.firstDayFulfillmentOverride,
     activePickupLocations,
@@ -846,16 +827,6 @@ async function applySameDayDeliveryPickupOverride({ delivery, requestedStartDate
     delivery.firstDayFulfillmentOverride = existingOverride;
     return delivery;
   }
-
-  const requestedDate = requestedStartDate
-    ? dateUtils.toKSADateString(requestedStartDate)
-    : currentBusinessDate;
-  if (requestedDate !== currentBusinessDate) {
-    return delivery;
-  }
-
-  const pickupLocationId = resolveAutomaticSameDayPickupLocation(activePickupLocations);
-  delivery.firstDayFulfillmentOverride = { type: "pickup", pickupLocationId };
   return delivery;
 }
 
@@ -987,7 +958,7 @@ async function resolveCheckoutQuoteOrThrow(
     throw err;
   }
 
-  const basePlanPriceHalala = parseNonNegativeInteger(mealOption.priceHalala);
+  const basePlanPriceHalala = parseNonNegativeInteger(resolvePlanBasePriceHalala(mealOption));
   if (basePlanPriceHalala === null) {
     const err = new Error("Plan price is invalid");
     err.code = "INVALID_SELECTION";
@@ -1221,18 +1192,13 @@ async function resolveCheckoutQuoteOrThrow(
   if (delivery.type === "pickup") {
     delivery.firstDayFulfillmentOverride = null;
     const pickupLocations = await getSettingValue("pickup_locations", []);
-    const activePickupLocations = Array.isArray(pickupLocations)
-      ? pickupLocations.filter((location) => location && location.isActive !== false)
-      : [];
+    const activePickupLocations = resolveSinglePickupLocations(pickupLocations);
 
     if (!delivery.pickupLocationId) {
       if (activePickupLocations.length >= 1) {
         const defaultLocation = activePickupLocations[0];
-        delivery.pickupLocationId = String(
-          defaultLocation.id
-          || defaultLocation.locationId
-          || "pickup_location_1"
-        );
+        delivery.pickupLocationId = getPickupLocationId(defaultLocation)
+          || "main";
       } else {
         const err = new Error("No active pickup location is configured");
         err.code = "VALIDATION_ERROR";
@@ -1258,9 +1224,7 @@ async function resolveCheckoutQuoteOrThrow(
   if (delivery.type === "delivery") {
     if (delivery.firstDayFulfillmentOverride) {
       const pickupLocations = await getSettingValue("pickup_locations", []);
-      const activePickupLocations = Array.isArray(pickupLocations)
-        ? pickupLocations.filter(isActivePickupLocation)
-        : [];
+      const activePickupLocations = resolveSinglePickupLocations(pickupLocations);
       delivery.firstDayFulfillmentOverride = validateFirstDayPickupOverrideOrThrow({
         override: delivery.firstDayFulfillmentOverride,
         activePickupLocations,
@@ -1418,7 +1382,10 @@ async function resolveCheckoutQuoteOrThrow(
 }
 
 module.exports = {
+  applySameDayDeliveryPickupOverride,
+  resolveDeliverySlotOrThrow,
   resolveCheckoutQuoteOrThrow,
   buildAddonBalanceRowsFromQuote,
   resolveCheckoutAddonSelectionsOrThrow,
+  resolveFirstServiceDate,
 };

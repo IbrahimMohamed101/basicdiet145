@@ -1,7 +1,11 @@
 const mongoose = require("mongoose");
 const Setting = require("../models/Setting");
-const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
 const dateUtils = require("../utils/date");
+const {
+  getPickupLocationId,
+  isActivePickupLocation,
+  resolveSinglePickupLocations,
+} = require("../utils/singlePickupLocation");
 
 const CLOSED_MESSAGE = "Restaurant is currently closed";
 const CLOSED_MESSAGE_AR = "المطعم مغلق حاليًا. يمكنك الطلب خلال ساعات العمل.";
@@ -46,9 +50,7 @@ function matchesPickupLocationField(location, wanted, fields) {
 
 function resolvePickupBranch(pickupLocations, id) {
   const wanted = cleanString(id) || "main";
-  const locations = Array.isArray(pickupLocations) && pickupLocations.length
-    ? pickupLocations
-    : [buildDefaultPickupLocation()];
+  const locations = resolveSinglePickupLocations(pickupLocations);
 
   if (mongoose.Types.ObjectId.isValid(wanted)) {
     const byObjectId = locations.find((location) => (
@@ -62,15 +64,6 @@ function resolvePickupBranch(pickupLocations, id) {
   )) || null;
 }
 
-function getPickupLocationId(location) {
-  if (!location || typeof location !== "object") return "";
-  for (const field of PICKUP_LOCATION_ID_FIELDS) {
-    const value = cleanString(location[field]);
-    if (value) return value;
-  }
-  return "";
-}
-
 function getPickupLocationName(location) {
   if (!location || typeof location !== "object") return null;
   const source = location.name || location.title || location.label || location.branchName;
@@ -82,24 +75,6 @@ function getPickupLocationName(location) {
     return ar || en ? { ar: ar || en, en: en || ar } : null;
   }
   return null;
-}
-
-function isActivePickupLocation(location) {
-  return Boolean(location)
-    && typeof location === "object"
-    && !Array.isArray(location)
-    && location.isActive !== false
-    && location.active !== false
-    && location.enabled !== false
-    && location.isEnabled !== false
-    && location.isAvailable !== false
-    && location.available !== false
-    && location.pickupEnabled !== false
-    && location.isPickupEnabled !== false
-    && location.supportsPickup !== false
-    && location.pickupAvailable !== false
-    && location.availableForPickup !== false
-    && location.acceptsPickup !== false;
 }
 
 function resolveWeeklyScheduleHours(weeklySchedule, now) {
@@ -165,32 +140,17 @@ async function resolveRestaurantOpenState({
     Setting.findOne({ key: "temporary_closure" }).lean(),
   ]);
 
-  const hasConfiguredPickupLocations = Boolean(
-    pickupLocationsSetting && Array.isArray(pickupLocationsSetting.value)
+  const pickupLocations = resolveSinglePickupLocations(
+    pickupLocationsSetting && pickupLocationsSetting.value
   );
-  const pickupLocations = hasConfiguredPickupLocations
-    ? pickupLocationsSetting.value
-    : [buildDefaultPickupLocation()];
   const activePickupLocations = pickupLocations.filter(isActivePickupLocation);
-  const defaultPickupLocationId = "main";
+  const defaultPickupLocationId = getPickupLocationId(activePickupLocations[0]) || "main";
   const requestedPickupLocationId = cleanString(pickupLocationId || branchId);
   let selectedLocation = null;
   let pickupLocationError = null;
 
   if (requestedPickupLocationId === "main") {
-    if (activePickupLocations.length === 1) {
-      selectedLocation = activePickupLocations[0];
-    } else if (activePickupLocations.length === 0) {
-      pickupLocationError = {
-        code: "INVALID_BRANCH",
-        message: 'Cannot resolve branch ID "main": no active pickup branches are configured',
-      };
-    } else {
-      pickupLocationError = {
-        code: "AMBIGUOUS_BRANCH",
-        message: 'Cannot resolve branch ID "main": multiple active pickup branches are configured',
-      };
-    }
+    selectedLocation = activePickupLocations[0] || null;
   } else if (requestedPickupLocationId) {
     const matchedLocation = resolvePickupBranch(pickupLocations, requestedPickupLocationId);
     if (matchedLocation && isActivePickupLocation(matchedLocation)) {

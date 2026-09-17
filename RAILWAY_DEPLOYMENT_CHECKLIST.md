@@ -11,8 +11,8 @@ This document provides a comprehensive checklist for deploying the `basicdiet145
 Use the `.env.railway.example` file as a reference.
 
 ### Critical Database Mapping
-Railway provides `MONGO_URL`. Your app expects `MONGODB_URI` or `MONGO_URI`. 
-* Action: Add a variable `MONGODB_URI` and reference Railway's variable: `\${MONGO_URL}`
+Railway provides `MONGO_URL`, and the app accepts it directly as well as `MONGODB_URI` or `MONGO_URI`.
+* Optional: You can still add `MONGODB_URI` and reference Railway's variable: `\${MONGO_URL}`.
 
 ### Webhook Secret
 Moyasar requires a webhook secret in production.

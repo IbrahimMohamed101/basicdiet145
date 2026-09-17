@@ -15,6 +15,7 @@ const MenuOptionGroup = require("../src/models/MenuOptionGroup");
 const MenuProduct = require("../src/models/MenuProduct");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const ProductOptionGroup = require("../src/models/ProductOptionGroup");
+const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
 
 let mongoServer;
 
@@ -108,7 +109,7 @@ async function seedCatalog() {
   })));
   const proteinByKey = new Map(proteins.map((option) => [option.key, option]));
 
-  const carbs = await Promise.all(["white_rice", "sweet_potato"].map((key, index) => MenuOption.create({
+  const carbs = await Promise.all(["basmati_white_rice", "sweet_potatoes"].map((key, index) => MenuOption.create({
     groupId: carbsGroup._id,
     key,
     name: { en: key, ar: key },
@@ -159,13 +160,15 @@ async function main() {
     const api = request(app);
     const { headers } = await dashboardAuth("admin", "meal-builder-full-cycle");
 
-    let res = await api.post("/api/dashboard/meal-builder/draft").set(headers).send({});
+    const seedSections = (await mealBuilderConfigService.buildDefaultVisualTemplateSections())
+      .filter((section) => section.key !== "premium");
+    let res = await api.post("/api/dashboard/meal-builder/draft").set(headers).send({ sections: seedSections });
     expectStatus(res, 201, "create canonical draft");
-    assert.deepStrictEqual(keys(res.body.data.sections), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+    assert.deepStrictEqual(keys(res.body.data.sections), ["sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
 
     res = await api.get("/api/dashboard/meal-builder/draft/hydrated").set(headers);
     expectStatus(res, 200, "hydrate canonical draft");
-    assert.deepStrictEqual(keys(res.body.data.sections), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+    assert.deepStrictEqual(keys(res.body.data.sections), ["sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
     assert(res.body.data.sections.every((section) => section.key && section.source?.kind && Number(section.sortOrder) > 0), "sections have canonical keys/source/sort");
 
     res = await api.get("/api/dashboard/meal-builder/pickers/chicken?include=all").set(headers);
@@ -178,7 +181,7 @@ async function main() {
     assert.strictEqual(fajita.eligible, true, JSON.stringify(fajita));
     assert.strictEqual(fajita.state, "selected");
     assert.strictEqual(fajita.relationExists, true);
-    assert.strictEqual(fajita.includedVia, "section_selection", JSON.stringify(fajita));
+    assert.strictEqual(fajita.familyResolutionSource, "proteinFamilyKey", JSON.stringify(fajita));
 
     const draft = (await api.get("/api/dashboard/meal-builder/draft/hydrated").set(headers)).body.data.draft;
     const sectionsWithoutFajita = draft.sections.map((section) => section.key === "chicken"
@@ -199,12 +202,12 @@ async function main() {
     });
     res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({ sections: reordered, notes: "temporary reorder" });
     expectStatus(res, 200, "save reordered sections");
-    assert.deepStrictEqual(keys(res.body.data.sections), ["premium", "sandwich", "beef", "chicken", "fish", "eggs", "carbs"]);
-    assert.strictEqual(new Set(res.body.data.sections.map((section) => section.sortOrder)).size, 7, "sort orders remain unique");
+    assert.deepStrictEqual(keys(res.body.data.sections), ["sandwich", "beef", "chicken", "fish", "eggs", "carbs"]);
+    assert.strictEqual(new Set(res.body.data.sections.map((section) => section.sortOrder)).size, 6, "sort orders remain unique");
 
     res = await api.put("/api/dashboard/meal-builder/draft").set(headers).send({ sections: draft.sections, notes: "restore canonical order" });
     expectStatus(res, 200, "restore canonical sections");
-    assert.deepStrictEqual(keys(res.body.data.sections), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+    assert.deepStrictEqual(keys(res.body.data.sections), ["sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
 
     res = await api.post("/api/dashboard/meal-builder/validate").set(headers).send({ sections: res.body.data.sections });
     expectStatus(res, 200, "validate valid draft");
@@ -249,14 +252,14 @@ async function main() {
     res = await api.post("/api/dashboard/meal-builder/publish").set(headers).send({ notes: "full cycle publish" });
     expectStatus(res, 200, "publish valid draft");
     assert.strictEqual(res.body.data.validation.ready, true, JSON.stringify(res.body.data.validation));
-    assert.deepStrictEqual(keys(res.body.data.config.sections), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
-    assert.strictEqual(res.body.data.config.sections[0].source.kind, "premium_mixed");
+    assert.deepStrictEqual(keys(res.body.data.config.sections), ["sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+    assert.strictEqual(res.body.data.config.sections[0].source.kind, "product_list");
 
     res = await api.get("/api/subscriptions/meal-planner-menu?includeLegacy=true&lang=ar");
     expectStatus(res, 200, "flutter planner menu after publish");
     const planner = res.body.data.plannerCatalog;
     assert.strictEqual(planner.contractVersion, "meal_planner_menu.v3");
-    assert.deepStrictEqual(keys(planner.sections), ["premium", "sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
+    assert.deepStrictEqual(keys(planner.sections), ["sandwich", "chicken", "beef", "fish", "eggs", "carbs"]);
     assert.strictEqual(planner.sections.find((section) => section.key === "chicken").products[0].optionGroups[0].options[0].key, "chicken");
     assert.strictEqual(planner.rules.source, "meal_builder_config");
     assert(res.body.data.builderCatalog, "legacy builderCatalog remains compatibility output only");

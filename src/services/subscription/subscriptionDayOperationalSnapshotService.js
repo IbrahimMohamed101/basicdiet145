@@ -5,6 +5,7 @@ const User = require("../../models/User");
 const { buildLockedOperationalSnapshotDetails } = require("../../utils/delivery");
 const { isPhase2CanonicalDayPlanningEnabled } = require("../../utils/featureFlags");
 const { resolveMealsPerDay, applyDayWalletSelections } = require("../../utils/subscription/subscriptionDaySelectionSync");
+const { resolveSinglePickupLocations } = require("../../utils/singlePickupLocation");
 const { buildScopedCanonicalPlanningSnapshot } = require("./subscriptionDayPlanningService");
 const { buildSubscriptionDayFulfillmentState } = require("./subscriptionDayFulfillmentStateService");
 
@@ -116,7 +117,9 @@ async function getSettingValue(key, fallback) {
 
 async function lockDaySnapshot(subscription, day, session) {
   if (day.lockedSnapshot) return day.lockedSnapshot;
-  const pickupLocations = await getSettingValue("pickup_locations", []);
+  const pickupLocations = resolveSinglePickupLocations(
+    await getSettingValue("pickup_locations", [])
+  );
   const snapshot = await buildLockedDaySnapshot({
     subscription,
     day,

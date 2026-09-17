@@ -1,12 +1,15 @@
 "use strict";
 
+const dateUtils = require("../../../utils/date");
 const { ACTIVE_STATUS } = require("./constants");
 const { ManualDeductionError } = require("./ManualDeductionError");
+
+const MAX_ADDON_TYPES_PER_DEDUCTION = 50;
 
 function normalizeCount(value) {
   if (value === undefined || value === null || value === "") return 0;
   const numeric = Number(value);
-  if (!Number.isInteger(numeric)) return NaN;
+  if (!Number.isSafeInteger(numeric)) return NaN;
   return numeric;
 }
 
@@ -15,19 +18,60 @@ function resolvePremiumRemaining(subscription) {
     .reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row && row.remainingQty) || 0)), 0);
 }
 
+function resolveStackedAggregate(subscription) {
+  const stacking = subscription
+    && subscription.stacking
+    && typeof subscription.stacking === "object"
+    && !Array.isArray(subscription.stacking)
+    ? subscription.stacking
+    : null;
+  const aggregate = stacking
+    && stacking.hasEntitlementBatches === true
+    && stacking.aggregateBalance
+    && typeof stacking.aggregateBalance === "object"
+    && !Array.isArray(stacking.aggregateBalance)
+    ? stacking.aggregateBalance
+    : null;
+  if (!aggregate) return null;
+
+  return {
+    totalMeals: Math.max(0, Math.floor(Number(aggregate.totalMeals) || 0)),
+    remainingMeals: Math.max(0, Math.floor(Number(aggregate.remainingMeals) || 0)),
+    reservedMeals: Math.max(0, Math.floor(Number(aggregate.reservedMeals) || 0)),
+    consumedMeals: Math.max(0, Math.floor(Number(aggregate.consumedMeals) || 0)),
+    forfeitedMeals: Math.max(0, Math.floor(Number(aggregate.forfeitedMeals) || 0)),
+  };
+}
+
 function resolveBalances(subscription) {
-  const totalMeals = Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
-  const rawRemaining = (subscription && subscription.stacking && typeof subscription.stacking.aggregateBalance === "number")
-    ? subscription.stacking.aggregateBalance
-    : (subscription && subscription.remainingMeals);
-  const remainingMeals = Math.max(0, Math.floor(Number(rawRemaining) || 0));
+  const stacked = resolveStackedAggregate(subscription);
+  const totalMeals = stacked
+    ? stacked.totalMeals
+    : Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
+  const remainingMeals = stacked
+    ? stacked.remainingMeals
+    : Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
+  const hasEntitlementLedger = Boolean(stacked) || Number(subscription && subscription.entitlementVersion || 0) >= 2;
+  const reservedMeals = hasEntitlementLedger
+    ? (stacked ? stacked.reservedMeals : Math.max(0, Math.floor(Number(subscription && subscription.reservedMeals) || 0)))
+    : 0;
+  const deductibleMeals = stacked ? remainingMeals : remainingMeals + reservedMeals;
+
   const remainingPremiumMeals = resolvePremiumRemaining(subscription);
   const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
+  const deductibleRegularMeals = Math.max(0, deductibleMeals - remainingPremiumMeals);
   return {
     totalMeals,
-    consumedMeals: Math.max(0, totalMeals - remainingMeals),
+    consumedMeals: stacked
+      ? stacked.consumedMeals
+      : (hasEntitlementLedger
+        ? Math.max(0, Math.floor(Number(subscription && subscription.consumedMeals) || 0))
+        : Math.max(0, totalMeals - remainingMeals)),
     remainingMeals,
+    reservedMeals,
+    deductibleMeals,
     remainingRegularMeals,
+    deductibleRegularMeals,
     remainingPremiumMeals,
   };
 }
@@ -60,9 +104,9 @@ function resolveAddonBalances(subscription) {
 
 function chooseDefaultSubscription(subscriptions, businessDate) {
   const current = subscriptions.find((subscription) => {
-    const start = subscription.startDate ? String(subscription.startDate.toISOString()).slice(0, 10) : null;
+    const start = subscription.startDate ? dateUtils.toKSADateString(subscription.startDate) : null;
     const endDate = subscription.validityEndDate || subscription.endDate || null;
-    const end = endDate ? String(endDate.toISOString()).slice(0, 10) : null;
+    const end = endDate ? dateUtils.toKSADateString(endDate) : null;
     return (!start || start <= businessDate) && (!end || end >= businessDate);
   });
   return current || subscriptions[0] || null;
@@ -74,7 +118,13 @@ function validateCounts({ regularMeals, premiumMeals, addons }) {
 
   const addonCountById = new Map();
   let addonsTotal = 0;
-  if (addons && Array.isArray(addons)) {
+  if (addons !== undefined && addons !== null && !Array.isArray(addons)) {
+    throw new ManualDeductionError("INVALID_ADDON_COUNT", "Addons must be an array", 400);
+  }
+  if (Array.isArray(addons) && addons.length > MAX_ADDON_TYPES_PER_DEDUCTION) {
+    throw new ManualDeductionError("INVALID_ADDON_COUNT", "Too many addon rows", 400);
+  }
+  if (Array.isArray(addons)) {
     addons.forEach((addon) => {
       const qty = normalizeCount(addon.qty);
       if (!addon.addonId || qty < 0) {
@@ -82,6 +132,9 @@ function validateCounts({ regularMeals, premiumMeals, addons }) {
       }
       const addonId = String(addon.addonId);
       addonsTotal += qty;
+      if (!Number.isSafeInteger(addonsTotal)) {
+        throw new ManualDeductionError("INVALID_ADDON_COUNT", "Invalid addon total", 400);
+      }
       addonCountById.set(addonId, (addonCountById.get(addonId) || 0) + qty);
     });
   }
@@ -101,21 +154,110 @@ function validateCounts({ regularMeals, premiumMeals, addons }) {
   return { regularMeals: regular, premiumMeals: premium, total: regular + premium, addons: validAddons };
 }
 
-function validateSubscriptionCanDeduct(subscription) {
+function toDateOnly(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return dateUtils.toKSADateString(date);
+}
+
+function safeLedgerInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function validateModernBalanceIntegrity(subscription) {
+  const stacked = resolveStackedAggregate(subscription);
+  if (stacked) {
+    const accountedMeals = stacked.remainingMeals + stacked.consumedMeals + stacked.forfeitedMeals;
+    if (accountedMeals !== stacked.totalMeals || stacked.reservedMeals > stacked.remainingMeals) {
+      throw new ManualDeductionError(
+        "BALANCE_INTEGRITY_ERROR",
+        "Stacked entitlement balance does not reconcile",
+        409,
+        {
+          ...stacked,
+          accountedMeals,
+          equationDifference: stacked.totalMeals - accountedMeals,
+        }
+      );
+    }
+    return;
+  }
+
+  const entitlementVersion = Number(subscription && subscription.entitlementVersion || 0);
+  if (entitlementVersion < 2) return;
+
+  const counters = {
+    totalMeals: safeLedgerInteger(subscription.totalMeals),
+    availableMeals: safeLedgerInteger(subscription.remainingMeals),
+    reservedMeals: safeLedgerInteger(subscription.reservedMeals),
+    consumedMeals: safeLedgerInteger(subscription.consumedMeals),
+    forfeitedMeals: safeLedgerInteger(subscription.forfeitedMeals),
+  };
+  if (Object.values(counters).includes(null)) {
+    throw new ManualDeductionError(
+      "BALANCE_INTEGRITY_ERROR",
+      "Subscription balance counters are incomplete or invalid",
+      409,
+      { counters }
+    );
+  }
+
+  const accountedMeals = counters.availableMeals
+    + counters.reservedMeals
+    + counters.consumedMeals
+    + counters.forfeitedMeals;
+  if (accountedMeals !== counters.totalMeals) {
+    throw new ManualDeductionError(
+      "BALANCE_INTEGRITY_ERROR",
+      "Subscription balance does not reconcile",
+      409,
+      {
+        ...counters,
+        accountedMeals,
+        equationDifference: counters.totalMeals - accountedMeals,
+      }
+    );
+  }
+}
+
+function validateSubscriptionCanDeduct(subscription, businessDate = null) {
   if (!subscription) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_FOUND", "Subscription not found", 404);
   }
   if (subscription.status !== ACTIVE_STATUS) {
     throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
   }
+  if (businessDate) {
+    const startDate = toDateOnly(subscription.startDate);
+    const endDate = toDateOnly(subscription.validityEndDate || subscription.endDate);
+    if ((startDate && businessDate < startDate) || (endDate && businessDate > endDate)) {
+      throw new ManualDeductionError(
+        "SUBSCRIPTION_OUTSIDE_VALIDITY",
+        "Date outside subscription validity",
+        409
+      );
+    }
+  }
+  validateModernBalanceIntegrity(subscription);
 }
 
 function validateBalances(subscription, counts) {
   const balances = resolveBalances(subscription);
-  if (counts.total > balances.remainingMeals) {
-    throw new ManualDeductionError("INSUFFICIENT_REMAINING_MEALS", "Not enough remaining meals", 409);
+  if (counts.total > balances.deductibleMeals) {
+    throw new ManualDeductionError(
+      "INSUFFICIENT_REMAINING_MEALS",
+      "Not enough remaining meals",
+      409,
+      {
+        availableMeals: balances.remainingMeals,
+        reservedMeals: balances.reservedMeals,
+        deductibleMeals: balances.deductibleMeals,
+        requestedMeals: counts.total,
+      }
+    );
   }
-  if (counts.regularMeals > balances.remainingRegularMeals) {
+  if (counts.regularMeals > balances.deductibleRegularMeals) {
     throw new ManualDeductionError("INSUFFICIENT_REGULAR_MEALS", "Not enough regular meals", 409);
   }
   if (counts.premiumMeals > balances.remainingPremiumMeals) {
@@ -144,7 +286,7 @@ function validateBalances(subscription, counts) {
 
 function buildPremiumAllocation(subscription, premiumMeals) {
   let remaining = premiumMeals;
-  const rows = (Array.isArray(subscription.premiumBalance) ? subscription.premiumBalance : [])
+  const rows = (Array.isArray(subscription && subscription.premiumBalance) ? subscription.premiumBalance : [])
     .filter((row) => row && row._id && Number(row.remainingQty || 0) > 0)
     .sort((a, b) => {
       const dateA = a.purchasedAt ? new Date(a.purchasedAt).getTime() : 0;
@@ -175,5 +317,6 @@ module.exports = {
   resolveBalances,
   validateBalances,
   validateCounts,
+  validateModernBalanceIntegrity,
   validateSubscriptionCanDeduct,
 };

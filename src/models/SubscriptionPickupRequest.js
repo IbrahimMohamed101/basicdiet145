@@ -9,6 +9,15 @@ const SUBSCRIPTION_PICKUP_REQUEST_STATUSES = [
   "canceled",
 ];
 
+const PICKUP_RESERVATION_STATES = [
+  "pending",
+  "reserving",
+  "reserved",
+  "consumed",
+  "released",
+  "failed",
+];
+
 const SubscriptionPickupRequestSchema = new mongoose.Schema(
   {
     subscriptionId: {
@@ -82,8 +91,24 @@ const SubscriptionPickupRequestSchema = new mongoose.Schema(
     creditsReservedAt: { type: Date, default: null },
     creditsConsumedAt: { type: Date, default: null },
     creditsReleasedAt: { type: Date, default: null },
+    reservationState: {
+      type: String,
+      enum: PICKUP_RESERVATION_STATES,
+      default: "pending",
+      index: true,
+    },
+    reservationAttemptCount: { type: Number, min: 0, default: 0 },
+    lastReservationAttemptAt: { type: Date, default: null },
+    reservationCompletedAt: { type: Date, default: null },
+    reservationErrorCode: { type: String, trim: true, default: null },
+    reservationErrorMessage: { type: String, trim: true, default: null },
     // Server-derived entitlement references; never required from a client.
     baseAllocationKeys: { type: [String], default: undefined },
+    baseAllocationMode: {
+      type: String,
+      enum: ["none", "linked_day", "standalone"],
+      default: "none",
+    },
     idempotencyKey: { type: String, trim: true, default: null },
     snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     operationAuditLog: {
@@ -104,6 +129,7 @@ SubscriptionPickupRequestSchema.index({ subscriptionId: 1, date: 1, createdAt: -
 SubscriptionPickupRequestSchema.index({ subscriptionId: 1, status: 1 });
 SubscriptionPickupRequestSchema.index({ userId: 1, date: 1, createdAt: -1 });
 SubscriptionPickupRequestSchema.index({ pickupCode: 1, status: 1 });
+SubscriptionPickupRequestSchema.index({ reservationState: 1, lastReservationAttemptAt: 1 });
 SubscriptionPickupRequestSchema.index(
   { subscriptionId: 1, userId: 1, idempotencyKey: 1 },
   {

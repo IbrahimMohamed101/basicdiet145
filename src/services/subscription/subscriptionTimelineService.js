@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
+const {
+  resolveSubscriptionTimelineExtraDays,
+} = require("./subscriptionTimelineDurationService");
 const Payment = require("../../models/Payment");
 const BuilderProtein = require("../../models/BuilderProtein");
 const { resolvePremiumKeyFromName } = require("../../utils/subscription/premiumIdentity");
@@ -28,6 +31,9 @@ const {
   DELIVERY_SELECTION_CUTOFF_HOURS,
 } = require("./subscriptionDayModificationPolicyService");
 const { resolveEffectiveFulfillmentMode } = require("./subscriptionFulfillmentPolicyService");
+const {
+  resolveStoredProteinGrams,
+} = require("./subscriptionStackingKitchenGramsService");
 
 /**
  * @typedef {import("../../types/subscriptionTimeline").TimelineDay} TimelineDay
@@ -269,7 +275,7 @@ function buildTimelineDailyMeals(meals) {
   };
 }
 
-function normalizeTimelineMealSlots(dbDay) {
+function normalizeTimelineMealSlots(dbDay, subscription = null) {
   if (!Array.isArray(dbDay?.mealSlots)) return [];
 
   return dbDay.mealSlots
@@ -283,6 +289,10 @@ function normalizeTimelineMealSlots(dbDay) {
         ? slot.carbs.map((carb) => ({ carbId: carb.carbId ? String(carb.carbId) : null, grams: Number(carb.grams || 0) }))
         : (shouldUseLegacyCarbId && slot.carbId ? [{ carbId: String(slot.carbId), grams: 300 }] : []);
       const salad = slot.salad || (slot.customSalad && typeof slot.customSalad === "object" ? slot.customSalad : null);
+      const proteinGrams = resolveStoredProteinGrams(
+        slot,
+        subscription && subscription.selectedGrams
+      );
 
       return {
         slotIndex: Number(slot.slotIndex || 0),
@@ -297,6 +307,7 @@ function normalizeTimelineMealSlots(dbDay) {
         premiumKey: slot.premiumKey || null,
         premiumSource: slot.premiumSource ? String(slot.premiumSource) : "none",
         premiumExtraFeeHalala: Number(slot.premiumExtraFeeHalala || 0),
+        proteinGrams,
       };
     });
 }
@@ -560,6 +571,11 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
   const startDateStr = toKSADateString(subscription.startDate);
   const endDateStr = toKSADateString(subscription.endDate);
   const validityEndDateStr = toKSADateString(subscription.validityEndDate || subscription.endDate);
+  const timelineExtraDays = resolveSubscriptionTimelineExtraDays(subscription);
+  const timelineExtraEndDateStr = addDaysToKSADateString(
+    endDateStr,
+    timelineExtraDays
+  );
 
   const [days, compensation, pickupLocations, dayPayments] = await Promise.all([
     SubscriptionDay.find({ subscriptionId }).lean(),
@@ -706,14 +722,21 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       settlementReason: dbDay && dbDay.settlementReason ? dbDay.settlementReason : null,
       consumedByPolicy: Boolean(dbDay && dbDay.autoSettled && dbDay.creditsDeducted),
       deliveryMode: subscription.deliveryMode || null,
-      source: isExtension ? (extensionSourceMap.get(currentDate) || "freeze_compensation") : "base",
+      source: isExtension
+        ? (
+          extensionSourceMap.get(currentDate)
+          || (currentDate <= timelineExtraEndDateStr
+            ? "timeline_extra"
+            : "freeze_compensation")
+        )
+        : "base",
       locked: Boolean(dbDay && (dbDay.lockedSnapshot || status === "locked")),
       isExtension,
       calendar,
       meals,
       dailyMeals: buildTimelineDailyMeals(meals),
       selectedMealIds: normalizeLegacySelectionIds(dbDay),
-      mealSlots: normalizeTimelineMealSlots(dbDay),
+      mealSlots: normalizeTimelineMealSlots(dbDay, subscription),
       ...commercialState,
       ...planningContract,
       ...fulfillmentState,
@@ -742,6 +765,7 @@ async function buildSubscriptionTimeline(subscriptionId, options = {}) {
       endDate: endDateStr,
       validityEndDate: validityEndDateStr,
       compensationDays: compensation.totalCount,
+      timelineExtraDays,
       freezeCompensationDays: compensation.freezeCount,
       skipCompensationDays: compensation.skipCount,
     },
@@ -817,6 +841,7 @@ function buildExtensionSourceMap(tokens = [], endDateStr) {
 module.exports = {
   buildSubscriptionTimeline,
   deriveTimelinePlanningContract,
+  normalizeTimelineMealSlots,
   resolveDeliverySelectionCutoffState,
   resolveTimelineLegacyStatus,
 };

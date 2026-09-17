@@ -12,7 +12,7 @@ const router = Router();
 
 router.use(dashboardAuthMiddleware, dashboardRoleMiddleware(["admin", "superadmin", "kitchen"]));
 
-router.use(dashboardMutationRoleMiddleware(["admin", "superadmin"]));
+router.use(dashboardMutationRoleMiddleware(["admin", "superadmin", "restaurant"]));
 
 router.get("/", asyncHandler(controller.listCatalogItems));
 router.post("/", asyncHandler(controller.createCatalogItem));

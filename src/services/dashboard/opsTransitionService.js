@@ -18,9 +18,11 @@ const {
   createOneTimeOrderDeliveryDisabledError,
 } = require("../../utils/oneTimeOrderDeliveryGate");
 const {
-  consumeReservedPickupMeals,
   releaseReservedPickupMeals,
 } = require("../subscription/subscriptionPickupRequestBalanceService");
+const {
+  settlePickupRequestAsUncollected,
+} = require("../subscription/subscriptionPickupCycleAuthorityService");
 const {
   assertAdminSubscriptionAccess,
 } = require("../subscription/subscriptionAccessGuardService");
@@ -876,21 +878,15 @@ async function handleNoShow({ entityId, entityType, payload, userId, role, sessi
     }
     const fromStatus = doc.status;
     validateTransition(entityType, fromStatus, "no_show");
-    doc.status = "no_show";
-    doc.pickupNoShowAt = new Date();
-    doc.canceledAt = doc.canceledAt || new Date();
-    doc.cancellationReason = payload.reason || "no_show";
-    doc.cancellationNote = payload.notes || payload.note;
-    await consumeReservedPickupMeals({
-      pickupRequestId: doc._id,
-      entitlementState: "forfeited",
+    const settlement = await settlePickupRequestAsUncollected({
+      requestId: doc._id,
+      userId,
+      reason: payload.reason || "no_show",
       session,
     });
-    appendPickupRequestAudit(doc, "no_show", userId, role);
-    await doc.save({ session });
-    const updated = await SubscriptionPickupRequest.findById(entityId).session(session);
     return {
-      data: updated || doc,
+      data: settlement.pickupRequest,
+      idempotent: Boolean(settlement.idempotent),
       sideEffects: { action: "no_show", entityType, entityId, toStatus: "no_show" },
     };
   }
@@ -913,12 +909,12 @@ async function handleNoShow({ entityId, entityType, payload, userId, role, sessi
     doc.cancellationReason = payload.reason || "no_show";
     doc.cancellationNote = payload.notes || payload.note;
     
-    // Policy Fix: no_show forfeits meals AND balances. 
-    // We explicitly DO NOT call releaseAddonBalanceAtomically or releasePremiumBalanceAtomically here.
+    // A no-show means the operation was not fulfilled. Return the reservation;
+    // only fulfillment may move reserved credits to consumed.
     await transitionDayEntitlements({
       subscriptionId: doc.subscriptionId,
       day: doc,
-      toState: "forfeited",
+      toState: "released",
       session,
     });
 

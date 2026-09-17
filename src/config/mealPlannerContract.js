@@ -27,14 +27,18 @@ const PREMIUM_LARGE_SALAD_PREMIUM_KEY = MEAL_SELECTION_TYPES.PREMIUM_LARGE_SALAD
 const PREMIUM_LARGE_SALAD_PRESET_KEY = LARGE_SALAD_CATEGORY_KEY;
 const PREMIUM_LARGE_SALAD_FIXED_PRICE_HALALA = 2900;
 
+// Exact customer-visible Basic Meal carb menu. Historical/other-context carb
+// records may continue to exist, but they must not be offered for new Basic Meal picks.
 const CUSTOMER_VISIBLE_CARB_KEYS = Object.freeze([
-  "white_rice",
-  "turmeric_rice",
-  "alfredo_pasta",
+  "lentil_rice",
+  "javanese_white_rice",
+  "basmati_white_rice",
+  "mashed_potatoes",
+  "roasted_potatoes",
+  "sweet_potatoes",
+  "mixed_vegetables",
   "red_sauce_pasta",
-  "roasted_potato",
-  "sweet_potato",
-  "grilled_mixed_vegetables",
+  "white_pasta",
 ]);
 
 const STANDARD_MEAL_PROTEIN_KEYS = Object.freeze([
@@ -44,33 +48,30 @@ const STANDARD_MEAL_PROTEIN_KEYS = Object.freeze([
   "eggs",
 ]);
 
-// All protein option keys eligible for display in the standard_meal protein picker.
-// Includes variant proteins (fajita, spicy, meatballs, etc.) that share the same
-// selection type as standard but were previously tagged salad_only.
-// These are display-only tabs; validation eligibility is defined by the DB option record.
+// Exact regular Basic Meal proteins plus the two preserved paid regular options
+// and the three existing premium proteins. Availability is still enforced by
+// MenuOption/ProductGroupOption state; this list only defines recognized picker keys.
 const STANDARD_MEAL_EXTENDED_PROTEIN_KEYS = Object.freeze([
-  // chicken family
-  "chicken",
-  "chicken_fajita",
-  "spicy_chicken",
-  "italian_spiced_chicken",
-  "chicken_tikka",
-  "asian_chicken",
-  "chicken_strips",
+  // final regular chicken family
   "grilled_chicken",
   "mexican_chicken",
-  // beef family
-  "beef",
+  "creamy_chicken",
+  "lemon_bbq_chicken",
+  "chicken_65",
+  "chicken_with_okra",
+  "shish_tawook",
+  "asian_chicken",
+  // final regular beef family
+  "kofta",
+  "mushroom_beef",
+  "asian_beef",
+  // preserved paid regular beef options
   "meatballs",
   "beef_stroganoff",
-  // fish family
-  "fish",
-  "fish_fillet",
-  "tuna",
-  // eggs family
-  "eggs",
-  "boiled_eggs",
-  // premium family (shown in separate Tab)
+  // final regular fish family
+  "creamy_fish",
+  "grilled_fish",
+  // existing premium family (kept unchanged)
   "beef_steak",
   "shrimp",
   "salmon",
@@ -137,23 +138,35 @@ const PROTEIN_VISUAL_FAMILIES = Object.freeze(
 // The "premium" family maps to the premium proteins with extra fee.
 const STANDARD_MEAL_PROTEIN_TAB_KEYS = Object.freeze(["chicken", "beef", "fish", "eggs", "premium"]);
 
-// Maps each protein option key to its visual family tab.
-// Premium proteins (beef_steak, shrimp, salmon) map to "premium" tab,
-// not their biological family, because they appear in the Premium tab in the picker.
-// Standard variants (meatballs, fish_fillet, etc.) map to their biological family.
+// Maps each protein option key to its visual family tab. Keep legacy mappings used
+// by premium salad/other contexts and add the final Basic Meal canonical keys.
 const PROTEIN_VISUAL_FAMILY_OPTION_KEYS = Object.freeze({
+  // final Basic Meal chicken
+  grilled_chicken: "chicken",
+  mexican_chicken: "chicken",
+  creamy_chicken: "chicken",
+  lemon_bbq_chicken: "chicken",
+  chicken_65: "chicken",
+  chicken_with_okra: "chicken",
+  shish_tawook: "chicken",
+  asian_chicken: "chicken",
+  // final Basic Meal beef + preserved paid regular beef
+  kofta: "beef",
+  mushroom_beef: "beef",
+  asian_beef: "beef",
+  meatballs: "beef",
+  beef_stroganoff: "beef",
+  // final Basic Meal fish
+  creamy_fish: "fish",
+  grilled_fish: "fish",
+  // legacy mappings still used outside the normalized Basic Meal regular menu
   chicken: "chicken",
   chicken_fajita: "chicken",
   spicy_chicken: "chicken",
   italian_spiced_chicken: "chicken",
   chicken_tikka: "chicken",
-  asian_chicken: "chicken",
   chicken_strips: "chicken",
-  grilled_chicken: "chicken",
-  mexican_chicken: "chicken",
   beef: "beef",
-  meatballs: "beef",
-  beef_stroganoff: "beef",
   fish: "fish",
   fish_fillet: "fish",
   tuna: "fish",
@@ -323,32 +336,114 @@ function getProteinVisualFamilyDefinition(value) {
   return normalized ? (PROTEIN_VISUAL_FAMILIES.find((family) => family.key === normalized) || null) : null;
 }
 
-function resolveProteinVisualFamilyKey(option = {}) {
+function normalizeExplicitProteinFamilyKey(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return PROTEIN_FAMILY_KEYS.includes(raw) ? raw : "";
+}
+
+/**
+ * Canonical MenuOption family policy shared by customer serialization,
+ * Dashboard pickers, and Meal Builder write validation.
+ *
+ * Priority for normal proteins:
+ *   1. valid explicit proteinFamilyKey
+ *   2. compatible explicit displayCategoryKey
+ *   3. legacy static option-key mapping
+ *   4. unknown (fail closed)
+ *
+ * Premium remains a separate visual/system-managed classification. Invalid or
+ * conflicting explicit metadata never falls through to a legacy key mapping.
+ */
+function resolveProteinFamilyClassification(option = {}) {
   // Final catalog metadata is authoritative. Dashboard premium configuration may
   // promote any protein option, including one whose default visual family is
   // defined below, so premium overrides must win before sections are generated.
   const displayCategoryKey = String(option.displayCategoryKey || "").trim().toLowerCase();
   const selectionType = String(option.selectionType || "").trim().toLowerCase();
   if (option.isPremium === true || displayCategoryKey === "premium" || selectionType === "premium_meal") {
-    return "premium";
+    return { familyKey: "premium", source: "premium", valid: true, premium: true, reasonCode: "" };
   }
 
-  // Priority 1: PROTEIN_VISUAL_FAMILY_OPTION_KEYS maps option.key → visual tab
-  // This is the most specific mapping (e.g. beef_steak → "premium", meatballs → "beef")
+  const rawProteinFamilyKey = String(option.proteinFamilyKey || "").trim().toLowerCase();
+  const explicitFamilyKey = normalizeExplicitProteinFamilyKey(rawProteinFamilyKey);
+  if (rawProteinFamilyKey && !explicitFamilyKey) {
+    return {
+      familyKey: "",
+      source: "proteinFamilyKey",
+      valid: false,
+      premium: false,
+      reasonCode: "INVALID_PROTEIN_FAMILY_KEY",
+    };
+  }
+
+  const displayFamilyDefinition = getProteinVisualFamilyDefinition(displayCategoryKey);
+  const displayFamilyKey = displayFamilyDefinition && displayFamilyDefinition.key !== "premium"
+    ? displayFamilyDefinition.key
+    : "";
+  if (displayCategoryKey && !displayFamilyKey) {
+    return {
+      familyKey: "",
+      source: "displayCategoryKey",
+      valid: false,
+      premium: false,
+      reasonCode: "INVALID_PROTEIN_DISPLAY_CATEGORY_KEY",
+    };
+  }
+  if (explicitFamilyKey && displayFamilyKey && explicitFamilyKey !== displayFamilyKey) {
+    return {
+      familyKey: "",
+      source: "explicit_conflict",
+      valid: false,
+      premium: false,
+      reasonCode: "PROTEIN_FAMILY_DISPLAY_CONFLICT",
+    };
+  }
+  if (explicitFamilyKey) {
+    return {
+      familyKey: explicitFamilyKey,
+      source: "proteinFamilyKey",
+      valid: true,
+      premium: false,
+      reasonCode: "",
+    };
+  }
+  if (displayFamilyKey) {
+    return {
+      familyKey: displayFamilyKey,
+      source: "displayCategoryKey",
+      valid: true,
+      premium: false,
+      reasonCode: "",
+    };
+  }
+
+  // Legacy compatibility only. New authoring must persist explicit metadata.
   const optionKey = String(option.key || option.premiumKey || "").trim().toLowerCase();
   if (optionKey && optionKey in PROTEIN_VISUAL_FAMILY_OPTION_KEYS) {
     const tabKey = PROTEIN_VISUAL_FAMILY_OPTION_KEYS[optionKey];
     const tabFamily = getProteinVisualFamilyDefinition(tabKey);
-    if (tabFamily) return tabFamily.key;
+    if (tabFamily) {
+      return {
+        familyKey: tabFamily.key,
+        source: "legacy_static_key",
+        valid: true,
+        premium: false,
+        reasonCode: "",
+      };
+    }
   }
 
-  // Priority 2: explicit proteinFamilyKey from option (biological family)
-  const explicit = getProteinVisualFamilyDefinition(option.proteinFamilyKey);
-  if (explicit) return explicit.key;
+  return {
+    familyKey: "",
+    source: "unknown",
+    valid: false,
+    premium: false,
+    reasonCode: "PROTEIN_FAMILY_UNKNOWN",
+  };
+}
 
-  // Priority 3: displayCategoryKey
-  const display = getProteinVisualFamilyDefinition(option.displayCategoryKey);
-  return display ? display.key : "";
+function resolveProteinVisualFamilyKey(option = {}) {
+  return resolveProteinFamilyClassification(option).familyKey;
 }
 
 function getProteinFamilyNameI18n(optionOrFamilyKey = {}) {
@@ -423,6 +518,8 @@ module.exports = {
   getMealPlannerCategoryDefinition,
   getMealPlannerRules,
   resolveProteinVisualFamilyKey,
+  resolveProteinFamilyClassification,
+  normalizeExplicitProteinFamilyKey,
   normalizeProteinDisplayCategoryKey,
   normalizeProteinFamilyKey,
   normalizeSaladIngredientGroupKey,

@@ -1,0 +1,51 @@
+name: One-time carb catalog
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/routes/index.js"
+      - "src/services/installOneTimeCarbCatalogAuthority.js"
+      - "src/services/installOneTimeCarbGramContract.js"
+      - "tests/oneTimeCarbCatalogAuthority.test.js"
+      - "tests/oneTimeCarbGramContract.test.js"
+      - ".github/workflows/one-time-carb-catalog.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      JWT_SECRET: one-time-carb-catalog-test-secret
+      DASHBOARD_JWT_SECRET: one-time-carb-catalog-dashboard-secret
+      MONGOMS_VERSION: 7.0.14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Validate syntax
+        run: |
+          node -c src/routes/index.js
+          node -c src/services/installOneTimeCarbCatalogAuthority.js
+          node -c tests/oneTimeCarbCatalogAuthority.test.js
+
+      - name: Verify complete carb catalog
+        run: node tests/oneTimeCarbCatalogAuthority.test.js
+
+      - name: Verify existing carb grams and pricing
+        run: node tests/oneTimeCarbGramContract.test.js

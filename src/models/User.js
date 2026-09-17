@@ -1,5 +1,32 @@
 const mongoose = require("mongoose");
 
+const MIN_TEMP_PASSWORD_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000;
+
+function effectiveTemporaryPasswordExpiry(value, issuedAt, forcePasswordChange) {
+  if (forcePasswordChange !== true || !issuedAt) return value || null;
+
+  const issuedAtMs = new Date(issuedAt).getTime();
+  if (!Number.isFinite(issuedAtMs)) return value || null;
+
+  const minimumExpiry = new Date(issuedAtMs + MIN_TEMP_PASSWORD_VALIDITY_MS);
+  const storedExpiryMs = value ? new Date(value).getTime() : NaN;
+  if (!Number.isFinite(storedExpiryMs) || storedExpiryMs < minimumExpiry.getTime()) {
+    return minimumExpiry;
+  }
+
+  return value;
+}
+
+function sanitizeUserObject(_doc, ret) {
+  delete ret.passwordHash;
+  ret.temporaryPasswordExpiresAt = effectiveTemporaryPasswordExpiry(
+    ret.temporaryPasswordExpiresAt,
+    ret.temporaryPasswordIssuedAt,
+    ret.forcePasswordChange
+  );
+  return ret;
+}
+
 const UserSchema = new mongoose.Schema(
   {
     phone: { type: String, required: true, unique: true },
@@ -17,13 +44,26 @@ const UserSchema = new mongoose.Schema(
     lockedUntil: { type: Date, default: null },
     name: { type: String },
     email: { type: String, trim: true, lowercase: true },
+    emailVerified: { type: Boolean, default: false },
+    emailVerifiedAt: { type: Date, default: null },
+    emailVerificationRequired: { type: Boolean, default: false },
     role: { type: String, enum: ["client", "admin", "kitchen", "courier"], default: "client" },
     isActive: { type: Boolean, default: true },
     accountStatus: { type: String, enum: ["active", "pending_activation", "reset_requested"], default: "active" },
     resetRequestedAt: { type: Date, default: null },
     createdByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
     temporaryPasswordIssuedAt: { type: Date, default: null },
-    temporaryPasswordExpiresAt: { type: Date, default: null },
+    temporaryPasswordExpiresAt: {
+      type: Date,
+      default: null,
+      get(value) {
+        return effectiveTemporaryPasswordExpiry(
+          value,
+          this.temporaryPasswordIssuedAt,
+          this.forcePasswordChange
+        );
+      },
+    },
     temporaryPasswordGeneration: { type: Number, default: 0 },
     temporaryPasswordReason: {
       type: String,
@@ -33,22 +73,25 @@ const UserSchema = new mongoose.Schema(
     lastAdminPasswordResetAt: { type: Date, default: null },
     lastAdminPasswordResetBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
     fcmTokens: [{ type: String }],
+    mergedIntoUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    mergedAt: { type: Date, default: null },
+    mergedByDashboardUserId: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
+    accountMergeState: {
+      type: String,
+      enum: [null, "in_progress", "completed"],
+      default: null,
+    },
+    accountMergeReason: { type: String, default: null, trim: true },
   },
   { timestamps: true }
 );
 
 UserSchema.set("toJSON", {
-  transform(_doc, ret) {
-    delete ret.passwordHash;
-    return ret;
-  },
+  transform: sanitizeUserObject,
 });
 
 UserSchema.set("toObject", {
-  transform(_doc, ret) {
-    delete ret.passwordHash;
-    return ret;
-  },
+  transform: sanitizeUserObject,
 });
 
 UserSchema.index(
@@ -56,8 +99,7 @@ UserSchema.index(
   {
     name: "email_1_unique_sparse",
     unique: true,
-    sparse: true,
-    partialFilterExpression: { email: { $type: "string", $ne: "" } },
+    partialFilterExpression: { email: { $type: "string", $gt: "" } },
   }
 );
 
@@ -66,19 +108,25 @@ UserSchema.index(
   {
     name: "phoneE164_1_unique_sparse",
     unique: true,
-    sparse: true,
-    partialFilterExpression: { phoneE164: { $type: "string", $ne: "" } },
+    partialFilterExpression: { phoneE164: { $type: "string", $gt: "" } },
   }
 );
 
 UserSchema.index({ role: 1, createdAt: -1 });
 
-UserSchema.pre("validate", function syncPhoneFields(next) {
+UserSchema.pre("validate", function syncPhoneAndTemporaryPasswordFields(next) {
   if (!this.phoneE164 && this.phone) {
     this.phoneE164 = this.phone;
   }
   if (!this.phone && this.phoneE164) {
     this.phone = this.phoneE164;
+  }
+  if (this.forcePasswordChange === true && this.temporaryPasswordIssuedAt) {
+    this.temporaryPasswordExpiresAt = effectiveTemporaryPasswordExpiry(
+      this.temporaryPasswordExpiresAt,
+      this.temporaryPasswordIssuedAt,
+      true
+    );
   }
   next();
 });

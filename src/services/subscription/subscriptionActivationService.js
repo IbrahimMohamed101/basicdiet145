@@ -4,9 +4,11 @@ const mongoose = require("mongoose");
 const Plan = require("../../models/Plan");
 const BuilderProtein = require("../../models/BuilderProtein");
 const CheckoutDraft = require("../../models/CheckoutDraft");
+const Payment = require("../../models/Payment");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const { toKSADateString } = require("../../utils/date");
+const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const { createLocalizedError } = require("../../utils/errorLocalization");
 const {
   PHASE1_CONTRACT_VERSION,
@@ -31,6 +33,9 @@ const {
 const {
   findActiveSubscriptionsForUser,
 } = require("./subscriptionCurrentResolverService");
+const {
+  normalizeTimelineExtraDays,
+} = require("./subscriptionTimelineDurationService");
 
 const SYSTEM_CURRENCY = "SAR";
 
@@ -401,6 +406,10 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
 
   // Robust field selection for non-canonical drafts.
   const daysCount = Number(plan.daysCount || legacyRuntimeData.daysCount || 0);
+  const normalizedTimelineExtraDays = normalizeTimelineExtraDays(
+    plan.timelineExtraDays ?? legacyRuntimeData.timelineExtraDays
+  );
+  const timelineExtraDays = normalizedTimelineExtraDays === null ? 0 : normalizedTimelineExtraDays;
   const mealsPerDay = Number(plan.mealsPerDay || legacyRuntimeData.mealsPerDay || 0);
   const totalMeals = daysCount * mealsPerDay;
 
@@ -422,6 +431,7 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
     ? legacyRuntimeData.addonBalance
     : buildAddonBalanceRowsFromEntitlements(addonSubscriptions, { daysCount });
   const end = addDays(start, daysCount - 1);
+  const validityEnd = addDays(end, timelineExtraDays);
 
   const subscriptionPayload = {
     _id: new mongoose.Types.ObjectId(),
@@ -430,7 +440,8 @@ function buildCanonicalActivationPayload({ userId, planId, contractVersion, cont
     status: "active",
     startDate: start,
     endDate: end,
-    validityEndDate: end,
+    validityEndDate: validityEnd,
+    timelineExtraDays,
     totalMeals,
     remainingMeals: totalMeals,
     selectedGrams: Number(plan.selectedGrams || 0),
@@ -543,7 +554,7 @@ async function buildCanonicalSubscriptionActivationPayload({ draft }) {
     }
   }
 
-  return buildCanonicalActivationPayload({
+  const activationPayload = buildCanonicalActivationPayload({
     userId: draft.userId,
     planId: draft.planId,
     contractVersion: draft.contractVersion || snapshotContract.contractVersion || PHASE1_CONTRACT_VERSION,
@@ -558,11 +569,18 @@ async function buildCanonicalSubscriptionActivationPayload({ draft }) {
       addonSubscriptions: Array.isArray(draft.addonSubscriptions) ? draft.addonSubscriptions : [],
       startDate: draft.startDate,
       daysCount: draft.daysCount,
+      timelineExtraDays: draft.contractSnapshot
+        && draft.contractSnapshot.plan
+        && draft.contractSnapshot.plan.timelineExtraDays,
       mealsPerDay: draft.mealsPerDay,
       delivery: draft.delivery,
       resolvedPickupLocationId,
     },
   });
+  if (draft.activationSubscriptionId) {
+    activationPayload.subscriptionPayload._id = draft.activationSubscriptionId;
+  }
+  return activationPayload;
 }
 
 function buildCanonicalContractActivationPayload({ userId, planId, contract, legacyRuntimeData = {} }) {
@@ -588,8 +606,24 @@ function defaultPersistence() {
     async insertSubscriptionDays(entries, { session } = {}) {
       return SubscriptionDay.insertMany(entries, { session });
     },
+    async upsertSubscriptionDays(entries, { session } = {}) {
+      if (!entries.length) return { upsertedCount: 0, matchedCount: 0 };
+      return SubscriptionDay.bulkWrite(
+        entries.map((entry) => ({
+          updateOne: {
+            filter: { subscriptionId: entry.subscriptionId, date: entry.date },
+            update: { $setOnInsert: entry },
+            upsert: true,
+          },
+        })),
+        { ordered: false, ...(session ? { session } : {}) }
+      );
+    },
     async getPlan(planId, { session } = {}) {
       return Plan.findById(planId).session(session).lean();
+    },
+    async findSubscriptionById(subscriptionId, { session } = {}) {
+      return Subscription.findById(subscriptionId).session(session);
     },
     async findPreviousActiveSubscriptions(userId, { session, excludeSubscriptionId } = {}) {
       return findActiveSubscriptionsForUser(userId, {
@@ -597,6 +631,13 @@ function defaultPersistence() {
         excludeSubscriptionId,
         lean: true,
       });
+    },
+    async findSuspendedSubscriptionsForReplacement(replacedBySubscriptionId, { session } = {}) {
+      return Subscription.find({
+        status: "pending_payment",
+        replacementState: "switching",
+        replacedBySubscriptionId,
+      }).session(session);
     },
     async cancelSubscriptionForReplacement({ subscriptionId, actor, session, reason, replacedBySubscriptionId }) {
       return cancelSubscriptionDomain({
@@ -606,6 +647,91 @@ function defaultPersistence() {
         reason,
         replacedBySubscriptionId,
       });
+    },
+    async suspendActiveSubscriptionForReplacement({ subscriptionId, replacedBySubscriptionId, session, replacedAt }) {
+      return Subscription.findOneAndUpdate(
+        { _id: subscriptionId, status: "active" },
+        {
+          $set: {
+            status: "pending_payment",
+            replacementState: "switching",
+            replacedBySubscriptionId,
+            replacedAt,
+            cancellationReason: "replaced_by_new_subscription",
+          },
+        },
+        { new: true, session }
+      );
+    },
+    async activateStagedSubscription({ subscriptionId, session }) {
+      return Subscription.findOneAndUpdate(
+        { _id: subscriptionId, status: "pending_payment" },
+        { $set: { status: "active", replacementState: "" } },
+        { new: true, session }
+      );
+    },
+    async finalizeSuspendedSubscription({ subscriptionId, replacedBySubscriptionId, session, canceledAt }) {
+      return Subscription.findOneAndUpdate(
+        {
+          _id: subscriptionId,
+          status: "pending_payment",
+          replacementState: "switching",
+          replacedBySubscriptionId,
+        },
+        {
+          $set: {
+            status: "canceled",
+            replacementState: "completed",
+            canceledAt,
+          },
+        },
+        { new: true, session }
+      );
+    },
+    async restoreSuspendedSubscription({ subscriptionId, replacedBySubscriptionId, session }) {
+      return Subscription.findOneAndUpdate(
+        {
+          _id: subscriptionId,
+          status: "pending_payment",
+          replacementState: "switching",
+          replacedBySubscriptionId,
+        },
+        {
+          $set: {
+            status: "active",
+            replacementState: "",
+            replacedBySubscriptionId: null,
+            replacedAt: null,
+            cancellationReason: "",
+          },
+        },
+        { new: true, session }
+      );
+    },
+    async cancelStagedSubscription({ subscriptionId, session, canceledAt }) {
+      return Subscription.findOneAndUpdate(
+        { _id: subscriptionId, status: "pending_payment", replacementState: { $ne: "switching" } },
+        { $set: { status: "canceled", canceledAt, cancellationReason: "activation_failed" } },
+        { new: true, session }
+      );
+    },
+    async restageFailedSubscription({ subscriptionId, session }) {
+      return Subscription.findOneAndUpdate(
+        {
+          _id: subscriptionId,
+          status: "canceled",
+          cancellationReason: "activation_failed",
+        },
+        {
+          $set: {
+            status: "pending_payment",
+            replacementState: "staged",
+            canceledAt: null,
+            cancellationReason: "",
+          },
+        },
+        { new: true, session }
+      );
     },
   };
 }
@@ -662,7 +788,151 @@ async function cancelPreviousActiveSubscriptionsForReplacement({
   return canceled;
 }
 
+function transactionIsAvailable(session) {
+  return !session || session.supportsTransactions !== false;
+}
+
+async function persistActivatedSubscriptionWithoutTransaction({
+  subscriptionPayload,
+  dayEntries,
+  session,
+  persistence,
+}) {
+  const stagedPayload = {
+    ...subscriptionPayload,
+    status: "pending_payment",
+    replacementState: "staged",
+  };
+  let subscription;
+  let activated = false;
+  const suspendedIds = new Set();
+
+  try {
+    try {
+      subscription = await persistence.createSubscription(stagedPayload, { session });
+    } catch (err) {
+      if (Number(err && err.code) !== 11000 && Number(err && err.code) !== 11001) throw err;
+      subscription = await persistence.findSubscriptionById(subscriptionPayload._id, { session });
+      if (!subscription) throw err;
+    }
+
+    if (subscription.status === "canceled" && subscription.cancellationReason === "activation_failed") {
+      subscription = await persistence.restageFailedSubscription({
+        subscriptionId: subscription._id,
+        session,
+      }) || subscription;
+    }
+    activated = subscription.status === "active";
+
+    await persistence.upsertSubscriptionDays(
+      dayEntries.map((entry) => ({ ...entry, subscriptionId: subscription._id })),
+      { session }
+    );
+
+    const previouslySuspended = await persistence.findSuspendedSubscriptionsForReplacement(
+      subscription._id,
+      { session }
+    );
+    for (const previous of previouslySuspended) suspendedIds.add(String(previous._id));
+
+    // Standalone MongoDB cannot atomically replace two documents. Temporarily
+    // move the current active row out of the unique partial index, promote the
+    // fully staged paid subscription with a CAS, then finalize the predecessor.
+    // A concurrent paid activation repeats the same deterministic switch and
+    // the database unique index still guarantees exactly one active row.
+    for (let attempt = 0; attempt < 5 && !activated; attempt += 1) {
+      const previousSubscriptions = await persistence.findPreviousActiveSubscriptions(
+        subscriptionPayload.userId,
+        { session, excludeSubscriptionId: subscription._id }
+      );
+      for (const previous of previousSubscriptions) {
+        const replacedAt = new Date();
+        const suspended = await persistence.suspendActiveSubscriptionForReplacement({
+          subscriptionId: previous._id,
+          replacedBySubscriptionId: subscription._id,
+          session,
+          replacedAt,
+        });
+        if (suspended) suspendedIds.add(String(previous._id));
+      }
+
+      try {
+        const promoted = await persistence.activateStagedSubscription({
+          subscriptionId: subscription._id,
+          session,
+        });
+        if (promoted) {
+          subscription = promoted;
+          activated = true;
+          break;
+        }
+      } catch (err) {
+        if (!isDuplicateActiveSubscriptionError(err)) throw err;
+      }
+    }
+
+    if (!activated) {
+      throw createActiveSubscriptionConflictError(new Error("Standalone activation CAS did not acquire the active slot"));
+    }
+
+    const replacementResults = [];
+    for (const subscriptionId of suspendedIds) {
+      const finalized = await persistence.finalizeSuspendedSubscription({
+        subscriptionId,
+        replacedBySubscriptionId: subscription._id,
+        session,
+        canceledAt: new Date(),
+      });
+      if (finalized) {
+        replacementResults.push({ outcome: "canceled", subscriptionId: String(subscriptionId) });
+      }
+    }
+    subscription.$locals = subscription.$locals || {};
+    subscription.$locals.replacedSubscriptions = replacementResults;
+    return subscription;
+  } catch (err) {
+    if (!activated) {
+      await persistence.cancelStagedSubscription({
+        subscriptionId: subscriptionPayload._id,
+        session,
+        canceledAt: new Date(),
+      }).catch(() => null);
+
+      // Restore only when no competing activation currently owns the unique
+      // active slot. CAS + the unique index make this safe under concurrency.
+      const activeRows = await persistence.findPreviousActiveSubscriptions(
+        subscriptionPayload.userId,
+        { session, excludeSubscriptionId: subscriptionPayload._id }
+      ).catch(() => []);
+      if (!activeRows.length) {
+        for (const subscriptionId of suspendedIds) {
+          try {
+            const restored = await persistence.restoreSuspendedSubscription({
+              subscriptionId,
+              replacedBySubscriptionId: subscriptionPayload._id,
+              session,
+            });
+            if (restored) break;
+          } catch (_) {
+            // Another paid activation won the unique active slot.
+            break;
+          }
+        }
+      }
+    }
+    throw err;
+  }
+}
+
 async function persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence = defaultPersistence(), replaceExistingActive = true }) {
+  if (replaceExistingActive && session && !transactionIsAvailable(session)) {
+    return persistActivatedSubscriptionWithoutTransaction({
+      subscriptionPayload,
+      dayEntries,
+      session,
+      persistence,
+    });
+  }
   const replacementResults = replaceExistingActive && session
     ? await cancelPreviousActiveSubscriptionsForReplacement({ subscriptionPayload, session, persistence })
     : [];
@@ -693,7 +963,7 @@ async function activateSubscriptionFromCanonicalDraft({ draft, payment, session,
     throw err;
   }
 
-  const draftDoc = session
+  let draftDoc = session
     ? await CheckoutDraft.findById(draftId).session(session)
     : await CheckoutDraft.findById(draftId);
   if (!draftDoc) {
@@ -703,6 +973,25 @@ async function activateSubscriptionFromCanonicalDraft({ draft, payment, session,
   }
   if (payment && String(payment.status || "").trim().toLowerCase() !== "paid") {
     return { applied: false, reason: "payment_not_paid" };
+  }
+
+  if (!draftDoc.activationSubscriptionId) {
+    const reservedActivationId = new mongoose.Types.ObjectId();
+    const activationIdQuery = CheckoutDraft.findOneAndUpdate(
+      {
+        _id: draftDoc._id,
+        $or: [
+          { activationSubscriptionId: null },
+          { activationSubscriptionId: { $exists: false } },
+        ],
+      },
+      { $set: { activationSubscriptionId: reservedActivationId } },
+      { new: true, ...(session ? { session } : {}) }
+    );
+    draftDoc = await activationIdQuery
+      || (session
+        ? await CheckoutDraft.findById(draftDoc._id).session(session)
+        : await CheckoutDraft.findById(draftDoc._id));
   }
 
   const { subscriptionPayload, dayEntries } = await buildCanonicalSubscriptionActivationPayload({ draft: draftDoc });
@@ -739,7 +1028,7 @@ async function activateSubscriptionFromCanonicalContract({ userId, planId, contr
     return persistActivatedSubscription({ subscriptionPayload, dayEntries, session, persistence });
   }
 
-  const ownedSession = await mongoose.startSession();
+  const ownedSession = await startSafeSession();
   let activatedSubscription = null;
   try {
     await ownedSession.withTransaction(async () => {
@@ -761,13 +1050,44 @@ async function activateSubscriptionFromCanonicalContract({ userId, planId, contr
 
 const finalizeRuntime = {
   activateSubscriptionFromCanonicalDraft: (...args) => activateSubscriptionFromCanonicalDraft(...args),
+  startSession: () => startSafeSession(),
+  findDraftById: (draftId, session) => CheckoutDraft.findById(draftId).session(session),
+  findPaymentById: (paymentId, session) => Payment.findById(paymentId).session(session),
 };
 
 
 async function finalizeSubscriptionDraftPaymentFlow({ draft, payment, session }, runtimeOverrides = null) {
-  const runtime = runtimeOverrides || finalizeRuntime;
+  const runtime = runtimeOverrides
+    ? { ...finalizeRuntime, ...runtimeOverrides }
+    : finalizeRuntime;
   if (!draft) return { applied: false, reason: "draft_not_found" };
+  if (!payment) return { applied: false, reason: "payment_not_found" };
   if (String(draft.userId) !== String(payment.userId)) return { applied: false, reason: "draft_user_mismatch" };
+
+  // Every paid activation must use the same atomic replacement path. Some
+  // callers (notably the reusable paid-checkout path) do not already own a
+  // transaction. Previously those callers created the new subscription
+  // without canceling the old active one because replacement was guarded by
+  // `session`, which either left duplicate active rows or hit the unique index.
+  if (!session) {
+    const ownedSession = await runtime.startSession();
+    let result;
+    try {
+      await ownedSession.withTransaction(async () => {
+        const [draftInSession, paymentInSession] = await Promise.all([
+          runtime.findDraftById(draft._id, ownedSession),
+          runtime.findPaymentById(payment._id, ownedSession),
+        ]);
+        result = await finalizeSubscriptionDraftPaymentFlow(
+          { draft: draftInSession, payment: paymentInSession, session: ownedSession },
+          runtime
+        );
+      });
+      return result;
+    } finally {
+      await ownedSession.endSession();
+    }
+  }
 
   if (draft.subscriptionId) {
     const existingSub = await Subscription.findById(draft.subscriptionId).session(session);
@@ -808,6 +1128,7 @@ module.exports = {
   activateSubscriptionFromCanonicalContract,
   cancelPreviousActiveSubscriptionsForReplacement,
   finalizeSubscriptionDraftPaymentFlow,
+  persistActivatedSubscription,
   assertValidPremiumBalanceRows,
   isDuplicateActiveSubscriptionError,
 };

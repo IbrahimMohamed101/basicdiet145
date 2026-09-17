@@ -1,3 +1,7 @@
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+
 process.env.NODE_ENV = "test";
 process.env.DASHBOARD_JWT_SECRET = process.env.DASHBOARD_JWT_SECRET || "dashboardsecret";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "supersecret";
@@ -186,8 +190,18 @@ async function createFixture(api) {
   const group = res.body.data;
 
   const optionPayloads = [
-    { key: `${TEST_KEY_TAG}_grilled_chicken`, name: "Grilled Chicken", sortOrder: 10 },
-    { key: `${TEST_KEY_TAG}_turkey`, name: "Turkey", sortOrder: 20 },
+    {
+      key: `${TEST_KEY_TAG}_grilled_chicken`,
+      name: "Grilled Chicken",
+      familyKey: "chicken",
+      sortOrder: 10,
+    },
+    {
+      key: `${TEST_KEY_TAG}_chicken_strips`,
+      name: "Chicken Strips",
+      familyKey: "chicken",
+      sortOrder: 20,
+    },
   ];
   const options = [];
   for (const payload of optionPayloads) {
@@ -197,14 +211,18 @@ async function createFixture(api) {
       description: { en: `${payload.name} option`, ar: payload.name },
       availableFor: ["subscription"],
       availableForSubscription: true,
-      proteinFamilyKey: payload.key.includes("turkey") ? "other" : "chicken",
-      displayCategoryKey: payload.key.includes("turkey") ? "other" : "chicken",
+      selectionType: "standard_meal",
+      proteinFamilyKey: payload.familyKey,
+      displayCategoryKey: payload.familyKey,
       isActive: true,
       isVisible: true,
       isAvailable: true,
       sortOrder: payload.sortOrder,
     });
     expectStatus(res, 201, `create option ${payload.key}`);
+    assert.strictEqual(res.body.data.selectionType, "standard_meal", "created option preserves selectionType");
+    assert.strictEqual(res.body.data.proteinFamilyKey, payload.familyKey, "created option preserves protein family");
+    assert.strictEqual(res.body.data.displayCategoryKey, payload.familyKey, "created option preserves display family");
     options.push(res.body.data);
   }
 

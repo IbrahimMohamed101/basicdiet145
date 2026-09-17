@@ -295,7 +295,8 @@ async function getGroupOptionsWithGroup(groupKey) {
     .sort({ sortOrder: 1, createdAt: -1 })
     .lean();
   const catalogItemsById = await loadCatalogItemsByIdForDocs(rows);
-  const options = filterGloballyAvailable(rows, catalogItemsById);
+  const options = filterGloballyAvailable(rows, catalogItemsById)
+    .map((row) => hydrateCatalogNutrition(row, catalogItemsById));
 
   return { group, options };
 }
@@ -329,7 +330,8 @@ async function getPremiumLargeSaladIngredients({ product, normalizedProteins, la
     ...availableForChannelQuery("subscription"),
   })).lean();
   const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
-  const options = filterGloballyAvailable(optionRows, catalogItemsById);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById)
+    .map((row) => hydrateCatalogNutrition(row, catalogItemsById));
   const optionsById = new Map(options.map((option) => [String(option._id), option]));
 
   const ingredients = [];
@@ -581,6 +583,14 @@ function buildNutritionPayload(row = {}) {
   };
 }
 
+function hydrateCatalogNutrition(row, catalogItemsById = new Map()) {
+  if (!row || !row.catalogItemId) return row;
+  const catalogItem = catalogItemsById.get(String(row.catalogItemId));
+  if (!catalogItem || !catalogItem.nutrition) return row;
+  const nutrition = buildNutritionPayload(catalogItem);
+  return { ...row, calories: nutrition.calories, nutrition };
+}
+
 function buildV3CatalogHash(payload) {
   return crypto
     .createHash("sha256")
@@ -599,6 +609,7 @@ function buildV3PricingPayload(product = {}, overrides = {}) {
 
 function buildV3ProductPayload(product, lang, overrides = {}) {
   const pricing = buildV3PricingPayload(product, overrides.pricing || {});
+  const nutrition = buildNutritionPayload(product);
   return sanitizeObject({
     id: String(product._id),
     key: product.key || "",
@@ -613,7 +624,9 @@ function buildV3ProductPayload(product, lang, overrides = {}) {
     priceHalala: pricing.basePriceHalala,
     extraFeeHalala: pricing.extraFeeHalala,
     currency: pricing.currency,
-    nutrition: buildNutritionPayload(product),
+    calories: nutrition.calories,
+    nutrition,
+    nutritionBasis: product.pricingModel === "per_100g" ? "per_100g" : "per_serving",
     action: overrides.action || {
       type: overrides.optionGroups && overrides.optionGroups.length ? "open_builder" : "direct_add",
       requiresBuilder: Boolean(overrides.optionGroups && overrides.optionGroups.length),
@@ -631,6 +644,7 @@ function buildV3OptionPayload({ option, relation, lang, overrides = {} }) {
   const extraPriceHalala = Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? 0);
   const proteinFamilyKey = resolveProteinVisualFamilyKey(option) || option.proteinFamilyKey || "";
 
+  const nutrition = buildNutritionPayload(option);
   return sanitizeObject({
     id: String(option._id),
     optionId: String(option._id),
@@ -640,7 +654,9 @@ function buildV3OptionPayload({ option, relation, lang, overrides = {} }) {
     description: localized(option.description, lang),
     descriptionI18n: localizedPair(option.description),
     imageUrl: option.imageUrl || "",
-    nutrition: buildNutritionPayload(option),
+    calories: nutrition.calories,
+    nutrition,
+    nutritionBasis: "per_serving",
     extraPriceHalala,
     extraFeeHalala: Number(relation?.extraPriceHalala ?? option.extraFeeHalala ?? option.extraPriceHalala ?? 0),
     extraWeightUnitGrams: Number(relation?.extraWeightUnitGrams ?? option.extraWeightUnitGrams ?? 0),
@@ -687,7 +703,8 @@ async function buildV3ProductOptionGroups({
     ...availableForChannelQuery("subscription"),
   })).lean();
   const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
-  const options = filterGloballyAvailable(optionRows, catalogItemsById);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById)
+    .map((row) => hydrateCatalogNutrition(row, catalogItemsById));
   const optionsById = new Map(options.map((option) => [String(option._id), option]));
   const optionRelationsByGroup = new Map();
 
@@ -1024,7 +1041,8 @@ async function getPremiumLargeSaladOptionGroups({ product, normalizedProteins, l
     ...availableForChannelQuery("subscription"),
   })).lean();
   const catalogItemsById = await loadCatalogItemsByIdForDocs(optionRows);
-  const options = filterGloballyAvailable(optionRows, catalogItemsById);
+  const options = filterGloballyAvailable(optionRows, catalogItemsById)
+    .map((row) => hydrateCatalogNutrition(row, catalogItemsById));
   const optionsById = new Map(options.map((option) => [String(option._id), option]));
   const optionRelationsByGroup = new Map();
   optionRelations.forEach((relation) => {
@@ -1283,9 +1301,13 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
     source: premiumLargeSaladUpgrade ? "resolvePremiumUpgrade" : "legacy_fallback",
     isCatalogUnavailable: !premiumLargeSaladProductDoc,
   };
-  const sandwichCatalogItemsById = await loadCatalogItemsByIdForDocs(sandwichRows);
+  const productCatalogItemsById = await loadCatalogItemsByIdForDocs(
+    sandwichRows,
+    [basicMealProduct, premiumLargeSaladPricing.product].filter(Boolean)
+  );
   const sandwiches = await enrichSandwichProductsWithCompatibilityMetadata(
-    filterGloballyAvailable(sandwichRows, sandwichCatalogItemsById)
+    filterGloballyAvailable(sandwichRows, productCatalogItemsById)
+      .map((row) => hydrateCatalogNutrition(row, productCatalogItemsById))
   );
 
   const proteinOptions = proteinGroupData.options;
@@ -1293,9 +1315,12 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
   const premiumLargeSaladProduct = premiumLargeSaladPricing.product
     && isLinkedDocGloballyAvailable(
       premiumLargeSaladPricing.product,
-      await loadCatalogItemsByIdForDocs([premiumLargeSaladPricing.product])
+      productCatalogItemsById
     )
-    ? premiumLargeSaladPricing.product
+    ? hydrateCatalogNutrition(premiumLargeSaladPricing.product, productCatalogItemsById)
+    : null;
+  const hydratedBasicMealProduct = basicMealProduct
+    ? hydrateCatalogNutrition(basicMealProduct, productCatalogItemsById)
     : null;
 
   const normalizedProteins = proteinOptions
@@ -1432,7 +1457,7 @@ async function buildSubscriptionBuilderCatalogBundle({ lang = "en", includeV2 = 
       builderCatalog,
       lang,
       context: {
-        basicMealProduct,
+        basicMealProduct: hydratedBasicMealProduct,
         sandwiches,
         premiumLargeSaladProduct: effectivePremiumLargeSaladProduct,
         premiumLargeSaladPricing,

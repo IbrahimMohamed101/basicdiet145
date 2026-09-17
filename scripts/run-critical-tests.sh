@@ -25,19 +25,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ -n "${MONGO_URI_TEST:-}" ]; then
-  export MONGO_URI="$MONGO_URI_TEST"
-fi
-
-BASE_MONGO_URI="${MONGO_URI:-}"
+BASE_MONGO_URI="${MONGO_URI_TEST:-}"
 BASE_DB_NAME=""
+TEST_MONGO_GUARD="--require=$SCRIPT_DIR/../tests/helpers/installMongoTestSafetyGuard.js"
 
 if [ -n "$BASE_MONGO_URI" ]; then
   BASE_DB_NAME=$(assert_safe_base_test_mongo_uri "$BASE_MONGO_URI") || exit 1
   echo "Using base MONGO_URI: $(mask_mongo_uri "$BASE_MONGO_URI")"
   echo "Base database: $BASE_DB_NAME"
 else
-  echo "WARNING: MONGO_URI is not set. Mongo-backed critical tests may fail or use local defaults."
+  echo "WARNING: MONGO_URI_TEST is not set. Mongo-backed critical tests will fail closed."
 fi
 
 if [ -n "$FORCE_TEST_DB" ]; then
@@ -73,24 +70,29 @@ run_test() {
     echo "  DB: $db_name ($(mask_mongo_uri "$test_uri"))"
     drop_test_db_if_safe "$test_uri" "$db_name"
 
-    MONGO_URI="$test_uri" MONGODB_URI="$test_uri" NODE_ENV=test node "$test_file" "${PASSTHROUGH_ARGS[@]}"
+    MONGO_URI_TEST="$test_uri" MONGO_URI="$test_uri" MONGODB_URI="$test_uri" \
+      NODE_ENV=test NODE_OPTIONS="${NODE_OPTIONS:-} $TEST_MONGO_GUARD" \
+      node "$test_file" "${PASSTHROUGH_ARGS[@]}"
   else
-    NODE_ENV=test node "$test_file" "${PASSTHROUGH_ARGS[@]}"
+    NODE_ENV=test NODE_OPTIONS="${NODE_OPTIONS:-} $TEST_MONGO_GUARD" \
+      node "$test_file" "${PASSTHROUGH_ARGS[@]}"
   fi
 }
 
 echo "=== Running Critical Tests for Frontend Handoff ==="
 
 echo ""
-echo "[1/7] Running unit tests (npm test)..."
+echo "[1/9] Running unit tests (npm test)..."
 npm test
 
-run_test "2/7" tests/checkout.integration.test.js
-run_test "3/7" tests/oneTimeOrderOps.test.js
-run_test "4/7" tests/subscriptionBalancePolicy.test.js
-run_test "5/7" tests/mobileApiContracts.test.js
-run_test "6/7" tests/fulfillmentStatusEndpoint.test.js
-run_test "7/7" tests/corsPreflight.test.js
+run_test "2/9" tests/upcomingSubscriptionPlanningBalance.test.js
+run_test "3/9" tests/dynamicDirectMealCatalogPolicy.test.js
+run_test "4/9" tests/checkout.integration.test.js
+run_test "5/9" tests/oneTimeOrderOps.test.js
+run_test "6/9" tests/subscriptionBalancePolicy.test.js
+run_test "7/9" tests/mobileApiContracts.test.js
+run_test "8/9" tests/fulfillmentStatusEndpoint.test.js
+run_test "9/9" tests/corsPreflight.test.js
 
 echo ""
 echo "All critical tests passed."

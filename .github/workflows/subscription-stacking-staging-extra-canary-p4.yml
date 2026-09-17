@@ -1,0 +1,123 @@
+name: Subscription Stacking Staging Extra Canary P4
+
+on:
+  push:
+    branches:
+      - cert/stacking-extra-runtime-canary-p4-20260812
+  pull_request:
+    branches:
+      - cert/stacking-full-integration-candidate-20260812
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-staging-extra-canary-p4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-extra-runtime-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax and startup composition
+        run: |
+          node --check src/index.js
+          node --check src/services/subscription/subscriptionStackingRolloutPolicyService.js
+          node --check src/services/subscription/subscriptionStackingProductionSafetyService.js
+          node --check src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js
+          node --check src/services/subscription/subscriptionStackingRemoteReadinessService.js
+          node --check scripts/run-subscription-stacking-remote-certification.js
+          node --check scripts/bootstrap-subscription-stacking-staging-fixture.js
+          node --check tests/subscriptionStackingExtraRuntimeCanaryP4.test.js
+          node --check tests/subscriptionStackingExtraRuntimeCanaryReadinessP4.test.js
+          node --check tests/subscriptionStackingExtraRuntimeCanaryP4.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingStartupIsolation.test.js
+
+      - name: Activation canary policy and production hard stop
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingExtraRuntimeCanaryP4.test.js
+          NODE_ENV=test node tests/subscriptionStackingProductionSafety.test.js
+          NODE_ENV=test node tests/subscriptionStackingSecurityMatrix.test.js
+          NODE_ENV=test node tests/subscriptionStackingRolloutPolicy.test.js
+
+      - name: Readiness and remote public runtime orchestration
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
+          NODE_ENV=test node tests/subscriptionStackingCurrentOverviewRead.test.js
+          NODE_ENV=test node tests/subscriptionStackingTimelineRead.test.js
+          NODE_ENV=test node tests/subscriptionStackingFlutterContract.test.js
+          NODE_ENV=test node tests/subscriptionStackingExtraRuntimeCanaryReadinessP4.test.js
+          NODE_ENV=test node tests/subscriptionStackingRemoteReadiness.test.js
+          NODE_ENV=test node tests/subscriptionStackingRemoteReadinessRoute.test.js
+          NODE_ENV=test node tests/subscriptionStackingRemoteCertification.test.js
+
+      - name: Real runtime activation selection Pickup lifecycle
+        run: NODE_ENV=test node tests/subscriptionStackingExtraRuntimeCanaryP4.integration.test.js
+
+      - name: P0 P1 P2 P3 regressions
+        run: |
+          NODE_ENV=test node tests/subscriptionExtraEntitlementBucket.test.js
+          NODE_ENV=test node tests/subscriptionExtraEntitlementAllocationLifecycle.test.js
+          NODE_ENV=test node tests/subscriptionStackingExtraActivationP2.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingExtraSelectionP3.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingExtraSelectionP3Contracts.test.js
+
+      - name: Non-canary fail closed and activation races
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+          NODE_ENV=test node tests/subscriptionStackingPaidDraftOrchestrator.test.js
+          NODE_ENV=test node tests/subscriptionStackingConcurrentPurchases.integration.test.js
+          NODE_ENV=test node tests/subscriptionStackingFinalizationAuthority.test.js
+          grep -q 'STACKING_PREMIUM_ADDON_WRITE_NOT_READY' src/services/subscription/subscriptionStackingActivationService.js
+
+      - name: Pickup regressions
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingPlannedPickupRouter.test.js
+          NODE_ENV=test node tests/subscriptionStackingPickupAvailabilityRead.test.js
+          NODE_ENV=test node tests/subscriptionStackingPickupBalanceIntegration.test.js
+
+      - name: Runtime isolation and secret audit
+        shell: bash
+        run: |
+          changed_files="$(git diff --name-only origin/cert/stacking-full-integration-candidate-20260812...HEAD)"
+          if printf '%s\n' "$changed_files" | grep -Ei '(^|/)(flutter|dashboard)(/|$)'; then
+            echo 'P4 must not change Flutter or Dashboard files.' >&2
+            exit 1
+          fi
+          if git diff origin/cert/stacking-full-integration-candidate-20260812...HEAD -- src scripts tests .github \
+            | grep -E '^\+.*(mongodb(\+srv)?://|MOYASAR_[A-Z_]*[=:][[:space:]]*[^$]|Bearer[[:space:]]+[A-Za-z0-9._-]{20,})'; then
+            echo 'Potential secret or Mongo URI found in P4 diff.' >&2
+            exit 1
+          fi
+          if git diff origin/cert/stacking-full-integration-candidate-20260812...HEAD -- src scripts tests .github \
+            | grep -Ei '^\+.*(test[-_ ]only.*bypass|allowAll[[:space:]]*[:=][[:space:]]*true)'; then
+            echo 'P4 diff contains a forbidden bypass or failure allowance.' >&2
+            exit 1
+          fi
+          grep -q 'SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_ACTIVATION_BLOCKED' src/services/subscription/subscriptionStackingProductionSafetyService.js
+          grep -q 'SUBSCRIPTION_STACKING_PRODUCTION_EXTRA_SELECTION_BLOCKED' src/services/subscription/subscriptionStackingProductionSafetyService.js
+          grep -q 'STACKING_EXTRA_ACTIVATION_WILDCARD_BLOCKED' src/services/subscription/subscriptionStackingRolloutPolicyService.js
+          grep -q 'STACKING_EXTRA_SELECTION_WILDCARD_BLOCKED' src/services/subscription/subscriptionStackingRolloutPolicyService.js
+
+      - name: Full subscription suite
+        run: npm run test:subscriptions
+
+      - name: Diff whitespace check
+        run: git diff --check

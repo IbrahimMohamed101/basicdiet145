@@ -41,14 +41,14 @@ router.put(
 router.get(
   "/cashier/customer-lookup",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier"]),
   asyncHandler(cashierController.customerLookup)
 );
 
 router.post(
   "/cashier/customer-consumption",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "kitchen", "cashier"]),
+  dashboardRoleMiddleware(["admin", "cashier"]),
   asyncHandler(cashierController.customerConsumption)
 );
 

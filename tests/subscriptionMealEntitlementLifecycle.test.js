@@ -1,5 +1,15 @@
 "use strict";
 
+const { installFixedKsaClock } = require("./helpers/fixedClock");
+const {
+  setTemporaryEnvironment,
+} = require("./helpers/temporaryEnvironment");
+
+const restoreEnvironment = setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+const restoreClock = installFixedKsaClock("2026-07-29");
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "subscription-entitlement-test-secret";
 process.env.SUBSCRIPTION_AUTO_SETTLEMENT_ENABLED = "false";
@@ -637,7 +647,9 @@ async function run() {
     const secondFulfill = await fulfillSubscriptionDay({ subscriptionId: subscription._id, date: day.date });
     const finalSubscription = await Subscription.findById(subscription._id).lean();
     assert.strictEqual(firstFulfill.ok, true);
+    assert.strictEqual(firstFulfill.alreadyFulfilled, false);
     assert.strictEqual(secondFulfill.ok, true);
+    assert.strictEqual(secondFulfill.alreadyFulfilled, true);
     assert.strictEqual(finalSubscription.totalMeals, 7, "Premium difference must not create base entitlement");
     assert.strictEqual(finalSubscription.remainingMeals, 0, "Premium fulfillment consumes one base meal exactly once");
   });
@@ -856,6 +868,7 @@ async function run() {
 
     const directBalance = buildMealBalance(subscription.toObject(), BUSINESS_DATE);
     assert.deepStrictEqual(Object.keys(directBalance).sort(), [
+      "availableMeals",
       "canConsumeNow",
       "consumedMeals",
       "dailyMealLimitEnforced",
@@ -863,6 +876,7 @@ async function run() {
       "maxConsumableMealsNow",
       "mealBalancePolicy",
       "remainingMeals",
+      "reservedMeals",
       "totalMeals",
     ]);
   });
@@ -881,4 +895,6 @@ run()
   .finally(async () => {
     await resetDatabase().catch(() => {});
     await disconnect();
+    restoreEnvironment();
+    restoreClock();
   });

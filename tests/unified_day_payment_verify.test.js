@@ -35,6 +35,9 @@ function buildFixture(overrides = {}) {
   const subscription = {
     _id: subscriptionId,
     userId,
+    status: "active",
+    startDate: "2026-05-01",
+    endDate: "2026-05-31",
     totalMeals: 30,
     remainingMeals: 17,
     selectedMealsPerDay: 2,

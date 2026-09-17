@@ -31,13 +31,13 @@ function sectionByKey(sections, key) {
 }
 
 (async function run() {
-  await test("dashboard subscription routes expose quote and create endpoints", async () => {
+  await test("dashboard subscription routes expose payment-aware quote and create endpoints", async () => {
     const source = read("src/routes/dashboardSubscriptions.js");
-    assert.ok(source.includes('require("../controllers/dashboard/subscriptionCreationController")'));
+    assert.ok(source.includes('require("../controllers/dashboard/subscriptionPaymentRecordingController")'));
     assert.ok(source.includes('router.post(\n  "/quote"'));
-    assert.ok(source.includes('subscriptionCreationController.quoteSubscriptionAdmin'));
+    assert.ok(source.includes('subscriptionPaymentController.quoteSubscriptionAdmin'));
     assert.ok(source.includes('router.post(\n  "/"'));
-    assert.ok(source.includes('subscriptionCreationController.createSubscriptionAdmin'));
+    assert.ok(source.includes('subscriptionPaymentController.createSubscriptionAdmin'));
   });
 
   await test("quote response exposes base subscription price, premium items, add-ons, and checkout summary", async () => {

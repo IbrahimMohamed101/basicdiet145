@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 const { ensurePaymentIndexes } = require("./services/paymentIndexService");
+const {
+  resolveMongooseIndexRuntimePolicy,
+} = require("./utils/mongooseIndexRuntimePolicy");
 
 /**
  * Mask MongoDB URI to prevent logging credentials.
@@ -24,11 +27,13 @@ async function connectDb() {
   const uri = resolveMongoUri();
   const dbName = getDbNameFromUri(uri);
   const maskedUri = maskMongoUri(uri);
+  const indexPolicy = resolveMongooseIndexRuntimePolicy(process.env);
 
-  console.log(`[railway-startup] Connecting to MongoDB (db: ${dbName}, maskedUri: ${maskedUri})`);
+  console.log(`[railway-startup] Connecting to MongoDB (db: ${dbName}, maskedUri: ${maskedUri}, autoIndex: ${indexPolicy.autoIndex})`);
 
   const connection = await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: 10000
+    serverSelectionTimeoutMS: 10000,
+    autoIndex: indexPolicy.autoIndex,
   });
   console.log("[railway-startup] MongoDB connected");
 

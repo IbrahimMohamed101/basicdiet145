@@ -1,0 +1,101 @@
+name: Subscription Stacking Extra Activation P2
+
+on:
+  push:
+    branches:
+      - feat/stacking-premium-addon-activation-p2-20260812
+  pull_request:
+    branches:
+      - feat/stacking-premium-addon-allocation-p1-20260812
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-stacking-extra-activation-p2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transactional-extra-activation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax
+        run: |
+          node --check src/models/CheckoutDraft.js
+          node --check src/models/SubscriptionExtraEntitlementBucket.js
+          node --check src/services/subscription/subscriptionCheckoutService.js
+          node --check src/services/subscription/subscriptionEntitlementBatchFactory.js
+          node --check src/services/subscription/subscriptionExtraEntitlementBucketService.js
+          node --check src/services/subscription/subscriptionStackingExtraActivationAuthorityService.js
+          node --check src/services/subscription/subscriptionStackingActivationService.js
+          node --check src/services/subscription/subscriptionStackingPaidDraftOrchestratorService.js
+          node --check tests/subscriptionStackingExtraActivationP2.integration.test.js
+
+      - name: P2 transactional activation integration
+        run: NODE_ENV=test node tests/subscriptionStackingExtraActivationP2.integration.test.js
+
+      - name: P1 allocation regression
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementAllocationLifecycle.test.js
+
+      - name: P0 wallet regression
+        run: NODE_ENV=test node tests/subscriptionExtraEntitlementBucket.test.js
+
+      - name: Additive activation and finalization authority regression
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+          NODE_ENV=test node tests/subscriptionStackingPaidDraftOrchestrator.test.js
+          NODE_ENV=test node tests/subscriptionStackingFinalizationAuthority.test.js
+          NODE_ENV=test node tests/subscriptionStackingFinalizeRouter.test.js
+
+      - name: Payment idempotency and shared-dispatch race regression
+        run: NODE_ENV=test node tests/subscriptionStackingConcurrentPurchases.integration.test.js
+
+      - name: Checkout preflight and selection fail-closed contracts
+        run: |
+          NODE_ENV=test node tests/subscriptionStackingCheckoutPreflight.test.js
+          NODE_ENV=test node tests/subscriptionStackingSelectionWriteGuards.test.js
+          NODE_ENV=test node tests/subscriptionStackingSelectionRouter.test.js
+
+      - name: Balance policy stability
+        run: |
+          NODE_ENV=test node tests/subscriptionBalancePolicy.test.js
+          NODE_ENV=test node tests/subscriptionStackingPartialBalance.test.js
+
+      - name: Runtime isolation and guards remain closed
+        shell: bash
+        run: |
+          grep -q 'STACKING_PREMIUM_ADDON_WRITE_NOT_READY' src/services/subscription/subscriptionStackingActivationService.js
+          grep -q 'STACKING_PREMIUM_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          grep -q 'STACKING_ADDON_SELECTION_NOT_READY' src/services/subscription/subscriptionStackingSelectionWriteService.js
+          if grep -R --line-number --fixed-strings \
+            'applyPinnedExtrasPaidDraftToSubscriptionStackTransactional' \
+            src/index.js \
+            src/controllers \
+            src/routes \
+            src/services/installSubscriptionStackingWriteRouter.js \
+            src/services/subscription/subscriptionStackingFinalizeRouterService.js \
+            src/services/paymentApplicationService.js; then
+            echo 'P2 dark-wired finalizer must not be reachable from runtime dispatch.' >&2
+            exit 1
+          fi
+
+      - name: Full subscription suite
+        run: npm run test:subscriptions
+
+      - name: Diff whitespace check
+        run: git diff --check

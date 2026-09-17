@@ -1,6 +1,5 @@
 const { pickLang } = require("../../utils/i18n");
 const {
-  CUSTOMER_VISIBLE_CARB_KEYS,
   buildProteinOptionSections,
   getProteinFamilyNameI18n,
   resolveProteinVisualFamilyKey,
@@ -12,32 +11,6 @@ const {
 } = require("../catalog/catalogKeyUiHelpers");
 
 const SYSTEM_CURRENCY = "SAR";
-const CUSTOMER_VISIBLE_CARB_KEY_SET = new Set(CUSTOMER_VISIBLE_CARB_KEYS);
-const BASIC_MEAL_PUBLIC_GROUP_KEY_SET = new Set(["carbs", "proteins"]);
-const HIDDEN_PUBLIC_PRODUCT_KEYS = new Set(["small_salad"]);
-const PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES = new Map([
-  ["basic_meal", "custom_order"],
-  ["green_salad", "light_options"],
-  ["fruit_salad", "light_options"],
-  ["greek_yogurt", "light_options"],
-]);
-const RTL_LTR_MEDIA_POSITION = Object.freeze({ ar: "left", en: "right" });
-const CTA_LABELS = Object.freeze({
-  start_customizing: { ar: "ابدأ التخصيص", en: "Start Customizing" },
-  customize: { ar: "اختر الإضافة", en: "Customize" },
-  add_to_cart: { ar: "أضف للسلة", en: "Add to Cart" },
-});
-const CATEGORY_PRESENTATION_BY_KEY = Object.freeze({
-  custom_order: { cardVariant: "hero_builder_collection", layout: "vertical_hero_list" },
-  light_options: { cardVariant: "compact_builder_collection", layout: "vertical_compact_builder_list" },
-  meals: { cardVariant: "meal_collection", layout: "vertical_meal_list" },
-  carbs: { cardVariant: "compact_product_collection", layout: "horizontal_or_grid_compact_cards" },
-  cold_sandwiches: { cardVariant: "sandwich_collection", layout: "vertical_compact_cards" },
-  desserts: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
-  juices: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
-  drinks: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
-  ice_cream: { cardVariant: "addon_collection", layout: "horizontal_or_grid_addon_cards" },
-});
 
 function localizeName(value, lang) {
   return pickLang(value, lang) || pickLang(value, "en") || pickLang(value, "ar") || "";
@@ -54,92 +27,18 @@ function truthyByDefault(value) {
   return value !== false;
 }
 
+// Presentation metadata is stored in MongoDB and authored from the dashboard.
+// Do not infer or override it from category/product keys here.
 function buildPublicCategoryUi(category) {
-  return {
-    ...normalizeCategoryUiMetadata(category.ui),
-    ...(CATEGORY_PRESENTATION_BY_KEY[category.key] || {}),
-  };
+  return normalizeCategoryUiMetadata(category.ui);
 }
 
 function buildMobilePublicProductUi(product) {
   return { cardSize: normalizeProductUiMetadata(product.ui).cardSize };
 }
 
-function productUiWithAction(ui, ctaLabel, behaviorHint, priceLabelMode) {
-  return {
-    ...ui,
-    ctaLabel,
-    ctaLabelI18n: CTA_LABELS[ctaLabel],
-    behaviorHint,
-    priceLabelMode,
-  };
-}
-
-function buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresBuilder, canAddDirectly }) {
-  const baseUi = normalizeProductUiMetadata(product.ui);
-  if (categoryKey === "custom_order") {
-    return productUiWithAction({
-      ...baseUi,
-      cardVariant: "hero_builder",
-      imageRatio: "wide",
-      showDescription: true,
-      showPrice: true,
-      mediaPositionByLocale: RTL_LTR_MEDIA_POSITION,
-    }, "start_customizing", "open_builder", "per_unit_or_from");
-  }
-  if (categoryKey === "light_options") {
-    return productUiWithAction({
-      ...baseUi,
-      cardVariant: "compact_builder",
-      imageRatio: "square",
-      showDescription: true,
-      showPrice: true,
-      mediaPositionByLocale: RTL_LTR_MEDIA_POSITION,
-    }, "start_customizing", "open_builder", "final_depends_on_options");
-  }
-  if (categoryKey === "meals") {
-    const customizable = requiresBuilder && hasOptionGroups;
-    return productUiWithAction({
-      ...baseUi,
-      cardVariant: customizable ? "ready_meal_customizable" : "ready_meal",
-      imageRatio: "square",
-      showDescription: true,
-      showPrice: true,
-      mediaPositionByLocale: RTL_LTR_MEDIA_POSITION,
-    }, customizable ? "customize" : "add_to_cart", customizable ? "customize_optional_addons" : "direct_add", customizable ? "from_price" : "fixed");
-  }
-  if (categoryKey === "carbs") {
-    return productUiWithAction({
-      ...baseUi,
-      cardVariant: "compact_product",
-      imageRatio: "square",
-      showPrice: true,
-    }, "add_to_cart", "direct_add", "fixed");
-  }
-  if (categoryKey === "cold_sandwiches") {
-    return productUiWithAction({
-      ...baseUi,
-      cardVariant: "sandwich_card",
-      imageRatio: "square",
-      showDescription: true,
-      showPrice: true,
-    }, "add_to_cart", "direct_add", "fixed");
-  }
-  if (["desserts", "juices", "drinks", "ice_cream"].includes(categoryKey)) {
-    return productUiWithAction({
-      ...baseUi,
-      cardVariant: "addon_card",
-      imageRatio: "square",
-      showPrice: true,
-    }, "add_to_cart", "direct_add", "fixed");
-  }
-  if (requiresBuilder) {
-    return productUiWithAction(baseUi, baseUi.ctaLabel || "customize", "open_builder", product.pricingModel === "per_100g" ? "per_unit" : "final_depends_on_options");
-  }
-  if (canAddDirectly) {
-    return productUiWithAction(baseUi, baseUi.ctaLabel || "add_to_cart", "direct_add", "fixed");
-  }
-  return baseUi;
+function buildPublicProductUi(product) {
+  return normalizeProductUiMetadata(product.ui);
 }
 
 function serializePublicCategory(category, lang, products, { includeUi = false } = {}) {
@@ -158,12 +57,31 @@ function serializePublicCategory(category, lang, products, { includeUi = false }
   return payload;
 }
 
-function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId, { includePresentationUi = false } = {}) {
+function normalizeNutrition(nutrition) {
+  const source = nutrition && typeof nutrition === "object" ? nutrition : {};
+  const carbGrams = source.carbGrams ?? source.carbsGrams;
+  return {
+    calories: Number(source.calories || 0),
+    proteinGrams: Number(source.proteinGrams || 0),
+    carbGrams: Number(carbGrams || 0),
+    fatGrams: Number(source.fatGrams || 0),
+  };
+}
+
+function resolveNutrition(doc, catalogItem) {
+  if (catalogItem && catalogItem.nutrition) return normalizeNutrition(catalogItem.nutrition);
+  return normalizeNutrition(doc && doc.nutrition);
+}
+
+function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId, {
+  includePresentationUi = false,
+  catalogItem = null,
+} = {}) {
   const hasOptionGroups = Array.isArray(optionGroups) && optionGroups.length > 0;
   const isCustomizable = Boolean(product.isCustomizable) && (product.pricingModel === "per_100g" || hasOptionGroups);
   const requiresBuilder = isCustomizable;
   const canAddDirectly = product.pricingModel === "fixed" && !requiresBuilder && !hasOptionGroups;
-  const categoryKey = product._publicCategoryKey || "";
+  const nutrition = resolveNutrition(product, catalogItem);
   return {
     id: String(product._id),
     key: product.key,
@@ -182,9 +100,12 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
     minWeightGrams: Number(product.minWeightGrams || 0),
     maxWeightGrams: Number(product.maxWeightGrams || 0),
     weightStepGrams: Number(product.weightStepGrams || 50),
+    calories: nutrition.calories,
+    nutrition,
+    nutritionBasis: product.pricingModel === "per_100g" ? "per_100g" : "per_serving",
     sortOrder: Number(product.sortOrder || 0),
     ui: includePresentationUi
-      ? buildPublicProductUi(product, categoryKey, { hasOptionGroups, requiresBuilder, canAddDirectly })
+      ? buildPublicProductUi(product)
       : buildMobilePublicProductUi(product),
     isCustomizable,
     requiresBuilder,
@@ -214,13 +135,14 @@ function serializePublicGroup(relation, group, options, lang) {
   return payload;
 }
 
-function serializePublicOption(relation, option, lang) {
+function serializePublicOption(relation, option, lang, { catalogItem = null } = {}) {
   const extraPriceHalala = relation.extraPriceHalala === null || relation.extraPriceHalala === undefined
     ? Number(option.extraPriceHalala || 0) : Number(relation.extraPriceHalala || 0);
   const extraWeightUnitGrams = relation.extraWeightUnitGrams === null || relation.extraWeightUnitGrams === undefined
     ? Number(option.extraWeightUnitGrams || 0) : Number(relation.extraWeightUnitGrams || 0);
   const extraWeightPriceHalala = relation.extraWeightPriceHalala === null || relation.extraWeightPriceHalala === undefined
     ? Number(option.extraWeightPriceHalala || 0) : Number(relation.extraWeightPriceHalala || 0);
+  const nutrition = resolveNutrition(option, catalogItem);
   const payload = {
     id: String(option._id),
     optionId: String(option._id),
@@ -228,10 +150,20 @@ function serializePublicOption(relation, option, lang) {
     key: option.key,
     name: localizeName(option.name, lang),
     nameI18n: localizedPair(option.name),
+    description: localizeName(option.description, lang),
+    descriptionI18n: localizedPair(option.description),
     imageUrl: option.imageUrl || "",
     extraPriceHalala,
+    extraFeeHalala: extraPriceHalala,
     extraWeightUnitGrams,
     extraWeightPriceHalala,
+    calories: nutrition.calories,
+    nutrition,
+    nutritionBasis: "per_serving",
+    displayCategoryKey: option.displayCategoryKey || "",
+    premiumKey: option.premiumKey || "",
+    selectionType: option.selectionType || "",
+    isPremium: Boolean(option.premiumKey),
     sortOrder: Number(relation.sortOrder || option.sortOrder || 0),
   };
   const proteinFamilyKey = resolveProteinVisualFamilyKey(option);
@@ -276,9 +208,9 @@ function serializeDashboardPreviewCategory(category, lang, products) {
   };
 }
 
-function serializeDashboardPreviewProduct(product, lang, optionGroups, categoryId = product.categoryId) {
+function serializeDashboardPreviewProduct(product, lang, optionGroups, categoryId = product.categoryId, options = {}) {
   return {
-    ...serializePublicProduct(product, lang, optionGroups, categoryId, { includePresentationUi: true }),
+    ...serializePublicProduct(product, lang, optionGroups, categoryId, { ...options, includePresentationUi: true }),
     productId: String(product._id),
     categoryId: String(categoryId),
     status: serializeStatus(product),
@@ -301,9 +233,9 @@ function serializeDashboardPreviewGroup(relation, group, options, lang) {
   };
 }
 
-function serializeDashboardPreviewOption(relation, option, lang) {
+function serializeDashboardPreviewOption(relation, option, lang, options = {}) {
   return {
-    ...serializePublicOption(relation, option, lang),
+    ...serializePublicOption(relation, option, lang, options),
     productOptionId: String(relation._id),
     optionId: String(option._id),
     groupId: String(relation.groupId),
@@ -315,38 +247,35 @@ function serializeDashboardPreviewOption(relation, option, lang) {
   };
 }
 
-function isCustomerVisibleProduct(product, category) {
-  if (HIDDEN_PUBLIC_PRODUCT_KEYS.has(product.key)) return false;
-  if (category?.key === "carbs") return CUSTOMER_VISIBLE_CARB_KEY_SET.has(product.key);
+// Visibility, category placement, linked groups, and ordering are database data.
+// Runtime code must not keep a second allowlist keyed by seeded entity names.
+function isCustomerVisibleProduct() {
   return true;
 }
 
-function isCustomerVisibleGroup(product, group) {
-  if (product?.key === "basic_meal") return BASIC_MEAL_PUBLIC_GROUP_KEY_SET.has(group?.key);
+function isCustomerVisibleGroup() {
   return true;
 }
 
-function isCustomerVisibleOption(option, group) {
-  if (group?.key === "carbs") return CUSTOMER_VISIBLE_CARB_KEY_SET.has(option.key);
+function isCustomerVisibleOption(option) {
   return !Array.isArray(option.ruleTags) || !option.ruleTags.includes("missing_external");
 }
 
-function resolvePublicProductCategory(product, categoriesById, categoriesByKey) {
-  return categoriesById.get(String(product.categoryId))
-    || categoriesByKey.get(PUBLIC_PRODUCT_CATEGORY_KEY_OVERRIDES.get(product.key))
-    || null;
+function resolvePublicProductCategory(product, categoriesById) {
+  return categoriesById.get(String(product.categoryId)) || null;
 }
 
 function sortPublicProducts(left, right) {
-  if (left.key === "basic_meal") return -1;
-  if (right.key === "basic_meal") return 1;
-  return left.sortOrder - right.sortOrder;
+  return Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+    || String(left.key || "").localeCompare(String(right.key || ""));
 }
 
 module.exports = {
   localizeName,
   localizedPair,
   truthyByDefault,
+  normalizeNutrition,
+  resolveNutrition,
   serializePublicCategory,
   serializePublicProduct,
   serializePublicGroup,

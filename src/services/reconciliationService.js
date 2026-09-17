@@ -2,6 +2,10 @@ const CheckoutDraft = require("../models/CheckoutDraft");
 const Payment = require("../models/Payment");
 const { getInvoice } = require("./moyasarService");
 const { logger } = require("../utils/logger");
+const {
+  buildMobileAppSubscriptionMetadata,
+  buildMobileAppSubscriptionPaymentRecord,
+} = require("../utils/paymentChannel");
 
 const RECONCILE_MODES = {
   READ_ONLY: "READ_ONLY",
@@ -22,7 +26,7 @@ function resolveCheckoutDraftResponseShape(draft) {
 
 function buildRecoveredCheckoutPaymentMetadata(draft) {
   const paymentType = resolveCheckoutDraftPaymentType(draft);
-  const metadata = {
+  const metadata = buildMobileAppSubscriptionMetadata({
     type: paymentType,
     draftId: String(draft && draft._id ? draft._id : ""),
     userId: String(draft && draft.userId ? draft.userId : ""),
@@ -31,7 +35,7 @@ function buildRecoveredCheckoutPaymentMetadata(draft) {
     paymentUrl: String(draft && draft.paymentUrl ? draft.paymentUrl : "").trim(),
     initiationResponseShape: resolveCheckoutDraftResponseShape(draft),
     totalHalala: Number(draft && draft.breakdown && draft.breakdown.totalHalala ? draft.breakdown.totalHalala : 0),
-  };
+  });
 
   if (draft && draft.renewedFromSubscriptionId) {
     metadata.renewedFromSubscriptionId = String(draft.renewedFromSubscriptionId);
@@ -92,8 +96,7 @@ async function ensureDraftPaymentRecovered(draft, { session = null } = {}) {
 
   if (!payment) {
     try {
-      const createdPayments = await Payment.create([{
-        provider: "moyasar",
+      const createdPayments = await Payment.create([buildMobileAppSubscriptionPaymentRecord({
         type: paymentType,
         status: "initiated",
         amount: Number(draft && draft.breakdown && draft.breakdown.totalHalala ? draft.breakdown.totalHalala : 0),
@@ -101,7 +104,7 @@ async function ensureDraftPaymentRecovered(draft, { session = null } = {}) {
         userId: draft.userId,
         providerInvoiceId,
         metadata: paymentMetadata,
-      }], session ? { session } : undefined);
+      })], session ? { session } : undefined);
       payment = Array.isArray(createdPayments) ? createdPayments[0] : createdPayments;
       logger.info("Recovered missing checkout payment from persisted draft invoice", {
         draftId: String(draft._id),

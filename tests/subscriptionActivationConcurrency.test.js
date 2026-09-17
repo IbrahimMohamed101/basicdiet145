@@ -26,7 +26,9 @@ async function createPaidDraftPayment({ userId, planId, suffix }) {
     daysCount: 3,
     grams: 150,
     mealsPerDay: 1,
-    startDate: new Date("2026-08-01T00:00:00.000Z"),
+    // Keep the replacement days unambiguously in the future so the test does
+    // not change meaning as wall-clock time advances.
+    startDate: new Date("2099-08-01T00:00:00.000Z"),
     delivery: {
       type: "pickup",
       pickupLocationId: "main",
@@ -67,6 +69,68 @@ async function createPaidDraftPayment({ userId, planId, suffix }) {
   });
 
   return { draft, payment };
+}
+
+async function verifySequentialDeliveryReplacement({ userId, planId }) {
+  const pickup = await createPaidDraftPayment({ userId, planId, suffix: "sequential-pickup" });
+  const pickupResult = await finalizeSubscriptionDraftPaymentFlow({
+    draft: pickup.draft,
+    payment: pickup.payment,
+  });
+  assert.strictEqual(pickupResult.applied, true, "first activation succeeds without a supplied session");
+
+  const deliveryZoneId = new mongoose.Types.ObjectId(objectId(703));
+  const delivery = await createPaidDraftPayment({ userId, planId, suffix: "sequential-delivery" });
+  delivery.draft.delivery = {
+    type: "delivery",
+    address: {
+      street: "Replacement Street",
+      building: "12",
+      apartment: "5",
+      district: "Replacement District",
+      city: "Riyadh",
+    },
+    zoneId: deliveryZoneId,
+    zoneName: "Replacement Zone",
+    slot: {
+      type: "delivery",
+      window: "12:00-14:00",
+      slotId: "delivery_slot_1",
+      label: "12 PM - 2 PM",
+    },
+  };
+  delivery.draft.contractSnapshot = {
+    delivery: {
+      mode: "delivery",
+      address: delivery.draft.delivery.address,
+      zoneId: String(deliveryZoneId),
+      zoneName: "Replacement Zone",
+      slot: delivery.draft.delivery.slot,
+    },
+  };
+  await delivery.draft.save();
+
+  const deliveryResult = await finalizeSubscriptionDraftPaymentFlow({
+    draft: delivery.draft,
+    payment: delivery.payment,
+  });
+  assert.strictEqual(deliveryResult.applied, true, "replacement delivery activation succeeds without a supplied session");
+
+  const [oldSubscription, newSubscription] = await Promise.all([
+    Subscription.findById(pickupResult.subscriptionId).lean(),
+    Subscription.findById(deliveryResult.subscriptionId).lean(),
+  ]);
+  assert.strictEqual(oldSubscription.status, "canceled", "old subscription is hidden from active reads");
+  assert.strictEqual(String(oldSubscription.replacedBySubscriptionId), deliveryResult.subscriptionId, "old subscription records its replacement");
+  assert.strictEqual(newSubscription.status, "active", "replacement is the only active subscription");
+  assert.strictEqual(newSubscription.deliveryMode, "delivery", "replacement keeps delivery mode");
+  assert.strictEqual(newSubscription.deliveryAddress.street, "Replacement Street", "replacement keeps delivery address");
+  assert.strictEqual(String(newSubscription.deliveryZoneId), String(deliveryZoneId), "replacement keeps delivery zone");
+  assert.strictEqual(newSubscription.deliveryWindow, "12:00-14:00", "replacement keeps delivery window");
+  assert.strictEqual(newSubscription.deliverySlot.slotId, "delivery_slot_1", "replacement keeps delivery slot");
+
+  const activeCount = await Subscription.countDocuments({ userId, status: "active" });
+  assert.strictEqual(activeCount, 1, "sequential replacement leaves exactly one active subscription");
 }
 
 async function activateInTransaction({ draftId, paymentId }) {
@@ -115,6 +179,10 @@ async function run() {
   await Subscription.syncIndexes();
   await SubscriptionDay.syncIndexes();
 
+  const sequentialUserId = new mongoose.Types.ObjectId(objectId(700));
+  const sequentialPlanId = new mongoose.Types.ObjectId(objectId(704));
+  await verifySequentialDeliveryReplacement({ userId: sequentialUserId, planId: sequentialPlanId });
+
   const userId = new mongoose.Types.ObjectId(objectId(701));
   const planId = new mongoose.Types.ObjectId(objectId(702));
   const first = await createPaidDraftPayment({ userId, planId, suffix: "a" });
@@ -125,10 +193,18 @@ async function run() {
     activateInTransaction({ draftId: second.draft._id, paymentId: second.payment._id }),
   ]);
 
-  const activeCount = await Subscription.countDocuments({ userId, status: "active" });
-  const canceledCount = await Subscription.countDocuments({ userId, status: "canceled" });
-  const totalSubs = await Subscription.countDocuments({ userId });
-  const dayCount = await SubscriptionDay.countDocuments({});
+  const concurrentSubscriptions = await Subscription.find({ userId }).lean();
+  const activeSubscriptions = concurrentSubscriptions.filter((row) => row.status === "active");
+  const canceledSubscriptions = concurrentSubscriptions.filter((row) => row.status === "canceled");
+  const activeCount = activeSubscriptions.length;
+  const canceledCount = canceledSubscriptions.length;
+  const totalSubs = concurrentSubscriptions.length;
+  const activeDayCount = activeSubscriptions.length === 1
+    ? await SubscriptionDay.countDocuments({ subscriptionId: activeSubscriptions[0]._id })
+    : -1;
+  const canceledDayCount = canceledSubscriptions.length === 1
+    ? await SubscriptionDay.countDocuments({ subscriptionId: canceledSubscriptions[0]._id })
+    : -1;
 
   if (activeCount !== 1) {
     console.error(JSON.stringify({
@@ -138,14 +214,16 @@ async function run() {
       activeCount,
       canceledCount,
       totalSubs,
-      dayCount,
+      activeDayCount,
+      canceledDayCount,
     }, null, 2));
   }
 
   assert.strictEqual(activeCount, 1, "concurrent paid activations leave exactly one active subscription");
   assert.strictEqual(totalSubs, 2, "both paid activations remain as accounting history");
   assert.strictEqual(canceledCount, 1, "the superseded activation is canceled");
-  assert.strictEqual(dayCount, 3, "cancellation policy removes superseded future open days");
+  assert.strictEqual(activeDayCount, 3, "winning activation keeps its three future days");
+  assert.strictEqual(canceledDayCount, 0, "cancellation policy removes superseded future open days");
   assert(results.every((entry) => entry.ok), "both retried paid activations complete");
 
   await mongoose.disconnect();

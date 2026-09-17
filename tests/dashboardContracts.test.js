@@ -372,6 +372,7 @@ async function runTests() {
     const createPayload = {
       name: { ar: "الباقة التجريبية", en: "Test Package" },
       daysCount: 26,
+      timelineExtraDays: 4,
       category: "weight_loss",
       gramsOptions: [{
         grams: 150,
@@ -395,13 +396,17 @@ async function runTests() {
     assert.strictEqual(getRes.body.data.id, planId, "plan id must match");
     assert.strictEqual(getRes.body.data.category, "weight_loss", "category must match");
     assert.strictEqual(getRes.body.data.durationDays, 26, "durationDays must default to daysCount");
+    assert.strictEqual(getRes.body.data.timelineExtraDays, 4, "timeline extra days must round-trip independently");
     assert(Array.isArray(getRes.body.data.grams), "should return grams array for compatibility");
     assert(Array.isArray(getRes.body.data.gramsOptions), "should return gramsOptions array");
+    assert.strictEqual(getRes.body.data.gramsOptions[0].mealsOptions[0].priceHalala, 120000, "higher legacy compare-at value becomes base price");
+    assert.strictEqual(getRes.body.data.gramsOptions[0].mealsOptions[0].compareAtHalala, 0, "compare-at price is retired");
 
     // 6c. Update Package details
     const updatePayload = {
       name: { ar: "الباقة التجريبية المعدلة", en: "Updated Test Package" },
       daysCount: 26,
+      timelineExtraDays: 9,
       category: "weight_gain",
       gramsOptions: [{
         grams: 150,
@@ -421,6 +426,9 @@ async function runTests() {
       .set(auth("admin"));
     expectStatus(getUpdatedRes, 200, "get updated plan");
     assert.strictEqual(getUpdatedRes.body.data.category, "weight_gain", "category must be updated");
+    assert.strictEqual(getUpdatedRes.body.data.timelineExtraDays, 9, "timeline extra days must be editable");
+    assert.strictEqual(getUpdatedRes.body.data.gramsOptions[0].mealsOptions[0].priceHalala, 130000, "updated base price uses the higher submitted legacy value");
+    assert.strictEqual(getUpdatedRes.body.data.gramsOptions[0].mealsOptions[0].compareAtHalala, 0, "updated compare-at stays retired");
 
     // 6d. List Packages (should include the created plan)
     const listRes = await request(app)
@@ -583,8 +591,8 @@ async function runTests() {
       .set(auth("admin"));
     expectStatus(patchRes, 200, "pickup branches settings patch");
 
-    // Patch with valid new pickup_locations array
-    const validPatchRes = await request(app)
+    // Multi-branch writes are rejected because this deployment supports one branch.
+    const multiBranchPatchRes = await request(app)
       .patch("/api/dashboard/settings")
       .send({
         pickup_locations: [
@@ -608,17 +616,36 @@ async function runTests() {
         ]
       })
       .set(auth("admin"));
+    expectStatus(multiBranchPatchRes, 422, "reject multiple pickup branches");
+    assert.strictEqual(multiBranchPatchRes.body.error.code, "SINGLE_PICKUP_BRANCH_ONLY");
+
+    // A single branch remains editable through the existing dashboard contract.
+    const validPatchRes = await request(app)
+      .patch("/api/dashboard/settings")
+      .send({
+        pickup_locations: [
+          {
+            id: "branch_1",
+            name: { ar: "فرع الرياض 1", en: "Riyadh Branch 1" },
+            address: { ar: "العنوان 1", en: "Address 1" },
+            isActive: true,
+            latitude: 24.7136,
+            longitude: 46.6753,
+            phone: "+966500000002"
+          }
+        ]
+      })
+      .set(auth("admin"));
     expectStatus(validPatchRes, 200, "patch pickup_locations valid");
-    assert.strictEqual(validPatchRes.body.data.pickup_locations.length, 2);
+    assert.strictEqual(validPatchRes.body.data.pickup_locations.length, 1);
     assert.strictEqual(validPatchRes.body.data.pickup_locations[0].name.en, "Riyadh Branch 1");
-    assert.strictEqual(validPatchRes.body.data.pickup_locations[1].isActive, false);
 
     // Verify GET settings now has the new pickup_locations
     const getUpdatedRes = await request(app)
       .get("/api/dashboard/settings")
       .set(auth("admin"));
     expectStatus(getUpdatedRes, 200, "general settings updated");
-    assert.strictEqual(getUpdatedRes.body.data.pickup_locations.length, 2);
+    assert.strictEqual(getUpdatedRes.body.data.pickup_locations.length, 1);
     assert.strictEqual(getUpdatedRes.body.data.pickup_locations[0].id, "branch_1");
 
     // Invalid: non-array payload
@@ -644,7 +671,7 @@ async function runTests() {
       .set(auth("admin"));
     expectStatus(invalidNameRes, 400, "invalid missing name");
 
-    // Invalid: duplicate ID
+    // Invalid: more than one branch is never accepted.
     const duplicateIdRes = await request(app)
       .patch("/api/dashboard/settings")
       .send({
@@ -662,9 +689,9 @@ async function runTests() {
         ]
       })
       .set(auth("admin"));
-    expectStatus(duplicateIdRes, 400, "invalid duplicate ID");
+    expectStatus(duplicateIdRes, 422, "single pickup branch only");
 
-    // Invalid: duplicate Name (ar)
+    // Invalid: more than one branch is rejected before name comparison.
     const duplicateArNameRes = await request(app)
       .patch("/api/dashboard/settings")
       .send({
@@ -682,7 +709,7 @@ async function runTests() {
         ]
       })
       .set(auth("admin"));
-    expectStatus(duplicateArNameRes, 400, "invalid duplicate ar name");
+    expectStatus(duplicateArNameRes, 422, "single pickup branch only");
 
     // Invalid: coordinates out of bounds
     const invalidCoordsRes = await request(app)

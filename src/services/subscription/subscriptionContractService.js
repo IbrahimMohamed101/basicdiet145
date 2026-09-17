@@ -4,6 +4,9 @@ const { formatInTimeZone } = require("date-fns-tz");
 const { KSA_TIMEZONE, isOnOrAfterKSADate, isValidKSADateString } = require("../../utils/date");
 const { PHASE1_CONTRACT_VERSION, PHASE1_CONTRACT_TIMEZONE, CONTRACT_MODES, CONTRACT_COMPLETENESS_VALUES, CONTRACT_SOURCES } = require("../../constants/phase1Contract");
 const { buildContractHash } = require("../idempotencyService");
+const {
+  resolvePlanTimelineExtraDays,
+} = require("./subscriptionTimelineDurationService");
 
 function getKsaDateString(date, timezone = PHASE1_CONTRACT_TIMEZONE) {
   return formatInTimeZone(date, timezone, "yyyy-MM-dd");
@@ -97,6 +100,7 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
   }
 
   const daysCount = Number(plan.daysCount || 0);
+  const timelineExtraDays = resolvePlanTimelineExtraDays(plan);
   const mealsPerDay = Number(resolvedQuote.mealsPerDay || 0);
   const selectedGrams = Number(resolvedQuote.grams || 0);
   const totalMeals = daysCount * mealsPerDay;
@@ -194,6 +198,7 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
       planId: String(plan._id),
       planName: normalizePlanName(plan.name),
       daysCount,
+      timelineExtraDays,
       selectedGrams,
       mealsPerDay,
       totalMeals,
@@ -287,7 +292,7 @@ function buildPhase1SubscriptionContract({ payload = {}, resolvedQuote, actorCon
     contractSnapshot,
     resolvedQuote,
     resolvedStart,
-    derivedFields: { daysCount, mealsPerDay, totalMeals },
+    derivedFields: { daysCount, timelineExtraDays, mealsPerDay, totalMeals },
   };
 }
 

@@ -132,6 +132,10 @@ async function run() {
     assert(temporaryPassword && temporaryPassword.length >= 8, "temporary password returned once");
     assert.strictEqual(res.body.data.user.forcePasswordChange, true);
     assert.strictEqual(res.body.data.user.authState, "temporary_password");
+    assert.strictEqual(res.body.data.user.email, email);
+    assert.strictEqual(res.body.data.user.emailVerified, false);
+    assert.strictEqual(res.body.data.user.emailVerifiedAt, null);
+    assert.strictEqual(res.body.data.user.emailVerificationRequired, true);
     assert(res.body.data.user.temporaryPasswordExpiresAt, "expiry returned");
 
     const user = await User.findById(userId).lean();
@@ -146,6 +150,30 @@ async function run() {
     assert.strictEqual(user.forcePasswordChange, true);
     assert.strictEqual(user.temporaryPasswordReason, "admin_created");
     assert.strictEqual(user.passwordSetAt, null);
+    assert.strictEqual(user.email, email);
+    assert.strictEqual(user.emailVerified, false);
+    assert.strictEqual(user.emailVerifiedAt, null);
+    assert.strictEqual(user.emailVerificationRequired, true);
+  });
+
+  await test("admin-created customer without email is still marked for customer-owned verification", async () => {
+    const noEmailPhone = "+201110030003";
+    const res = await api
+      .post("/api/admin/users")
+      .set(authHeader(adminToken))
+      .send({ fullName: "Admin Created Without Email", phoneE164: noEmailPhone, isActive: true });
+    expectStatus(res, 201, "admin create without email");
+    assert.strictEqual(res.body.data.user.email, null);
+    assert.strictEqual(res.body.data.user.emailVerified, false);
+    assert.strictEqual(res.body.data.user.emailVerifiedAt, null);
+    assert.strictEqual(res.body.data.user.emailVerificationRequired, true);
+
+    const user = await User.findOne({ phoneE164: noEmailPhone }).lean();
+    assert(user, "customer without email persisted");
+    assert.strictEqual(user.email, undefined);
+    assert.strictEqual(user.emailVerified, false);
+    assert.strictEqual(user.emailVerifiedAt, null);
+    assert.strictEqual(user.emailVerificationRequired, true);
   });
 
   await test("database stores only temporary password hash", async () => {
@@ -225,6 +253,9 @@ async function run() {
     assert.strictEqual(res.body.mustChangePassword, false);
     assert(res.body.accessToken);
     assert(res.body.refreshToken);
+    assert.strictEqual(res.body.user.email, email);
+    assert.strictEqual(res.body.user.emailVerified, false);
+    assert.strictEqual(res.body.user.emailVerificationRequired, true);
     accessToken = res.body.accessToken;
     refreshToken = res.body.refreshToken;
 
@@ -256,6 +287,8 @@ async function run() {
     assert.strictEqual(res.body.status, "logged_in");
     assert(res.body.accessToken);
     assert(res.body.refreshToken);
+    assert.strictEqual(res.body.user.emailVerified, false);
+    assert.strictEqual(res.body.user.emailVerificationRequired, true);
     oldAccessToken = res.body.accessToken;
     oldRefreshToken = res.body.refreshToken;
   });
@@ -358,6 +391,8 @@ async function run() {
     assert.strictEqual(login.body.status, "logged_in");
     assert(login.body.accessToken);
     assert(login.body.refreshToken);
+    assert.strictEqual(login.body.user.emailVerified, false);
+    assert.strictEqual(login.body.user.emailVerificationRequired, false);
   });
 
   await test("no response or audit record contains passwordHash or plaintext password", async () => {

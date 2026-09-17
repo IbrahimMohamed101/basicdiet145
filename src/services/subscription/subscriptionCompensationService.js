@@ -1,4 +1,7 @@
 const { addDays } = require("date-fns");
+const {
+  resolveSubscriptionTimelineExtraDays,
+} = require("./subscriptionTimelineDurationService");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const { toKSADateString, addDaysToKSADateString } = require("../../utils/date");
@@ -140,7 +143,8 @@ function buildValidityShrinkConflictError(newValidityEndStr, conflictDay) {
 
 /**
  * P2-S7-S2 — authoritative recomputation of validity based on all compensated days.
- * Rule: validityEndDate = endDate + frozenDays + compensatedSkipDays.
+ * Rule: validityEndDate =
+ * endDate + configured timeline days + frozenDays + compensatedSkipDays.
  */
 async function syncSubscriptionValidity(subscription, session) {
   const baseEndDate = subscription.endDate;
@@ -153,7 +157,11 @@ async function syncSubscriptionValidity(subscription, session) {
   }
 
   const compensation = await getCompensationSnapshot(subscription._id, session);
-  const newValidityEndDate = addDays(baseEndDate, compensation.totalCount);
+  const timelineExtraDays = resolveSubscriptionTimelineExtraDays(subscription);
+  const newValidityEndDate = addDays(
+    baseEndDate,
+    timelineExtraDays + compensation.totalCount
+  );
   const currentValidityEndDate = subscription.validityEndDate || baseEndDate;
 
   const newValidityEndStr = toKSADateString(newValidityEndDate);
@@ -224,6 +232,7 @@ async function syncSubscriptionValidity(subscription, session) {
     frozenCount: compensation.freezeCount,
     compensatedSkipCount: compensation.skipCount,
     totalCompensationCount: compensation.totalCount,
+    timelineExtraDays,
     compensationTokens: compensation.tokens,
   };
 }

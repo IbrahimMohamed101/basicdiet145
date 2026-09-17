@@ -44,6 +44,12 @@ const priceMatrixHalala = {
   },
 };
 
+const timelineExtraDaysByDuration = Object.freeze({
+  7: 1,
+  26: 4,
+  30: 5,
+});
+
 function buildSkipPolicy(durationDays) {
   if (durationDays <= 7) return { enabled: true, maxDays: 1 };
   if (durationDays <= 26) return { enabled: true, maxDays: 3 };
@@ -78,6 +84,7 @@ function buildSubscriptionPlanRows(matrix = priceMatrixHalala) {
     return {
       key: createPlanKey(durationDays),
       daysCount: durationDays,
+      timelineExtraDays: timelineExtraDaysByDuration[durationDays] || 0,
       durationDays,
       sortOrder: durationIndex + 1,
       name: name(`إشتراك وجبات لمدة ${durationDays} أيام`, `${durationDays}-Day Meal Subscription`),

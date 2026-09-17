@@ -1,0 +1,164 @@
+"use strict";
+
+process.env.NODE_ENV = "test";
+
+const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
+const {
+  buildDeductionResponse,
+  serializeSubscription,
+} = require("../src/services/dashboard/manualDeduction/manualDeductionPresenter");
+const {
+  chooseDefaultSubscription,
+  validateBalances,
+  validateCounts,
+  validateSubscriptionCanDeduct,
+} = require("../src/services/dashboard/manualDeduction/manualDeductionPolicy");
+
+function modernSubscription(overrides = {}) {
+  return {
+    _id: new mongoose.Types.ObjectId(),
+    userId: new mongoose.Types.ObjectId(),
+    planId: new mongoose.Types.ObjectId(),
+    status: "active",
+    deliveryMode: "pickup",
+    entitlementVersion: 2,
+    totalMeals: 30,
+    remainingMeals: 24,
+    reservedMeals: 6,
+    consumedMeals: 0,
+    forfeitedMeals: 0,
+    premiumBalance: [],
+    addonBalance: [],
+    addonSubscriptions: [],
+    startDate: new Date("2026-08-01T00:00:00.000Z"),
+    validityEndDate: new Date("2026-08-30T00:00:00.000Z"),
+    baseMealAllocations: [],
+    ...overrides,
+  };
+}
+
+function run() {
+  const subscription = modernSubscription();
+  const serialized = serializeSubscription(
+    subscription,
+    { name: { ar: "باقة شهرية", en: "Monthly plan" } },
+    "ar"
+  );
+
+  assert.equal(serialized.remainingMeals, 24);
+  assert.equal(serialized.availableMeals, 24);
+  assert.equal(serialized.displayRemainingMeals, 30);
+  assert.equal(serialized.reservedMeals, 6);
+  assert.equal(serialized.balance.deductibleMeals, 30);
+  assert.equal(serialized.balance.manualDeductionMaxMeals, 30);
+  assert.equal(serialized.balance.canManualDeduct, true);
+  assert.equal(serialized.balance.displaySemantics, "UNCONSUMED_INCLUDING_RESERVED");
+  assert.equal(serialized.balance.availableSemantics, "UNRESERVED_AVAILABLE");
+  assert.equal(serialized.balance.manualDeductionSemantics, "UNCONSUMED_AVAILABLE_PLUS_RESERVED");
+  assert.equal(serialized.balance.balanced, true);
+
+  assert.throws(
+    () => validateBalances(subscription, validateCounts({ regularMeals: 31, premiumMeals: 0 })),
+    (error) => error && error.code === "INSUFFICIENT_REMAINING_MEALS"
+  );
+  assert.doesNotThrow(
+    () => validateBalances(subscription, validateCounts({ regularMeals: 30, premiumMeals: 0 }))
+  );
+  assert.doesNotThrow(
+    () => validateSubscriptionCanDeduct(subscription, "2026-08-03")
+  );
+
+  // Mongo stores Riyadh midnight as the previous UTC calendar date. The final
+  // subscription day must stay inclusive in the restaurant timezone.
+  const riyadhBounded = modernSubscription({
+    startDate: new Date("2026-07-27T21:00:00.000Z"), // 2026-07-28 00:00 Riyadh
+    validityEndDate: new Date("2026-08-02T21:00:00.000Z"), // 2026-08-03 00:00 Riyadh
+  });
+  assert.doesNotThrow(
+    () => validateSubscriptionCanDeduct(riyadhBounded, "2026-08-03")
+  );
+  assert.throws(
+    () => validateSubscriptionCanDeduct(riyadhBounded, "2026-08-04"),
+    (error) => error && error.code === "SUBSCRIPTION_OUTSIDE_VALIDITY"
+  );
+  assert.equal(
+    chooseDefaultSubscription([riyadhBounded], "2026-08-03"),
+    riyadhBounded
+  );
+
+  const updated = modernSubscription({
+    remainingMeals: 22,
+    reservedMeals: 6,
+    consumedMeals: 2,
+  });
+  const response = buildDeductionResponse({
+    subscription: updated,
+    counts: { regularMeals: 2, premiumMeals: 0, total: 2, addons: [] },
+    balances: {
+      totalMeals: 30,
+      remainingMeals: 22,
+      remainingRegularMeals: 22,
+      remainingPremiumMeals: 0,
+      consumedMeals: 2,
+    },
+    addonBalances: [],
+    businessDate: "2026-08-03",
+  });
+
+  assert.deepEqual(response.remaining, {
+    regularMeals: 22,
+    premiumMeals: 0,
+    totalMeals: 22,
+    addons: [],
+  });
+  assert.equal(response.balance.availableMeals, 22);
+  assert.equal(response.balance.displayRemainingMeals, 28);
+  assert.equal(response.balance.reservedMeals, 6);
+  assert.equal(response.balance.deductibleMeals, 28);
+  assert.equal(response.balance.manualDeductionMaxMeals, 28);
+
+  const fullyReserved = modernSubscription({
+    remainingMeals: 0,
+    reservedMeals: 10,
+    consumedMeals: 20,
+  });
+  const fullyReservedSerialized = serializeSubscription(fullyReserved, null, "ar");
+  assert.equal(fullyReservedSerialized.availableMeals, 0);
+  assert.equal(fullyReservedSerialized.reservedMeals, 10);
+  assert.equal(fullyReservedSerialized.balance.manualDeductionMaxMeals, 10);
+  assert.equal(fullyReservedSerialized.balance.canManualDeduct, true);
+  assert.doesNotThrow(
+    () => validateBalances(fullyReserved, validateCounts({ regularMeals: 10, premiumMeals: 0 }))
+  );
+
+  const inconsistentSubscription = modernSubscription({ reservedMeals: 5 });
+  const inconsistent = serializeSubscription(inconsistentSubscription, null, "ar");
+  assert.equal(inconsistent.balance.balanced, false);
+  assert.equal(inconsistent.balance.projectionApplied, false);
+  assert.equal(inconsistent.displayRemainingMeals, 24);
+  assert.equal(inconsistent.balance.displaySemantics, "AVAILABLE_ONLY_FAIL_CLOSED");
+  assert.throws(
+    () => validateSubscriptionCanDeduct(inconsistentSubscription, "2026-08-03"),
+    (error) => error && error.code === "BALANCE_INTEGRITY_ERROR"
+  );
+
+  const legacy = serializeSubscription({
+    ...modernSubscription(),
+    entitlementVersion: 1,
+    totalMeals: 30,
+    remainingMeals: 18,
+    reservedMeals: undefined,
+    consumedMeals: undefined,
+    forfeitedMeals: undefined,
+  }, null, "ar");
+  assert.equal(legacy.availableMeals, 18);
+  assert.equal(legacy.displayRemainingMeals, 18);
+  assert.equal(legacy.reservedMeals, 0);
+  assert.equal(legacy.balance.manualDeductionMaxMeals, 18);
+  assert.equal(legacy.balance.balanced, true);
+
+  console.log("manual deduction balance presentation tests passed");
+}
+
+run();

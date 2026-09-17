@@ -1,6 +1,8 @@
 #!/bin/bash
 # Shared helpers for assigning one MongoDB database per test file.
 
+TEST_DB_ISOLATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 mask_mongo_uri() {
   echo "$1" | sed 's|\(://[^:/@]*:\)[^@]*\(@\)|\1***\2|'
 }
@@ -123,7 +125,25 @@ assert_safe_base_test_mongo_uri() {
   local uri="$1"
   local db_name
 
-  db_name=$(mongo_uri_db_name "$uri") || return 1
+  db_name=$(
+    NODE_ENV=test \
+    MONGO_URI_TEST="$uri" \
+    TEST_DB_ISOLATION_PROJECT_ROOT="$TEST_DB_ISOLATION_DIR/.." \
+    node <<'NODE'
+const path = require("path");
+const projectRoot = process.env.TEST_DB_ISOLATION_PROJECT_ROOT;
+const { getDbNameFromUri, resolveMongoUri } = require(path.join(projectRoot, "src/utils/mongoUriResolver"));
+
+try {
+  const uri = resolveMongoUri();
+  console.log(getDbNameFromUri(uri));
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+NODE
+  ) || return 1
+
   if ! is_safe_base_test_db_name "$db_name"; then
     echo "ERROR: refusing base MongoDB database '$db_name' for tests; use an isolated database name containing test, local, or ci." >&2
     return 1

@@ -1,9 +1,14 @@
+require("./helpers/installMongoTestSafetyGuard");
 /**
  * Meal Planner payment contract verification.
  *
  * This intentionally exercises the HTTP endpoints while stubbing Moyasar at the
  * HTTPS boundary. It must not silently pass if initiation or verification fails.
  */
+
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
 
 require("dotenv").config();
 

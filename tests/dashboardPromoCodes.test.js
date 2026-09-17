@@ -37,6 +37,23 @@ async function main() {
     let response = await api.get("/api/dashboard/promo-codes").set(cashierHeaders);
     expectStatus(response, 403, "promo administration is admin-only");
 
+    response = await api.get("/api/dashboard/promo-codes/app-selection").set(adminHeaders);
+    expectStatus(response, 200, "app promo selection starts empty");
+    assert.deepStrictEqual(response.body.data, {
+      promoCodeId: null,
+      promoCode: null,
+      promoOffer: null,
+      isPubliclyDisplayable: false,
+      issues: [],
+    });
+
+    response = await api.put("/api/dashboard/promo-codes/app-selection").set(adminHeaders).send({});
+    expectStatus(response, 400, "selection requires an explicit promoCodeId or null");
+    response = await api.put("/api/dashboard/promo-codes/app-selection").set(adminHeaders).send({
+      promoCodeId: 0,
+    });
+    expectStatus(response, 400, "selection rejects ambiguous non-string values");
+
     response = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({
       code: "WELCOME10",
       name: { ar: "خصم الترحيب", en: "Welcome discount" },
@@ -48,11 +65,29 @@ async function main() {
       expiresAt: "2027-01-01T00:00:00.000Z",
       appliesTo: "subscription",
       isActive: true,
+      appDisplay: {
+        isVisible: true,
+        showOnHome: true,
+        showOnPlans: true,
+        priority: 20,
+        title: { ar: "وفّر على اشتراكك", en: "Save on your subscription" },
+        description: { ar: "انسخ الكود", en: "Copy the code" },
+        homeMessage: { ar: "اعرض الخطط", en: "View plans" },
+      },
     });
     expectStatus(response, 201, "create canonical promo DTO");
     const welcomeId = response.body.data.id;
     assert.strictEqual(response.body.data.usageLimitTotal, 100);
     assert.strictEqual(response.body.data.appliesTo, "subscription");
+    assert.deepStrictEqual(response.body.data.appDisplay, {
+      isVisible: true,
+      showOnHome: true,
+      showOnPlans: true,
+      priority: 20,
+      title: { ar: "وفّر على اشتراكك", en: "Save on your subscription" },
+      description: { ar: "انسخ الكود", en: "Copy the code" },
+      homeMessage: { ar: "اعرض الخطط", en: "View plans" },
+    });
 
     response = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({
       code: "FIXED500",
@@ -65,6 +100,7 @@ async function main() {
     expectStatus(response, 201, "create accepts fixed_amount and endsAt aliases");
     const fixedId = response.body.data.id;
     assert.strictEqual(response.body.data.discountType, "fixed");
+    assert.strictEqual(response.body.data.appDisplay.isVisible, false);
     assert.strictEqual(new Date(response.body.data.expiresAt).toISOString(), "2027-02-01T00:00:00.000Z");
 
     response = await api.post("/api/dashboard/promo-codes").set(adminHeaders).send({
@@ -75,6 +111,30 @@ async function main() {
       appliesTo: "subscription",
     });
     expectStatus(response, 201, "create searchable promo");
+    const summerId = response.body.data.id;
+
+    response = await api.put("/api/dashboard/promo-codes/app-selection").set(adminHeaders).send({
+      promoCodeId: welcomeId,
+    });
+    expectStatus(response, 200, "select the exact app promo");
+    assert.strictEqual(response.body.data.promoCodeId, welcomeId);
+    assert.strictEqual(response.body.data.promoCode.code, "WELCOME10");
+    assert.strictEqual(response.body.data.promoOffer.code, "WELCOME10");
+    assert.strictEqual(response.body.data.promoCode.appDisplay.isVisible, true);
+    assert.strictEqual(response.body.data.isPubliclyDisplayable, true);
+
+    response = await api.get("/api/plans");
+    expectStatus(response, 200, "public plans exposes only the selected promo");
+    assert.strictEqual(response.body.promoOffer.code, "WELCOME10");
+
+    response = await api.put("/api/dashboard/promo-codes/app-selection").set(adminHeaders).send({
+      promoCodeId: summerId,
+    });
+    expectStatus(response, 200, "replace the selected app promo atomically");
+    assert.strictEqual(response.body.data.promoCode.code, "SUMMER20");
+    response = await api.get("/api/plans");
+    expectStatus(response, 200, "public plans follows the changed selection");
+    assert.strictEqual(response.body.promoOffer.code, "SUMMER20");
 
     response = await api.get("/api/dashboard/promo-codes?q=summer&page=1&limit=10").set(adminHeaders);
     expectStatus(response, 200, "search promo list");
@@ -147,10 +207,22 @@ async function main() {
     response = await api.delete(`/api/dashboard/promo-codes/${welcomeId}`).set(adminHeaders);
     expectStatus(response, 409, "promo with usage cannot be archived");
 
+    response = await api.put("/api/dashboard/promo-codes/app-selection").set(adminHeaders).send({
+      promoCodeId: fixedId,
+    });
+    expectStatus(response, 200, "select an unused promo before archiving it");
+
     response = await api.delete(`/api/dashboard/promo-codes/${fixedId}`).set(adminHeaders);
     expectStatus(response, 200, "unused promo is soft archived");
     assert(response.body.data.deletedAt);
     assert.strictEqual(response.body.data.isActive, false);
+
+    response = await api.get("/api/dashboard/promo-codes/app-selection").set(adminHeaders);
+    expectStatus(response, 200, "archiving the selected promo clears the singleton selection");
+    assert.strictEqual(response.body.data.promoCodeId, null);
+    response = await api.get("/api/plans");
+    expectStatus(response, 200, "public plans hides the promo after selection is cleared");
+    assert.strictEqual(response.body.promoOffer, null);
 
     response = await api.get("/api/dashboard/promo-codes?q=FIXED500&page=1&limit=10").set(adminHeaders);
     expectStatus(response, 200, "archived promos excluded by default");

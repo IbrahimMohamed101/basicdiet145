@@ -35,16 +35,25 @@ async function runMongoTransactionWithRetry(work, {
   maxRetries = DEFAULT_MAX_RETRIES,
   baseDelayMs = DEFAULT_BASE_DELAY_MS,
   context = {},
+  startSession = startSafeSession,
+  sleepFn = sleep,
 } = {}) {
   let attempt = 0;
 
   while (attempt <= maxRetries) {
-    const session = await startSafeSession();
+    const session = await startSession();
     try {
       let result;
-      await session.withTransaction(async () => {
-        result = await work(session, { attempt });
-      });
+      if (session.supportsTransactions === false) {
+        // On standalone MongoDB there is no rollback boundary. Retrying a
+        // partially-applied multi-document workflow can duplicate side effects,
+        // so execute it once and rely on each handler's CAS/idempotency guards.
+        result = await work(session, { attempt: 0, transactional: false });
+      } else {
+        await session.withTransaction(async () => {
+          result = await work(session, { attempt, transactional: true });
+        });
+      }
       session.endSession();
       return result;
     } catch (err) {
@@ -60,12 +69,12 @@ async function runMongoTransactionWithRetry(work, {
       });
       session.endSession();
 
-      if (!retryable || attempt >= maxRetries) {
+      if (session.supportsTransactions === false || !retryable || attempt >= maxRetries) {
         throw err;
       }
 
       const delayMs = baseDelayMs * Math.pow(2, attempt);
-      await sleep(delayMs);
+      await sleepFn(delayMs);
       attempt += 1;
     }
   }

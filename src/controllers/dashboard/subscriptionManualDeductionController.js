@@ -31,6 +31,7 @@ async function manualDeduction(req, res) {
       body: req.body || {},
       actorId: req.dashboardUserId || req.userId,
       actorRole: req.dashboardUserRole || req.userRole,
+      idempotencyKey: req.get("Idempotency-Key") || "",
     });
     return res.status(200).json({ status: true, data });
   } catch (err) {

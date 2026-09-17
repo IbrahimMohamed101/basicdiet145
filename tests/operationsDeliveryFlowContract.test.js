@@ -199,7 +199,7 @@ async function seedBaseData() {
 }
 
 async function seedAuthUsers() {
-  for (const role of ["superadmin", "admin", "kitchen", "courier", "cashier"]) {
+  for (const role of ["superadmin", "admin", "restaurant", "kitchen", "courier", "cashier"]) {
     const authObj = await dashboardAuth(role, TEST_TAG);
     dashboardUsers.set(role, authObj.user);
   }
@@ -680,6 +680,80 @@ async function runTests() {
     await Subscription.deleteOne({ _id: tempSub._id });
     await SubscriptionDay.deleteOne({ _id: tempDay._id });
     await Delivery.deleteOne({ dayId: tempDay._id });
+  });
+
+  await test("Restaurant completes delivery through ops and deducts meals exactly once", async () => {
+    const restaurantSub = await Subscription.create({
+      userId: seedData.client._id,
+      planId: seedData.plan._id,
+      status: "active",
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      totalMeals: 14,
+      remainingMeals: 14,
+      selectedGrams: 150,
+      selectedMealsPerDay: 2,
+      deliveryMode: "delivery",
+    });
+    const restaurantDay = await SubscriptionDay.create({
+      subscriptionId: restaurantSub._id,
+      date: TODAY_STR,
+      status: "out_for_delivery",
+      mealSlots: [
+        { slotIndex: 1, slotKey: "slot_1", selectionType: "standard_meal", status: "complete" },
+        { slotIndex: 2, slotKey: "slot_2", selectionType: "standard_meal", status: "complete" },
+      ],
+    });
+    await Delivery.create({
+      subscriptionId: restaurantSub._id,
+      dayId: restaurantDay._id,
+      date: TODAY_STR,
+      status: "out_for_delivery",
+    });
+
+    const listRes = await request(app)
+      .get(`/api/dashboard/ops/list?date=${TODAY_STR}`)
+      .set(auth("restaurant"));
+    expectStatus(listRes, 200, "restaurant ops list");
+    const restaurantItem = listRes.body.data.find(
+      (item) => String(item.entityId) === String(restaurantDay._id)
+    );
+    assert(restaurantItem, "restaurant delivery item must be visible");
+    assert(
+      restaurantItem.allowedActions.some((action) => action.id === "fulfill"),
+      "restaurant delivery item must expose the canonical fulfill action"
+    );
+
+    const fulfillRes = await request(app)
+      .post("/api/dashboard/ops/actions/fulfill")
+      .send({ entityId: restaurantDay._id, entityType: "subscription_day" })
+      .set(auth("restaurant"));
+    expectStatus(fulfillRes, 200, "restaurant fulfill delivery");
+    assert.strictEqual(fulfillRes.body.data.status, "fulfilled");
+
+    const [fulfilledDay, fulfilledSub, fulfilledDelivery] = await Promise.all([
+      SubscriptionDay.findById(restaurantDay._id),
+      Subscription.findById(restaurantSub._id),
+      Delivery.findOne({ dayId: restaurantDay._id }),
+    ]);
+    assert.strictEqual(fulfilledDay.status, "fulfilled");
+    assert.strictEqual(fulfilledDay.creditsDeducted, true);
+    assert.strictEqual(fulfilledSub.remainingMeals, 12, "restaurant fulfillment must deduct two meals");
+    assert.strictEqual(fulfilledDelivery.status, "delivered");
+
+    const retryRes = await request(app)
+      .post("/api/dashboard/ops/actions/fulfill")
+      .send({ entityId: restaurantDay._id, entityType: "subscription_day" })
+      .set(auth("restaurant"));
+    expectStatus(retryRes, 409, "restaurant fulfill delivery retry");
+    assert.strictEqual(retryRes.body.error.code, "INVALID_TRANSITION");
+
+    const subAfterRetry = await Subscription.findById(restaurantSub._id);
+    assert.strictEqual(subAfterRetry.remainingMeals, 12, "rejected fulfill retry must not double-deduct");
+
+    await Subscription.deleteOne({ _id: restaurantSub._id });
+    await SubscriptionDay.deleteOne({ _id: restaurantDay._id });
+    await Delivery.deleteOne({ dayId: restaurantDay._id });
   });
 
   // Section 10: Direct Controller Security Contract

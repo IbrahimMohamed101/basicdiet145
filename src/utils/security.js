@@ -230,6 +230,9 @@ function assertNoTestFlagsInProduction() {
   if (!stagingAllowed && process.env.OTP_TEST_MODE === "true") {
     violations.push("OTP_TEST_MODE must not be 'true' in production without ALLOW_STAGING_TEST_AUTH");
   }
+  if (!stagingAllowed && process.env.EMAIL_OTP_TEST_MODE === "true") {
+    violations.push("EMAIL_OTP_TEST_MODE must not be 'true' in production without ALLOW_STAGING_TEST_AUTH");
+  }
   if (!stagingAllowed && process.env.ALLOW_TEST_AUTH === "true") {
     violations.push("ALLOW_TEST_AUTH must not be 'true' in production without ALLOW_STAGING_TEST_AUTH");
   }
@@ -249,6 +252,62 @@ function assertNoTestFlagsInProduction() {
     const testPhone = String(process.env.OTP_TEST_PHONE || "").trim();
     if (!/^\+[1-9]\d{7,14}$/.test(testPhone)) {
       violations.push("Staging test auth requires a valid OTP_TEST_PHONE");
+    }
+  }
+
+  const emailOtpEnabled = String(process.env.AUTH_EMAIL_OTP_ENABLED || "").trim().toLowerCase() === "true";
+  const emailOtpTestEnabled = String(process.env.EMAIL_OTP_TEST_MODE || "").trim().toLowerCase() === "true"
+    && String(process.env.ALLOW_TEST_AUTH || "").trim().toLowerCase() === "true"
+    && stagingAllowed;
+  if (emailOtpEnabled) {
+    const emailOtpSecret = String(process.env.EMAIL_OTP_HASH_SECRET || "");
+    if (emailOtpSecret.length < 32) {
+      violations.push("EMAIL_OTP_HASH_SECRET must be at least 32 characters when email OTP is enabled");
+    }
+
+    if (emailOtpTestEnabled) {
+      const emailTestCode = String(process.env.EMAIL_OTP_TEST_CODE || "").trim();
+      const emailTestAddress = String(process.env.EMAIL_OTP_TEST_EMAIL || "").trim().toLowerCase();
+      if (!/^\d{6}$/.test(emailTestCode)) {
+        violations.push("Staging email OTP test mode requires a valid 6-digit EMAIL_OTP_TEST_CODE");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTestAddress)) {
+        violations.push("Staging email OTP test mode requires a valid EMAIL_OTP_TEST_EMAIL");
+      }
+    } else {
+      const normalizeEmailEnv = (value) => {
+        const raw = String(value || "").trim();
+        if (raw.length >= 2 && ((raw[0] === '"' && raw.at(-1) === '"') || (raw[0] === "'" && raw.at(-1) === "'"))) {
+          return raw.slice(1, -1).trim();
+        }
+        return raw;
+      };
+      const emailDeliveryProvider = normalizeEmailEnv(process.env.EMAIL_DELIVERY_PROVIDER || "smtp")
+        .trim()
+        .toLowerCase();
+      const gmailUser = normalizeEmailEnv(process.env.GMAIL_USER);
+      const gmailAppPassword = normalizeEmailEnv(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, "");
+      const gmailOauthClientId = normalizeEmailEnv(process.env.GMAIL_OAUTH_CLIENT_ID);
+      const gmailOauthClientSecret = normalizeEmailEnv(process.env.GMAIL_OAUTH_CLIENT_SECRET);
+      const gmailOauthRefreshToken = normalizeEmailEnv(process.env.GMAIL_OAUTH_REFRESH_TOKEN);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gmailUser)) {
+        violations.push("GMAIL_USER must be a valid email when email OTP is enabled");
+      }
+      if (!new Set(["smtp", "gmail_api"]).has(emailDeliveryProvider)) {
+        violations.push("EMAIL_DELIVERY_PROVIDER must be either smtp or gmail_api");
+      } else if (emailDeliveryProvider === "gmail_api") {
+        if (!gmailOauthClientId.endsWith(".apps.googleusercontent.com")) {
+          violations.push("GMAIL_OAUTH_CLIENT_ID must be configured for Gmail API delivery");
+        }
+        if (gmailOauthClientSecret.length < 8) {
+          violations.push("GMAIL_OAUTH_CLIENT_SECRET must be configured for Gmail API delivery");
+        }
+        if (gmailOauthRefreshToken.length < 20) {
+          violations.push("GMAIL_OAUTH_REFRESH_TOKEN must be configured for Gmail API delivery");
+        }
+      } else if (gmailAppPassword.length < 16) {
+        violations.push("GMAIL_APP_PASSWORD must be configured for Gmail SMTP delivery");
+      }
     }
   }
 

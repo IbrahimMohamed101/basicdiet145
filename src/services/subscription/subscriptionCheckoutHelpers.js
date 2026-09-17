@@ -1,6 +1,10 @@
 const CheckoutDraft = require("../../models/CheckoutDraft");
 const Payment = require("../../models/Payment");
 const { logger } = require("../../utils/logger");
+const {
+  buildMobileAppSubscriptionMetadata,
+  buildMobileAppSubscriptionPaymentRecord,
+} = require("../../utils/paymentChannel");
 const { buildMoneySummary } = require("../../utils/pricing");
 const { buildPromoResponseBlock } = require("../promoCodeService");
 const {
@@ -225,7 +229,7 @@ function buildSubscriptionCheckoutPaymentMetadata({
   totalHalala,
   redirectContext,
 }) {
-  const metadata = {
+  const metadata = buildMobileAppSubscriptionMetadata({
     type: paymentType,
     draftId: String(draft && draft._id ? draft._id : ""),
     userId: String(draft && draft.userId ? draft.userId : ""),
@@ -243,7 +247,7 @@ function buildSubscriptionCheckoutPaymentMetadata({
         priceSource: item.priceSource || null,
       }))
       : [],
-  };
+  });
 
   if (providerInvoiceId) {
     metadata.providerInvoiceId = providerInvoiceId;
@@ -312,8 +316,7 @@ async function ensureSubscriptionCheckoutPayment({
 
   if (!payment) {
     try {
-      payment = await Payment.create({
-        provider: "moyasar",
+      payment = await Payment.create(buildMobileAppSubscriptionPaymentRecord({
         type: paymentType,
         status: "initiated",
         amount: totalHalala,
@@ -321,7 +324,7 @@ async function ensureSubscriptionCheckoutPayment({
         userId: draft.userId,
         providerInvoiceId,
         metadata: paymentMetadata,
-      });
+      }));
     } catch (err) {
       if (!err || err.code !== 11000) {
         throw err;

@@ -53,6 +53,9 @@ const {
   hashDashboardPassword,
 } = require("../services/dashboardPasswordService");
 const { issueCustomerTemporaryPassword } = require("../services/customerTemporaryPasswordService");
+const {
+  getAdminCreatedEmailVerificationState,
+} = require("../services/adminCreatedEmailVerificationPolicy");
 const { assertValidPhoneE164 } = require("../services/otpService");
 const SubscriptionLifecycleService = require("../services/subscription/subscriptionLifecycleService");
 const SubscriptionOperationsReadService = require("../services/subscription/subscriptionOperationsReadService");
@@ -67,6 +70,13 @@ const { normalizeStoredVatBreakdown, buildMoneySummary } = require("../utils/pri
 const { resolveSubscriptionAddonBillingMode } = require("../utils/subscription/subscriptionCatalog");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
 const { DASHBOARD_ROLES, DASHBOARD_ROLE_LABEL } = require("../constants/dashboardRoles");
+const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
+const { resolveSinglePickupLocations } = require("../utils/singlePickupLocation");
+const {
+  MAX_TIMELINE_EXTRA_DAYS,
+  resolvePlanTimelineExtraDays,
+  resolveSubscriptionTimelineExtraDays,
+} = require("../services/subscription/subscriptionTimelineDurationService");
 
 const MAX_PREMIUM_PRICE = 10000;
 const MAX_VAT_PERCENTAGE = 100;
@@ -249,6 +259,22 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
   if (!isPositiveInteger(durationDays)) {
     throw createControlledError(400, "INVALID", "durationDays must be a positive integer");
   }
+  const timelineExtraDays = payload.timelineExtraDays === undefined
+    ? undefined
+    : Number(payload.timelineExtraDays);
+  if (
+    timelineExtraDays !== undefined
+    && (
+      !isNonNegativeInteger(timelineExtraDays)
+      || timelineExtraDays > MAX_TIMELINE_EXTRA_DAYS
+    )
+  ) {
+    throw createControlledError(
+      400,
+      "INVALID",
+      `timelineExtraDays must be an integer between 0 and ${MAX_TIMELINE_EXTRA_DAYS}`
+    );
+  }
 
   const category = payload.category === undefined ? "standard" : String(payload.category).trim();
   if (!category) {
@@ -400,6 +426,7 @@ function validatePlanPayloadOrThrow(payload, { requireGramsOptions = true } = {}
   const result = {
     name,
     daysCount,
+    ...(timelineExtraDays === undefined ? {} : { timelineExtraDays }),
     durationDays,
     category,
     currency,
@@ -664,6 +691,7 @@ function serializeAdminPlan(plan) {
   return {
     id,
     ...rest,
+    timelineExtraDays: resolvePlanTimelineExtraDays(planObj),
     currency,
     skipPolicy: {
       enabled: planObj.skipPolicy && planObj.skipPolicy.enabled !== undefined
@@ -987,6 +1015,9 @@ function serializeAppUserAdmin({ coreUser, appUser, subscriptionsCount = 0, acti
     fullName: coreUser.name || (appUser && appUser.fullName) || null,
     phone: coreUser.phone || (appUser && appUser.phone) || null,
     email: coreUser.email || (appUser && appUser.email) || null,
+    emailVerified: Boolean(coreUser.emailVerified),
+    emailVerifiedAt: coreUser.emailVerifiedAt || null,
+    emailVerificationRequired: Boolean(coreUser.emailVerificationRequired),
     role: "app_user",
     isActive: Boolean(coreUser.isActive),
     accountStatus: coreUser.accountStatus || "active",
@@ -1217,6 +1248,82 @@ function pickProviderInvoicePayment(invoice, payment) {
   }
 
   return attempts[attempts.length - 1];
+}
+
+async function findCheckoutDraftForPayment(payment, session) {
+  if (!payment || !payment.userId) return null;
+
+  const metadata = payment.metadata && typeof payment.metadata === "object"
+    ? payment.metadata
+    : {};
+  const candidates = [];
+
+  if (metadata.draftId && mongoose.Types.ObjectId.isValid(String(metadata.draftId))) {
+    candidates.push({ _id: metadata.draftId });
+  }
+  if (payment._id) candidates.push({ paymentId: payment._id });
+  if (payment.providerInvoiceId) {
+    candidates.push({ providerInvoiceId: String(payment.providerInvoiceId) });
+  }
+
+  for (const candidate of candidates) {
+    const query = CheckoutDraft.findOne({
+      ...candidate,
+      userId: payment.userId,
+    }).sort({ createdAt: -1 });
+    const draft = session ? await query.session(session) : await query;
+    if (draft) return draft;
+  }
+
+  return null;
+}
+
+async function repairCheckoutDraftPaymentLink(payment, session) {
+  if (!payment || !["subscription_activation", "subscription_renewal"].includes(String(payment.type || ""))) {
+    return { repaired: false, draft: null, reason: null };
+  }
+
+  const draft = await findCheckoutDraftForPayment(payment, session);
+  if (!draft) return { repaired: false, draft: null, reason: "draft_not_found" };
+  if (String(draft.userId) !== String(payment.userId)) {
+    return { repaired: false, draft: null, reason: "draft_user_mismatch" };
+  }
+  if (draft.paymentId && String(draft.paymentId) !== String(payment._id)) {
+    return { repaired: false, draft: null, reason: "draft_payment_mismatch" };
+  }
+  if (
+    draft.providerInvoiceId
+    && payment.providerInvoiceId
+    && String(draft.providerInvoiceId) !== String(payment.providerInvoiceId)
+  ) {
+    return { repaired: false, draft: null, reason: "draft_invoice_mismatch" };
+  }
+
+  const draftAmount = Number(draft.breakdown && draft.breakdown.totalHalala);
+  if (Number.isFinite(draftAmount) && draftAmount > 0 && draftAmount !== Number(payment.amount)) {
+    return { repaired: false, draft: null, reason: "draft_amount_mismatch" };
+  }
+  const draftCurrency = normalizeCurrencyValue(draft.breakdown && draft.breakdown.currency);
+  if (draftCurrency && draftCurrency !== normalizeCurrencyValue(payment.currency)) {
+    return { repaired: false, draft: null, reason: "draft_currency_mismatch" };
+  }
+
+  const metadata = payment.metadata && typeof payment.metadata === "object"
+    ? { ...payment.metadata }
+    : {};
+  metadata.draftId = String(draft._id);
+  delete metadata.unappliedReason;
+  payment.metadata = metadata;
+
+  if (!draft.paymentId) draft.paymentId = payment._id;
+  if (!draft.providerInvoiceId && payment.providerInvoiceId) {
+    draft.providerInvoiceId = String(payment.providerInvoiceId);
+  }
+
+  await payment.save({ session });
+  await draft.save({ session });
+
+  return { repaired: true, draft, reason: null };
 }
 
 function buildProviderInvoiceSummary(providerInvoice, payment) {
@@ -1782,6 +1889,11 @@ async function createAppUserAdmin(req, res) {
           phoneVerified: true,
           name: fullName || undefined,
           email: email || undefined,
+          // Dashboard staff may collect an email address, but only the customer
+          // can prove ownership. Future dashboard-created customers must verify
+          // it after replacing their temporary password. Existing customers are
+          // untouched because this flag is set only at creation time.
+          ...getAdminCreatedEmailVerificationState(),
           role: "client",
           isActive,
           accountStatus: "active",
@@ -2443,6 +2555,8 @@ function serializeDashboardPickerPlan(plan, lang) {
     id: String(plan._id),
     name: pickLang(plan.name, lang) || { ar: "", en: "" },
     daysCount,
+    timelineExtraDays: resolvePlanTimelineExtraDays(plan),
+    timelineDays: daysCount + resolvePlanTimelineExtraDays(plan),
     mealsCount,
     isActive: plan.isActive !== false,
   };
@@ -2652,6 +2766,7 @@ async function clonePlan(req, res) {
       {
         name: existing.name,
         daysCount: existing.daysCount,
+        timelineExtraDays: resolvePlanTimelineExtraDays(existing),
         currency: existing.currency,
         gramsOptions: existing.gramsOptions,
         skipPolicy: existing.skipPolicy,
@@ -3493,12 +3608,20 @@ function normalizePickupLocationsOrThrow(value, options = {}) {
   if (!Array.isArray(value)) {
     throw createControlledError(400, "INVALID", "pickup_locations must be an array");
   }
+  if (value.length > 1) {
+    throw createControlledError(
+      422,
+      "SINGLE_PICKUP_BRANCH_ONLY",
+      "Only one pickup branch is supported"
+    );
+  }
 
   const ids = new Set();
   const arNames = new Set();
   const enNames = new Set();
+  const sourceLocations = value.length ? value : [buildDefaultPickupLocation()];
 
-  return value.map((loc, index) => {
+  return sourceLocations.map((loc, index) => {
     if (!loc || typeof loc !== "object" || Array.isArray(loc)) {
       throw createControlledError(400, "INVALID", `Pickup location at index ${index} must be an object`);
     }
@@ -4032,7 +4155,9 @@ async function getDashboardSettings(req, res) {
   data.restaurant_close_time = data.restaurant_close_time ?? "23:59";
   data.delivery_windows = data.delivery_windows ?? ["08:00-11:00", "12:00-15:00"];
   data.pickup_locations = normalizePickupLocationsOrThrow(
-    Array.isArray(data.pickup_locations) ? data.pickup_locations : [],
+    resolveSinglePickupLocations(
+      Array.isArray(data.pickup_locations) ? data.pickup_locations : []
+    ),
     { requireAddress: false }
   );
   data.skip_allowance = data.skip_allowance ?? data.skipAllowance;
@@ -5183,10 +5308,14 @@ async function extendSubscriptionAdmin(req, res) {
       subscriptionId: subscription._id,
       status: "frozen",
     }).session(session);
+    const timelineExtraDays = resolveSubscriptionTimelineExtraDays(subscription);
 
     const oldBaseEndStr = dateUtils.toKSADateString(baseEndDate);
     const newBaseEndDate = addDays(baseEndDate, days);
-    const newValidityEndDate = addDays(newBaseEndDate, frozenDaysCount);
+    const newValidityEndDate = addDays(
+      newBaseEndDate,
+      timelineExtraDays + frozenDaysCount
+    );
     const newValidityEndStr = dateUtils.toKSADateString(newValidityEndDate);
     const datesToEnsure = buildDateRangeInclusive(dateUtils.addDaysToKSADateString(oldBaseEndStr, 1), newValidityEndStr);
 
@@ -5391,9 +5520,13 @@ async function applyAdminPaymentSideEffects({ payment, session }) {
     const plan = await Plan.findById(subscription.planId).lean();
     const start = subscription.startDate ? new Date(subscription.startDate) : new Date();
     const end = plan ? addDays(start, plan.daysCount - 1) : subscription.endDate || start;
+    const timelineExtraDays = plan
+      ? resolvePlanTimelineExtraDays(plan)
+      : resolveSubscriptionTimelineExtraDays(subscription);
     subscription.status = "active";
     subscription.endDate = end;
-    subscription.validityEndDate = end;
+    subscription.timelineExtraDays = timelineExtraDays;
+    subscription.validityEndDate = addDays(end, timelineExtraDays);
     await subscription.save({ session });
 
     const existingDays = await SubscriptionDay.countDocuments({ subscriptionId: subscription._id }).session(session);
@@ -5619,6 +5752,7 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
 
   const session = await startSessionFn();
   let synchronized = false;
+  let businessReason = null;
   try {
     if (typeof session.startTransaction === "function") session.startTransaction();
 
@@ -5680,6 +5814,32 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
     }
     await paymentInSession.save({ session });
 
+    if (
+      normalizedStatus === "paid"
+      && ["subscription_activation", "subscription_renewal"].includes(String(paymentInSession.type || ""))
+    ) {
+      const linkedSubscription = paymentInSession.subscriptionId
+        ? await Subscription.findOne({
+          _id: paymentInSession.subscriptionId,
+          userId: paymentInSession.userId,
+        }).session(session)
+        : null;
+
+      if (paymentInSession.applied && !linkedSubscription) {
+        paymentInSession.applied = false;
+        await paymentInSession.save({ session });
+      }
+
+      if (!paymentInSession.applied && linkedSubscription && linkedSubscription.status !== "pending_payment") {
+        paymentInSession.applied = true;
+        await paymentInSession.save({ session });
+        synchronized = true;
+      } else if (!paymentInSession.applied) {
+        const linkRecovery = await repairCheckoutDraftPaymentLink(paymentInSession, session);
+        if (linkRecovery.reason) businessReason = linkRecovery.reason;
+      }
+    }
+
     const metadata = paymentInSession.metadata && typeof paymentInSession.metadata === "object"
       ? paymentInSession.metadata
       : {};
@@ -5709,7 +5869,7 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
       }
     }
 
-    if (normalizedStatus === "paid" && !paymentInSession.applied) {
+    if (normalizedStatus === "paid" && !paymentInSession.applied && !businessReason) {
       const claimedPayment = await Payment.findOneAndUpdate(
         { _id: paymentInSession._id, applied: false },
         { $set: { applied: true, status: "paid" } },
@@ -5735,6 +5895,7 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
         if (result.applied) {
           synchronized = true;
         } else {
+          businessReason = result.reason || "unknown";
           const mergedMetadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
           await Payment.updateOne(
             { _id: claimedPayment._id },
@@ -5757,11 +5918,34 @@ async function verifyPaymentAdmin(req, res, runtimeOverrides = null) {
       error: err.message,
       stack: err.stack,
     });
-    return errorResponse(res, 500, "INTERNAL", "Payment verification failed");
+    const failureCode = err && err.code ? String(err.code) : "PAYMENT_APPLICATION_FAILED";
+    const failureStatus = Number.isInteger(err && err.status) && err.status >= 400 && err.status < 600
+      ? err.status
+      : 500;
+    return errorResponse(
+      res,
+      failureStatus,
+      failureCode,
+      `Payment verification failed: ${failureCode}`,
+      { reason: failureCode }
+    );
   }
 
   const latestPayment = await Payment.findById(id).lean();
   const user = latestPayment && latestPayment.userId ? await User.findById(latestPayment.userId).lean() : null;
+
+  if (normalizedStatus === "paid" && latestPayment && !latestPayment.applied) {
+    const reason = businessReason
+      || (latestPayment.metadata && latestPayment.metadata.unappliedReason)
+      || "unknown";
+    return errorResponse(
+      res,
+      409,
+      "PAYMENT_NOT_APPLIED",
+      "Payment is paid but its subscription could not be applied",
+      { paymentId: id, reason }
+    );
+  }
 
   await writeActivityLogSafelyFn({
     entityType: "payment",

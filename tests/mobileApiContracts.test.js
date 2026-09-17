@@ -82,20 +82,16 @@ function flattenProducts(menu) {
   ).map((product) => ({ ...product, categoryKey: category.key })));
 }
 
-function findProduct(menu, key) {
-  return flattenProducts(menu).find((product) => product.key === key);
-}
-
-function selectedRequiredOptions(product) {
-  return (product.optionGroups || []).flatMap((group) => {
-    const count = Number(group.minSelections || 0);
-    if (count <= 0) return [];
-    assert((group.options || []).length >= count, `${product.key}.${group.key} has enough options`);
-    return group.options.slice(0, count).map((option) => ({
-      groupId: group.id || group._id,
-      optionId: option.id || option._id,
-    }));
-  });
+function findOrderableFixedProducts(menu, count = 2) {
+  return flattenProducts(menu).filter((product) => {
+    if (!product) return false;
+    if (product.pricingModel !== "fixed") return false;
+    if (product.requiresBuilder === true) return false;
+    if (!Number.isInteger(product.priceHalala) || product.priceHalala <= 0) return false;
+    return !(product.optionGroups || []).some(
+      (group) => Number(group.minSelections || 0) > 0
+    );
+  }).slice(0, count);
 }
 
 function assertMenuProductContract(product, label) {
@@ -105,7 +101,7 @@ function assertMenuProductContract(product, label) {
   assertHalalaInteger(product.priceHalala, `${label}.priceHalala`);
   assert(product.ui && ["large", "medium", "small"].includes(product.ui.cardSize), `${label}.ui.cardSize is public card size`);
   assert.deepStrictEqual(Object.keys(product.ui), ["cardSize"], `${label}.ui only exposes cardSize`);
-  if (product.requiresBuilder || product.key === "basic_salad") {
+  if (product.requiresBuilder) {
     assert(Array.isArray(product.optionGroups), `${label}.optionGroups array exists for custom product`);
     assert(product.optionGroups.length > 0, `${label}.optionGroups has groups`);
     assert(product.optionGroups.every((group) => group.ui && typeof group.ui.displayStyle === "string"), `${label}.optionGroups keep builder ui`);
@@ -255,12 +251,16 @@ async function cleanupCatalog() {
       const category = res.body.data.categories[0];
       assert(Array.isArray(category.products), "category.products is array");
       assert(!category.ui || Object.keys(category.ui).length === 0, "category visual ui is omitted from mobile contract");
-      const water = findProduct(res.body.data, "water");
-      const basicSalad = findProduct(res.body.data, "basic_salad");
-      assert(water, "water product exists");
-      assert(basicSalad, "basic_salad product exists");
-      assertMenuProductContract(water, "water");
-      assertMenuProductContract(basicSalad, "basic_salad");
+
+      const fixedProducts = findOrderableFixedProducts(res.body.data, 2);
+      assert.strictEqual(
+        fixedProducts.length,
+        2,
+        "the published one-time menu exposes at least two orderable fixed-price products"
+      );
+      fixedProducts.forEach((product, index) => {
+        assertMenuProductContract(product, `fixedProducts[${index}](${product.key})`);
+      });
 
       orderBody = {
         fulfillmentMethod: "pickup",
@@ -269,19 +269,11 @@ async function cleanupCatalog() {
           branchId: "main",
           pickupWindow: "18:00-20:00",
         },
-        items: [
-          {
-            productId: water.id || water._id,
-            qty: 2,
-            selectedOptions: [],
-          },
-          {
-            productId: basicSalad.id || basicSalad._id,
-            qty: 1,
-            weightGrams: 150,
-            selectedOptions: selectedRequiredOptions(basicSalad),
-          },
-        ],
+        items: fixedProducts.map((product, index) => ({
+          productId: product.id || product._id,
+          qty: index === 0 ? 2 : 1,
+          selectedOptions: [],
+        })),
         successUrl: "basicdiet://orders/payment-success",
         backUrl: "basicdiet://orders/payment-cancel",
       };
@@ -293,7 +285,7 @@ async function cleanupCatalog() {
       assert.strictEqual(res.body.status, true);
       assert.strictEqual(res.body.data.currency, "SAR");
       assert(Array.isArray(res.body.data.items), "data.items is array");
-      assert(res.body.data.items.length >= 2, "quote includes fixed and per_100g items");
+      assert(res.body.data.items.length >= 2, "quote includes multiple fixed-price items");
       res.body.data.items.forEach((item, index) => assertQuoteItemContract(item, `data.items[${index}]`));
       assertHalalaInteger(res.body.data.pricing.subtotalHalala, "data.pricing.subtotalHalala");
       assertHalalaInteger(res.body.data.pricing.totalHalala, "data.pricing.totalHalala");

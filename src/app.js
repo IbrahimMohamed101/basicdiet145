@@ -4,15 +4,21 @@ const crypto = require("crypto");
 const helmet = require("helmet");
 const cors = require("cors");
 const mongoose = require("mongoose");
+require("./services/installSubscriptionDayFullMealCompatibility");
+require("./services/installMealBuilderSourceKindCompatibility");
+require("./services/installExplicitSubscriptionAddonSelectionPolicy");
 const swaggerUi = require("swagger-ui-express");
 const routes = require("./routes");
 const paymentRoutes = require("./routes/payments");
 const { getAccountDeletionPage } = require("./controllers/accountDeletionController");
 const requestLanguageMiddleware = require("./middleware/requestLanguage");
+const { hideCanceledSubscriptionsFromClientList } = require("./middleware/clientSubscriptionVisibility");
 const errorResponse = require("./utils/errorResponse");
 const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
 const { normalizeSubscriptionBilingualResponse } = require("./utils/subscriptionBilingualResponse");
+const { normalizePickupProductNamesResponse } = require("./utils/pickupProductNameResponse");
+const { normalizePickupErrorResponse } = require("./utils/pickupErrorResponseLocalization");
 const swaggerSpec = require("./docs/swagger");
 
 function normalizeTopLevelStatusField(payload, responseStatusCode, reqPath = "") {
@@ -92,6 +98,7 @@ function parseConfiguredCorsOrigins() {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://basicdiet145.onrender.com",
+    "https://clientdashbourd-production.up.railway.app",
     process.env.FRONTEND_URL,
     process.env.DASHBOARD_URL,
     ...listOrigins,
@@ -161,11 +168,26 @@ function createApp() {
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = (payload) => {
-      const normalized = normalizeTopLevelStatusField(payload, res.statusCode, req.originalUrl || req.path);
-      const bilingual = normalizeSubscriptionBilingualResponse(normalized, req);
       const requestUrl = req.originalUrl || req.path || "";
+      const normalized = normalizeTopLevelStatusField(payload, res.statusCode, requestUrl);
+      const pickupLocalized = normalizePickupErrorResponse(normalized, req, requestUrl);
+      const visible = hideCanceledSubscriptionsFromClientList(pickupLocalized, {
+        method: req.method,
+        requestUrl,
+      });
+      const bilingual = normalizeSubscriptionBilingualResponse(visible, req);
+      let productNamed = bilingual;
+      try {
+        productNamed = normalizePickupProductNamesResponse(bilingual, requestUrl);
+      } catch (err) {
+        logger.warn("Pickup product-name response normalization skipped", {
+          requestId: req.requestId,
+          route: requestUrl,
+          error: err.message,
+        });
+      }
       const shouldPreserveExactCopy = /^\/api\/subscriptions\/[^/]+\/pickup-availability(?:\?|$)/.test(requestUrl);
-      const sanitized = shouldPreserveExactCopy ? bilingual : validateAndFixResponse(bilingual);
+      const sanitized = shouldPreserveExactCopy ? productNamed : validateAndFixResponse(productNamed);
       try {
         JSON.stringify(sanitized);
         return originalJson(sanitized);

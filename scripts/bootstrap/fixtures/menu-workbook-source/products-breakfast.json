@@ -1,0 +1,100 @@
+[
+  {
+    "categoryKey": "breakfast",
+    "key": "breakfast_scrambled_eggs",
+    "name": { "ar": "بيض اسكرامبل", "en": "Scrambled Eggs" },
+    "description": { "ar": "طبق بيض مخفوق ناعم مجهز بكريمة الطبخ وجبن الشيدر الخفيف.", "en": "Soft scrambled eggs prepared with cooking cream and light cheddar cheese." },
+    "pricingModel": "fixed", "priceHalala": 1100, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 230.0, "proteinGrams": 19.0, "fatGrams": 15.0, "carbGrams": 1.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_shakshuka", "name": { "ar": "شكشوكة", "en": "Shakshuka" },
+    "description": { "ar": "شكشوكة صحية مكونة من البيض المطهو مع الخضار الطازجة.", "en": "A healthy shakshuka made with eggs cooked with fresh vegetables." },
+    "pricingModel": "fixed", "priceHalala": 1100, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 260.0, "proteinGrams": 20.0, "fatGrams": 16.0, "carbGrams": 8.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_eggs_with_tomato_and_thyme", "name": { "ar": "بيض بالطماطم والزعتر", "en": "Eggs with Tomato and Thyme" },
+    "description": { "ar": "بيض لذيذ بنكهة الطماطم الممزوجة مع الزعتر والثوم وزيت الزيتون.", "en": "Eggs flavored with tomato, thyme, garlic and olive oil." },
+    "pricingModel": "fixed", "priceHalala": 1100, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 265.0, "proteinGrams": 19.0, "fatGrams": 17.0, "carbGrams": 7.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_vegetable_omelet", "name": { "ar": "بيض أومليت بالخضار", "en": "Vegetable Omelet" },
+    "description": { "ar": "أومليت متكامل غني بالخضار المشكلة وزيت الزيتون النقي.", "en": "A wholesome omelet with mixed vegetables and pure olive oil." },
+    "pricingModel": "fixed", "priceHalala": 1100, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 230.0, "proteinGrams": 19.0, "fatGrams": 16.0, "carbGrams": 1.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_turkey_eggs", "name": { "ar": "بيض تركي", "en": "Turkey Eggs" },
+    "description": { "ar": "طبق بيض مميز مضاف إليه شرائح الديك الرومي والفلفل الرومي.", "en": "Eggs served with turkey slices and bell peppers." },
+    "pricingModel": "fixed", "priceHalala": 1300, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 280.0, "proteinGrams": 26.0, "fatGrams": 17.0, "carbGrams": 2.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_foul_medames", "name": { "ar": "فول", "en": "Foul Medames" },
+    "description": { "ar": "طبق فول مدمس تقليدي وغني بالنكهات والخضار الطازجة مع عصرة الليمون.", "en": "Traditional fava beans with fresh vegetables and a squeeze of lemon." },
+    "pricingModel": "fixed", "priceHalala": 900, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 250.0, "proteinGrams": 15.0, "fatGrams": 6.0, "carbGrams": 28.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_hummus", "name": { "ar": "حمص", "en": "Hummus" },
+    "description": { "ar": "طبق حمص صافي ومهروس يقدم مع الطحينة وزيت الزيتون والليمون.", "en": "Smooth hummus served with tahini, olive oil and lemon." },
+    "pricingModel": "fixed", "priceHalala": 1100, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 320.0, "proteinGrams": 12.0, "fatGrams": 17.0, "carbGrams": 28.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_beef_liver", "name": { "ar": "كبدة", "en": "Beef Liver" },
+    "description": { "ar": "كبدة بقري طازجة مقلمة بالفلفل الأخضر والطماطم والكزبرة.", "en": "Fresh beef liver sautéed with green pepper, tomato and coriander." },
+    "pricingModel": "fixed", "priceHalala": 1700, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 315.0, "proteinGrams": 41.0, "fatGrams": 10.0, "carbGrams": 6.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_tuna", "name": { "ar": "تونا", "en": "Tuna" },
+    "description": { "ar": "سلطة تونة خفيفة ومنعشة بالبصل الأخضر والفلفل الرومي والليمون.", "en": "A light tuna salad with spring onion, bell pepper and lemon." },
+    "pricingModel": "fixed", "priceHalala": 1700, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 260.0, "proteinGrams": 48.0, "fatGrams": 6.0, "carbGrams": 3.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_healthy_baked_falafel_6_pieces", "name": { "ar": "فلافل صحية (6 حبات)", "en": "Healthy Baked Falafel (6 Pieces)" },
+    "description": { "ar": "6 حبات فلافل مخبوزة بشكل صحي مكونة من الحمص والخضار.", "en": "Six healthy baked falafel pieces made with chickpeas and vegetables." },
+    "pricingModel": "fixed", "priceHalala": 900, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 270.0, "proteinGrams": 12.0, "fatGrams": 9.0, "carbGrams": 32.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_healthy_fries", "name": { "ar": "فرايز صحي", "en": "Healthy Fries" },
+    "description": { "ar": "أصابع بطاطس مشوية صحية ومحضرة بزيت الزيتون الخفيف.", "en": "Healthy roasted potato fries prepared with a light touch of olive oil." },
+    "pricingModel": "fixed", "priceHalala": 900, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 205.0, "proteinGrams": 4.0, "fatGrams": 5.0, "carbGrams": 32.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_parmesan_mashed_potatoes_with_boiled_eggs", "name": { "ar": "ماش بوتيتو بالبارميزان وبيض مسلوق", "en": "Parmesan Mashed Potatoes with Boiled Eggs" },
+    "description": { "ar": "بطاطس مهروسة كريمية تقدم مع البيض المسلوق وتتوج بجبنة البارميزان.", "en": "Creamy mashed potatoes served with boiled eggs and Parmesan cheese." },
+    "pricingModel": "fixed", "priceHalala": 1700, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 375.0, "proteinGrams": 23.0, "fatGrams": 15.0, "carbGrams": 32.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_labneh_with_sumac", "name": { "ar": "لبنة بالسماق", "en": "Labneh with Sumac" },
+    "description": { "ar": "لبنة طازجة منكهة بالسماق وزيت الزيتون ومقدمة مع الطماطم الشيري والزيتون.", "en": "Fresh labneh flavored with sumac and olive oil, served with cherry tomatoes and olives." },
+    "pricingModel": "fixed", "priceHalala": 1700, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 210.0, "proteinGrams": 11.0, "fatGrams": 9.0, "carbGrams": 9.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_oatmeal_with_milk", "name": { "ar": "شوفان مع الحليب", "en": "Oatmeal with Milk" },
+    "description": { "ar": "إفطار شوفان مغذي يحضر بالحليب ويُحلى بالعسل مع قطع الفواكه.", "en": "Nutritious oatmeal prepared with milk, honey and fruit pieces." },
+    "pricingModel": "fixed", "priceHalala": 1500, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 195.0, "proteinGrams": 11.0, "fatGrams": 3.0, "carbGrams": 32.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_greek_yogurt_with_honey_and_fruit", "name": { "ar": "زبادي يوناني", "en": "Greek Yogurt with Honey and Fruit" },
+    "description": { "ar": "زبادي يوناني غني بالبروتين يقدم مع العسل الطبيعي والفواكه الطازجة.", "en": "Protein-rich Greek yogurt served with natural honey and fresh fruit." },
+    "pricingModel": "fixed", "priceHalala": 1700, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 150.0, "proteinGrams": 16.0, "fatGrams": 0.5, "carbGrams": 23.0 }, "status": "Ready", "notes": ""
+  },
+  {
+    "categoryKey": "breakfast", "key": "breakfast_granola_with_fruit_and_honey", "name": { "ar": "جرانولا مع الفواكه والعسل", "en": "Granola with Fruit and Honey" },
+    "description": { "ar": "طبق جرانولا مقرمش يجمع بين المكسرات والشوفان والعسل والفواكه.", "en": "Crunchy granola with nuts, oats, honey and fruit." },
+    "pricingModel": "fixed", "priceHalala": 1700, "currency": "SAR", "availableFor": ["one_time", "subscription"], "isCustomizable": false,
+    "nutrition": { "calories": 310.0, "proteinGrams": 6.0, "fatGrams": 9.0, "carbGrams": 39.0 }, "status": "Ready", "notes": ""
+  }
+]

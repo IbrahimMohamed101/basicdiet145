@@ -8,6 +8,7 @@ const router = Router();
 
 router.post("/login", dashboardLoginLimiter, asyncHandler(controller.login));
 router.get("/me", dashboardOptionalAuthMiddleware, asyncHandler(controller.me));
+router.post("/change-password", dashboardAuthMiddleware, asyncHandler(controller.changePassword));
 router.post("/logout", dashboardAuthMiddleware, asyncHandler(controller.logout));
 
 module.exports = router;

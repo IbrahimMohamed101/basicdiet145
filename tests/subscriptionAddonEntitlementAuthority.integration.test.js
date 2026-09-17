@@ -1,5 +1,9 @@
 "use strict";
 
+require("./helpers/temporaryEnvironment").setTemporaryEnvironment({
+  SUBSCRIPTION_WEEKLY_PLANNING_WINDOW_ENABLED: "false",
+});
+
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "addon-entitlement-authority-secret";
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
@@ -173,8 +177,9 @@ function structuredAddonSelection(choice, group) {
 }
 
 async function createUser(label) {
+  createUser.sequence = (createUser.sequence || 0) + 1;
   return User.create({
-    phone: `+9665${String(Date.now() + Math.floor(Math.random() * 9999)).slice(-8)}`,
+    phone: `+96659${String(createUser.sequence).padStart(7, "0")}`,
     name: label,
     role: "client",
     isActive: true,
@@ -1075,7 +1080,13 @@ async function main() {
     const repaired = await Subscription.findById(broken.subscription._id).lean();
     assert.strictEqual(repaired.addonBalance[0].purchasedQty, 7);
     assert.strictEqual(repaired.addonBalance[0].remainingQty, 6);
-    assert.strictEqual(repaired.addonBalance[0].consumedQty, 1);
+    assert.strictEqual(repaired.addonBalance[0].consumedQty, 0, "Saving a future-day selection does not consume the add-on before fulfillment");
+    assert.strictEqual(repaired.addonBalance[0].reservedQty, 1, "Saving a future-day selection reserves the included add-on");
+    assert.strictEqual(
+      repaired.addonBalance[0].purchasedQty,
+      repaired.addonBalance[0].remainingQty + repaired.addonBalance[0].reservedQty + repaired.addonBalance[0].consumedQty,
+      "Repaired add-on balance preserves the purchased = remaining + reserved + consumed invariant"
+    );
 
     const missingUser = await createUser("Missing remaining balance user");
     const missing = await createSubscriptionFixture({
@@ -1344,7 +1355,15 @@ async function main() {
     assert.strictEqual(res.body.data.paymentRequirement.requiresPayment, false);
     const repairedRecoveredMissing = await Subscription.findById(recoveredMissing.subscription._id).lean();
     assert.strictEqual(repairedRecoveredMissing.addonBalance[0].remainingQty, 6);
-    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 1);
+    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].consumedQty, 0, "Saving the recovered future-day selection does not consume before fulfillment");
+    assert.strictEqual(repairedRecoveredMissing.addonBalance[0].reservedQty, 1, "Saving the recovered future-day selection reserves one included add-on");
+    assert.strictEqual(
+      repairedRecoveredMissing.addonBalance[0].purchasedQty,
+      repairedRecoveredMissing.addonBalance[0].remainingQty
+        + repairedRecoveredMissing.addonBalance[0].reservedQty
+        + repairedRecoveredMissing.addonBalance[0].consumedQty,
+      "Recovered add-on balance preserves the purchased = remaining + reserved + consumed invariant"
+    );
 
     const unmappedMissingProductId = new mongoose.Types.ObjectId();
     const missingPlanId = new mongoose.Types.ObjectId();

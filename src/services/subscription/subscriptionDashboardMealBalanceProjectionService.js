@@ -1,0 +1,279 @@
+"use strict";
+
+const DASHBOARD_MEAL_BALANCE_PROJECTION_VERSION =
+  "dashboard_meal_balance_projection.v1";
+const DASHBOARD_MEAL_BALANCE_FLAG =
+  "DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED";
+
+function nonNegativeIntegerOrNull(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function isProjectionEnabled(env = process.env) {
+  const value = String(env[DASHBOARD_MEAL_BALANCE_FLAG] || "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "on"].includes(value);
+}
+
+function hasEntitlementBatchAggregate(subscription = {}) {
+  const stacking =
+    subscription.stacking
+    && typeof subscription.stacking === "object"
+    && !Array.isArray(subscription.stacking)
+      ? subscription.stacking
+      : null;
+
+  return Boolean(
+    stacking
+    && stacking.hasEntitlementBatches === true
+    && stacking.aggregateBalance
+    && typeof stacking.aggregateBalance === "object"
+    && !Array.isArray(stacking.aggregateBalance)
+  );
+}
+
+function resolveDashboardMealBalanceProjection(subscription = {}) {
+  if (!subscription || typeof subscription !== "object" || Array.isArray(subscription)) {
+    return null;
+  }
+
+  // Limit the compatibility projection to active subscriptions.
+  if (String(subscription.status || "").toLowerCase() !== "active") {
+    return null;
+  }
+
+  const stacking =
+    subscription.stacking
+    && typeof subscription.stacking === "object"
+    && !Array.isArray(subscription.stacking)
+      ? subscription.stacking
+      : null;
+  const aggregate =
+    hasEntitlementBatchAggregate(subscription)
+      ? stacking.aggregateBalance
+      : null;
+
+  // Stacked entitlement batches are already an explicit source of truth.
+  // Project their aggregate regardless of the legacy entitlementVersion field.
+  if (aggregate) {
+    const totalMeals = nonNegativeIntegerOrNull(aggregate.totalMeals);
+    const remainingMeals = nonNegativeIntegerOrNull(aggregate.remainingMeals);
+    const reservedMeals = nonNegativeIntegerOrNull(aggregate.reservedMeals);
+    const consumedMeals = nonNegativeIntegerOrNull(aggregate.consumedMeals);
+    const forfeitedMeals = nonNegativeIntegerOrNull(aggregate.forfeitedMeals);
+
+    if (
+      totalMeals === null
+      || remainingMeals === null
+      || reservedMeals === null
+      || consumedMeals === null
+      || forfeitedMeals === null
+    ) {
+      return null;
+    }
+
+    // Entitlement-batch remainingMeals represents all unconsumed meals,
+    // including reservations. Available meals therefore exclude reservations.
+    const availableMeals = Math.max(0, remainingMeals - reservedMeals);
+    const accountedMeals = remainingMeals + consumedMeals + forfeitedMeals;
+
+    // Fail closed on incomplete/corrupt aggregates. Never manufacture customer
+    // credit when the persisted entitlement counters do not reconcile exactly.
+    if (accountedMeals !== totalMeals || availableMeals + reservedMeals !== remainingMeals) {
+      return null;
+    }
+
+    return {
+      totalMeals,
+      availableMeals,
+      reservedMeals,
+      consumedMeals,
+      forfeitedMeals,
+      displayRemainingMeals: remainingMeals,
+    };
+  }
+
+  // Non-stacked records retain the modern entitlementVersion guard.
+  const entitlementVersion = nonNegativeIntegerOrNull(
+    subscription.entitlementVersion
+  );
+  if (entitlementVersion === null || entitlementVersion < 2) {
+    return null;
+  }
+
+  const totalMeals = nonNegativeIntegerOrNull(subscription.totalMeals);
+  const availableMeals = nonNegativeIntegerOrNull(subscription.remainingMeals);
+  const reservedMeals = nonNegativeIntegerOrNull(subscription.reservedMeals);
+  const consumedMeals = nonNegativeIntegerOrNull(subscription.consumedMeals);
+  const forfeitedMeals = nonNegativeIntegerOrNull(subscription.forfeitedMeals);
+
+  if (
+    totalMeals === null
+    || availableMeals === null
+    || reservedMeals === null
+    || consumedMeals === null
+    || forfeitedMeals === null
+  ) {
+    return null;
+  }
+
+  const accountedMeals =
+    availableMeals + reservedMeals + consumedMeals + forfeitedMeals;
+
+  // Fail closed on incomplete/corrupt aggregates. Never manufacture customer
+  // credit when the persisted lifecycle counters do not reconcile exactly.
+  if (accountedMeals !== totalMeals) {
+    return null;
+  }
+
+  return {
+    totalMeals,
+    availableMeals,
+    reservedMeals,
+    consumedMeals,
+    forfeitedMeals,
+    displayRemainingMeals: availableMeals + reservedMeals,
+  };
+}
+
+function projectDashboardSubscriptionBalance(subscription = {}) {
+  const projection = resolveDashboardMealBalanceProjection(subscription);
+  if (!projection) return subscription;
+
+  const currentMealBalance =
+    subscription.mealBalance
+    && typeof subscription.mealBalance === "object"
+    && !Array.isArray(subscription.mealBalance)
+      ? subscription.mealBalance
+      : {};
+  const usesEntitlementBatchAggregate = hasEntitlementBatchAggregate(subscription);
+  const currentBalances =
+    subscription.balances
+    && typeof subscription.balances === "object"
+    && !Array.isArray(subscription.balances)
+      ? subscription.balances
+      : {};
+  const currentRegularMeals =
+    currentBalances.regularMeals
+    && typeof currentBalances.regularMeals === "object"
+    && !Array.isArray(currentBalances.regularMeals)
+      ? currentBalances.regularMeals
+      : {};
+
+  return {
+    ...subscription,
+    // Backward-compatible dashboard display fields. Write paths and reservation
+    // services never consume this projected response.
+    remainingMeals: projection.displayRemainingMeals,
+    availableMeals: projection.availableMeals,
+    reservedMeals: projection.reservedMeals,
+    consumedMeals: projection.consumedMeals,
+    forfeitedMeals: projection.forfeitedMeals,
+    displayRemainingMeals: projection.displayRemainingMeals,
+    ...(usesEntitlementBatchAggregate
+      ? {
+          totalMeals: projection.totalMeals,
+          balances: {
+            ...currentBalances,
+            regularMeals: {
+              ...currentRegularMeals,
+              total: projection.totalMeals,
+              remaining: projection.displayRemainingMeals,
+              consumed: projection.consumedMeals,
+            },
+          },
+        }
+      : {}),
+    mealBalance: {
+      ...currentMealBalance,
+      totalMeals: projection.totalMeals,
+      remainingMeals: projection.displayRemainingMeals,
+      availableMeals: projection.availableMeals,
+      reservedMeals: projection.reservedMeals,
+      consumedMeals: projection.consumedMeals,
+      forfeitedMeals: projection.forfeitedMeals,
+      displayRemainingMeals: projection.displayRemainingMeals,
+      balanceSemantics: "UNCONSUMED_INCLUDING_RESERVED",
+    },
+    balanceProjection: {
+      version: DASHBOARD_MEAL_BALANCE_PROJECTION_VERSION,
+      applied: true,
+      remainingMealsSemantics: "UNCONSUMED_INCLUDING_RESERVED",
+      availableMealsSemantics: "UNRESERVED_AVAILABLE_FOR_NEW_PLANNING",
+    },
+  };
+}
+
+function isSubscriptionReadModel(value) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && (value._id || value.id)
+    && Object.prototype.hasOwnProperty.call(value, "totalMeals")
+    && Object.prototype.hasOwnProperty.call(value, "remainingMeals")
+  );
+}
+
+function projectDashboardSubscriptionResponse(payload, {
+  enabled = isProjectionEnabled(),
+} = {}) {
+  if (!enabled || !payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  const data = payload.data;
+  if (Array.isArray(data)) {
+    return {
+      ...payload,
+      data: data.map((item) => (
+        isSubscriptionReadModel(item)
+          ? projectDashboardSubscriptionBalance(item)
+          : item
+      )),
+    };
+  }
+
+  if (isSubscriptionReadModel(data)) {
+    return {
+      ...payload,
+      data: projectDashboardSubscriptionBalance(data),
+    };
+  }
+
+  if (
+    data
+    && typeof data === "object"
+    && !Array.isArray(data)
+    && Array.isArray(data.items)
+  ) {
+    return {
+      ...payload,
+      data: {
+        ...data,
+        items: data.items.map((item) => (
+          isSubscriptionReadModel(item)
+            ? projectDashboardSubscriptionBalance(item)
+            : item
+        )),
+      },
+    };
+  }
+
+  return payload;
+}
+
+module.exports = {
+  DASHBOARD_MEAL_BALANCE_FLAG,
+  DASHBOARD_MEAL_BALANCE_PROJECTION_VERSION,
+  hasEntitlementBatchAggregate,
+  isProjectionEnabled,
+  isSubscriptionReadModel,
+  nonNegativeIntegerOrNull,
+  projectDashboardSubscriptionBalance,
+  projectDashboardSubscriptionResponse,
+  resolveDashboardMealBalanceProjection,
+};

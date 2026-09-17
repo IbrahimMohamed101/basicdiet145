@@ -1,0 +1,159 @@
+name: Subscription Stacking Certification Request
+
+on:
+  push:
+    branches:
+      - feat/subscription-stacking-remote-certification-20260806
+    paths:
+      - "ops/subscription-stacking-certification-request.json"
+
+permissions:
+  contents: read
+
+jobs:
+  remote-certification-request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: subscription-stacking-staging
+
+    env:
+      NODE_ENV: staging
+      APP_ENV: staging
+      STAGING_BASE_URL: ${{ secrets.STACKING_STAGING_BASE_URL }}
+      STAGING_PAYMENT_MODE: ${{ secrets.STACKING_STAGING_PAYMENT_MODE }}
+      STAGING_DATABASE_ISOLATION_CONFIRMED: ${{ secrets.STACKING_STAGING_DATABASE_ISOLATION_CONFIRMED }}
+      STAGING_PAYMENT_SANDBOX_CONFIRMED: ${{ secrets.STACKING_STAGING_PAYMENT_SANDBOX_CONFIRMED }}
+      MONGODB_URI: ${{ secrets.STACKING_STAGING_MONGODB_URI }}
+      SUBSCRIPTION_STACKING_SHADOW_ENABLED: "true"
+      SUBSCRIPTION_STACKING_READ_ENABLED: "true"
+      SUBSCRIPTION_STACKING_WRITE_ENABLED: "true"
+      SUBSCRIPTION_STACKING_SHADOW_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
+      SUBSCRIPTION_STACKING_USER_IDS: ${{ secrets.STACKING_STAGING_TEST_USER_ID }}
+      SUBSCRIPTION_STACKING_ALLOW_ALL_USERS: "false"
+      STAGING_CLIENT_TOKEN: ${{ secrets.STACKING_STAGING_CLIENT_TOKEN }}
+      STAGING_SUBSCRIPTION_ID: ${{ secrets.STACKING_STAGING_PARENT_SUBSCRIPTION_ID }}
+      STAGING_CHECKOUT_PAYLOAD_JSON: ${{ secrets.STACKING_STAGING_CHECKOUT_PAYLOAD_JSON }}
+      STAGING_EXPECTED_DEPLOYMENT_COMMIT_SHA: ${{ github.sha }}
+      STAGING_CERTIFICATION_OUTPUT: artifacts/subscription-stacking-remote-certification.json
+      STAGING_REQUEST_TIMEOUT_MS: "20000"
+
+    steps:
+      - name: Checkout certification commit
+        uses: actions/checkout@v4
+
+      - name: Resolve and validate certification request
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const request = JSON.parse(fs.readFileSync('ops/subscription-stacking-certification-request.json', 'utf8'));
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const message = String(event.head_commit && event.head_commit.message || '');
+          const phases = new Set(['read', 'initiate', 'verify']);
+          const phase = String(request.phase || '').trim().toLowerCase();
+          if (request.enabled !== true) throw new Error('Certification request must set enabled=true');
+          if (!phases.has(phase)) throw new Error('Certification phase must be read, initiate, or verify');
+          const marker = `[stacking-cert:${phase}]`;
+          const markers = message.match(/\[stacking-cert:(?:read|initiate|verify)\]/g) || [];
+          if (markers.length !== 1 || markers[0] !== marker) {
+            throw new Error(`Commit message must contain exactly ${marker}`);
+          }
+          if (phase === 'verify') {
+            if (!String(request.checkoutDraftId || '').trim()) throw new Error('verify requires checkoutDraftId');
+            if (!Number.isInteger(request.expectedRemainingMeals) || request.expectedRemainingMeals < 0) {
+              throw new Error('verify requires a non-negative integer expectedRemainingMeals');
+            }
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(request.targetDate || ''))) {
+              throw new Error('verify requires targetDate in YYYY-MM-DD');
+            }
+            if (!Number.isInteger(request.expectedRequiredMeals) || request.expectedRequiredMeals < 0) {
+              throw new Error('verify requires a non-negative integer expectedRequiredMeals');
+            }
+          }
+          const values = {
+            STAGING_CERTIFICATION_PHASE: phase,
+            STAGING_CHECKOUT_DRAFT_ID: String(request.checkoutDraftId || '').trim(),
+            STAGING_CHECKOUT_IDEMPOTENCY_KEY: String(request.idempotencyKey || '').trim(),
+            STAGING_EXPECTED_REMAINING_MEALS:
+              request.expectedRemainingMeals === null || request.expectedRemainingMeals === undefined
+                ? ''
+                : String(request.expectedRemainingMeals),
+            STAGING_TARGET_DATE: String(request.targetDate || '').trim(),
+            STAGING_EXPECTED_REQUIRED_MEALS:
+              request.expectedRequiredMeals === null || request.expectedRequiredMeals === undefined
+                ? ''
+                : String(request.expectedRequiredMeals),
+          };
+          for (const [key, value] of Object.entries(values)) {
+            if (/\r|\n/.test(value)) throw new Error(`${key} cannot contain a newline`);
+            fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `# Certification Request\n\n- Phase: **${phase}**\n- Commit: \`${process.env.GITHUB_SHA}\`\n`);
+          NODE
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Reject unsafe staging configuration
+        run: node scripts/validate-subscription-stacking-staging-env.js
+
+      - name: Wait for exact Railway deployment and safety attestation
+        shell: bash
+        run: |
+          for attempt in $(seq 1 30); do
+            echo "Deployment readiness attempt ${attempt}/30"
+            if node scripts/assert-subscription-stacking-deployment-readiness.js; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Deployed staging service never reached the requested safe commit"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Assert parent subscription before phase
+        run: node scripts/assert-subscription-stacking-parent-identity.js
+
+      - name: Run remote certification phase
+        run: node scripts/run-subscription-stacking-remote-certification.js
+
+      - name: Assert parent subscription after phase
+        run: node scripts/assert-subscription-stacking-parent-identity.js
+
+      - name: Publish certification summary
+        if: success()
+        shell: bash
+        run: |
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const evidence = JSON.parse(fs.readFileSync('artifacts/subscription-stacking-remote-certification.json', 'utf8'));
+          console.log('');
+          console.log('# Subscription Stacking Result');
+          console.log('');
+          console.log(`- Passed: **${evidence.passed}**`);
+          console.log(`- Target: \`${evidence.target.origin}\``);
+          console.log(`- Deployment commit: \`${evidence.target.deploymentCommitSha || 'not exposed'}\``);
+          console.log('- Database identity: **verified**');
+          console.log('- Parent identity before/after: **verified**');
+          console.log(`- Before remaining meals: **${evidence.before.remainingMeals ?? 'n/a'}**`);
+          if (evidence.after) console.log(`- After remaining meals: **${evidence.after.remainingMeals ?? 'n/a'}**`);
+          if (evidence.mutation && evidence.mutation.maskedCheckoutDraftId) {
+            console.log(`- Draft: \`${evidence.mutation.maskedCheckoutDraftId}\``);
+          }
+          NODE
+
+      - name: Upload certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-stacking-certification-request-${{ github.run_id }}
+          path: artifacts/subscription-stacking-remote-certification.json
+          if-no-files-found: warn
+          retention-days: 30

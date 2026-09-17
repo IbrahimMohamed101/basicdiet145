@@ -585,6 +585,45 @@ async function run() {
     );
   });
 
+  await step("plan-only selection with only unpublished/inactive/unavailable linked products should succeed (plan-only)", async () => {
+    const unpublishedProduct = await MenuProduct.create({
+      categoryId: fixture.mealCategory._id,
+      key: "unpub_meal",
+      name: { en: "Unpub Meal", ar: "Unpub Meal" },
+      itemType: "meal",
+      pricingModel: "fixed",
+      priceHalala: 2000,
+      currency: "SAR",
+      availableFor: ["one_time", "subscription"],
+      isActive: false,
+      isVisible: false,
+      isAvailable: false,
+      publishedAt: null,
+    });
+    const planWithStale = await Addon.create({
+      name: { en: "Stale Meal Plan", ar: "Stale Meal Plan" },
+      priceHalala: 0,
+      category: "meal",
+      kind: "plan",
+      billingMode: "per_day",
+      isActive: true,
+      isArchived: false,
+      menuProductIds: [unpublishedProduct._id],
+      maxPerDay: 1,
+    });
+    await AddonPlanPrice.create({ addonPlanId: planWithStale._id, basePlanId: fixture.basePlan._id, priceHalala: 5000, currency: "SAR", isActive: true });
+
+    // plan-only payload (no explicit product)
+    const result = await quote(fixture, [{ addonPlanId: planWithStale._id }]);
+    // should succeed and include the plan as addonSubscription (menuProductIds may be present as metadata)
+    assert.strictEqual(String(result.addonSubscriptions[0].addonPlanId), String(planWithStale._id));
+  });
+
+  await step("explicit empty menuProductIds array should be treated as plan-only (not explicit product selection)", async () => {
+    const result = await quote(fixture, [{ addonPlanId: fixture.mealPlan._id, menuProductIds: [] }]);
+    assert.strictEqual(String(result.addonSubscriptions[0].addonPlanId), String(fixture.mealPlan._id));
+  });
+
   await step("ambiguous or conflicting explicit fields return validation error", async () => {
     await expectCode(
       () => quote(fixture, [{ addonPlanId: fixture.mealPlan._id, id: fixture.otherMealPlan._id, productId: fixture.mealProduct._id }]),

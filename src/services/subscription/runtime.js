@@ -1,18 +1,19 @@
 const { createSubscriptionCheckoutInvoice } = require("./subscriptionInvoiceInitializationService");
 const { buildPhase1SubscriptionContract, buildCanonicalDraftPersistenceFields } = require("./subscriptionContractService");
 const { resolveCheckoutQuoteOrThrow } = require("./subscriptionQuoteService");
-const {
-  finalizeSubscriptionDraftPaymentFlow,
-  activateSubscriptionFromCanonicalDraft,
-} = require("./subscriptionActivationService");
+const subscriptionActivationService = require("./subscriptionActivationService");
 
 const sliceBDefaultRuntime = () => ({
   resolveCheckoutQuoteOrThrow,
   createInvoice: createSubscriptionCheckoutInvoice,
   buildPhase1SubscriptionContract,
   buildCanonicalDraftPersistenceFields,
-  finalizeSubscriptionDraftPaymentFlow,
-  activateSubscriptionFromCanonicalDraft,
+  // Checkout preflight can load this module before the startup write router.
+  // Resolve replaceable exports when the runtime is created, never at require time.
+  finalizeSubscriptionDraftPaymentFlow:
+    subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow,
+  activateSubscriptionFromCanonicalDraft:
+    subscriptionActivationService.activateSubscriptionFromCanonicalDraft,
 });
 
 
