@@ -3,6 +3,12 @@
 const { ManualDeductionError, assertCashierOrAdminRole } = require("./ManualDeductionError");
 const { chooseDefaultSubscription } = require("./manualDeductionPolicy");
 const { serializeCustomer, serializeSubscription } = require("./manualDeductionPresenter");
+const {
+  projectDashboardStackingReadModel,
+} = require("../subscriptionDashboardStackingReadService");
+const {
+  projectDashboardSubscriptionBalance,
+} = require("../../subscription/subscriptionDashboardMealBalanceProjectionService");
 
 function createManualDeductionSearchService({ repository, getBusinessDate }) {
   async function buildTodaySummary(subscription, businessDate) {
@@ -39,10 +45,33 @@ function createManualDeductionSearchService({ repository, getBusinessDate }) {
     const planMap = new Map(plans.map((plan) => [String(plan._id), plan]));
     const today = await buildTodaySummary(defaultSubscription, businessDate);
 
+    const stackingPayload = await projectDashboardStackingReadModel(
+      { data: activeSubscriptions },
+      { lang }
+    );
+    const subscriptionsWithStacking = Array.isArray(stackingPayload && stackingPayload.data)
+      ? stackingPayload.data
+      : activeSubscriptions;
+    const projectedSubscriptions = subscriptionsWithStacking.map((subscription) => (
+      subscription
+      && subscription.stacking
+      && subscription.stacking.hasEntitlementBatches === true
+        ? projectDashboardSubscriptionBalance(subscription)
+        : subscription
+    ));
+    const defaultSubscriptionId = String(defaultSubscription && defaultSubscription._id);
+    const projectedDefaultSubscription = projectedSubscriptions.find(
+      (subscription) => String(subscription && subscription._id) === defaultSubscriptionId
+    ) || defaultSubscription;
+
     return {
       customer: serializeCustomer(user),
-      subscription: serializeSubscription(defaultSubscription, planMap.get(String(defaultSubscription.planId)), lang),
-      subscriptions: activeSubscriptions.map((subscription) => serializeSubscription(
+      subscription: serializeSubscription(
+        projectedDefaultSubscription,
+        planMap.get(String(projectedDefaultSubscription.planId)),
+        lang
+      ),
+      subscriptions: projectedSubscriptions.map((subscription) => serializeSubscription(
         subscription,
         planMap.get(String(subscription.planId)),
         lang
