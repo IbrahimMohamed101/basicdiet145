@@ -18,25 +18,62 @@ function resolvePremiumRemaining(subscription) {
     .reduce((sum, row) => sum + Math.max(0, Math.floor(Number(row && row.remainingQty) || 0)), 0);
 }
 
+function resolveStackedAggregate(subscription) {
+  const stacking = subscription
+    && subscription.stacking
+    && typeof subscription.stacking === "object"
+    && !Array.isArray(subscription.stacking)
+    ? subscription.stacking
+    : null;
+  const aggregate = stacking
+    && stacking.hasEntitlementBatches === true
+    && stacking.aggregateBalance
+    && typeof stacking.aggregateBalance === "object"
+    && !Array.isArray(stacking.aggregateBalance)
+    ? stacking.aggregateBalance
+    : null;
+  if (!aggregate) return null;
+
+  const totalMeals = Math.max(0, Math.floor(Number(aggregate.totalMeals) || 0));
+  const remainingMeals = Math.max(0, Math.floor(Number(aggregate.remainingMeals) || 0));
+  const reservedMeals = Math.max(0, Math.floor(Number(aggregate.reservedMeals) || 0));
+  const consumedMeals = Math.max(0, Math.floor(Number(aggregate.consumedMeals) || 0));
+  const forfeitedMeals = Math.max(0, Math.floor(Number(aggregate.forfeitedMeals) || 0));
+  return {
+    totalMeals,
+    remainingMeals,
+    reservedMeals,
+    consumedMeals,
+    forfeitedMeals,
+  };
+}
+
 function resolveBalances(subscription) {
-  const totalMeals = Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
-  const remainingMeals = Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
-  const hasEntitlementLedger = Number(subscription && subscription.entitlementVersion || 0) >= 2;
+  const stacked = resolveStackedAggregate(subscription);
+  const totalMeals = stacked
+    ? stacked.totalMeals
+    : Math.max(0, Math.floor(Number(subscription && subscription.totalMeals) || 0));
+  const remainingMeals = stacked
+    ? stacked.remainingMeals
+    : Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
+  const hasEntitlementLedger = stacked || Number(subscription && subscription.entitlementVersion || 0) >= 2;
   const reservedMeals = hasEntitlementLedger
-    ? Math.max(0, Math.floor(Number(subscription && subscription.reservedMeals) || 0))
+    ? (stacked ? stacked.reservedMeals : Math.max(0, Math.floor(Number(subscription && subscription.reservedMeals) || 0)))
     : 0;
-  const deductibleMeals = remainingMeals + reservedMeals;
+  const deductibleMeals = remainingMeals;
   const remainingPremiumMeals = resolvePremiumRemaining(subscription);
-  // Keep the historical "remaining" fields as unreserved availability for
-  // backwards compatibility. Manual write capacity is exposed separately via
-  // deductible* fields because a reservation is not a receipt.
+  // For stacked subscriptions, remainingMeals is the authoritative unconsumed
+  // batch balance, including reserved meals. Keep the legacy fields compatible
+  // while exposing the full deductible capacity separately.
   const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
   const deductibleRegularMeals = Math.max(0, deductibleMeals - remainingPremiumMeals);
   return {
     totalMeals,
-    consumedMeals: hasEntitlementLedger
-      ? Math.max(0, Math.floor(Number(subscription && subscription.consumedMeals) || 0))
-      : Math.max(0, totalMeals - remainingMeals),
+    consumedMeals: stacked
+      ? stacked.consumedMeals
+      : (hasEntitlementLedger
+        ? Math.max(0, Math.floor(Number(subscription && subscription.consumedMeals) || 0))
+        : Math.max(0, totalMeals - remainingMeals)),
     remainingMeals,
     reservedMeals,
     deductibleMeals,
@@ -136,6 +173,26 @@ function safeLedgerInteger(value) {
 }
 
 function validateModernBalanceIntegrity(subscription) {
+  const stacked = resolveStackedAggregate(subscription);
+  if (stacked) {
+    const accountedMeals = stacked.remainingMeals
+      + stacked.consumedMeals
+      + stacked.forfeitedMeals;
+    if (accountedMeals !== stacked.totalMeals || stacked.reservedMeals > stacked.remainingMeals) {
+      throw new ManualDeductionError(
+        "BALANCE_INTEGRITY_ERROR",
+        "Stacked entitlement balance does not reconcile",
+        409,
+        {
+          ...stacked,
+          accountedMeals,
+          equationDifference: stacked.totalMeals - accountedMeals,
+        }
+      );
+    }
+    return;
+  }
+
   const entitlementVersion = Number(subscription && subscription.entitlementVersion || 0);
   if (entitlementVersion < 2) return;
 
