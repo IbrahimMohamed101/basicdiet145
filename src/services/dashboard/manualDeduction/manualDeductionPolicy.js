@@ -34,17 +34,12 @@ function resolveStackedAggregate(subscription) {
     : null;
   if (!aggregate) return null;
 
-  const totalMeals = Math.max(0, Math.floor(Number(aggregate.totalMeals) || 0));
-  const remainingMeals = Math.max(0, Math.floor(Number(aggregate.remainingMeals) || 0));
-  const reservedMeals = Math.max(0, Math.floor(Number(aggregate.reservedMeals) || 0));
-  const consumedMeals = Math.max(0, Math.floor(Number(aggregate.consumedMeals) || 0));
-  const forfeitedMeals = Math.max(0, Math.floor(Number(aggregate.forfeitedMeals) || 0));
   return {
-    totalMeals,
-    remainingMeals,
-    reservedMeals,
-    consumedMeals,
-    forfeitedMeals,
+    totalMeals: Math.max(0, Math.floor(Number(aggregate.totalMeals) || 0)),
+    remainingMeals: Math.max(0, Math.floor(Number(aggregate.remainingMeals) || 0)),
+    reservedMeals: Math.max(0, Math.floor(Number(aggregate.reservedMeals) || 0)),
+    consumedMeals: Math.max(0, Math.floor(Number(aggregate.consumedMeals) || 0)),
+    forfeitedMeals: Math.max(0, Math.floor(Number(aggregate.forfeitedMeals) || 0)),
   };
 }
 
@@ -56,15 +51,12 @@ function resolveBalances(subscription) {
   const remainingMeals = stacked
     ? stacked.remainingMeals
     : Math.max(0, Math.floor(Number(subscription && subscription.remainingMeals) || 0));
-  const hasEntitlementLedger = stacked || Number(subscription && subscription.entitlementVersion || 0) >= 2;
+  const hasEntitlementLedger = Boolean(stacked) || Number(subscription && subscription.entitlementVersion || 0) >= 2;
   const reservedMeals = hasEntitlementLedger
     ? (stacked ? stacked.reservedMeals : Math.max(0, Math.floor(Number(subscription && subscription.reservedMeals) || 0)))
     : 0;
-  const deductibleMeals = remainingMeals;
+  const deductibleMeals = stacked ? remainingMeals : remainingMeals + reservedMeals;
   const remainingPremiumMeals = resolvePremiumRemaining(subscription);
-  // For stacked subscriptions, remainingMeals is the authoritative unconsumed
-  // batch balance, including reserved meals. Keep the legacy fields compatible
-  // while exposing the full deductible capacity separately.
   const remainingRegularMeals = Math.max(0, remainingMeals - remainingPremiumMeals);
   const deductibleRegularMeals = Math.max(0, deductibleMeals - remainingPremiumMeals);
   return {
@@ -175,9 +167,7 @@ function safeLedgerInteger(value) {
 function validateModernBalanceIntegrity(subscription) {
   const stacked = resolveStackedAggregate(subscription);
   if (stacked) {
-    const accountedMeals = stacked.remainingMeals
-      + stacked.consumedMeals
-      + stacked.forfeitedMeals;
+    const accountedMeals = stacked.remainingMeals + stacked.consumedMeals + stacked.forfeitedMeals;
     if (accountedMeals !== stacked.totalMeals || stacked.reservedMeals > stacked.remainingMeals) {
       throw new ManualDeductionError(
         "BALANCE_INTEGRITY_ERROR",
