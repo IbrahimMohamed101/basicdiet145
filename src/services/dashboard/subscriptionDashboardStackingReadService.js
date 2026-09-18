@@ -131,14 +131,18 @@ function buildContext({
   subscription,
   batches,
   planNames,
-  paymentsById,
-  paymentsByDraftId,
+  payments = null,
+  paymentsById = null,
+  paymentsByDraftId = null,
   businessDate = null,
 }) {
+  const resolvedPaymentsById = paymentsById || payments || new Map();
+  const resolvedPaymentsByDraftId = paymentsByDraftId || new Map();
   const packages = batches.map((batch) => batchReadModel(batch, {
     planNames,
-    paymentsById,
-    paymentsByDraftId,
+    payments: resolvedPaymentsById,
+    paymentsById: resolvedPaymentsById,
+    paymentsByDraftId: resolvedPaymentsByDraftId,
   }));
   const transactionById = new Map();
   for (const item of packages) {
