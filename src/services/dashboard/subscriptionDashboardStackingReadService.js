@@ -60,6 +60,8 @@ function batchReadModel(batch, { planNames, payments } = {}) {
   const paymentId = stringId(batch.paymentId);
   return {
     id: stringId(batch._id),
+    purchaseId: stringId(batch._id),
+    displayId: batch._id ? `PUR-${String(batch._id).slice(-6).toUpperCase()}` : null,
     sourceType: batch.sourceType,
     isLegacyPackage: batch.sourceType === "legacy_seed",
     planId,
@@ -142,9 +144,10 @@ function buildContext({ subscription, batches, planNames, payments }) {
     hasEntitlementBatches: packages.length > 0,
     isCombinedPackage: packages.length > 1,
     packageCount: packages.length,
+    presentationMode: packages.length > 1 ? "stacked" : packages.length === 1 ? "single_batch" : "legacy",
     parentSubscriptionId: stringId(subscription._id || subscription.id),
     parentRole: "operational_container",
-    manualDeductionAllowed: packages.length === 0,
+    manualDeductionAllowed: true,
     aggregateBalance,
     packages,
     transactions: Array.from(transactionById.values()),
