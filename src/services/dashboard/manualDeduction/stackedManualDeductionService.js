@@ -529,10 +529,15 @@ async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, b
 async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempotencyKey, fingerprint, actorId, actorRole }) {
   if (quantity <= 0) return [];
   const window = dateWindow(businessDate);
+  // Only batches whose validity window covers the business date are
+  // eligible for manual deduction. Historical/expired package remainder must
+  // remain visible for audit, but can never be consumed by this operation.
   const batches = await SubscriptionEntitlementBatch.find({
     containerSubscriptionId: subscriptionId,
     applicationState: "applied",
-    status: { $in: ["active", "paid_scheduled", "exhausted"] },
+    status: { $in: ["active", "paid_scheduled"] },
+    effectiveStartDate: { $lte: window.end },
+    validityEndDate: { $gte: window.start },
     $or: [
       { remainingMeals: { $gt: 0 } },
       { reservedMeals: { $gt: 0 } },
