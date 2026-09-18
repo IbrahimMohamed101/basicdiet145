@@ -1,5 +1,7 @@
 "use strict";
 
+const { hashRequestPayload, normalizeIdempotencyKey } = require("../../utils/idempotency");
+
 const ActivityLog = require("../../models/ActivityLog");
 const Payment = require("../../models/Payment");
 const PromoCode = require("../../models/PromoCode");
@@ -304,6 +306,33 @@ async function createSubscriptionAdmin(req, res, next) {
   const originalPayment = req.body && req.body.payment && typeof req.body.payment === "object"
     ? req.body.payment
     : {};
+  let idempotencyKey = "";
+  try {
+    const headerValue = req && typeof req.get === "function"
+      ? req.get("Idempotency-Key")
+      : req && req.headers
+        ? (req.headers["idempotency-key"] || req.headers["Idempotency-Key"])
+        : "";
+    idempotencyKey = normalizeIdempotencyKey(headerValue);
+  } catch (err) {
+    return res.status(err.status || 400).json({
+      status: false,
+      message: err.message,
+      messageAr: "مفتاح التكرار غير صالح",
+      error: { code: err.code || "INVALID_IDEMPOTENCY_KEY", message: err.message },
+    });
+  }
+
+  const idempotencyPayload = {
+    ...(req.body || {}),
+    payment: {
+      ...originalPayment,
+    },
+  };
+  delete idempotencyPayload.payment.status;
+  delete idempotencyPayload.payment.paidAt;
+  delete idempotencyPayload.payment.collectedAmountHalala;
+
   const recordingSource = selection.method === "visa"
     ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
     : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE;
@@ -321,6 +350,11 @@ async function createSubscriptionAdmin(req, res, next) {
     },
     source: recordingSource,
   });
+  coreRequest.dashboardIdempotencyKey = idempotencyKey;
+  coreRequest.dashboardIdempotencyRequestHash = idempotencyKey
+    ? hashRequestPayload(idempotencyPayload)
+    : "";
+  coreRequest.dashboardIdempotencyPayload = { ...(req.body || {}) };
 
   const createCaptured = await invokeCaptured(subscriptionCreationController.createSubscriptionAdmin, coreRequest, next);
   if (createCaptured.statusCode >= 400 || !createCaptured.payload || createCaptured.payload.status !== true) {
