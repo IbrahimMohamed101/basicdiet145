@@ -2192,6 +2192,8 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       data: await runtime.serializeSubscriptionAdmin(subscription.toObject(), lang, user),
       meta: {
         createdByAdmin: true,
+        subscriptionMode: body.subscriptionMode,
+        isStackedPurchase: body.subscriptionMode === "stack_into_current",
       },
     });
   } catch (err) {
