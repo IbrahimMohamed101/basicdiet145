@@ -881,6 +881,29 @@ async function executeStackedManualDeduction({ subscriptionId, counts, body, act
   const lease = await acquireLease(subscriptionId, key);
   try {
     let subscription = await Subscription.findOne({ _id: subscriptionId, status: "active" });
+    if (!subscription) {
+      validateSubscriptionCanDeduct(subscription, businessDate);
+    }
+
+    // The parent subscription counters can be stale for stacked subscriptions.
+    // Build the same batch-derived mirror used by the external balance projection
+    // before validating the manual deduction request.
+    const validationBatches = await SubscriptionEntitlementBatch.find({
+      containerSubscriptionId: subscriptionId,
+      applicationState: "applied",
+    }).sort({ effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
+    if (validationBatches.length) {
+      const validationMirror = buildContainerMirror({
+        container: subscription,
+        batches: validationBatches,
+        businessDate,
+      });
+      subscription = await Subscription.findOneAndUpdate(
+        { _id: subscriptionId, status: "active" },
+        { $set: { ...validationMirror, entitlementVersion: 2 } },
+        { new: true }
+      );
+    }
     validateSubscriptionCanDeduct(subscription, businessDate);
 
     const existingOperation = await ActivityLog.findById(operationId).lean();
