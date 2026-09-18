@@ -39,7 +39,7 @@ function resolveDashboardSubscriptionMode(contract) {
       : meta.dashboardSubscriptionMode;
   if (raw === "standalone") return "standalone";
   if (raw === "stack_into_current") return "stack_into_current";
-  return "stack_into_current";
+  return "legacy";
 }
 
 function isDashboardDirectContract(contract) {
@@ -351,6 +351,14 @@ function install() {
         session: input.session || null,
       });
       if (stacked) return stacked;
+      if (mode === "stack_into_current") {
+        const err = new Error(
+          "Cannot add the purchase to the current balance because the customer has no active subscription."
+        );
+        err.code = "STACK_TARGET_NOT_FOUND";
+        err.status = 409;
+        throw err;
+      }
 
       return originalActivate(args);
     };
