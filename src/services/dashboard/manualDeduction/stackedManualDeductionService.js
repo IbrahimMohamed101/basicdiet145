@@ -277,7 +277,7 @@ async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, f
       _id: batch._id,
       containerSubscriptionId: batch.containerSubscriptionId,
       applicationState: "applied",
-      status: { $in: ["active", "paid_scheduled"] },
+      status: { $in: ["active", "paid_scheduled", "exhausted"] },
       remainingMeals: { $gte: quantity },
       [`metadata.${JOURNAL_KEY}.idempotencyKey`]: { $ne: idempotencyKey },
     },
@@ -533,8 +533,10 @@ async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempote
     containerSubscriptionId: subscriptionId,
     applicationState: "applied",
     status: { $in: ["active", "paid_scheduled", "exhausted"] },
-    effectiveStartDate: { $lte: window.end },
-    validityEndDate: { $gte: window.start },
+    $or: [
+      { remainingMeals: { $gt: 0 } },
+      { reservedMeals: { $gt: 0 } },
+    ],
   }).sort({ validityEndDate: 1, effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
 
   let alreadyApplied = 0;
@@ -552,7 +554,7 @@ async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempote
   const touched = [];
   for (const batch of batches) {
     if (remaining <= 0) break;
-    if (!["active", "paid_scheduled"].includes(String(batch.status || ""))) continue;
+    if (!["active", "paid_scheduled", "exhausted"].includes(String(batch.status || ""))) continue;
     if (journalFor(batch, idempotencyKey)) continue;
     const available = deductibleBatchMeals(batch);
     if (available <= 0) continue;
