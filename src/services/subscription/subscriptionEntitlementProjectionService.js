@@ -2,7 +2,7 @@
 
 const dateUtils = require("../../utils/date");
 
-const PROJECTABLE_STATUSES = new Set(["paid_scheduled", "active", "exhausted"]);
+const PROJECTABLE_STATUSES = new Set(["paid_scheduled", "active"]);
 const HISTORICAL_PROJECTABLE_STATUSES = new Set([
   "paid_scheduled",
   "active",

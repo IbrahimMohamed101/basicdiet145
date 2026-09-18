@@ -3,7 +3,9 @@
 const Payment = require("../../models/Payment");
 const Plan = require("../../models/Plan");
 const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
+const dateUtils = require("../../utils/date");
 const { pickLang } = require("../../utils/i18n");
+const { projectSubscriptionEntitlements } = require("../subscription/subscriptionEntitlementProjectionService");
 
 const DASHBOARD_STACKING_READ_VERSION = "dashboard_stacking_read.v1";
 
@@ -109,7 +111,7 @@ function defaultRuntime() {
   };
 }
 
-function buildContext({ subscription, batches, planNames, payments }) {
+function buildContext({ subscription, batches, planNames, payments, businessDate = null }) {
   const packages = batches.map((batch) => batchReadModel(batch, {
     planNames,
     payments,
@@ -119,19 +121,12 @@ function buildContext({ subscription, batches, planNames, payments }) {
     if (item.payment) transactionById.set(item.payment.id, item.payment);
   }
 
-  const aggregateBalance = packages.length > 0 ? packages.reduce((acc, item) => ({
-    totalMeals: acc.totalMeals + Number(item.totalMeals || 0),
-    remainingMeals: acc.remainingMeals + Number(item.remainingMeals || 0),
-    reservedMeals: acc.reservedMeals + Number(item.reservedMeals || 0),
-    consumedMeals: acc.consumedMeals + Number(item.consumedMeals || 0),
-    forfeitedMeals: acc.forfeitedMeals + Number(item.forfeitedMeals || 0),
-  }), {
-    totalMeals: 0,
-    remainingMeals: 0,
-    reservedMeals: 0,
-    consumedMeals: 0,
-    forfeitedMeals: 0,
-  }) : {
+  const targetBusinessDate = businessDate || dateUtils.toKSADateString(new Date());
+  const currentProjection = projectSubscriptionEntitlements({
+    batches,
+    businessDate: targetBusinessDate,
+  });
+  const aggregateBalance = packages.length > 0 ? currentProjection.mealBalance : {
     totalMeals: Number(subscription.totalMeals || 0),
     remainingMeals: Number(subscription.remainingMeals || 0),
     reservedMeals: Number(subscription.reservedMeals || 0),
@@ -230,6 +225,7 @@ async function projectDashboardStackingReadModel(payload, {
       batches: batchesByParent.get(id) || [],
       planNames,
       payments,
+      businessDate: dateUtils.toKSADateString(new Date()),
     })];
   }));
   return applyContexts(payload, contexts);
