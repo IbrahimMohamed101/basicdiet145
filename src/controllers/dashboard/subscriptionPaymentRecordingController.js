@@ -280,32 +280,6 @@ async function createSubscriptionAdmin(req, res, next) {
     });
   }
 
-  const quoteRequest = cloneRequestWithBody(req, { ...(req.body || {}) });
-  const quoteCaptured = await invokeCaptured(subscriptionCreationController.quoteSubscriptionAdmin, quoteRequest, next);
-  if (quoteCaptured.statusCode >= 400 || !quoteCaptured.payload || quoteCaptured.payload.status !== true) {
-    return res.status(quoteCaptured.statusCode).json(quoteCaptured.payload);
-  }
-
-  const totalHalala = extractQuoteTotalHalala(quoteCaptured.payload);
-  if (totalHalala === null) {
-    return res.status(500).json({
-      status: false,
-      message: "Unable to resolve subscription total for payment recording",
-      messageAr: "تعذر تحديد إجمالي الاشتراك لتسجيل طريقة الدفع",
-      error: { code: "PAYMENT_TOTAL_UNAVAILABLE" },
-    });
-  }
-  const quoteData = quoteCaptured.payload.data || {};
-  const currency = String(
-    quoteData.currency
-      || quoteData.pricing && quoteData.pricing.currency
-      || quoteData.breakdown && quoteData.breakdown.currency
-      || "SAR"
-  ).toUpperCase();
-
-  const originalPayment = req.body && req.body.payment && typeof req.body.payment === "object"
-    ? req.body.payment
-    : {};
   let idempotencyKey = "";
   try {
     const headerValue = req && typeof req.get === "function"
@@ -323,6 +297,9 @@ async function createSubscriptionAdmin(req, res, next) {
     });
   }
 
+  const originalPayment = req.body && req.body.payment && typeof req.body.payment === "object"
+    ? req.body.payment
+    : {};
   const idempotencyPayload = {
     ...(req.body || {}),
     payment: {
@@ -336,6 +313,54 @@ async function createSubscriptionAdmin(req, res, next) {
   const recordingSource = selection.method === "visa"
     ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
     : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE;
+
+  let replayPayment = null;
+  if (idempotencyKey) {
+    try {
+      replayPayment = await Payment.findOne({
+        operationIdempotencyKey: idempotencyKey,
+      }).lean();
+    } catch (err) {
+      return res.status(500).json({
+        status: false,
+        message: "Unable to inspect subscription request idempotency state",
+        messageAr: "تعذر التحقق من حالة طلب الاشتراك السابق",
+        error: { code: "IDEMPOTENCY_LOOKUP_FAILED" },
+      });
+    }
+  }
+
+  const quoteRequest = cloneRequestWithBody(req, { ...(req.body || {}) });
+  let totalHalala = null;
+  let currency = "SAR";
+
+  if (!replayPayment) {
+    const quoteCaptured = await invokeCaptured(subscriptionCreationController.quoteSubscriptionAdmin, quoteRequest, next);
+    if (quoteCaptured.statusCode >= 400 || !quoteCaptured.payload || quoteCaptured.payload.status !== true) {
+      return res.status(quoteCaptured.statusCode).json(quoteCaptured.payload);
+    }
+
+    totalHalala = extractQuoteTotalHalala(quoteCaptured.payload);
+    if (totalHalala === null) {
+      return res.status(500).json({
+        status: false,
+        message: "Unable to resolve subscription total for payment recording",
+        messageAr: "تعذر تحديد إجمالي الاشتراك لتسجيل طريقة الدفع",
+        error: { code: "PAYMENT_TOTAL_UNAVAILABLE" },
+      });
+    }
+
+    const quoteData = quoteCaptured.payload.data || {};
+    currency = String(
+      quoteData.currency
+        || quoteData.pricing && quoteData.pricing.currency
+        || quoteData.breakdown && quoteData.breakdown.currency
+        || "SAR"
+    ).toUpperCase();
+  } else {
+    totalHalala = Number(replayPayment.amount);
+    currency = String(replayPayment.currency || "SAR").toUpperCase();
+  }
   const coreRequest = cloneRequestWithBody(req, {
     ...(req.body || {}),
     payment: {
