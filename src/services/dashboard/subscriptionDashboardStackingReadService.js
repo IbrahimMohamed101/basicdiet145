@@ -57,9 +57,18 @@ function paymentReadModel(payment) {
   };
 }
 
-function batchReadModel(batch, { planNames, payments } = {}) {
+function batchReadModel(batch, { planNames, payments, paymentsById, paymentsByDraftId } = {}) {
   const planId = stringId(batch.planId);
   const paymentId = stringId(batch.paymentId);
+  const checkoutDraftId = stringId(batch.checkoutDraftId);
+  const payment = paymentsById
+    ? paymentsById.get(paymentId)
+    : payments && payments.get(paymentId);
+  const fallbackPayment = payment || (
+    checkoutDraftId && paymentsByDraftId
+      ? paymentsByDraftId.get(checkoutDraftId)
+      : null
+  );
   return {
     id: stringId(batch._id),
     purchaseId: stringId(batch._id),
@@ -84,7 +93,7 @@ function batchReadModel(batch, { planNames, payments } = {}) {
     forfeitedMeals: Number(batch.forfeitedMeals || 0),
     fulfillment: batch.deliverySnapshot || null,
     pricing: batch.pricingSnapshot || null,
-    payment: paymentReadModel(payments.get(paymentId)),
+    payment: paymentReadModel(fallbackPayment),
     createdAt: batch.createdAt || null,
   };
 }
@@ -101,20 +110,39 @@ function defaultRuntime() {
     findPlans(planIds) {
       return Plan.find({ _id: { $in: planIds } }).select("_id name").lean();
     },
-    findPayments(paymentIds) {
-      return Payment.find({ _id: { $in: paymentIds } })
+    findPayments(paymentIds, checkoutDraftIds = []) {
+      const ids = Array.isArray(paymentIds) ? paymentIds.filter(Boolean) : [];
+      const draftIds = Array.isArray(checkoutDraftIds) ? checkoutDraftIds.filter(Boolean) : [];
+      const filters = [];
+      if (ids.length) filters.push({ _id: { $in: ids } });
+      if (draftIds.length) filters.push({ checkoutDraftId: { $in: draftIds } });
+      if (!filters.length) return [];
+      return Payment.find(filters.length === 1 ? filters[0] : { $or: filters })
         .select(
-          "_id status type provider method amount currency providerInvoiceId providerPaymentId metadata.paymentMethod paidAt createdAt"
+          "_id checkoutDraftId status type provider method amount currency providerInvoiceId providerPaymentId metadata.paymentMethod paidAt createdAt"
         )
+        .sort({ createdAt: 1, _id: 1 })
         .lean();
     },
   };
 }
 
-function buildContext({ subscription, batches, planNames, payments, businessDate = null }) {
+function buildContext({
+  subscription,
+  batches,
+  planNames,
+  payments = null,
+  paymentsById = null,
+  paymentsByDraftId = null,
+  businessDate = null,
+}) {
+  const resolvedPaymentsById = paymentsById || payments || new Map();
+  const resolvedPaymentsByDraftId = paymentsByDraftId || new Map();
   const packages = batches.map((batch) => batchReadModel(batch, {
     planNames,
-    payments,
+    payments: resolvedPaymentsById,
+    paymentsById: resolvedPaymentsById,
+    paymentsByDraftId: resolvedPaymentsByDraftId,
   }));
   const transactionById = new Map();
   for (const item of packages) {
@@ -198,18 +226,28 @@ async function projectDashboardStackingReadModel(payload, {
   const paymentIds = [
     ...new Set(batches.map((batch) => stringId(batch.paymentId)).filter(Boolean)),
   ];
+  const checkoutDraftIds = [
+    ...new Set(batches.map((batch) => stringId(batch.checkoutDraftId)).filter(Boolean)),
+  ];
   const [plans, paymentRows] = await Promise.all([
     planIds.length ? runtime.findPlans(planIds) : [],
-    paymentIds.length ? runtime.findPayments(paymentIds) : [],
+    (paymentIds.length || checkoutDraftIds.length)
+      ? runtime.findPayments(paymentIds, checkoutDraftIds)
+      : [],
   ]);
   const planNames = new Map(plans.map((plan) => [
     stringId(plan._id),
     pickLang(plan.name, lang) || pickLang(plan.name, "en") || null,
   ]));
-  const payments = new Map(paymentRows.map((payment) => [
+  const paymentsById = new Map(paymentRows.map((payment) => [
     stringId(payment._id),
     payment,
   ]));
+  const paymentsByDraftId = new Map(
+    paymentRows
+      .filter((payment) => stringId(payment.checkoutDraftId))
+      .map((payment) => [stringId(payment.checkoutDraftId), payment])
+  );
   const batchesByParent = new Map();
   for (const batch of batches) {
     const parentId = stringId(batch.containerSubscriptionId);
@@ -224,7 +262,8 @@ async function projectDashboardStackingReadModel(payload, {
       subscription,
       batches: batchesByParent.get(id) || [],
       planNames,
-      payments,
+      paymentsById,
+      paymentsByDraftId,
       businessDate: dateUtils.toKSADateString(new Date()),
     })];
   }));
