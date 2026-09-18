@@ -26,6 +26,22 @@ const INSTALL_FLAG = Symbol.for(
   "basicdiet.dashboardSubscriptionStackingFlow.installed"
 );
 
+function resolveDashboardSubscriptionMode(contract) {
+  const snapshot = contract && contract.contractSnapshot && typeof contract.contractSnapshot === "object"
+    ? contract.contractSnapshot
+    : {};
+  const meta = snapshot.meta && typeof snapshot.meta === "object"
+    ? snapshot.meta
+    : {};
+  const raw =
+    contract && contract.dashboardSubscriptionMode
+      ? contract.dashboardSubscriptionMode
+      : meta.dashboardSubscriptionMode;
+  if (raw === "standalone") return "standalone";
+  if (raw === "stack_into_current") return "stack_into_current";
+  return "stack_into_current";
+}
+
 function isDashboardDirectContract(contract) {
   const snapshot = contract && contract.contractSnapshot;
   return Boolean(
@@ -305,6 +321,28 @@ function install() {
         return originalActivate(args);
       }
 
+      const mode = resolveDashboardSubscriptionMode(input.contract);
+      if (mode === "standalone") {
+        let activeQuery = Subscription.findOne({
+          userId: input.userId,
+          status: "active",
+        }).sort({ createdAt: -1 });
+        if (input.session) activeQuery = activeQuery.session(input.session);
+        const activeSubscription = await activeQuery.lean();
+        if (activeSubscription) {
+          const err = new Error(
+            "Cannot create a standalone subscription while the customer has an active subscription. Choose stack_into_current to add this purchase to the existing balance."
+          );
+          err.code = "STANDALONE_ACTIVE_SUBSCRIPTION_CONFLICT";
+          err.status = 409;
+          err.details = {
+            activeSubscriptionId: String(activeSubscription._id),
+          };
+          throw err;
+        }
+        return originalActivate(args);
+      }
+
       const stacked = await activateDashboardPurchaseIntoExistingContainer({
         userId: input.userId,
         planId: input.planId,
@@ -327,4 +365,5 @@ module.exports = {
   hasActiveTransaction,
   install,
   isDashboardDirectContract,
+  resolveDashboardSubscriptionMode,
 };
