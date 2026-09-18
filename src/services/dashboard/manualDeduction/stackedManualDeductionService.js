@@ -101,6 +101,21 @@ function dateWindow(businessDate) {
   return { start, end: new Date(start.getTime() + 86400000 - 1) };
 }
 
+function buildEligibleBaseMealBatchQuery(subscriptionId, businessDate) {
+  const window = dateWindow(businessDate);
+  return {
+    containerSubscriptionId: subscriptionId,
+    applicationState: "applied",
+    status: { $in: ["active", "paid_scheduled"] },
+    effectiveStartDate: { $lte: window.end },
+    validityEndDate: { $gte: window.start },
+    $or: [
+      { remainingMeals: { $gt: 0 } },
+      { reservedMeals: { $gt: 0 } },
+    ],
+  };
+}
+
 async function acquireLease(subscriptionId, idempotencyKey) {
   const now = new Date();
   const token = crypto.randomUUID();
@@ -528,21 +543,12 @@ async function applyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, b
 
 async function debitBaseMeals({ subscriptionId, quantity, businessDate, idempotencyKey, fingerprint, actorId, actorRole }) {
   if (quantity <= 0) return [];
-  const window = dateWindow(businessDate);
   // Only batches whose validity window covers the business date are
   // eligible for manual deduction. Historical/expired package remainder must
   // remain visible for audit, but can never be consumed by this operation.
-  const batches = await SubscriptionEntitlementBatch.find({
-    containerSubscriptionId: subscriptionId,
-    applicationState: "applied",
-    status: { $in: ["active", "paid_scheduled"] },
-    effectiveStartDate: { $lte: window.end },
-    validityEndDate: { $gte: window.start },
-    $or: [
-      { remainingMeals: { $gt: 0 } },
-      { reservedMeals: { $gt: 0 } },
-    ],
-  }).sort({ validityEndDate: 1, effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
+  const batches = await SubscriptionEntitlementBatch.find(
+    buildEligibleBaseMealBatchQuery(subscriptionId, businessDate)
+  ).sort({ validityEndDate: 1, effectiveStartDate: 1, createdAt: 1, _id: 1 }).lean();
 
   let alreadyApplied = 0;
   for (const batch of batches) {
@@ -1010,6 +1016,8 @@ async function executeStackedManualDeduction({ subscriptionId, counts, body, act
 }
 
 module.exports = {
+  buildEligibleBaseMealBatchQuery,
+  dateWindow,
   deductibleBatchMeals,
   executeStackedManualDeduction,
   hasEntitlementBatches,
