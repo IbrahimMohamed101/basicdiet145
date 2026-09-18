@@ -2204,6 +2204,9 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     if (err.code === "RECURRING_ADDON_CATEGORY_CONFLICT") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
+    if (Number.isInteger(err && err.status) && err.code) {
+      return errorResponse(res, err.status, err.code, err.message, err.details);
+    }
     logger.error("adminController.createSubscriptionAdmin failed", {
       error: err.message,
       stack: err.stack,
