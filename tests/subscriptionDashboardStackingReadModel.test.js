@@ -141,6 +141,69 @@ async function testProjectsPackagesAndTransactionsWithoutChangingParentIdentity(
   );
 }
 
+
+async function testResolvesPaymentByCheckoutDraftWhenPaymentIdIsMissing() {
+  const parentId = new mongoose.Types.ObjectId();
+  const planId = new mongoose.Types.ObjectId();
+  const checkoutDraftId = new mongoose.Types.ObjectId();
+  const paymentId = new mongoose.Types.ObjectId();
+  const payload = {
+    status: true,
+    data: [subscription(parentId)],
+  };
+
+  const projected = await projectDashboardStackingReadModel(payload, {
+    runtime: {
+      findBatches: async () => [{
+        _id: new mongoose.Types.ObjectId(),
+        containerSubscriptionId: parentId,
+        planId,
+        paymentId: null,
+        checkoutDraftId,
+        sourceType: "dashboard",
+        status: "active",
+        applicationState: "applied",
+        requestedStartDate: new Date("2026-09-01T00:00:00Z"),
+        effectiveStartDate: new Date("2026-09-01T00:00:00Z"),
+        endDate: new Date("2026-09-30T00:00:00Z"),
+        validityEndDate: new Date("2026-10-05T00:00:00Z"),
+        daysCount: 30,
+        mealsPerDay: 2,
+        proteinGrams: 150,
+        totalMeals: 60,
+        remainingMeals: 60,
+        consumedMeals: 0,
+      }],
+      findPlans: async () => [{
+        _id: planId,
+        name: { ar: "الباقة", en: "Package" },
+      }],
+      findPayments: async (_paymentIds, checkoutDraftIds) => {
+        assert.deepStrictEqual(checkoutDraftIds, [String(checkoutDraftId)]);
+        return [{
+          _id: paymentId,
+          checkoutDraftId,
+          status: "paid",
+          type: "subscription_activation",
+          provider: "cash",
+          method: "cash",
+          amount: 133100,
+          currency: "SAR",
+          paidAt: new Date("2026-09-07T20:00:00Z"),
+        }];
+      },
+    },
+  });
+
+  const payment = projected.data[0].stacking.packages[0].payment;
+  assert(payment, "payment should resolve through checkoutDraftId fallback");
+  assert.strictEqual(payment.id, String(paymentId));
+  assert.strictEqual(payment.status, "paid");
+  assert.strictEqual(payment.method, "cash");
+  assert.strictEqual(payment.amountHalala, 133100);
+  assert.strictEqual(projected.data[0].stacking.transactions.length, 1);
+}
+
 async function testSearchNestingAndLegacySubscriptionRemainExplicit() {
   const id = new mongoose.Types.ObjectId();
   const payload = {
@@ -208,6 +271,7 @@ async function testMiddlewareRoutesAndProjection() {
 
 async function run() {
   await testProjectsPackagesAndTransactionsWithoutChangingParentIdentity();
+  await testResolvesPaymentByCheckoutDraftWhenPaymentIdIsMissing();
   await testSearchNestingAndLegacySubscriptionRemainExplicit();
   await testMiddlewareRoutesAndProjection();
   console.log("subscription dashboard stacking read model tests passed");
