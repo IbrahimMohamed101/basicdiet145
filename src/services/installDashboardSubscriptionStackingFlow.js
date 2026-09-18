@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 
 const Subscription = require("../models/Subscription");
+const Payment = require("../models/Payment");
 const subscriptionActivationService = require("./subscription/subscriptionActivationService");
 const {
   activatePaidDraftIntoExistingContainerStandalone,
@@ -123,8 +124,10 @@ function buildDashboardPurchaseDraft({
   };
 }
 
-function dashboardBatchRuntime(dashboardPurchaseId) {
-  const sourceKey = `dashboard:${String(dashboardPurchaseId)}`;
+function dashboardBatchRuntime(dashboardPurchaseId, paymentId = null) {
+  const sourceKey = paymentId
+    ? `payment:${String(paymentId)}`
+    : `dashboard:${String(dashboardPurchaseId)}`;
   return {
     ensureBatchByPayload({ payload, session }) {
       if (!payload || String(payload.sourceType || "") === "legacy_seed") {
@@ -221,6 +224,7 @@ async function activateDashboardPurchaseIntoExistingContainer({
   contract,
   legacyRuntimeData,
   session,
+  dashboardPayment = null,
 } = {}) {
   let activeQuery = Subscription.findOne({
     userId,
@@ -244,10 +248,12 @@ async function activateDashboardPurchaseIntoExistingContainer({
     subscriptionPayload,
     activeSubscriptionId: activeContainer._id,
   });
-  const payment = {
-    status: "paid",
-    userId,
-  };
+  const payment = dashboardPayment && dashboardPayment._id
+    ? dashboardPayment
+    : {
+      status: "paid",
+      userId,
+    };
   const businessDate = await getRestaurantBusinessDate();
   const now = new Date();
 
@@ -262,13 +268,24 @@ async function activateDashboardPurchaseIntoExistingContainer({
         expectedParentSubscriptionId: activeContainer._id,
         now,
         deferDocumentFinalization: true,
-        runtime: dashboardBatchRuntime(draft.dashboardPurchaseId),
+        runtime: dashboardBatchRuntime(
+          draft.dashboardPurchaseId,
+          payment && payment._id ? payment._id : null
+        ),
       });
     await materializeStackingSubscriptionDaysTransactional({
       container: result.container,
       batch: result.purchaseBatch,
       session,
     });
+    if (dashboardPayment && dashboardPayment._id && result.purchaseBatch && result.purchaseBatch._id) {
+      dashboardPayment.metadata = {
+        ...(dashboardPayment.metadata || {}),
+        dashboardSubscriptionMode: "stack_into_current",
+        dashboardPurchaseId: String(result.purchaseBatch._id),
+      };
+      await dashboardPayment.save({ session });
+    }
     return result.container;
   }
 
@@ -290,13 +307,24 @@ async function activateDashboardPurchaseIntoExistingContainer({
       expectedParentSubscriptionId: activeContainer._id,
       now,
       seedExtraWallets: true,
-      runtime: dashboardBatchRuntime(draft.dashboardPurchaseId),
+      runtime: dashboardBatchRuntime(
+        draft.dashboardPurchaseId,
+        payment && payment._id ? payment._id : null
+      ),
     });
     await materializeStackingSubscriptionDaysIdempotent({
       container: result.container,
       batch: result.purchaseBatch,
       session,
     });
+    if (dashboardPayment && dashboardPayment._id && result.purchaseBatch && result.purchaseBatch._id) {
+      dashboardPayment.metadata = {
+        ...(dashboardPayment.metadata || {}),
+        dashboardSubscriptionMode: "stack_into_current",
+        dashboardPurchaseId: String(result.purchaseBatch._id),
+      };
+      await dashboardPayment.save(session ? { session } : undefined);
+    }
     return result.container;
   } finally {
     await releaseStandaloneLease({
@@ -349,6 +377,7 @@ function install() {
         contract: input.contract,
         legacyRuntimeData: input.legacyRuntimeData || {},
         session: input.session || null,
+        dashboardPayment: input.dashboardPayment || null,
       });
       if (stacked) return stacked;
       if (mode === "stack_into_current") {
