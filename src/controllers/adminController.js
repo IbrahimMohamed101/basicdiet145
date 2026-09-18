@@ -1655,6 +1655,17 @@ function requireAdminReasonOrRespond(req, res) {
   return reason;
 }
 
+function normalizeDashboardSubscriptionMode(value) {
+  const normalized = String(value || "standalone").trim().toLowerCase();
+  if (normalized === "standalone" || normalized === "stack_into_current") {
+    return normalized;
+  }
+  const err = new Error("subscriptionMode must be standalone or stack_into_current");
+  err.status = 400;
+  err.code = "INVALID_SUBSCRIPTION_MODE";
+  throw err;
+}
+
 function normalizeDashboardQuotePayload(body = {}) {
   const payload = { ...(body || {}) };
   if (payload.addons === undefined && payload.addonPlans !== undefined) {
@@ -1691,6 +1702,7 @@ function normalizeDashboardQuotePayload(body = {}) {
   if (Object.keys(delivery).length > 0) {
     payload.delivery = delivery;
   }
+  payload.subscriptionMode = normalizeDashboardSubscriptionMode(payload.subscriptionMode);
   return payload;
 }
 
@@ -2067,6 +2079,15 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       now: new Date(),
       currentBusinessDate,
     });
+
+    contract.dashboardSubscriptionMode = body.subscriptionMode;
+    contract.contractSnapshot = {
+      ...(contract.contractSnapshot || {}),
+      meta: {
+        ...((contract.contractSnapshot && contract.contractSnapshot.meta) || {}),
+        dashboardSubscriptionMode: body.subscriptionMode,
+      },
+    };
 
     const subscription = await runtime.activateSubscriptionFromCanonicalContract({
       userId: user._id,
