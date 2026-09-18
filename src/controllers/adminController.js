@@ -2203,20 +2203,6 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
   try {
     if (typeof session.startTransaction === "function") session.startTransaction();
 
-    // Dashboard payment creation is fail-closed unless MongoDB supports real transactions.
-    // This endpoint creates accounting data before activation, so running it against a
-    // standalone MongoDB would leave a paid Payment behind if activation later fails.
-    if (isDashboardPayment && session.supportsTransactions !== true) {
-      if (typeof session.abortTransaction === "function") await session.abortTransaction();
-      session.endSession();
-      return errorResponse(
-        res,
-        503,
-        "PAYMENT_TRANSACTIONS_REQUIRED",
-        "Dashboard subscription payment creation requires MongoDB transaction support"
-      );
-    }
-
     const daysCount = Number(quote.plan.daysCount || 0);
     const mealsPerDay = Number(quote.mealsPerDay || 0);
     if (!isPositiveInteger(daysCount) || !isPositiveInteger(mealsPerDay)) {
