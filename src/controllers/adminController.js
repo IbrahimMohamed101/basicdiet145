@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { hashRequestPayload, normalizeIdempotencyKey } = require("../utils/idempotency");
 const { startSafeSession } = require("../utils/mongoTransactionSupport");
 const { addDays } = require("date-fns");
 const Plan = require("../models/Plan");
@@ -11,7 +10,6 @@ const Addon = require("../models/Addon");
 const Subscription = require("../models/Subscription");
 const Order = require("../models/Order");
 const Payment = require("../models/Payment");
-const SubscriptionEntitlementBatch = require("../models/SubscriptionEntitlementBatch");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionAuditLog = require("../models/SubscriptionAuditLog");
@@ -1668,147 +1666,6 @@ function normalizeDashboardSubscriptionMode(value) {
   throw err;
 }
 
-
-function resolveDashboardIdempotencyKey(req) {
-  if (req && req.dashboardIdempotencyKey) {
-    return normalizeIdempotencyKey(req.dashboardIdempotencyKey);
-  }
-
-  const headerValue = req && typeof req.get === "function"
-    ? req.get("Idempotency-Key")
-    : req && req.headers
-      ? (req.headers["idempotency-key"] || req.headers["Idempotency-Key"])
-      : "";
-
-  return normalizeIdempotencyKey(headerValue);
-}
-
-function buildDashboardIdempotencyPayload(req, body) {
-  if (req && req.dashboardIdempotencyPayload && typeof req.dashboardIdempotencyPayload === "object") {
-    return req.dashboardIdempotencyPayload;
-  }
-
-  const payload = { ...(body || {}) };
-  if (payload.payment && typeof payload.payment === "object" && !Array.isArray(payload.payment)) {
-    payload.payment = { ...payload.payment };
-    delete payload.payment.status;
-    delete payload.payment.paidAt;
-    delete payload.payment.collectedAmountHalala;
-  }
-  return payload;
-}
-
-function resolveDashboardIdempotencyRequestHash(req, body) {
-  if (req && req.dashboardIdempotencyRequestHash) {
-    return String(req.dashboardIdempotencyRequestHash);
-  }
-  return hashRequestPayload(buildDashboardIdempotencyPayload(req, body));
-}
-
-function isDashboardPaymentRecordingRequest(body) {
-  const source = String(body && body.source || "").trim();
-  return Boolean(
-    body
-      && body.payment
-      && body.payment.status === "paid"
-      && (
-        source === Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE
-        || source === Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
-      )
-  );
-}
-
-function isPaymentIdempotencyDuplicateError(err) {
-  if (!err || Number(err.code) !== 11000) return false;
-  const keyPattern = err.keyPattern || {};
-  if (keyPattern.operationIdempotencyKey) return true;
-  const message = String(err.message || "");
-  return message.includes("operationIdempotencyKey");
-}
-
-async function respondWithDashboardIdempotentPayment({
-  req,
-  res,
-  runtime,
-  user,
-  userId,
-  lang,
-  idempotencyKey,
-  requestHash,
-} = {}) {
-  if (!idempotencyKey) return false;
-
-  const payment = await Payment.findOne({
-    operationIdempotencyKey: idempotencyKey,
-  }).lean();
-
-  if (!payment) return false;
-
-  if (String(payment.userId || "") !== String(userId || "")) {
-    return errorResponse(
-      res,
-      409,
-      "IDEMPOTENCY_CONFLICT",
-      "Idempotency-Key has already been used by another customer"
-    );
-  }
-
-  if (
-    requestHash
-    && payment.operationRequestHash
-    && String(payment.operationRequestHash) !== String(requestHash)
-  ) {
-    return errorResponse(
-      res,
-      409,
-      "IDEMPOTENCY_CONFLICT",
-      "Idempotency-Key is already used with a different subscription payload"
-    );
-  }
-
-  if (!payment.subscriptionId) {
-    return errorResponse(
-      res,
-      409,
-      "IDEMPOTENCY_IN_PROGRESS",
-      "The previous subscription request is still being finalized. Retry the same request."
-    );
-  }
-
-  const subscription = await Subscription.findById(payment.subscriptionId);
-  if (!subscription) {
-    return errorResponse(
-      res,
-      409,
-      "IDEMPOTENCY_INCONSISTENT",
-      "The previous subscription request has no valid subscription result"
-    );
-  }
-
-  return res.status(201).json({
-    status: true,
-    data: await runtime.serializeSubscriptionAdmin(subscription.toObject(), lang, user),
-    meta: {
-      createdByAdmin: true,
-      subscriptionMode:
-        payment.metadata && payment.metadata.dashboardSubscriptionMode
-          ? payment.metadata.dashboardSubscriptionMode
-          : "standalone",
-      isStackedPurchase:
-        Boolean(
-          payment.metadata
-          && payment.metadata.dashboardSubscriptionMode === "stack_into_current"
-        ),
-      purchaseId:
-        payment.metadata && payment.metadata.dashboardPurchaseId
-          ? String(payment.metadata.dashboardPurchaseId)
-          : null,
-      paymentId: String(payment._id),
-      idempotentReplay: true,
-    },
-  });
-}
-
 function normalizeDashboardQuotePayload(body = {}) {
   const payload = { ...(body || {}) };
   if (payload.addons === undefined && payload.addonPlans !== undefined) {
@@ -2148,40 +2005,6 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return errorResponse(res, 409, "INVALID", "App user is inactive");
   }
 
-  let idempotencyKey = "";
-  try {
-    idempotencyKey = resolveDashboardIdempotencyKey(req);
-  } catch (err) {
-    return errorResponse(res, err.status || 400, err.code || "INVALID_IDEMPOTENCY_KEY", err.message);
-  }
-  const isDashboardPayment = isDashboardPaymentRecordingRequest(body);
-  const requestHash = isDashboardPayment && idempotencyKey
-    ? resolveDashboardIdempotencyRequestHash(req, body)
-    : "";
-
-  if (isDashboardPayment && idempotencyKey) {
-    try {
-      const replay = await respondWithDashboardIdempotentPayment({
-        req,
-        res,
-        runtime,
-        user,
-        userId,
-        lang: getRequestLang(req),
-        idempotencyKey,
-        requestHash,
-      });
-      if (replay) return replay;
-    } catch (err) {
-      logger.error("adminController.createSubscriptionAdmin idempotency lookup failed", {
-        error: err.message,
-        stack: err.stack,
-        userId: String(userId),
-      });
-      return errorResponse(res, 500, "INTERNAL", "Subscription creation failed");
-    }
-  }
-
   let quote;
   const lang = getRequestLang(req);
   try {
@@ -2198,7 +2021,6 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
   }
 
   const session = await startSafeSession();
-  let dashboardPayment = null;
 
   try {
     if (typeof session.startTransaction === "function") session.startTransaction();
@@ -2267,60 +2089,6 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       },
     };
 
-    if (
-      isDashboardPayment
-      && body.payment.status !== "paid"
-    ) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 400, "INVALID", "Dashboard subscription payment status must be paid");
-    }
-
-    if (
-      isDashboardPayment
-      && Number(body.payment.collectedAmountHalala) !== Number(quote.breakdown.totalHalala)
-    ) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        status: false,
-        message: "Collected amount does not match quote total",
-        messageAr: "المبلغ المحصل لا يطابق إجمالي عرض السعر"
-      });
-    }
-
-    if (isDashboardPayment) {
-      const paymentDocument = {
-        provider: "cash",
-        type: "subscription_activation",
-        status: "paid",
-        amount: Number(quote.breakdown.totalHalala),
-        currency: quote.breakdown.currency || "SAR",
-        userId: user._id,
-        paidAt: body.payment.paidAt ? new Date(body.payment.paidAt) : new Date(),
-        method: "cash",
-        source: body.source,
-        collectedBy: req.dashboardUserId,
-        applied: false,
-        operationScope: "dashboard_subscription_create",
-        ...(idempotencyKey ? {
-          operationIdempotencyKey: idempotencyKey,
-          operationRequestHash: requestHash,
-        } : {}),
-        metadata: {
-          recordingMode: "dashboard_manual",
-          paymentMethod:
-            body.source === Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
-              ? "visa"
-              : "cash",
-          dashboardSubscriptionMode: body.subscriptionMode,
-        },
-      };
-
-      const createdPayments = await Payment.create([paymentDocument], { session });
-      dashboardPayment = createdPayments[0];
-    }
-
     const subscription = await runtime.activateSubscriptionFromCanonicalContract({
       userId: user._id,
       planId: quote.plan._id,
@@ -2331,33 +2099,9 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         addonSubscriptions,
       },
       session,
-      dashboardPayment,
     });
 
-    if (isDashboardPayment) {
-      dashboardPayment.subscriptionId = subscription._id;
-      dashboardPayment.applied = true;
-      dashboardPayment.metadata = {
-        ...(dashboardPayment.metadata || {}),
-        dashboardSubscriptionMode: body.subscriptionMode,
-      };
-
-      let purchaseBatch = null;
-      if (body.subscriptionMode === "stack_into_current") {
-        purchaseBatch = await SubscriptionEntitlementBatch.findOne({
-          paymentId: dashboardPayment._id,
-          containerSubscriptionId: subscription._id,
-        }).session(session);
-        if (purchaseBatch) {
-          dashboardPayment.metadata.dashboardPurchaseId = String(purchaseBatch._id);
-        }
-      }
-
-      await dashboardPayment.save({ session });
-
-      subscription.status = "active";
-      await subscription.save({ session });
-    } else if (body.payment && body.payment.method === "cash") {
+    if (body.payment && body.payment.method === "cash") {
       if (body.payment.status !== "paid") {
         await session.abortTransaction();
         session.endSession();
@@ -2420,21 +2164,11 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     });
 
     if (body.payment && body.payment.method === "cash") {
-      let paymentDoc = null;
-      if (dashboardPayment) {
-        paymentDoc = dashboardPayment.toObject ? dashboardPayment.toObject() : dashboardPayment;
-      } else {
-        paymentDoc = await Payment.findOne({
-          subscriptionId: subscription._id,
-          provider: "cash"
-        }).lean();
-      }
+      const paymentDoc = await Payment.findOne({ subscriptionId: subscription._id, provider: "cash" }).lean();
       await runtime.writeActivityLogSafely({
         entityType: "subscription",
         entityId: subscription._id,
-        action: body.source === Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
-          ? "subscription_visa_payment_recorded"
-          : "subscription_cash_payment_collected",
+        action: "subscription_cash_payment_collected",
         byUserId: req.dashboardUserId,
         byRole: req.dashboardUserRole,
         meta: {
@@ -2443,10 +2177,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
           paymentId: paymentDoc ? String(paymentDoc._id) : null,
           quoteTotal: quote.breakdown.totalHalala,
           collectedAmount: body.payment.collectedAmountHalala,
-          paymentMethod:
-            body.source === Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
-              ? "visa"
-              : "cash",
+          paymentMethod: "cash",
           source: body.source || "dashboard_cashier",
           premiumItems: body.premiumItems || [],
           addons: body.addons || [],
@@ -2463,15 +2194,6 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         createdByAdmin: true,
         subscriptionMode: body.subscriptionMode,
         isStackedPurchase: body.subscriptionMode === "stack_into_current",
-        purchaseId:
-          dashboardPayment
-            && dashboardPayment.metadata
-            && dashboardPayment.metadata.dashboardPurchaseId
-            ? String(dashboardPayment.metadata.dashboardPurchaseId)
-            : null,
-        paymentId: dashboardPayment && dashboardPayment._id
-          ? String(dashboardPayment._id)
-          : null,
       },
     });
   } catch (err) {
@@ -2479,29 +2201,6 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       await session.abortTransaction();
     }
     session.endSession();
-
-    if (isDashboardPayment && idempotencyKey && isPaymentIdempotencyDuplicateError(err)) {
-      try {
-        return await respondWithDashboardIdempotentPayment({
-          req,
-          res,
-          runtime,
-          user,
-          userId,
-          lang: getRequestLang(req),
-          idempotencyKey,
-          requestHash,
-        });
-      } catch (replayErr) {
-        logger.error("adminController.createSubscriptionAdmin idempotency replay failed", {
-          error: replayErr.message,
-          stack: replayErr.stack,
-          userId: String(userId),
-        });
-        return errorResponse(res, 500, "INTERNAL", "Subscription creation failed");
-      }
-    }
-
     if (err.code === "RECURRING_ADDON_CATEGORY_CONFLICT") {
       return errorResponse(res, 400, "INVALID", err.message);
     }
