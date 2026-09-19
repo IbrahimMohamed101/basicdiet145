@@ -6,6 +6,7 @@ const { SUBSCRIPTION_TERMS_DEFAULT } = require("../content/defaultSubscriptionTe
 const DEFAULT_LOCALE = "ar";
 const CONTENT_KEYS = Object.freeze({
   subscriptionTerms: SUBSCRIPTION_TERMS_DEFAULT.key,
+  appAd: "app_ad",
 });
 
 function normalizeKey(value) {
@@ -140,6 +141,51 @@ async function getActiveContentOrNull({ key, locale = DEFAULT_LOCALE, includeUpd
   return serializeAppContent(doc, { includeUpdatedBy });
 }
 
+async function getLatestContentOrNull({ key, locale = DEFAULT_LOCALE, includeUpdatedBy = false } = {}) {
+  const query = AppContent.findOne({
+    key: normalizeKey(key),
+    locale: normalizeLocale(locale),
+  }).sort({ updatedAt: -1 });
+
+  if (includeUpdatedBy) {
+    query.populate("updatedBy", "email role");
+  }
+
+  const doc = await query;
+  if (!doc) return null;
+
+  return {
+    ...serializeAppContent(doc, { includeUpdatedBy }),
+    isActive: doc.isActive === true,
+  };
+}
+
+async function toggleContentActive({
+  key,
+  locale = DEFAULT_LOCALE,
+  updatedBy = null,
+} = {}) {
+  const query = AppContent.findOne({
+    key: normalizeKey(key),
+    locale: normalizeLocale(locale),
+  }).sort({ updatedAt: -1 });
+
+  const doc = await query;
+  if (!doc) return null;
+
+  doc.isActive = !doc.isActive;
+  if (mongoose.Types.ObjectId.isValid(updatedBy)) {
+    doc.updatedBy = updatedBy;
+  }
+  await doc.save();
+  await doc.populate("updatedBy", "email role");
+
+  return {
+    ...serializeAppContent(doc, { includeUpdatedBy: true }),
+    isActive: doc.isActive === true,
+  };
+}
+
 async function saveActiveContent({
   key,
   title,
@@ -210,6 +256,8 @@ module.exports = {
   CONTENT_KEYS,
   DEFAULT_LOCALE,
   getActiveContentOrNull,
+  getLatestContentOrNull,
+  toggleContentActive,
   saveActiveContent,
   seedDefaultSubscriptionTerms,
   serializeAppContent,
