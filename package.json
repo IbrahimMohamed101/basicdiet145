@@ -69,7 +69,7 @@
     "test:delivery-balance-repair-2026-08-03": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/deliveryBalanceRepair20260803.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionOperationsAuditService.test.js",
     "test:dashboard-manual-deduction": "npm run test:dashboard-manual-deduction-policy && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardManualDeductionAndOrderPickup.test.js",
     "backfill:stacking-aggregateBalance": "node scripts/backfill-subscription-stacking-aggregateBalance.js",
-    "test:dashboard-subscription-create": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardSubscriptionCreationContract.test.js",
+    "test:dashboard-subscription-create": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardSubscriptionCreationContract.test.js && npm run test:dashboard-subscription-price-authority",
     "test:dashboard-subscription-addon-plan-availability": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionAddonPlanAvailabilityPolicy.test.js",
     "test:dashboard-accounting": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardAccountingDailyReport.test.js",
     "test:one-time-menu": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/oneTimeMenuCatalog.test.js",
@@ -131,7 +131,8 @@
     "suggest:menu-identity": "node scripts/suggest-menu-identity-mappings.js",
     "validate:staging": "node scripts/validate-staging.js",
     "validate:data": "node scripts/validate-data-integrity.js",
-    "clear:menu": "node scripts/clear-menu-catalog.js"
+    "clear:menu": "node scripts/clear-menu-catalog.js",
+    "test:dashboard-subscription-price-authority": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardSubscriptionPriceAuthority.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
