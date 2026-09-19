@@ -884,6 +884,7 @@ async function resolveCheckoutQuoteOrThrow(
     lang = "ar",
     allowMissingDeliveryAddress = false,
     userId = null,
+    useDashboardDisplayedPlanPrice = false,
   } = {}
 ) {
   const planId = payload && payload.planId;
@@ -958,7 +959,11 @@ async function resolveCheckoutQuoteOrThrow(
     throw err;
   }
 
-  const basePlanPriceHalala = parseNonNegativeInteger(resolvePlanBasePriceHalala(mealOption));
+  const basePlanPriceHalala = parseNonNegativeInteger(
+    useDashboardDisplayedPlanPrice
+      ? mealOption.priceHalala
+      : resolvePlanBasePriceHalala(mealOption)
+  );
   if (basePlanPriceHalala === null) {
     const err = new Error("Plan price is invalid");
     err.code = "INVALID_SELECTION";
