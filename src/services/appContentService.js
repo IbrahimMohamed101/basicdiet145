@@ -160,6 +160,56 @@ async function getLatestContentOrNull({ key, locale = DEFAULT_LOCALE, includeUpd
   };
 }
 
+function compareVersions(a, b) {
+  const left = String(a || "0.0.0").split(".").map((v) => Number.parseInt(v, 10) || 0);
+  const right = String(b || "0.0.0").split(".").map((v) => Number.parseInt(v, 10) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    if ((left[i] || 0) > (right[i] || 0)) return 1;
+    if ((left[i] || 0) < (right[i] || 0)) return -1;
+  }
+  return 0;
+}
+
+async function getAppVersionStatus({ platform = "android", currentVersion = "0.0.0" } = {}) {
+  const normalizedPlatform = String(platform || "android").trim().toLowerCase();
+  const doc = await AppContent.findOne({
+    key: "app_version",
+    locale: normalizedPlatform,
+    isActive: true,
+  }).sort({ updatedAt: -1 });
+
+  const defaults = {
+    platform: normalizedPlatform,
+    latestVersion: "1.0.0",
+    minimumVersion: "1.0.0",
+    forceUpdate: false,
+    updateUrl: null,
+    messageAr: "يوجد تحديث جديد للتطبيق.",
+    messageEn: "A new app update is available.",
+  };
+
+  const config = doc && isPlainObject(doc.content) ? doc.content : defaults;
+  const latestVersion = String(config.latestVersion || defaults.latestVersion);
+  const minimumVersion = String(config.minimumVersion || defaults.minimumVersion);
+  const updateUrl = config.updateUrl || null;
+  const forceUpdate = config.forceUpdate === true;
+  const isBelowMinimum = compareVersions(currentVersion, minimumVersion) < 0;
+  const hasNewerVersion = compareVersions(currentVersion, latestVersion) < 0;
+
+  return {
+    platform: normalizedPlatform,
+    currentVersion: String(currentVersion || "0.0.0"),
+    latestVersion,
+    minimumVersion,
+    updateAvailable: hasNewerVersion,
+    updateRequired: forceUpdate || isBelowMinimum,
+    forceUpdate,
+    updateUrl,
+    messageAr: String(config.messageAr || defaults.messageAr),
+    messageEn: String(config.messageEn || defaults.messageEn),
+  };
+}
+
 async function toggleContentActive({
   key,
   locale = DEFAULT_LOCALE,
