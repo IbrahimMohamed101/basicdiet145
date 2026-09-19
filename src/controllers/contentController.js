@@ -36,6 +36,15 @@ async function getSubscriptionTerms(req, res) {
   return res.status(200).json({ status: true, data });
 }
 
+async function getAppVersion(req, res) {
+  const data = await appContentService.getAppVersionStatus({
+    platform: req.query.platform || "android",
+    currentVersion: req.query.version || "0.0.0",
+  });
+
+  return res.status(200).json({ status: true, data });
+}
+
 async function getAppAd(req, res) {
   const locale = req.query.locale || appContentService.DEFAULT_LOCALE;
   const data = await appContentService.getActiveContentOrNull({
@@ -164,6 +173,7 @@ async function upsertSubscriptionTermsAdmin(req, res) {
 
 module.exports = {
   getSubscriptionTerms,
+  getAppVersion,
   getAppAd,
   getAppAdAdmin,
   upsertAppAdAdmin,
