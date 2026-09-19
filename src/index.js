@@ -45,6 +45,7 @@ const { createApp } = require("./app");
 require("./services/installSubscriptionStackingRemoteReadinessRoute");
 const { connectDb } = require("./db");
 const { normalizeBasicDiet26Day150gPricing } = require("./migrations/normalizeBasicDiet26Day150gPricing");
+const { seedAppAd } = require("./migrations/seedAppAd");
 const mongoose = require("mongoose");
 const { startJobs } = require("./jobs");
 const { validateEnv } = require("./utils/validateEnv");
@@ -100,6 +101,9 @@ connectDb()
     try {
       const pricingMigration = await normalizeBasicDiet26Day150gPricing();
       logger.info("[startup] 26-day 150g pricing normalization", pricingMigration);
+
+      const appAdMigration = await seedAppAd();
+      logger.info("[startup] app ad seed", appAdMigration);
     } catch (migrationError) {
       logger.error("[startup] 26-day 150g pricing normalization failed", {
         error: migrationError.message,
