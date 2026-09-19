@@ -55,6 +55,34 @@ async function getAppAd(req, res) {
   return res.status(200).json({ status: true, data });
 }
 
+async function upsertAppVersionAdmin(req, res) {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const platform = String(body.platform || "android").trim().toLowerCase();
+  const latestVersion = String(body.latestVersion || "").trim();
+  const minimumVersion = String(body.minimumVersion || "").trim();
+
+  if (!latestVersion || !minimumVersion) {
+    return errorResponse(res, 422, "VALIDATION_ERROR", "latestVersion and minimumVersion are required");
+  }
+
+  const data = await appContentService.saveActiveContent({
+    key: "app_version",
+    title: "App Version",
+    content: {
+      latestVersion,
+      minimumVersion,
+      forceUpdate: body.forceUpdate === true,
+      updateUrl: String(body.updateUrl || "").trim() || null,
+      messageAr: String(body.messageAr || "يوجد تحديث جديد للتطبيق.").trim(),
+      messageEn: String(body.messageEn || "A new app update is available.").trim(),
+    },
+    locale: platform,
+    updatedBy: req.dashboardUserId || req.userId || null,
+  });
+
+  return res.status(200).json({ status: true, data });
+}
+
 async function getAppAdAdmin(req, res) {
   const locale = req.query.locale || appContentService.DEFAULT_LOCALE;
   const data = await appContentService.getLatestContentOrNull({
