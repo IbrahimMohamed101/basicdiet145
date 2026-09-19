@@ -7,15 +7,11 @@ function normalizeHalala(value) {
   return Math.max(0, Math.round(parsed));
 }
 
-// `compareAtHalala` used to contain the undiscounted plan price while
-// `priceHalala` contained a manually discounted price. Promo codes are now the
-// only discount authority, so the highest legacy value is the canonical base
-// plan price until every stored plan has been normalized by an admin save.
+// `priceHalala` / `priceSar` is the actual sell price configured for the plan.
+// `compareAtHalala` is a comparison/reference price and must never replace the
+// configured sell price when calculating a subscription charge.
 function resolvePlanBasePriceHalala(mealOption = {}) {
-  return Math.max(
-    normalizeHalala(mealOption && mealOption.priceHalala),
-    normalizeHalala(mealOption && mealOption.compareAtHalala)
-  );
+  return normalizeHalala(mealOption && mealOption.priceHalala);
 }
 
 function normalizeVatPercentage(value, fallback = DEFAULT_VAT_PERCENTAGE) {
