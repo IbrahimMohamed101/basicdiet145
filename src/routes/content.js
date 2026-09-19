@@ -26,4 +26,6 @@ const router = Router();
  */
 router.get("/terms/subscription", asyncHandler(contentController.getSubscriptionTerms));
 
+router.get("/app-ad", asyncHandler(contentController.getAppAd));
+
 module.exports = router;
