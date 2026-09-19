@@ -241,6 +241,7 @@ router.post("/uploads/image", adminImageUploadMiddleware, asyncHandler(uploadCon
 router.get("/content/terms/subscription", asyncHandler(contentController.getSubscriptionTermsAdmin));
 router.put("/content/terms/subscription", asyncHandler(contentController.upsertSubscriptionTermsAdmin));
 router.get("/content/app-ad", asyncHandler(contentController.getAppAdAdmin));
+router.put("/content/app-version", asyncHandler(contentController.upsertAppVersionAdmin));
 router.put("/content/app-ad", asyncHandler(contentController.upsertAppAdAdmin));
 router.patch("/content/app-ad/toggle", asyncHandler(contentController.toggleAppAdAdmin));
 
