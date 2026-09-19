@@ -44,6 +44,7 @@ const { createApp } = require("./app");
 // subscription services or alter existing Flutter routes.
 require("./services/installSubscriptionStackingRemoteReadinessRoute");
 const { connectDb } = require("./db");
+const { normalizeBasicDiet26Day150gPricing } = require("./migrations/normalizeBasicDiet26Day150gPricing");
 const mongoose = require("mongoose");
 const { startJobs } = require("./jobs");
 const { validateEnv } = require("./utils/validateEnv");
@@ -95,6 +96,17 @@ logger.info("[startup] Starting database connection");
 connectDb()
   .then(async () => {
     logger.info("[startup] MongoDB connected");
+
+    try {
+      const pricingMigration = await normalizeBasicDiet26Day150gPricing();
+      logger.info("[startup] 26-day 150g pricing normalization", pricingMigration);
+    } catch (migrationError) {
+      logger.error("[startup] 26-day 150g pricing normalization failed", {
+        error: migrationError.message,
+        stack: migrationError.stack,
+      });
+      throw migrationError;
+    }
 
     logger.info("[startup] Starting background jobs");
     startJobs();
