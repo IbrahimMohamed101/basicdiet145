@@ -51,10 +51,10 @@ async function main() {
 
     const subscription = matches[0];
     const currentStart = ksaDate(subscription.startDate);
-    if (currentStart !== EXPECTED_CURRENT_START) {
+    if (currentStart !== EXPECTED_CURRENT_START && currentStart !== TARGET_START) {
       console.log(JSON.stringify({
         action: "noop",
-        reason: "current_start_is_not_expected_shifted_date",
+        reason: "current_start_is_not_expected_shifted_or_target_date",
         displayId: DISPLAY_ID,
         currentStart,
       }));
@@ -73,34 +73,36 @@ async function main() {
     const newEnd = shiftedDate(subscription.endDate);
     const newValidityEnd = shiftedDate(subscription.validityEndDate || subscription.endDate);
 
-    const nextSnapshot = clone(currentSnapshot) || {};
-    nextSnapshot.start = {
-      ...snapshotStart,
-      requestedStartDate: TARGET_START,
-      resolvedStartDate: newStart.toISOString(),
-      defaultedToTomorrow: false,
-      timezone: snapshotStart.timezone || "Asia/Riyadh",
-    };
+    if (currentStart === EXPECTED_CURRENT_START) {
+      const nextSnapshot = clone(currentSnapshot) || {};
+      nextSnapshot.start = {
+        ...snapshotStart,
+        requestedStartDate: TARGET_START,
+        resolvedStartDate: newStart.toISOString(),
+        defaultedToTomorrow: false,
+        timezone: snapshotStart.timezone || "Asia/Riyadh",
+      };
 
-    const nextContractHash = buildContractHash({
-      contractSnapshot: nextSnapshot,
-    });
+      const nextContractHash = buildContractHash({
+        contractSnapshot: nextSnapshot,
+      });
 
-    const subscriptionUpdate = await Subscription.updateOne(
-      { _id: subscription._id, startDate: subscription.startDate },
-      {
-        $set: {
-          startDate: newStart,
-          endDate: newEnd,
-          validityEndDate: newValidityEnd,
-          contractSnapshot: nextSnapshot,
-          contractHash: nextContractHash,
-        },
+      const subscriptionUpdate = await Subscription.updateOne(
+        { _id: subscription._id, startDate: subscription.startDate },
+        {
+          $set: {
+            startDate: newStart,
+            endDate: newEnd,
+            validityEndDate: newValidityEnd,
+            contractSnapshot: nextSnapshot,
+            contractHash: nextContractHash,
+          },
+        }
+      );
+
+      if (subscriptionUpdate.matchedCount !== 1) {
+        throw new Error("Subscription changed before repair could be applied");
       }
-    );
-
-    if (subscriptionUpdate.matchedCount !== 1) {
-      throw new Error("Subscription changed before repair could be applied");
     }
 
     const batches = await SubscriptionEntitlementBatch.find({
