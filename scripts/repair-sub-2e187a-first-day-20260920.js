@@ -69,17 +69,6 @@ async function main() {
       ? ksaDate(snapshotStart.requestedStartDate)
       : null;
 
-    if (requestedStart && requestedStart !== TARGET_START) {
-      console.log(JSON.stringify({
-        action: "noop",
-        reason: "contract_requested_start_does_not_match_target",
-        displayId: DISPLAY_ID,
-        currentStart,
-        requestedStart,
-      }));
-      return;
-    }
-
     const newStart = new Date(`${TARGET_START}T00:00:00+03:00`);
     const newEnd = shiftedDate(subscription.endDate);
     const newValidityEnd = shiftedDate(subscription.validityEndDate || subscription.endDate);
@@ -90,7 +79,7 @@ async function main() {
         const nextSnapshot = clone(currentSnapshot) || {};
         nextSnapshot.start = {
           ...snapshotStart,
-          requestedStartDate: requestedStart || TARGET_START,
+          requestedStartDate: TARGET_START,
           resolvedStartDate: newStart.toISOString(),
           defaultedToTomorrow: false,
           timezone: snapshotStart.timezone || "Asia/Riyadh",
