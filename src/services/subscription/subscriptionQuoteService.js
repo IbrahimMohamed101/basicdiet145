@@ -835,6 +835,7 @@ function resolveFirstServiceDate({
   currentBusinessDate,
   rootDeliveryType,
   firstDayPickupOverride,
+  allowSameDayDeliveryStart = false,
 } = {}) {
   const requestedDate = requestedStartDate
     ? dateUtils.toKSADateString(requestedStartDate)
@@ -842,13 +843,15 @@ function resolveFirstServiceDate({
   const rootType = rootDeliveryType === "pickup" ? "pickup" : "delivery";
   const override = normalizeFirstDayOverride(firstDayPickupOverride);
   const isSameDay = requestedDate === currentBusinessDate;
-  const sameDayDeliveryAllowed = false;
+  const sameDayDeliveryAllowed = rootType === "delivery" && isSameDay
+    ? Boolean(allowSameDayDeliveryStart)
+    : false;
   const firstDayPickupOverrideAvailable = rootType === "delivery" && isSameDay;
   const deliveryStartDateIfNoPickup = rootType === "delivery" && isSameDay
     ? dateUtils.addDaysToKSADateString(currentBusinessDate, 1)
     : requestedDate;
 
-  if (rootType === "delivery" && isSameDay && !override) {
+  if (rootType === "delivery" && isSameDay && !override && !allowSameDayDeliveryStart) {
     return {
       requestedDate,
       resolvedDate: deliveryStartDateIfNoPickup,
@@ -872,7 +875,10 @@ function resolveFirstServiceDate({
       sameDayPickupAllowed: rootType === "pickup" || firstDayPickupOverrideAvailable,
       firstDayPickupOverrideAvailable,
       deliveryStartDateIfNoPickup,
-      reason: rootType === "delivery" && isSameDay ? "SAME_DAY_DELIVERY_NOT_AVAILABLE" : null,
+      reason:
+        rootType === "delivery" && isSameDay && !allowSameDayDeliveryStart
+          ? "SAME_DAY_DELIVERY_NOT_AVAILABLE"
+          : null,
     },
   };
 }
@@ -885,6 +891,7 @@ async function resolveCheckoutQuoteOrThrow(
     allowMissingDeliveryAddress = false,
     userId = null,
     useDashboardDisplayedPlanPrice = false,
+    allowSameDayDeliveryStart = false,
   } = {}
 ) {
   const planId = payload && payload.planId;
@@ -928,6 +935,7 @@ async function resolveCheckoutQuoteOrThrow(
     currentBusinessDate,
     rootDeliveryType: delivery.type,
     firstDayPickupOverride: delivery.firstDayFulfillmentOverride,
+    allowSameDayDeliveryStart,
   });
   const resolvedStartDate = toKsaMidnightDate(serviceDate.resolvedDate);
 
