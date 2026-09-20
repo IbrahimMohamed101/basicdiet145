@@ -132,10 +132,18 @@ async function main() {
       await batch.save();
     }
 
-    // SubscriptionDay rows are intentionally not rewritten here because they
-    // have a unique (subscriptionId, date) index and this production database
-    // does not support transactions. The deduction validity authority is the
-    // subscription/batch date range fixed above.
+    // Shift materialized subscription days by one day. Process newest
+    // dates first so the unique (subscriptionId, date) index cannot collide
+    // while moving the range backward by one day.
+    const days = await SubscriptionDay.find({
+      subscriptionId: subscription._id,
+      date: { $gte: EXPECTED_CURRENT_START },
+    }).sort({ date: -1 });
+
+    for (const day of days) {
+      day.date = shiftedKsaDate(day.date);
+      await day.save();
+    }
 
     const repaired = await Subscription.findById(subscription._id)
       .select("_id startDate endDate validityEndDate contractSnapshot contractHash")
