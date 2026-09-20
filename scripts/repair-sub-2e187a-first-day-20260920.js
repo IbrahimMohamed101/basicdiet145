@@ -73,100 +73,69 @@ async function main() {
     const newEnd = shiftedDate(subscription.endDate);
     const newValidityEnd = shiftedDate(subscription.validityEndDate || subscription.endDate);
 
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        const nextSnapshot = clone(currentSnapshot) || {};
-        nextSnapshot.start = {
-          ...snapshotStart,
-          requestedStartDate: TARGET_START,
-          resolvedStartDate: newStart.toISOString(),
-          defaultedToTomorrow: false,
-          timezone: snapshotStart.timezone || "Asia/Riyadh",
-        };
+    const nextSnapshot = clone(currentSnapshot) || {};
+    nextSnapshot.start = {
+      ...snapshotStart,
+      requestedStartDate: TARGET_START,
+      resolvedStartDate: newStart.toISOString(),
+      defaultedToTomorrow: false,
+      timezone: snapshotStart.timezone || "Asia/Riyadh",
+    };
 
-        const nextContractHash = buildContractHash({
+    const nextContractHash = buildContractHash({
+      contractSnapshot: nextSnapshot,
+    });
+
+    const subscriptionUpdate = await Subscription.updateOne(
+      { _id: subscription._id, startDate: subscription.startDate },
+      {
+        $set: {
+          startDate: newStart,
+          endDate: newEnd,
+          validityEndDate: newValidityEnd,
           contractSnapshot: nextSnapshot,
-        });
+          contractHash: nextContractHash,
+        },
+      }
+    );
 
-        await Subscription.updateOne(
-          { _id: subscription._id, startDate: subscription.startDate },
-          {
-            $set: {
-              startDate: newStart,
-              endDate: newEnd,
-              validityEndDate: newValidityEnd,
-              contractSnapshot: nextSnapshot,
-              contractHash: nextContractHash,
-            },
-          },
-          { session }
-        );
-
-        const batches = await SubscriptionEntitlementBatch.find({
-          containerSubscriptionId: subscription._id,
-        }).session(session);
-
-        for (const batch of batches) {
-          const effectiveStart = ksaDate(batch.effectiveStartDate);
-          const requestedBatchStart = ksaDate(batch.requestedStartDate);
-          if (effectiveStart !== EXPECTED_CURRENT_START && requestedBatchStart !== EXPECTED_CURRENT_START) {
-            continue;
-          }
-
-          const patch = {
-            requestedStartDate: shiftedDate(batch.requestedStartDate),
-            effectiveStartDate: shiftedDate(batch.effectiveStartDate),
-            endDate: shiftedDate(batch.endDate),
-            validityEndDate: shiftedDate(batch.validityEndDate),
-          };
-          if (batch.baseValidityEndDate) {
-            patch.baseValidityEndDate = shiftedDate(batch.baseValidityEndDate);
-          }
-
-          const batchSnapshot = clone(batch.contractSnapshot);
-          if (batchSnapshot && batchSnapshot.start && batchSnapshot.start.resolvedStartDate) {
-            batchSnapshot.start.resolvedStartDate =
-              shiftedDate(batchSnapshot.start.resolvedStartDate).toISOString();
-            patch.contractSnapshot = batchSnapshot;
-          }
-
-          Object.assign(batch, patch);
-          await batch.save({ session });
-        }
-
-        const days = await SubscriptionDay.find({
-          subscriptionId: subscription._id,
-          date: { $gte: EXPECTED_CURRENT_START },
-        }).session(session).sort({ date: 1 });
-
-        if (days.length && days[0].date === EXPECTED_CURRENT_START) {
-          const existingTarget = await SubscriptionDay.findOne({
-            subscriptionId: subscription._id,
-            date: TARGET_START,
-          }).session(session);
-          if (existingTarget) {
-            throw new Error("A target SubscriptionDay already exists on 2026-09-20");
-          }
-          for (const day of days) {
-            day.date = shiftedKsaDate(day.date);
-            await day.save({ session });
-          }
-        }
-
-        const pickupRequests = await SubscriptionPickupRequest.find({
-          subscriptionId: subscription._id,
-          date: { $gte: EXPECTED_CURRENT_START },
-        }).session(session).sort({ date: 1 });
-
-        for (const request of pickupRequests) {
-          request.date = shiftedKsaDate(request.date);
-          await request.save({ session });
-        }
-      });
-    } finally {
-      await session.endSession();
+    if (subscriptionUpdate.matchedCount !== 1) {
+      throw new Error("Subscription changed before repair could be applied");
     }
+
+    const batches = await SubscriptionEntitlementBatch.find({
+      containerSubscriptionId: subscription._id,
+    });
+
+    for (const batch of batches) {
+      const effectiveStart = ksaDate(batch.effectiveStartDate);
+      const requestedBatchStart = ksaDate(batch.requestedStartDate);
+      if (effectiveStart !== EXPECTED_CURRENT_START && requestedBatchStart !== EXPECTED_CURRENT_START) {
+        continue;
+      }
+
+      batch.requestedStartDate = shiftedDate(batch.requestedStartDate);
+      batch.effectiveStartDate = shiftedDate(batch.effectiveStartDate);
+      batch.endDate = shiftedDate(batch.endDate);
+      batch.validityEndDate = shiftedDate(batch.validityEndDate);
+      if (batch.baseValidityEndDate) {
+        batch.baseValidityEndDate = shiftedDate(batch.baseValidityEndDate);
+      }
+
+      const batchSnapshot = clone(batch.contractSnapshot);
+      if (batchSnapshot && batchSnapshot.start && batchSnapshot.start.resolvedStartDate) {
+        batchSnapshot.start.resolvedStartDate =
+          shiftedDate(batchSnapshot.start.resolvedStartDate).toISOString();
+        batch.contractSnapshot = batchSnapshot;
+      }
+
+      await batch.save();
+    }
+
+    // SubscriptionDay rows are intentionally not rewritten here because they
+    // have a unique (subscriptionId, date) index and this production database
+    // does not support transactions. The deduction validity authority is the
+    // subscription/batch date range fixed above.
 
     const repaired = await Subscription.findById(subscription._id)
       .select("_id startDate endDate validityEndDate contractSnapshot contractHash")
