@@ -66,7 +66,7 @@ async function main() {
       ? currentSnapshot.start
       : {};
     const requestedStart = snapshotStart.requestedStartDate
-      ? String(snapshotStart.requestedStartDate).slice(0, 10)
+      ? ksaDate(snapshotStart.requestedStartDate)
       : null;
 
     if (requestedStart && requestedStart !== TARGET_START) {
