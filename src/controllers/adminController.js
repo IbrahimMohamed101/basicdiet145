@@ -2012,6 +2012,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       enforceActivePlan: true,
       lang,
       useDashboardDisplayedPlanPrice: true,
+      allowSameDayDeliveryStart: true,
       useGenericPremiumWallet:
         isPhase1CanonicalAdminCreateEnabled()
         && isPhase2GenericPremiumWalletEnabled(),
@@ -2245,6 +2246,7 @@ async function quoteSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, e
       userId,
       allowMissingDeliveryAddress: true,
       useDashboardDisplayedPlanPrice: true,
+      allowSameDayDeliveryStart: true,
       useGenericPremiumWallet:
         isPhase1CanonicalAdminCreateEnabled()
         && isPhase2GenericPremiumWalletEnabled(),
