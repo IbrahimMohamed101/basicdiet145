@@ -134,17 +134,41 @@ async function main() {
       await batch.save();
     }
 
-    // Shift materialized subscription days by one day. Process newest
-    // dates first so the unique (subscriptionId, date) index cannot collide
-    // while moving the range backward by one day.
+    // The subscription-day collection has a unique (subscriptionId, date)
+    // index. Move the existing range to temporary unique dates first, then
+    // write the final range one day earlier.
     const days = await SubscriptionDay.find({
       subscriptionId: subscription._id,
       date: { $gte: EXPECTED_CURRENT_START },
-    }).sort({ date: -1 });
+    }).sort({ date: 1 });
 
-    for (const day of days) {
-      day.date = shiftedKsaDate(day.date);
-      await day.save();
+    if (days.length && days[0].date === EXPECTED_CURRENT_START) {
+      const temporaryPrefix = "2099-12-";
+      const temporaryById = new Map();
+
+      for (let index = 0; index < days.length; index += 1) {
+        const day = days[index];
+        const tempDate = `${temporaryPrefix}${String(index + 1).padStart(2, "0")}`;
+        day.date = tempDate;
+        await day.save();
+        temporaryById.set(String(day._id), index);
+      }
+
+      const movedDays = await SubscriptionDay.find({
+        subscriptionId: subscription._id,
+        date: { $regex: "^2099-12-" },
+      }).sort({ date: 1 });
+
+      for (const day of movedDays) {
+        const index = temporaryById.get(String(day._id));
+        if (index === undefined) continue;
+        const finalDate = dateUtils.addDaysToKSADateString(
+          TARGET_START,
+          index
+        );
+        day.date = finalDate;
+        await day.save();
+      }
     }
 
     const repaired = await Subscription.findById(subscription._id)
