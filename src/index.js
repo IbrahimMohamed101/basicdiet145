@@ -46,6 +46,7 @@ require("./services/installSubscriptionStackingRemoteReadinessRoute");
 const { connectDb } = require("./db");
 const { normalizeBasicDiet26Day150gPricing } = require("./migrations/normalizeBasicDiet26Day150gPricing");
 const { ensureKs30Promo } = require("./migrations/ensureKs30Promo");
+const { ensureKsa96Promo } = require("./migrations/ensureKsa96Promo");
 const { seedAppAd } = require("./migrations/seedAppAd");
 const mongoose = require("mongoose");
 const { startJobs } = require("./jobs");
@@ -105,6 +106,9 @@ connectDb()
 
       const ks30PromoMigration = await ensureKs30Promo();
       logger.info("[startup] KS30 promo normalization", ks30PromoMigration);
+
+      const ksa96PromoMigration = await ensureKsa96Promo();
+      logger.info("[startup] KSA96 promo normalization", ksa96PromoMigration);
 
       const appAdMigration = await seedAppAd();
       logger.info("[startup] app ad seed", appAdMigration);
