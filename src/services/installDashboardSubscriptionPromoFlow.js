@@ -42,13 +42,37 @@ function buildEligibilityQuote(contract) {
     ? contract.contractSnapshot
     : {};
   const plan = snapshot.plan && typeof snapshot.plan === "object" ? snapshot.plan : {};
+  const derived = contract && contract.derivedFields && typeof contract.derivedFields === "object"
+    ? contract.derivedFields
+    : {};
+  const resolvedQuote = contract && contract.resolvedQuote && typeof contract.resolvedQuote === "object"
+    ? contract.resolvedQuote
+    : {};
+  const resolvedPlan = resolvedQuote.plan && typeof resolvedQuote.plan === "object"
+    ? resolvedQuote.plan
+    : {};
   const pricing = snapshot.pricing && typeof snapshot.pricing === "object" ? snapshot.pricing : {};
+
+  const daysCount = Number(
+    plan.daysCount
+      || derived.daysCount
+      || resolvedPlan.daysCount
+      || 0
+  );
+  const mealsPerDay = Number(
+    plan.mealsPerDay
+      || plan.selectedMealsPerDay
+      || derived.mealsPerDay
+      || resolvedQuote.mealsPerDay
+      || 0
+  );
+
   return {
     plan: {
-      _id: plan.planId || null,
-      daysCount: Number(plan.daysCount || 0),
-      mealsPerDay: Number(plan.mealsPerDay || 0),
+      _id: plan.planId || resolvedPlan._id || null,
+      daysCount,
     },
+    mealsPerDay,
     breakdown: {
       basePlanPriceHalala: Number(pricing.basePlanPriceHalala || 0),
       premiumTotalHalala: Number(pricing.premiumTotalHalala || 0),
@@ -56,6 +80,28 @@ function buildEligibilityQuote(contract) {
       deliveryFeeHalala: Number(pricing.deliveryFeeHalala || 0),
     },
   };
+}
+
+function isKsa96Promo(promo) {
+  return Boolean(promo && String(promo.code || "").trim().toUpperCase() === "KSA96");
+}
+
+function assertDashboardKsa96Eligibility(contract) {
+  const quote = buildEligibilityQuote(contract);
+  const daysCount = Number(quote.plan.daysCount || 0);
+  const mealsPerDay = Number(quote.mealsPerDay || 0);
+
+  if (![26, 30].includes(daysCount) || ![1, 2, 3, 4, 5].includes(mealsPerDay)) {
+    const err = createPromoError("PROMO_NOT_ELIGIBLE");
+    err.details = {
+      promoCode: "KSA96",
+      daysCount,
+      mealsPerDay,
+    };
+    throw err;
+  }
+
+  return quote;
 }
 
 async function loadAndValidatePromo({ contract, userId, session }) {
@@ -72,12 +118,20 @@ async function loadAndValidatePromo({ contract, userId, session }) {
     throw createPromoError("PROMO_NOT_FOUND");
   }
 
-  await validatePromoEligibilityOrThrow({
-    promo,
-    userId,
-    quote: buildEligibilityQuote(contract),
-    session,
-  });
+  if (isKsa96Promo(promo)) {
+    // The dashboard create endpoint has already recomputed the final quote
+    // immediately before building the contract. For KSA96, reuse the exact
+    // contract dimensions instead of running a second generic eligibility
+    // projection that can lose mealsPerDay during stacking composition.
+    assertDashboardKsa96Eligibility(contract);
+  } else {
+    await validatePromoEligibilityOrThrow({
+      promo,
+      userId,
+      quote: buildEligibilityQuote(contract),
+      session,
+    });
+  }
 
   return { promo, appliedPromo };
 }
