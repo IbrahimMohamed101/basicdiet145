@@ -44,7 +44,7 @@ const { createApp } = require("./app");
 // subscription services or alter existing Flutter routes.
 require("./services/installSubscriptionStackingRemoteReadinessRoute");
 const { connectDb } = require("./db");
-const { normalizeBasicDiet26Day150gPricing } = require("./migrations/normalizeBasicDiet26Day150gPricing");
+const { normalizeCommercialSubscriptionPricing } = require("./migrations/normalizeCommercialSubscriptionPricing");
 const { ensureKs30Promo } = require("./migrations/ensureKs30Promo");
 const { ensureKsa96Promo } = require("./migrations/ensureKsa96Promo");
 const { seedAppAd } = require("./migrations/seedAppAd");
@@ -101,8 +101,8 @@ connectDb()
     logger.info("[startup] MongoDB connected");
 
     try {
-      const pricingMigration = await normalizeBasicDiet26Day150gPricing();
-      logger.info("[startup] 26-day 150g pricing normalization", pricingMigration);
+      const pricingMigration = await normalizeCommercialSubscriptionPricing();
+      logger.info("[startup] commercial subscription pricing normalization", pricingMigration);
 
       const ks30PromoMigration = await ensureKs30Promo();
       logger.info("[startup] KS30 promo normalization", ks30PromoMigration);
@@ -113,7 +113,7 @@ connectDb()
       const appAdMigration = await seedAppAd();
       logger.info("[startup] app ad seed", appAdMigration);
     } catch (migrationError) {
-      logger.error("[startup] 26-day 150g pricing normalization failed", {
+      logger.error("[startup] commercial subscription pricing normalization failed", {
         error: migrationError.message,
         stack: migrationError.stack,
       });
