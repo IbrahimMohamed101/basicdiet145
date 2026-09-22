@@ -14,20 +14,39 @@ const TARGET_PRICES_HALALA = new Map([
 ]);
 
 async function findTargetPlan() {
-  const byId = await Plan.findById(TARGET_PLAN_ID);
-  if (byId) return byId;
-
-  return Plan.findOne({
+  // Canonical commercial identity wins over any historical ObjectId.
+  const canonical = await Plan.findOne({
     key: TARGET_PLAN_KEY,
     daysCount: TARGET_DAYS,
   });
+  if (canonical) return canonical;
+
+  // Legacy fallback is only valid when it is actually the 26-day plan.
+  const historical = await Plan.findById(TARGET_PLAN_ID);
+  if (historical && Number(historical.daysCount) === TARGET_DAYS) {
+    return historical;
+  }
+
+  return null;
 }
 
 async function normalizeBasicDiet26Day150gPricing() {
-  // Prefer the historical plan id, but fall back to the canonical commercial
-  // key so the migration repairs production even if the plan id was recreated.
-  const plan = await findTargetPlan();
-  if (!plan) {
+  const plans = await Plan.find({
+    $or: [
+      { key: TARGET_PLAN_KEY, daysCount: TARGET_DAYS },
+      { _id: TARGET_PLAN_ID },
+    ],
+  });
+
+  const targetPlans = plans.filter((plan) => (
+    Number(plan.daysCount) === TARGET_DAYS
+    && (
+      plan.key === TARGET_PLAN_KEY
+      || String(plan._id) === TARGET_PLAN_ID
+    )
+  ));
+
+  if (targetPlans.length === 0) {
     return {
       status: "skipped",
       reason: "plan_not_found",
@@ -36,76 +55,64 @@ async function normalizeBasicDiet26Day150gPricing() {
     };
   }
 
-  if (Number(plan.daysCount) !== TARGET_DAYS) {
-    return {
-      status: "skipped",
-      reason: "unexpected_days_count",
-      planId: String(plan._id),
-      planKey: plan.key || TARGET_PLAN_KEY,
-      daysCount: plan.daysCount,
-    };
-  }
-
-  const gramsOption = (plan.gramsOptions || []).find(
-    (option) => Number(option.grams) === TARGET_GRAMS
-  );
-
-  if (!gramsOption) {
-    return {
-      status: "skipped",
-      reason: "150g_option_not_found",
-      planId: String(plan._id),
-      planKey: plan.key || TARGET_PLAN_KEY,
-    };
-  }
-
   let changed = false;
-  const repairedMeals = [];
+  const repairedPlans = [];
 
-  for (const mealOption of gramsOption.mealsOptions || []) {
-    const mealsPerDay = Number(mealOption.mealsPerDay);
-    const targetPrice = TARGET_PRICES_HALALA.get(mealsPerDay);
+  for (const plan of targetPlans) {
+    const gramsOption = (plan.gramsOptions || []).find(
+      (option) => Number(option.grams) === TARGET_GRAMS
+    );
 
-    if (targetPrice === undefined) continue;
-
-    const currentPrice = Number(mealOption.priceHalala);
-    const currentCompareAt = Number(mealOption.compareAtHalala || 0);
-
-    if (currentPrice !== targetPrice || currentCompareAt !== 0) {
-      mealOption.priceHalala = targetPrice;
-      mealOption.compareAtHalala = 0;
-      changed = true;
-      repairedMeals.push({
-        mealsPerDay,
-        fromHalala: Number.isFinite(currentPrice) ? currentPrice : null,
-        toHalala: targetPrice,
+    if (!gramsOption) {
+      repairedPlans.push({
+        planId: String(plan._id),
+        planKey: plan.key || TARGET_PLAN_KEY,
+        status: "150g_option_not_found",
       });
+      continue;
     }
-  }
 
-  if (!changed) {
-    return {
-      status: "already_normalized",
+    const repairedMeals = [];
+
+    for (const mealOption of gramsOption.mealsOptions || []) {
+      const mealsPerDay = Number(mealOption.mealsPerDay);
+      const targetPrice = TARGET_PRICES_HALALA.get(mealsPerDay);
+      if (targetPrice === undefined) continue;
+
+      const currentPrice = Number(mealOption.priceHalala);
+      const currentCompareAt = Number(mealOption.compareAtHalala || 0);
+
+      if (currentPrice !== targetPrice || currentCompareAt !== 0) {
+        mealOption.priceHalala = targetPrice;
+        mealOption.compareAtHalala = 0;
+        changed = true;
+        repairedMeals.push({
+          mealsPerDay,
+          fromHalala: Number.isFinite(currentPrice) ? currentPrice : null,
+          toHalala: targetPrice,
+        });
+      }
+    }
+
+    if (repairedMeals.length > 0) {
+      await plan.save();
+    }
+
+    repairedPlans.push({
       planId: String(plan._id),
       planKey: plan.key || TARGET_PLAN_KEY,
+      status: repairedMeals.length > 0 ? "updated" : "already_normalized",
       grams: TARGET_GRAMS,
-      pricesSar: Object.fromEntries(
-        Array.from(TARGET_PRICES_HALALA.entries()).map(([meals, halala]) => [
-          meals,
-          halala / 100,
-        ])
-      ),
-    };
+      repairedMeals,
+    });
   }
-
-  await plan.save();
 
   return {
-    status: "updated",
-    planId: String(plan._id),
-    planKey: plan.key || TARGET_PLAN_KEY,
+    status: changed ? "updated" : "already_normalized",
+    planId: repairedPlans[0]?.planId || null,
+    planKey: TARGET_PLAN_KEY,
     grams: TARGET_GRAMS,
-    repairedMeals,
+    repairedPlans,
     pricesSar: Object.fromEntries(
       Array.from(TARGET_PRICES_HALALA.entries()).map(([meals, halala]) => [
         meals,
