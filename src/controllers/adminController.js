@@ -1747,6 +1747,14 @@ function serializeDashboardQuote(quote, lang) {
       currency: item.currency || "SAR",
     })),
     breakdown: quote.breakdown,
+    ...(quote.promoCode
+      ? {
+        // Keep the promo result explicit in the dashboard quote response so
+        // the creation form can confirm application and render the discount.
+        promoCode: quote.promoCode,
+        appliedPromo: quote.promoCode,
+      }
+      : {}),
     pricingSummary: buildMoneySummary({
       basePlanPriceHalala: quote.breakdown.basePlanPriceHalala,
       basePlanGrossHalala: quote.breakdown.basePlanGrossHalala,
