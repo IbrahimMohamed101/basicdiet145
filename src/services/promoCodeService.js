@@ -191,39 +191,40 @@ async function validatePromoEligibilityOrThrow({
     Number(breakdown.addonsTotalHalala || 0) +
     Number(breakdown.deliveryFeeHalala || 0);
 
-  if (promo.minimumSubscriptionAmountHalala !== null
-      && promo.minimumSubscriptionAmountHalala !== undefined
-      && rawSubtotal < Number(promo.minimumSubscriptionAmountHalala || 0)) {
-    throw createPromoError("PROMO_MINIMUM_NOT_MET");
-  }
+  const isKsa96 = normalizePromoCodeInput(promo.code) === KSA96_CODE;
 
-  if (Array.isArray(promo.eligiblePlanIds) && promo.eligiblePlanIds.length > 0) {
-    const isPlanEligible = promo.eligiblePlanIds.some(
-      (planId) => String(planId) === String(quote.plan && quote.plan._id ? quote.plan._id : quote.planId || "")
-    );
-    if (!isPlanEligible) {
-      throw createPromoError("PROMO_NOT_ELIGIBLE");
-    }
-  }
-
-  if (Array.isArray(promo.eligiblePlanDaysCounts) && promo.eligiblePlanDaysCounts.length > 0) {
-    const daysCount = Number(quote.plan && quote.plan.daysCount ? quote.plan.daysCount : 0);
-    if (!promo.eligiblePlanDaysCounts.some((value) => Number(value) === daysCount)) {
-      throw createPromoError("PROMO_NOT_ELIGIBLE");
-    }
-  }
-
-  // KSA96 is valid only for 26-day and 30-day subscriptions.
-  // All supported meal counts are eligible, including exactly 1 meal/day.
-  // Keep this rule explicit so stale database plan-id restrictions cannot
-  // accidentally narrow the commercial KSA96 eligibility.
-  if (normalizePromoCodeInput(promo.code) === KSA96_CODE) {
+  // KSA96 has its own commercial eligibility rule. Do not allow stale
+  // database restrictions such as minimum amount or specific plan ids to
+  // narrow this offer.
+  if (isKsa96) {
     const daysCount = Number(quote && quote.plan && quote.plan.daysCount || 0);
     const mealsPerDay = Number(quote && quote.mealsPerDay || 0);
     const supportedMealCounts = [1, 2, 3, 4, 5];
 
     if (!([26, 30].includes(daysCount) && supportedMealCounts.includes(mealsPerDay))) {
       throw createPromoError("PROMO_NOT_ELIGIBLE");
+    }
+  } else {
+    if (promo.minimumSubscriptionAmountHalala !== null
+        && promo.minimumSubscriptionAmountHalala !== undefined
+        && rawSubtotal < Number(promo.minimumSubscriptionAmountHalala || 0)) {
+      throw createPromoError("PROMO_MINIMUM_NOT_MET");
+    }
+
+    if (Array.isArray(promo.eligiblePlanIds) && promo.eligiblePlanIds.length > 0) {
+      const isPlanEligible = promo.eligiblePlanIds.some(
+        (planId) => String(planId) === String(quote.plan && quote.plan._id ? quote.plan._id : quote.planId || "")
+      );
+      if (!isPlanEligible) {
+        throw createPromoError("PROMO_NOT_ELIGIBLE");
+      }
+    }
+
+    if (Array.isArray(promo.eligiblePlanDaysCounts) && promo.eligiblePlanDaysCounts.length > 0) {
+      const daysCount = Number(quote.plan && quote.plan.daysCount ? quote.plan.daysCount : 0);
+      if (!promo.eligiblePlanDaysCounts.some((value) => Number(value) === daysCount)) {
+        throw createPromoError("PROMO_NOT_ELIGIBLE");
+      }
     }
   }
 
