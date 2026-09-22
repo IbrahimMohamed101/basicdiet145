@@ -213,12 +213,16 @@ async function validatePromoEligibilityOrThrow({
     }
   }
 
-  // KSA96 is valid only for the 26-day and 30-day subscription plans.
-  // There is intentionally no meals-per-day restriction: 1, 2, 3, 4, or 5
-  // meals/day are all eligible on those two plans.
+  // KSA96 is valid only for 26-day and 30-day subscriptions.
+  // All supported meal counts are eligible, including exactly 1 meal/day.
+  // Keep this rule explicit so stale database plan-id restrictions cannot
+  // accidentally narrow the commercial KSA96 eligibility.
   if (normalizePromoCodeInput(promo.code) === KSA96_CODE) {
     const daysCount = Number(quote && quote.plan && quote.plan.daysCount || 0);
-    if (![26, 30].includes(daysCount)) {
+    const mealsPerDay = Number(quote && quote.mealsPerDay || 0);
+    const supportedMealCounts = [1, 2, 3, 4, 5];
+
+    if (!([26, 30].includes(daysCount) && supportedMealCounts.includes(mealsPerDay))) {
       throw createPromoError("PROMO_NOT_ELIGIBLE");
     }
   }
