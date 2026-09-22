@@ -132,7 +132,7 @@
     "validate:staging": "node scripts/validate-staging.js",
     "validate:data": "node scripts/validate-data-integrity.js",
     "clear:menu": "node scripts/clear-menu-catalog.js",
-    "test:dashboard-subscription-price-authority": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardSubscriptionPriceAuthority.test.js"
+    "test:dashboard-subscription-price-authority": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardSubscriptionPriceAuthority.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/commercialSubscriptionPricingNormalization.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
