@@ -14,12 +14,10 @@ async function run() {
 
   await mongoose.connect(MONGO_URI);
 
-  const existing = await PromoCode.findOne({
-    $or: [
-      { codeNormalized: "BESKDIET30" },
-      { codeNormalized: "KSA96" },
-    ],
-  });
+  let existing = await PromoCode.findOne({ codeNormalized: "KSA96" });
+  if (!existing) {
+    existing = await PromoCode.findOne({ codeNormalized: "BESKDIET30" });
+  }
 
   if (!existing) {
     const created = await PromoCode.create({
