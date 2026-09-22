@@ -3,50 +3,72 @@ const Plan = require("../models/Plan");
 const TARGET_PLAN_ID = "6a621995f4f8d0974cebc472";
 const TARGET_PLAN_KEY = "subscription_26_days";
 const TARGET_DAYS = 26;
-const TARGET_GRAMS = 150;
 
-const TARGET_PRICES_HALALA = new Map([
-  [1, 65900],
-  [2, 118600],
-  [3, 173200],
-  [4, 230900],
-  [5, 288600],
-]);
+const TARGET_PRICES_HALALA = {
+  100: [51600, 93500, 135500, 180600, 225700],
+  150: [65900, 118600, 173200, 230900, 288600],
+  200: [75000, 142100, 201200, 268300, 335400],
+};
+
+function findTargetPlanInMemory(plans) {
+  return (
+    plans.find((plan) => String(plan._id) === TARGET_PLAN_ID && Number(plan.daysCount) === TARGET_DAYS)
+    || plans.find((plan) => plan.key === TARGET_PLAN_KEY && Number(plan.daysCount) === TARGET_DAYS)
+    || null
+  );
+}
 
 async function findTargetPlan() {
-  // Canonical commercial identity wins over any historical ObjectId.
-  const canonical = await Plan.findOne({
+  const historical = await Plan.findOne({
+    _id: TARGET_PLAN_ID,
+    daysCount: TARGET_DAYS,
+  });
+
+  if (historical) return historical;
+
+  return Plan.findOne({
     key: TARGET_PLAN_KEY,
     daysCount: TARGET_DAYS,
   });
-  if (canonical) return canonical;
+}
 
-  // Legacy fallback is only valid when it is actually the 26-day plan.
-  const historical = await Plan.findById(TARGET_PLAN_ID);
-  if (historical && Number(historical.daysCount) === TARGET_DAYS) {
-    return historical;
-  }
+function buildPriceRows(grams, gramsOption) {
+  const targetPrices = TARGET_PRICES_HALALA[grams];
+  if (!targetPrices || !gramsOption) return [];
 
-  return null;
+  const existingByMeals = new Map(
+    (Array.isArray(gramsOption.mealsOptions) ? gramsOption.mealsOptions : [])
+      .map((mealOption) => [Number(mealOption.mealsPerDay), mealOption])
+  );
+
+  return targetPrices.map((priceHalala, index) => {
+    const mealsPerDay = index + 1;
+    const current = existingByMeals.get(mealsPerDay);
+
+    return {
+      ...(current ? current.toObject ? current.toObject() : current : {}),
+      mealsPerDay,
+      priceHalala,
+      compareAtHalala: 0,
+      isActive: current?.isActive === undefined ? true : Boolean(current.isActive),
+      sortOrder: current?.sortOrder === undefined ? index : Number(current.sortOrder),
+    };
+  });
 }
 
 async function normalizeBasicDiet26Day150gPricing() {
   const plans = await Plan.find({
+    daysCount: TARGET_DAYS,
+    isDeleted: { $ne: true },
     $or: [
-      { key: TARGET_PLAN_KEY, daysCount: TARGET_DAYS },
       { _id: TARGET_PLAN_ID },
+      { key: TARGET_PLAN_KEY },
     ],
   });
 
-  const targetPlans = plans.filter((plan) => (
-    Number(plan.daysCount) === TARGET_DAYS
-    && (
-      plan.key === TARGET_PLAN_KEY
-      || String(plan._id) === TARGET_PLAN_ID
-    )
-  ));
+  const targetPlan = findTargetPlanInMemory(plans);
 
-  if (targetPlans.length === 0) {
+  if (!targetPlan) {
     return {
       status: "skipped",
       reason: "plan_not_found",
@@ -55,70 +77,114 @@ async function normalizeBasicDiet26Day150gPricing() {
     };
   }
 
-  let changed = false;
-  const repairedPlans = [];
+  const targetId = String(targetPlan._id);
 
-  for (const plan of targetPlans) {
-    const gramsOption = (plan.gramsOptions || []).find(
-      (option) => Number(option.grams) === TARGET_GRAMS
-    );
+  // The historical/admin-edited plan is the source of truth for the
+  // 26-day commercial catalog. Remove the canonical key from any duplicate
+  // 26-day record before assigning it to the target so the dashboard picker
+  // cannot resolve the wrong price catalog.
+  await Plan.updateMany(
+    {
+      daysCount: TARGET_DAYS,
+      key: TARGET_PLAN_KEY,
+      _id: { $ne: targetPlan._id },
+    },
+    {
+      $unset: { key: "" },
+    }
+  );
+
+  const currentGramsOptions = Array.isArray(targetPlan.gramsOptions)
+    ? targetPlan.gramsOptions
+    : [];
+
+  let changed = false;
+  const repairedGrams = [];
+
+  for (const [gramsKey, targetPrices] of Object.entries(TARGET_PRICES_HALALA)) {
+    const grams = Number(gramsKey);
+    let gramsOption = currentGramsOptions.find((option) => Number(option.grams) === grams);
 
     if (!gramsOption) {
-      repairedPlans.push({
-        planId: String(plan._id),
-        planKey: plan.key || TARGET_PLAN_KEY,
-        status: "150g_option_not_found",
-      });
-      continue;
+      gramsOption = {
+        grams,
+        mealsOptions: [],
+        isActive: true,
+        sortOrder: currentGramsOptions.length,
+      };
+      currentGramsOptions.push(gramsOption);
+      changed = true;
     }
 
-    const repairedMeals = [];
+    const existingMealsByMeals = new Map(
+      (Array.isArray(gramsOption.mealsOptions) ? gramsOption.mealsOptions : [])
+        .map((mealOption) => [Number(mealOption.mealsPerDay), mealOption])
+    );
 
-    for (const mealOption of gramsOption.mealsOptions || []) {
-      const mealsPerDay = Number(mealOption.mealsPerDay);
-      const targetPrice = TARGET_PRICES_HALALA.get(mealsPerDay);
-      if (targetPrice === undefined) continue;
+    const nextMealsOptions = [...(Array.isArray(gramsOption.mealsOptions) ? gramsOption.mealsOptions : [])];
 
-      const currentPrice = Number(mealOption.priceHalala);
-      const currentCompareAt = Number(mealOption.compareAtHalala || 0);
+    targetPrices.forEach((priceHalala, index) => {
+      const mealsPerDay = index + 1;
+      const existing = existingMealsByMeals.get(mealsPerDay);
+      const existingPrice = Number(existing?.priceHalala);
+      const existingCompareAt = Number(existing?.compareAtHalala || 0);
 
-      if (currentPrice !== targetPrice || currentCompareAt !== 0) {
-        mealOption.priceHalala = targetPrice;
-        mealOption.compareAtHalala = 0;
-        changed = true;
-        repairedMeals.push({
+      if (!existing || existingPrice !== priceHalala || existingCompareAt !== 0) {
+        const row = {
+          ...(existing ? (existing.toObject ? existing.toObject() : existing) : {}),
           mealsPerDay,
-          fromHalala: Number.isFinite(currentPrice) ? currentPrice : null,
-          toHalala: targetPrice,
+          priceHalala,
+          compareAtHalala: 0,
+          isActive: existing?.isActive === undefined ? true : Boolean(existing.isActive),
+          sortOrder: existing?.sortOrder === undefined ? index : Number(existing.sortOrder),
+        };
+
+        const existingIndex = nextMealsOptions.findIndex(
+          (mealOption) => Number(mealOption.mealsPerDay) === mealsPerDay
+        );
+
+        if (existingIndex >= 0) {
+          nextMealsOptions[existingIndex] = row;
+        } else {
+          nextMealsOptions.push(row);
+        }
+
+        repairedGrams.push({
+          grams,
+          mealsPerDay,
+          fromHalala: Number.isFinite(existingPrice) ? existingPrice : null,
+          toHalala: priceHalala,
         });
+        changed = true;
       }
-    }
-
-    if (repairedMeals.length > 0) {
-      await plan.save();
-    }
-
-    repairedPlans.push({
-      planId: String(plan._id),
-      planKey: plan.key || TARGET_PLAN_KEY,
-      status: repairedMeals.length > 0 ? "updated" : "already_normalized",
-      grams: TARGET_GRAMS,
-      repairedMeals,
     });
+
+    gramsOption.mealsOptions = nextMealsOptions;
+  }
+
+  if (targetPlan.key !== TARGET_PLAN_KEY) {
+    targetPlan.key = TARGET_PLAN_KEY;
+    changed = true;
+  }
+
+  targetPlan.gramsOptions = currentGramsOptions;
+
+  if (changed) {
+    await targetPlan.save();
   }
 
   return {
     status: changed ? "updated" : "already_normalized",
-    planId: repairedPlans[0]?.planId || null,
+    planId: targetId,
     planKey: TARGET_PLAN_KEY,
-    grams: TARGET_GRAMS,
-    repairedPlans,
+    grams: [100, 150, 200],
     pricesSar: Object.fromEntries(
-      Array.from(TARGET_PRICES_HALALA.entries()).map(([meals, halala]) => [
-        meals,
-        halala / 100,
+      Object.entries(TARGET_PRICES_HALALA).map(([grams, prices]) => [
+        grams,
+        prices.map((halala) => halala / 100),
       ])
     ),
+    repairedRows: repairedGrams,
   };
 }
 
