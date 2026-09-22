@@ -92,7 +92,7 @@ const legacyDiscountedPlan = resolvePlanCatalogEntry(withId({
   }],
 }), "en");
 const legacyMealOption = legacyDiscountedPlan.gramsOptions[0].mealsOptions[0];
-assert.strictEqual(legacyMealOption.priceHalala, 13800, "the higher legacy value becomes the base plan price");
+assert.strictEqual(legacyMealOption.priceHalala, 11700, "configured priceHalala remains the sell price");
 assert.strictEqual(legacyMealOption.compareAtHalala, 0, "static compare-at pricing is not public");
 assert.strictEqual(legacyMealOption.savingsHalala, 0, "static savings are not public");
 assert.strictEqual(legacyDiscountedPlan.pricing.startsFromHalala, 13800);
