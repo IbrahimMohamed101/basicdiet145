@@ -28,6 +28,72 @@ const TARGET_PLANS = Object.freeze({
   },
 });
 
+function assertPlanMatchesTarget(plan, definition, daysCount) {
+  if (!plan) {
+    const error = new Error("Commercial subscription plan " + daysCount + "-day was not resolved");
+    error.code = "COMMERCIAL_PRICING_PLAN_MISSING";
+    throw error;
+  }
+
+  if (Number(plan.daysCount) !== daysCount || Number(plan.durationDays) !== daysCount) {
+    const error = new Error("Commercial subscription plan " + daysCount + "-day has invalid duration metadata");
+    error.code = "COMMERCIAL_PRICING_PLAN_INVALID";
+    error.details = {
+      planId: String(plan._id),
+      key: plan.key || null,
+      daysCount: Number(plan.daysCount || 0),
+      durationDays: Number(plan.durationDays || 0),
+    };
+    throw error;
+  }
+
+  for (const [gramsKey, targetPrices] of Object.entries(definition.pricesHalala)) {
+    const grams = Number(gramsKey);
+    const gramsOption = (Array.isArray(plan.gramsOptions) ? plan.gramsOptions : [])
+      .find((option) => Number(option && option.grams) === grams && option.isActive !== false);
+
+    if (!gramsOption) {
+      const error = new Error("Commercial subscription plan " + daysCount + "-day is missing active " + grams + "g pricing");
+      error.code = "COMMERCIAL_PRICING_GRAMS_MISSING";
+      error.details = { planId: String(plan._id), daysCount, grams };
+      throw error;
+    }
+
+    for (let index = 0; index < targetPrices.length; index += 1) {
+      const mealsPerDay = index + 1;
+      const mealOption = (Array.isArray(gramsOption.mealsOptions) ? gramsOption.mealsOptions : [])
+        .find((option) => Number(option && option.mealsPerDay) === mealsPerDay && option.isActive !== false);
+
+      if (!mealOption || Number(mealOption.priceHalala) !== Number(targetPrices[index])) {
+        const error = new Error(
+          "Commercial subscription price mismatch for " + daysCount + "-day/" + grams + "g/" + mealsPerDay + " meals/day"
+        );
+        error.code = "COMMERCIAL_PRICING_MISMATCH";
+        error.details = {
+          planId: String(plan._id),
+          daysCount,
+          grams,
+          mealsPerDay,
+          expectedHalala: Number(targetPrices[index]),
+          actualHalala: mealOption ? Number(mealOption.priceHalala) : null,
+        };
+        throw error;
+      }
+
+      if (Number(mealOption.compareAtHalala || 0) !== 0) {
+        const error = new Error(
+          "Commercial subscription compare-at price must be zero for " + daysCount + "-day/" + grams + "g/" + mealsPerDay + " meals/day"
+        );
+        error.code = "COMMERCIAL_PRICING_COMPARE_AT_PRESENT";
+        error.details = { planId: String(plan._id), daysCount, grams, mealsPerDay };
+        throw error;
+      }
+    }
+  }
+
+  return true;
+}
+
 function buildPriceRows(grams, gramsOption, targetPrices) {
   if (!gramsOption || !Array.isArray(targetPrices)) return [];
 
@@ -78,13 +144,10 @@ async function normalizeCommercialSubscriptionPricing() {
     const plan = await findTargetPlan(daysCount, definition);
 
     if (!plan) {
-      summary.plans.push({
-        daysCount,
-        planKey: definition.key,
-        status: "skipped",
-        reason: "plan_not_found",
-      });
-      continue;
+      const error = new Error("Commercial subscription plan " + daysCount + "-day is missing");
+      error.code = "COMMERCIAL_PRICING_PLAN_MISSING";
+      error.details = { daysCount, planKey: definition.key };
+      throw error;
     }
 
     const targetId = String(plan._id);
@@ -181,6 +244,8 @@ async function normalizeCommercialSubscriptionPricing() {
       await plan.save();
     }
 
+    assertPlanMatchesTarget(plan, definition, daysCount);
+
     summary.plans.push({
       daysCount,
       planId: targetId,
@@ -197,5 +262,6 @@ async function normalizeCommercialSubscriptionPricing() {
 
 module.exports = {
   TARGET_PLANS,
+  assertPlanMatchesTarget,
   normalizeCommercialSubscriptionPricing,
 };
