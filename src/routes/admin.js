@@ -102,6 +102,25 @@ router.patch("/addon-prices/:id/toggle", dashboardAdminOnly, asyncHandler(addonP
 router.get("/plans", dashboardAdminOrKitchenRead, asyncHandler(controller.listPlansAdmin));
 router.get("/plans/:id", dashboardAdminOrKitchenRead, asyncHandler(controller.getPlanAdmin));
 
+// Subscription checkout staff may READ and VALIDATE promo codes so restaurant/cashier
+// accounts can apply existing offers while promo-code administration remains admin-only.
+const dashboardSubscriptionPromoUsageAccess = dashboardRoleMiddleware([
+  "admin",
+  "cashier",
+  "restaurant",
+  "kitchen",
+]);
+router.get(
+  "/promo-codes",
+  dashboardSubscriptionPromoUsageAccess,
+  asyncHandler(promoCodeController.listPromoCodesAdmin)
+);
+router.post(
+  "/promo-codes/validate",
+  dashboardSubscriptionPromoUsageAccess,
+  asyncHandler(promoCodeController.validatePromoCodeAdmin)
+);
+
 router.use(dashboardRoleMiddleware(["admin"]));
 
 /**
