@@ -47,6 +47,7 @@ function buildEligibilityQuote(contract) {
     plan: {
       _id: plan.planId || null,
       daysCount: Number(plan.daysCount || 0),
+      mealsPerDay: Number(plan.mealsPerDay || 0),
     },
     breakdown: {
       basePlanPriceHalala: Number(pricing.basePlanPriceHalala || 0),
