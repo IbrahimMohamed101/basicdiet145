@@ -13,6 +13,9 @@ const {
   applyPromoCodeToSubscriptionQuote,
   reservePromoCodeUsageForCheckout,
 } = require("../src/services/promoCodeService");
+const {
+  buildEligibilityQuote,
+} = require("../src/services/installDashboardSubscriptionPromoFlow");
 
 const userId = new mongoose.Types.ObjectId();
 
@@ -51,6 +54,20 @@ async function run() {
   const replSet = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" },
   });
+
+    const dashboardEligibility = buildEligibilityQuote({
+    contractSnapshot: {
+      plan: { planId: "plan-1", daysCount: 26, mealsPerDay: 1 },
+      pricing: {
+        basePlanPriceHalala: 51600,
+        premiumTotalHalala: 0,
+        addonsTotalHalala: 0,
+        deliveryFeeHalala: 0,
+      },
+    },
+  });
+  assert.strictEqual(dashboardEligibility.plan.daysCount, 26);
+  assert.strictEqual(dashboardEligibility.plan.mealsPerDay, 1);
 
   try {
     await mongoose.connect(replSet.getUri(`ksa96_${Date.now()}`));
