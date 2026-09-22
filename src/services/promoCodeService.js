@@ -12,7 +12,7 @@ const {
 const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 
 const SYSTEM_CURRENCY = "SAR";
-const BESKDIET30_CODE = "BESKDIET30";
+const KSA96_CODE = "KSA96";
 
 const PROMO_ERROR_MESSAGES = {
   PROMO_NOT_FOUND: "Promo code was not found",
@@ -213,14 +213,12 @@ async function validatePromoEligibilityOrThrow({
     }
   }
 
-  // BESKDIET30 is deliberately the only code with criteria that cannot be
-  // represented by the existing plan-id/day-count promo configuration.
-  // Quote values are produced and validated by the subscription quote service;
-  // the same values are reconstructed from CheckoutDraft before reservation.
-  if (normalizePromoCodeInput(promo.code) === BESKDIET30_CODE) {
+  // KSA96 is valid only for the 26-day and 30-day subscription plans.
+  // There is intentionally no meals-per-day restriction: 1, 2, 3, 4, or 5
+  // meals/day are all eligible on those two plans.
+  if (normalizePromoCodeInput(promo.code) === KSA96_CODE) {
     const daysCount = Number(quote && quote.plan && quote.plan.daysCount || 0);
-    const mealsPerDay = Number(quote && quote.mealsPerDay || 0);
-    if (daysCount <= 7 || mealsPerDay <= 1) {
+    if (![26, 30].includes(daysCount)) {
       throw createPromoError("PROMO_NOT_ELIGIBLE");
     }
   }
