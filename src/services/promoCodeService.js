@@ -251,7 +251,10 @@ async function validatePromoEligibilityOrThrow({
     }
   }
 
-  if (promo.usageLimitPerUser !== null && promo.usageLimitPerUser !== undefined) {
+  // KSA96 is intentionally reusable for the same customer. Ignore any
+  // stale per-user limit left in the database so an abandoned checkout or
+  // previous usage can never permanently block the customer from this offer.
+  if (!isKsa96 && promo.usageLimitPerUser !== null && promo.usageLimitPerUser !== undefined) {
     const userUsageCount = await countUserPromoUsages({
       promoCodeId: promo._id,
       userId,
