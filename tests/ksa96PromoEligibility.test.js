@@ -142,6 +142,66 @@ async function run() {
     );
     assert.strictEqual(await PromoUsage.countDocuments({ checkoutDraftId: draft._id }), 0);
 
+    // KSA96 must remain reusable even when a stale legacy per-user limit of 1
+    // still exists on the stored promo document.
+    const firstReusableDraft = await CheckoutDraft.create({
+      userId,
+      planId: new mongoose.Types.ObjectId(),
+      daysCount: 26,
+      grams: 150,
+      mealsPerDay: 1,
+      delivery: { type: "pickup", slot: { type: "pickup" } },
+      breakdown: {
+        basePlanPriceHalala: 51600,
+        premiumTotalHalala: 0,
+        addonsTotalHalala: 0,
+        deliveryFeeHalala: 0,
+        vatHalala: 0,
+        totalHalala: 51600,
+        currency: "SAR",
+      },
+    });
+    const secondReusableDraft = await CheckoutDraft.create({
+      userId,
+      planId: new mongoose.Types.ObjectId(),
+      daysCount: 30,
+      grams: 150,
+      mealsPerDay: 2,
+      delivery: { type: "pickup", slot: { type: "pickup" } },
+      breakdown: {
+        basePlanPriceHalala: 72000,
+        premiumTotalHalala: 0,
+        addonsTotalHalala: 0,
+        deliveryFeeHalala: 0,
+        vatHalala: 0,
+        totalHalala: 72000,
+        currency: "SAR",
+      },
+    });
+
+    const firstReservation = await reservePromoCodeUsageForCheckout({
+      promo: besk,
+      appliedPromo: { discountAmountHalala: 15480 },
+      userId,
+      checkoutDraftId: firstReusableDraft._id,
+    });
+    const secondReservation = await reservePromoCodeUsageForCheckout({
+      promo: besk,
+      appliedPromo: { discountAmountHalala: 21600 },
+      userId,
+      checkoutDraftId: secondReusableDraft._id,
+    });
+    assert.ok(firstReservation);
+    assert.ok(secondReservation);
+    assert.strictEqual(
+      await PromoUsage.countDocuments({
+        promoCodeId: besk._id,
+        userId,
+        status: "reserved",
+      }),
+      2
+    );
+
     console.log("ksa96PromoEligibility.test.js: PASS");
   } finally {
     await mongoose.disconnect();
