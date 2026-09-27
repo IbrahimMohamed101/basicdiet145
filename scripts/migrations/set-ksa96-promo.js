@@ -29,7 +29,7 @@ async function run() {
       discountType: "percentage",
       discountValue: 30,
       usageLimitTotal: null,
-      usageLimitPerUser: 1,
+      usageLimitPerUser: null,
       eligiblePlanDaysCounts: [26, 30],
       firstPurchaseOnly: false,
       currency: "SAR",
@@ -53,7 +53,7 @@ async function run() {
   existing.discountType = "percentage";
   existing.discountValue = 30;
   existing.usageLimitTotal = null;
-  existing.usageLimitPerUser = 1;
+  existing.usageLimitPerUser = null;
   existing.eligiblePlanDaysCounts = [26, 30];
   existing.firstPurchaseOnly = false;
   existing.currency = "SAR";
