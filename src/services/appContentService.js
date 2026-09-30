@@ -307,6 +307,7 @@ module.exports = {
   DEFAULT_LOCALE,
   getActiveContentOrNull,
   getLatestContentOrNull,
+  getAppVersionStatus,
   toggleContentActive,
   saveActiveContent,
   seedDefaultSubscriptionTerms,
