@@ -385,6 +385,7 @@ async function run() {
   await testSearchNestingAndLegacySubscriptionRemainExplicit();
   await testMiddlewareRoutesAndProjection();
   await testUsesRestaurantBusinessDateWhenNotSupplied();
+  await testFallsBackToParentBalanceWhenNoBatchIsCurrent();
   console.log("subscription dashboard stacking read model tests passed");
 }
 
