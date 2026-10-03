@@ -30,6 +30,9 @@ const {
   READ_ERROR_CODE,
   projectSubscriptionStackingExtrasForRead,
 } = require("./subscriptionStackingExtraReadProjectionService");
+const {
+  projectBaseMealBalanceForRead,
+} = require("./subscriptionBaseMealBalanceReadService");
 
 const CATALOG_CACHE_TTL = 300000; // 5 minutes
 const catalogCache = {
@@ -225,8 +228,13 @@ async function serializeSubscriptionForClient(subscription, lang, runtimeOverrid
     ? repairLegacyPickupSubscriptionReadView(subscription, await getPickupLocationsSetting(), lang)
     : subscription;
   const businessDate = await getRestaurantBusinessDate();
-  const readSubscription = await projectSubscriptionStackingExtrasForRead(
+  const readSubscriptionWithBaseBalance = await projectBaseMealBalanceForRead(
     pickupReadSubscription,
+    businessDate,
+    { requireRollout: true }
+  );
+  const readSubscription = await projectSubscriptionStackingExtrasForRead(
+    readSubscriptionWithBaseBalance,
     businessDate,
     runtimeOverrides
   );
