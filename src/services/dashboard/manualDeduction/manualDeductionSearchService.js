@@ -47,7 +47,7 @@ function createManualDeductionSearchService({ repository, getBusinessDate }) {
 
     const stackingPayload = await projectDashboardStackingReadModel(
       { data: activeSubscriptions },
-      { lang }
+      { lang, businessDate }
     );
     const subscriptionsWithStacking = Array.isArray(stackingPayload && stackingPayload.data)
       ? stackingPayload.data
