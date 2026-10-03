@@ -1,6 +1,7 @@
 "use strict";
 
 const { getRequestLang } = require("../utils/i18n");
+const { getRestaurantBusinessDate } = require("../services/restaurantHoursService");
 const {
   projectDashboardStackingReadModel,
 } = require("../services/dashboard/subscriptionDashboardStackingReadService");
@@ -16,6 +17,7 @@ function isEligibleDashboardSubscriptionStackingRead(req = {}) {
 
 function createDashboardSubscriptionStackingReadModel({
   projectResponse = projectDashboardStackingReadModel,
+  getBusinessDate = getRestaurantBusinessDate,
 } = {}) {
   return function dashboardSubscriptionStackingReadModel(req, res, next) {
     if (!isEligibleDashboardSubscriptionStackingRead(req)) return next();
@@ -23,8 +25,10 @@ function createDashboardSubscriptionStackingReadModel({
 
     const originalJson = res.json;
     res.json = async function dashboardStackingJson(payload) {
+      const businessDate = await getBusinessDate();
       const projected = await projectResponse(payload, {
         lang: getRequestLang(req),
+        businessDate,
       });
       return originalJson.call(this, projected);
     };
