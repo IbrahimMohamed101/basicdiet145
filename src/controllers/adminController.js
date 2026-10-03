@@ -68,6 +68,7 @@ const {
 } = require("../services/restaurantHoursService");
 const { normalizeStoredVatBreakdown, buildMoneySummary } = require("../utils/pricing");
 const { resolveSubscriptionAddonBillingMode } = require("../utils/subscription/subscriptionCatalog");
+const { projectBaseMealBalancesForRead, projectBaseMealBalanceForRead } = require("../services/subscription/subscriptionBaseMealBalanceReadService");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
 const { DASHBOARD_ROLES, DASHBOARD_ROLE_LABEL } = require("../constants/dashboardRoles");
 const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
@@ -2318,7 +2319,7 @@ async function searchDashboard(req, res) {
     ...(planIds.length ? [{ planId: { $in: planIds } }] : []),
     ...(exactObjectId ? [{ _id: exactObjectId }] : []),
   ];
-  const [subscriptionRows, orderRows, userCounts] = await Promise.all([
+  let [subscriptionRows, orderRows, userCounts] = await Promise.all([
     Subscription.find(subscriptionOrFilters.length ? { $or: subscriptionOrFilters } : { _id: { $exists: false } })
       .sort({ createdAt: -1 })
       .limit(limit)
@@ -2335,6 +2336,10 @@ async function searchDashboard(req, res) {
       .lean(),
     getSubscriptionCountsByUserIds(userIds),
   ]);
+  subscriptionRows = await projectBaseMealBalancesForRead(
+    subscriptionRows,
+    await getRestaurantBusinessDate()
+  );
 
   const filteredOrders = (exactObjectId ? candidateOrders.concat(orderRows) : orderRows.concat(candidateOrders))
     .filter((order, index, list) => list.findIndex((item) => String(item._id) === String(order._id)) === index)
@@ -4699,12 +4704,17 @@ async function getSubscriptionAdmin(req, res) {
     return undefined;
   }
 
-  const subscription = await Subscription.findById(id).lean();
+  let subscription = await Subscription.findById(id).lean();
   if (!subscription) {
     return errorResponse(res, 404, "NOT_FOUND", "Subscription not found");
   }
 
   // Settlement on read intentionally removed — meals are not consumed by date passage.
+  // For stacked packages, resolve the base meal balance from entitlement batches.
+  subscription = await projectBaseMealBalanceForRead(
+    subscription,
+    await getRestaurantBusinessDate()
+  );
   const settledSubscription = subscription;
   const user = subscription.userId ? await User.findById(subscription.userId).lean() : null;
   const lang = getRequestLang(req);
