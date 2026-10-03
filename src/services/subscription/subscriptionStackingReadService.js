@@ -54,8 +54,9 @@ function applyProjectionToCurrentOverviewResponse(
   const reservedMeals = normalizeNonNegativeInteger(projection.mealBalance?.reservedMeals);
   const consumedMeals = normalizeNonNegativeInteger(projection.mealBalance?.consumedMeals);
   const forfeitedMeals = normalizeNonNegativeInteger(projection.mealBalance?.forfeitedMeals);
+  const availableMeals = Math.max(0, remainingMeals - reservedMeals);
   const requiredMealsPerDay = normalizeNonNegativeInteger(projection.requiredMealsPerDay);
-  const canConsumeNow = projection.batchCount > 0 && remainingMeals > 0;
+  const canConsumeNow = projection.batchCount > 0 && availableMeals > 0;
 
   return {
     ...response,
@@ -73,12 +74,12 @@ function applyProjectionToCurrentOverviewResponse(
         ...sourceBalance,
         totalMeals,
         remainingMeals,
-        availableMeals: remainingMeals,
+        availableMeals,
         reservedMeals,
         consumedMeals,
         forfeitedMeals,
         canConsumeNow,
-        maxConsumableMealsNow: canConsumeNow ? remainingMeals : 0,
+        maxConsumableMealsNow: canConsumeNow ? availableMeals : 0,
         mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
         dailyMealLimitEnforced: false,
         dailyMealsDefault: requiredMealsPerDay,
