@@ -67,7 +67,7 @@
     "test:meal-planner-v4": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dynamicMealPlannerV4Contract.test.js",
     "test:dashboard-manual-deduction-policy": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/manualDeductionBalancePolicy.test.js",
     "test:delivery-balance-repair-2026-08-03": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/deliveryBalanceRepair20260803.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionOperationsAuditService.test.js",
-    "test:dashboard-manual-deduction": "npm run test:dashboard-manual-deduction-policy && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardManualDeductionAndOrderPickup.test.js",
+    "test:dashboard-manual-deduction": "npm run test:dashboard-manual-deduction-policy && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardManualDeductionAndOrderPickup.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionDashboardStackingReadModel.test.js",
     "backfill:stacking-aggregateBalance": "node scripts/backfill-subscription-stacking-aggregateBalance.js",
     "test:dashboard-subscription-create": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/dashboardSubscriptionCreationContract.test.js && npm run test:dashboard-subscription-price-authority",
     "test:dashboard-subscription-addon-plan-availability": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionAddonPlanAvailabilityPolicy.test.js",
