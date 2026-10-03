@@ -4,6 +4,7 @@ const Payment = require("../../models/Payment");
 const Plan = require("../../models/Plan");
 const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const dateUtils = require("../../utils/date");
+const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { pickLang } = require("../../utils/i18n");
 const { projectSubscriptionEntitlements } = require("../subscription/subscriptionEntitlementProjectionService");
 
@@ -100,6 +101,9 @@ function batchReadModel(batch, { planNames, payments, paymentsById, paymentsByDr
 
 function defaultRuntime() {
   return {
+    getBusinessDate() {
+      return getRestaurantBusinessDate();
+    },
     findBatches(subscriptionIds) {
       return SubscriptionEntitlementBatch.find({
         containerSubscriptionId: { $in: subscriptionIds },
@@ -212,12 +216,17 @@ function applyContexts(payload, contexts) {
 
 async function projectDashboardStackingReadModel(payload, {
   lang = "ar",
+  businessDate = null,
   runtime: runtimeOverrides = null,
 } = {}) {
   const subscriptions = subscriptionModelsInPayload(payload);
   if (subscriptions.length === 0) return payload;
 
   const runtime = { ...defaultRuntime(), ...(runtimeOverrides || {}) };
+  const targetBusinessDate = businessDate || await runtime.getBusinessDate();
+  if (!targetBusinessDate) {
+    throw new Error("Unable to resolve dashboard business date");
+  }
   const subscriptionIds = [
     ...new Set(subscriptions.map((item) => stringId(item._id || item.id))),
   ];
@@ -264,7 +273,7 @@ async function projectDashboardStackingReadModel(payload, {
       planNames,
       paymentsById,
       paymentsByDraftId,
-      businessDate: dateUtils.toKSADateString(new Date()),
+      businessDate: targetBusinessDate,
     })];
   }));
   return applyContexts(payload, contexts);
