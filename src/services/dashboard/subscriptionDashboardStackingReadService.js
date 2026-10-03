@@ -158,13 +158,11 @@ function buildContext({
     batches,
     businessDate: targetBusinessDate,
   });
-  const aggregateBalance = packages.length > 0 ? currentProjection.mealBalance : {
-    totalMeals: Number(subscription.totalMeals || 0),
-    remainingMeals: Number(subscription.remainingMeals || 0),
-    reservedMeals: Number(subscription.reservedMeals || 0),
-    consumedMeals: Number(subscription.consumedMeals || 0),
-    forfeitedMeals: Number(subscription.forfeitedMeals || 0),
-  };
+  // Match the canonical client read path: entitlement batches are only allowed to
+  // replace the parent balance when at least one batch is projectable for the
+  // current business date. If all batches are future/historical for today,
+  // preserving the parent balance is safer than manufacturing a zero balance.
+  const aggregateBalance = currentProjection.batchCount > 0 ? currentProjection.mealBalance : null;
 
   return {
     version: DASHBOARD_STACKING_READ_VERSION,
