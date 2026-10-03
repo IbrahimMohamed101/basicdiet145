@@ -46,6 +46,7 @@ async function testProjectsPackagesAndTransactionsWithoutChangingParentIdentity(
   };
   const projected = await projectDashboardStackingReadModel(payload, {
     lang: "ar",
+    businessDate: "2026-08-06",
     runtime: {
       findBatches: async () => [
         {
@@ -153,6 +154,7 @@ async function testResolvesPaymentByCheckoutDraftWhenPaymentIdIsMissing() {
   };
 
   const projected = await projectDashboardStackingReadModel(payload, {
+    businessDate: "2026-09-18",
     runtime: {
       findBatches: async () => [{
         _id: new mongoose.Types.ObjectId(),
@@ -215,6 +217,7 @@ async function testSearchNestingAndLegacySubscriptionRemainExplicit() {
     },
   };
   const projected = await projectDashboardStackingReadModel(payload, {
+    businessDate: "2026-09-18",
     runtime: {
       findBatches: async () => [],
       findPlans: async () => {
@@ -248,8 +251,13 @@ async function testMiddlewareRoutesAndProjection() {
 
   let nextCalls = 0;
   let sent = null;
+  let resolvedBusinessDate = null;
   const middleware = createDashboardSubscriptionStackingReadModel({
-    projectResponse: async (payload) => ({ ...payload, projected: true }),
+    getBusinessDate: async () => "2026-10-03",
+    projectResponse: async (payload, options) => {
+      resolvedBusinessDate = options.businessDate;
+      return { ...payload, projected: true };
+    },
   });
   const res = {
     json(payload) {
@@ -267,6 +275,59 @@ async function testMiddlewareRoutesAndProjection() {
   await res.json({ status: true, data: [] });
   assert.strictEqual(nextCalls, 1);
   assert.strictEqual(sent.projected, true);
+  assert.strictEqual(resolvedBusinessDate, "2026-10-03");
+}
+
+async function testUsesRestaurantBusinessDateWhenNotSupplied() {
+  const parentId = new mongoose.Types.ObjectId();
+  const payload = {
+    status: true,
+    data: [subscription(parentId, {
+      totalMeals: 0,
+      remainingMeals: 0,
+      reservedMeals: 0,
+      consumedMeals: 0,
+      forfeitedMeals: 0,
+    })],
+  };
+
+  let resolverCalls = 0;
+  const projected = await projectDashboardStackingReadModel(payload, {
+    runtime: {
+      getBusinessDate: async () => {
+        resolverCalls += 1;
+        return "2026-10-03";
+      },
+      findBatches: async () => [{
+        _id: new mongoose.Types.ObjectId(),
+        containerSubscriptionId: parentId,
+        planId: new mongoose.Types.ObjectId(),
+        sourceType: "dashboard",
+        status: "active",
+        applicationState: "applied",
+        effectiveStartDate: new Date("2026-10-03T00:00:00+03:00"),
+        endDate: new Date("2026-10-20T00:00:00+03:00"),
+        validityEndDate: new Date("2026-10-20T00:00:00+03:00"),
+        daysCount: 18,
+        mealsPerDay: 1,
+        proteinGrams: 150,
+        totalMeals: 18,
+        remainingMeals: 3,
+        consumedMeals: 15,
+        reservedMeals: 0,
+        forfeitedMeals: 0,
+      }],
+      findPlans: async () => [],
+      findPayments: async () => [],
+    },
+  });
+
+  assert.strictEqual(resolverCalls, 1);
+  assert.strictEqual(
+    projected.data[0].stacking.aggregateBalance.remainingMeals,
+    3
+  );
+  assert.strictEqual(projected.data[0].stacking.aggregateBalance.totalMeals, 18);
 }
 
 async function run() {
@@ -274,6 +335,7 @@ async function run() {
   await testResolvesPaymentByCheckoutDraftWhenPaymentIdIsMissing();
   await testSearchNestingAndLegacySubscriptionRemainExplicit();
   await testMiddlewareRoutesAndProjection();
+  await testUsesRestaurantBusinessDateWhenNotSupplied();
   console.log("subscription dashboard stacking read model tests passed");
 }
 
