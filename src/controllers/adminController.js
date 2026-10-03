@@ -4428,7 +4428,11 @@ async function listAppUserSubscriptions(req, res) {
     return errorResponse(res, 404, "NOT_FOUND", "App user not found");
   }
 
-  const subscriptions = await Subscription.find({ userId: result.coreUser._id }).sort({ createdAt: -1 }).lean();
+  const rawSubscriptions = await Subscription.find({ userId: result.coreUser._id }).sort({ createdAt: -1 }).lean();
+  const subscriptions = await projectBaseMealBalancesForRead(
+    rawSubscriptions,
+    await getRestaurantBusinessDate()
+  );
   const lang = getRequestLang(req);
   const catalog = await loadSubscriptionSummaryCatalog(subscriptions, lang);
   const data = subscriptions.map((subscription) => serializeSubscriptionForClientFromCatalog(subscription, catalog));
