@@ -278,6 +278,55 @@ async function testMiddlewareRoutesAndProjection() {
   assert.strictEqual(resolvedBusinessDate, "2026-10-03");
 }
 
+async function testFallsBackToParentBalanceWhenNoBatchIsCurrent() {
+  const parentId = new mongoose.Types.ObjectId();
+  const payload = {
+    status: true,
+    data: [subscription(parentId, {
+      totalMeals: 26,
+      remainingMeals: 3,
+      reservedMeals: 0,
+      consumedMeals: 23,
+      forfeitedMeals: 0,
+    })],
+  };
+
+  const projected = await projectDashboardStackingReadModel(payload, {
+    businessDate: "2026-10-03",
+    runtime: {
+      findBatches: async () => [{
+        _id: new mongoose.Types.ObjectId(),
+        containerSubscriptionId: parentId,
+        planId: new mongoose.Types.ObjectId(),
+        sourceType: "checkout",
+        status: "active",
+        applicationState: "applied",
+        effectiveStartDate: new Date("2026-10-04T00:00:00+03:00"),
+        endDate: new Date("2026-10-29T00:00:00+03:00"),
+        validityEndDate: new Date("2026-10-29T00:00:00+03:00"),
+        daysCount: 26,
+        mealsPerDay: 1,
+        proteinGrams: 150,
+        totalMeals: 26,
+        remainingMeals: 3,
+        consumedMeals: 23,
+        reservedMeals: 0,
+        forfeitedMeals: 0,
+      }],
+      findPlans: async () => [],
+      findPayments: async () => [],
+    },
+  });
+
+  const row = projected.data[0];
+  assert.strictEqual(row.stacking.hasEntitlementBatches, true);
+  assert.strictEqual(row.stacking.packageCount, 1);
+  assert.strictEqual(row.stacking.aggregateBalance, null);
+  assert.strictEqual(row.remainingMeals, 3);
+  assert.strictEqual(row.reservedMeals, 0);
+}
+
+
 async function testUsesRestaurantBusinessDateWhenNotSupplied() {
   const parentId = new mongoose.Types.ObjectId();
   const payload = {
