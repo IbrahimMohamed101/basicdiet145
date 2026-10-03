@@ -23,6 +23,10 @@ const {
 const {
   isWithinSubscriptionDateWindow,
 } = require("./subscriptionCurrentResolverService");
+const {
+  projectBaseMealBalancesForRead,
+  projectBaseMealBalanceForRead,
+} = require("./subscriptionBaseMealBalanceReadService");
 
 function resolveEffectiveSubscriptionStatus(subscription, today = dateUtils.getTodayKSADate()) {
   if (!subscription || typeof subscription !== "object") return null;
@@ -94,7 +98,10 @@ async function buildSubscriptionOperationsMeta({ subscriptionId, actor, runtime:
   const loaded = await loadOwnedSubscriptionOrOutcome({ subscriptionId, actor, runtime });
   if (loaded.outcome !== "success") return loaded;
 
-  const subscription = loaded.subscription;
+  const subscription = await projectBaseMealBalanceForRead(
+    loaded.subscription,
+    await runtime.getTodayKSADate()
+  );
   const livePlan = resolveLivePlan(subscription);
   const today = await runtime.getTodayKSADate();
   const effectiveStatus = resolveEffectiveSubscriptionStatus(subscription, today);
@@ -322,18 +329,25 @@ function serializeSubscriptionForClientFromCatalog(subscription, catalog, contra
   const consumedMeals = Number(data.entitlementVersion || 0) >= 2
     ? Math.max(0, Number(data.consumedMeals || 0))
     : Math.max(0, totalMeals - remainingMeals);
+  const reservedMeals = Number(data.reservedMeals || 0);
+  const availableMeals = Math.max(0, remainingMeals - reservedMeals);
   const isSubscriptionActive = data.status === "active";
   const canConsumeNow = isSubscriptionActive
-    && isWithinSubscriptionDateWindow(data, businessDate);
-  const maxConsumableMealsNow = canConsumeNow ? remainingMeals : 0;
+    && isWithinSubscriptionDateWindow(data, businessDate)
+    && availableMeals > 0;
+  const maxConsumableMealsNow = canConsumeNow ? availableMeals : 0;
   
   const mealBalance = {
     totalMeals,
     remainingMeals,
+    availableMeals,
+    reservedMeals,
     consumedMeals,
+    forfeitedMeals: Number(data.forfeitedMeals || 0),
+    displayRemainingMeals: remainingMeals,
     canConsumeNow,
     maxConsumableMealsNow,
-    mealBalancePolicy: "TOTAL_BALANCE_WITHIN_VALIDITY",
+    mealBalancePolicy: "UNCONSUMED_INCLUDING_RESERVED",
     dailyMealLimitEnforced: false,
     dailyMealsDefault: Number(data.selectedMealsPerDay || data.mealsPerDay || 0),
   };
@@ -429,7 +443,9 @@ async function fetchAdminSubscriptionsPayload(query = {}, { paginate = true, inc
   const skip = pagination ? (pagination.page - 1) * pagination.limit : 0;
   const queryBuilder = Subscription.find(filters.match).sort({ createdAt: -1 });
   if (pagination) queryBuilder.skip(skip).limit(pagination.limit);
-  const [subscriptions, total] = await Promise.all([queryBuilder.lean(), Subscription.countDocuments(filters.match)]);
+  const [rawSubscriptions, total] = await Promise.all([queryBuilder.lean(), Subscription.countDocuments(filters.match)]);
+  const businessDate = await defaultRuntime.getTodayKSADate();
+  const subscriptions = await projectBaseMealBalancesForRead(rawSubscriptions, businessDate);
   const userIds = Array.from(new Set(subscriptions.map((subscription) => String(subscription.userId)).filter(Boolean)));
   const lang = String(query.lang || "ar");
   const [userMap, catalog] = await Promise.all([defaultRuntime.buildUserMapByIds(userIds), loadSubscriptionSummaryCatalog(subscriptions, lang)]);
