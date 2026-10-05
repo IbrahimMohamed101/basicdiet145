@@ -80,19 +80,45 @@ function applyPromoDiscountToBreakdown(breakdown, discountAmountHalala) {
   const vatPercentage = Number(breakdown.vatPercentage || 0);
   const currency = String(breakdown.currency || SYSTEM_CURRENCY);
 
-  const rawSubtotal =
+  const grossTotalHalala =
     basePlanPriceHalala +
     premiumTotalHalala +
     addonsTotalHalala +
     deliveryFeeHalala;
-  const normalizedDiscount = Math.max(0, Math.min(Math.round(Number(discountAmountHalala || 0)), rawSubtotal));
-  const discountedTotalInclusive = Math.max(0, rawSubtotal - normalizedDiscount);
-  const vatBreakdown = computeInclusiveVatBreakdown(discountedTotalInclusive, vatPercentage);
+
+  // Subscription promo discounts apply to the base plan only.
+  // Premium upgrades, add-ons, and delivery remain at their full prices.
+  const normalizedDiscount = Math.max(
+    0,
+    Math.min(
+      Math.round(Number(discountAmountHalala || 0)),
+      Math.max(0, basePlanPriceHalala)
+    )
+  );
+  const discountedBasePlanPriceHalala = Math.max(
+    0,
+    basePlanPriceHalala - normalizedDiscount
+  );
+  const discountedTotalInclusive =
+    discountedBasePlanPriceHalala +
+    premiumTotalHalala +
+    addonsTotalHalala +
+    deliveryFeeHalala;
+  const vatBreakdown = computeInclusiveVatBreakdown(
+    discountedTotalInclusive,
+    vatPercentage
+  );
+  const divisor = 1 + (vatPercentage / 100);
+  const basePlanNetHalala = divisor > 0
+    ? Math.round(discountedBasePlanPriceHalala / divisor)
+    : discountedBasePlanPriceHalala;
 
   return {
     ...breakdown,
     discountHalala: normalizedDiscount,
-    grossTotalHalala: rawSubtotal,
+    grossTotalHalala,
+    basePlanGrossHalala: basePlanPriceHalala,
+    basePlanNetHalala,
     subtotalHalala: vatBreakdown.subtotalHalala,
     subtotalBeforeVatHalala: vatBreakdown.subtotalBeforeVatHalala,
     vatPercentage: vatBreakdown.vatPercentage,
@@ -320,7 +346,9 @@ async function applyPromoCodeToSubscriptionQuote({
   });
   const discountAmountHalala = computePromoDiscountAmountHalala({
     promo,
-    rawSubtotalHalala: eligibility.rawSubtotalHalala,
+    rawSubtotalHalala: Number(
+      quote && quote.breakdown && quote.breakdown.basePlanPriceHalala || 0
+    ),
   });
   const appliedPromo = buildAppliedPromoPayload({
     promo,
