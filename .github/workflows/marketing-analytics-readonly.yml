@@ -1,0 +1,38 @@
+name: Marketing analytics read-only
+
+on:
+  pull_request:
+    paths:
+      - "src/services/dashboard/marketingAnalyticsService.js"
+      - "src/controllers/dashboard/marketingAnalyticsController.js"
+      - "src/routes/dashboardAccounting.js"
+      - "tests/marketingAnalyticsService.test.js"
+      - ".github/workflows/marketing-analytics-readonly.yml"
+  push:
+    branches:
+      - main
+      - "feat/marketing-analytics-readonly"
+    paths:
+      - "src/services/dashboard/marketingAnalyticsService.js"
+      - "src/controllers/dashboard/marketingAnalyticsController.js"
+      - "src/routes/dashboardAccounting.js"
+      - "tests/marketingAnalyticsService.test.js"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Syntax check
+        run: |
+          node --check src/services/dashboard/marketingAnalyticsService.js
+          node --check src/controllers/dashboard/marketingAnalyticsController.js
+          node --check src/routes/dashboardAccounting.js
+      - name: Read-only analytics tests
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/marketingAnalyticsService.test.js
