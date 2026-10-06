@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/dashboard/accountingReportController");
 const subscriptionPaymentController = require("../controllers/dashboard/subscriptionPaymentReportController");
-const subscriptionOperationsAuditController = require("../controllers/dashboard/subscriptionOperationsAuditController");
+const subscriptionOperationsAuditController = require("../controllers/dashboard/subscriptionOperationsAuditController");\nconst marketingAnalyticsController = require("../controllers/dashboard/marketingAnalyticsController");
 const asyncHandler = require("../middleware/asyncHandler");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 
@@ -47,6 +47,13 @@ router.get(
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin"]),
   asyncHandler(subscriptionOperationsAuditController.getSubscriptionOperationsAudit)
+);
+
+router.get(
+  "/marketing-analytics",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin"]),
+  asyncHandler(marketingAnalyticsController.getMarketingAnalytics)
 );
 
 module.exports = router;
