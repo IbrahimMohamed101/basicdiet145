@@ -1,8 +1,8 @@
 # Basic Diet Marketing State
 
-**State version:** v1  
+**State version:** v2  
 **Last updated:** 2026-10-07  
-**Status:** Foundation built; execution system being established.
+**Status:** Core data foundation complete enough for daily organic content execution. Live commercial baseline remains the main measurement gap.
 
 ## North Star
 
@@ -12,24 +12,34 @@ Vanity metrics such as views and likes are secondary unless they demonstrably su
 
 ## Current phase
 
-**Phase 1 — Marketing foundation + baseline + execution system**
+**Phase 2 — Daily content readiness + live learning**
 
 Completed:
 - Product/package/pricing context gathered.
 - Drive asset library reviewed at folder/file level.
+- Menu/product data reviewed with many verified item names, prices and nutrition fields.
 - Initial positioning established.
 - Initial content pillars established.
 - Read-only Marketing Analytics backend endpoint implemented.
 - Marketing Analytics dashboard UI implemented.
 - Repository-based Marketing OS protocol established.
+- Initial public Voice of Customer research completed.
+- Initial competitor/market scan completed.
+- Public store/listing signals reviewed.
+- 30-item grounded content backlog created for daily execution.
 
-Next:
-1. Capture a dated 30/60/90-day baseline from Marketing Analytics.
-2. Build Voice of Customer (VOC) from real reviews, messages, support questions, cancellation reasons, and objections.
-3. Build structured competitor profiles for the most relevant Jeddah meal-subscription competitors.
-4. Finalize the first 90-day marketing plan.
-5. Start daily/weekly content execution and content performance logging.
-6. Before scaling paid ads, improve source/campaign attribution and establish CAC/ROAS reporting.
+Open:
+1. Pull and save a dated 30/60/90-day live Marketing Analytics baseline.
+2. Expand VOC with private/internal sources: WhatsApp, support, cancellations, checkout objections, repeat-customer feedback.
+3. Start publishing and logging daily content.
+4. Build the first weekly learning loop after enough posts/results exist.
+5. Improve source/campaign attribution before scaling paid ads.
+
+## Content readiness decision
+
+**Organic daily content can start now.**
+
+The missing 30/60/90 commercial baseline is important for measurement and paid scaling, but it is not a blocker for starting disciplined organic publishing because product facts, assets, positioning, public VOC, competitor context and a content backlog now exist.
 
 ## Current positioning
 
@@ -42,15 +52,35 @@ Core message pillars:
 
 Supporting proof/value:
 - ingredients,
-- calories/macros where available,
+- calories/macros where verified,
 - portion options,
 - menu variety,
 - subscription convenience,
-- trust/social proof.
+- cleanliness/quality/taste proof,
+- real customer language.
 
-### Strategic angle under evaluation
+## Evidence update
 
-**Familiar / Saudi food made compatible with a measured healthy routine** is a promising differentiation angle, but it remains a hypothesis until validated through content/campaign data and VOC.
+Initial public review mining supports three themes:
+1. Taste is a real positive signal.
+2. Cleanliness/quality appears in public customer language.
+3. At least one public reviewer described moving from trying the meals to joining a subscription.
+
+A recurring high-value phrase/theme is the idea of enjoying familiar/crispy food **without feeling guilty**. Treat this as an early signal, not a universal customer truth.
+
+## Competitive context
+
+Strong competitors/benchmarks commonly emphasize:
+- personalized plans,
+- calorie/macronutrient control,
+- goal-based packages,
+- dietitian/clinical authority,
+- free/convenient delivery,
+- large menu variety,
+- promotional pricing.
+
+Basic Diet should avoid competing only on generic "healthy meals" or discount percentage. The stronger creative territory is:
+**familiar desirable food + measured portions/macros + flexibility + convenience**.
 
 ## Current content mix — starting hypothesis
 
@@ -87,7 +117,7 @@ Promos currently central to marketing context:
 
 Discount strategy rule:
 - Promo-driven posts must not dominate the brand.
-- Build desire, trust, convenience, and product value first; use promo as a conversion tool.
+- Build desire, trust, convenience and product value first; use promo as a conversion tool.
 - Current application rule in product system: promo discount applies to package subtotal, not delivery or daily add-ons.
 
 ## Measurement status
@@ -114,7 +144,12 @@ Available now:
 - daily series
 - previous-period comparisons
 
-Not fully available yet:
+Still not captured as a repository snapshot:
+- current 30-day baseline
+- current 60-day baseline
+- current 90-day baseline
+
+Not fully instrumented:
 - installs / first_open
 - complete source-to-purchase attribution
 - reliable channel CAC
@@ -136,4 +171,11 @@ When the user says:
 
 Use this repository Marketing OS as the source of truth before answering.
 
-For "ننزل إيه النهارده؟", do not return a random idea. Ground the recommendation in current goal, recent content, assets, offer, analytics, VOC/learning, and funnel stage.
+For "ننزل إيه النهارده؟":
+1. read `marketing/content/backlog.md`,
+2. check `marketing/content/content-log.md`,
+3. check current offer/state,
+4. prefer an unused grounded idea,
+5. adapt it to the strongest available asset,
+6. define one primary KPI,
+7. document the result after publishing.

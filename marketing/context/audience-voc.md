@@ -1,11 +1,20 @@
 # Audience & Voice of Customer
 
-**Version:** v1  
+**Version:** v2  
 **Last updated:** 2026-10-07
+
+## Current VOC status
+
+**Initial public VOC exists. Internal/private VOC is still incomplete.**
+
+The first public-review pass produced enough signal to influence content direction, but not enough to claim final personas or universal motivations.
+
+Detailed source notes:
+- `marketing/context/voc-findings.md`
 
 ## Initial audience hypotheses
 
-These are testing segments, not proven ICP rankings.
+These remain testing segments.
 
 ### Busy professional
 Problem hypothesis: lacks time/energy to prepare and plan measured meals.
@@ -27,23 +36,35 @@ Message hypothesis: make measured food a normal part of the day.
 Problem hypothesis: routine was interrupted.
 Message hypothesis: make returning to a structured routine easy.
 
-## VOC status
+## Early customer-language signals
 
-**Current status: insufficient structured VOC.**
+### Signal A — "healthy without sacrifice"
+Public review language supports an emotional job around eating enjoyable/crispy food while feeling that the choice still fits a healthier routine.
 
-Do not present the audience hypotheses above as customer-proven facts.
+**Confidence:** Medium-low  
+Reason: appears clearly in public review language, but sample size is small.
 
-## VOC sources to collect
+### Signal B — taste + cleanliness
+Public reviews explicitly praise taste and cleanliness/quality.
 
-Prioritize:
-1. real customer reviews,
-2. WhatsApp/support conversations,
-3. Instagram/TikTok comments and DMs where accessible,
-4. cancellation reasons,
-5. checkout/payment questions,
-6. repeat-customer feedback,
-7. sales/customer-service objections,
-8. post-purchase survey/interviews.
+**Confidence:** Medium-low  
+Reason: repeated across more than one public review, still a small public sample.
+
+### Signal C — trial can trigger subscription
+One public reviewer described trying the meals and then joining a membership/subscription.
+
+**Confidence:** Low but commercially important  
+Reason: single observed public case. Treat as a hypothesis for a "try -> subscribe" conversion path.
+
+## VOC sources still to collect
+
+Priority internal sources:
+1. WhatsApp/support conversations,
+2. cancellation reasons,
+3. checkout/payment questions,
+4. repeat-customer feedback,
+5. Instagram/TikTok comments and DMs,
+6. post-purchase survey/interviews.
 
 ## Extraction fields
 
