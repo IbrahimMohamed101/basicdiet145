@@ -1,69 +1,77 @@
 # Current Marketing Work Plan
 
 **Week of:** 2026-10-07  
-**Phase:** Foundation -> Baseline -> Execution
+**Phase:** Data foundation -> Daily organic execution
 
-## Priority 1 — Baseline
+## Completed this week
 
-Pull a dated baseline from the live Marketing Analytics dashboard/endpoint.
+- Marketing Analytics backend + dashboard implemented and deployed.
+- Marketing OS created and adopted as the persistent protocol.
+- Drive/menu/assets reviewed.
+- Initial public Basic Diet VOC mined.
+- Competitor/market pass completed.
+- Daily content backlog created.
 
-Recommended views:
-- last 30 days,
-- last 90 days if enough volume,
-- current vs previous period.
+## Priority 1 — Start daily organic execution
 
-Capture:
-- registrations,
-- checkout users,
-- paid customers,
-- first-time paid subscribers,
-- repeat customers,
-- Register -> Paid,
-- Checkout -> Paid,
-- app revenue,
-- AOV,
-- top plan combinations,
-- promo performance,
-- fulfillment/payment split,
-- checkout/payment failure quality.
+Use `marketing/content/backlog.md`.
 
-Save aggregate snapshot under `analytics/snapshots/`.
-
-## Priority 2 — VOC
-
-Collect an initial anonymized customer-language corpus from available real channels.
-
-Target first pass:
-- recurring questions,
-- buying objections,
-- cancellation reasons,
-- reasons for choosing/renewing,
-- exact phrases customers use.
-
-## Priority 3 — 90-day plan
-
-After baseline + initial VOC:
-- define the first 3 strategic bets,
-- channel priorities,
-- content cadence,
-- offer tests,
-- measurement gates,
-- paid-ad readiness criteria.
-
-## Priority 4 — Daily content execution
-
-Start content log immediately once publishing begins.
-
-Every item needs:
+For every published item:
 - one objective,
+- one audience/funnel stage,
+- one grounded source,
 - one primary KPI,
-- one source asset/insight,
-- one CTA.
+- one CTA,
+- one content-log entry.
+
+Do not wait for perfect attribution before building organic creative history.
+
+## Priority 2 — Capture live commercial baseline
+
+Still required:
+- 30-day snapshot,
+- 60-day snapshot,
+- 90-day snapshot.
+
+See:
+`marketing/analytics/baseline-status.md`
+
+This is the main remaining data-collection gap.
+
+## Priority 3 — Expand internal VOC
+
+Add anonymized themes from:
+- support/WhatsApp,
+- cancellations,
+- payment/checkout questions,
+- repeat customers,
+- DMs/comments.
+
+Target:
+at least 20–30 useful interactions before declaring a high-confidence VOC theme.
+
+## Priority 4 — Build first weekly learning review
+
+After the first 5–7 published pieces:
+- identify strongest hook,
+- strongest dish/category,
+- strongest format,
+- strongest CTA,
+- weak/repeated themes,
+- commercial signals if attributable.
+
+Update:
+- `content/winners.md`
+- `experiments/experiments.md`
+- `STATE.md`
 
 ## Paid ads gate
 
+Organic testing can begin now.
+
 Do not scale paid spend until:
-- baseline is captured,
-- offer/landing/checkout are operationally sound,
-- creative test corpus exists,
-- attribution conventions are defined enough to evaluate paid outcomes.
+- live baseline is captured,
+- attribution conventions are defined,
+- at least a small creative corpus exists,
+- offer/checkout path is verified,
+- CAC/ROAS can be evaluated.
