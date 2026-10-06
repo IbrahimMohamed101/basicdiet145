@@ -797,6 +797,7 @@ async function buildMarketingAnalyticsReport(input = {}, runtimeOverrides = {}) 
       "قمع Checkout والدفع يعتمد على CheckoutDraft والمدفوعات المرتبطة به، لذلك يمثل مسار الشراء داخل التطبيق.",
       "إجمالي إيراد الاشتراكات يشمل قنوات التطبيق ولوحة التحكم والقنوات الأخرى المسجلة في Payment.",
       "المستخدم النشط هنا يعني حساب عميل لديه lastLoginAt داخل الفترة، وليس screen/session analytics.",
+      "فلاتر الباقة والبرومو والتنفيذ ومزود الدفع تطبق على قمع Checkout ومبيعات التطبيق؛ التسجيلات وتسجيلات الدخول وإجمالي كل القنوات تبقى مؤشرات للفترة بالكامل.",
     ],
     generatedAt: new Date().toISOString(),
   };
