@@ -314,3 +314,22 @@ Remaining tasks are asset production/verification:
 - app screenshots
 - destination verification
 - launch-time proof refresh.
+
+
+---
+
+## 2026-10-07 — Hero Video v1 approved
+
+**Status:** DECISION
+
+The uploaded 8-second 1280×720 hero video is approved as the canonical V1 hero asset.
+
+Canonical SHA-256:
+`e8060486513d04a8876b7d22c30515cbce5ce41db6ebed471dcab0aee63070e3`
+
+Creative sequence:
+Chicken macro → steak/rice → salad → multi-meal spread.
+
+A poster fallback was extracted from the final spread.
+
+This supersedes all previous experimental hero-video candidates.
