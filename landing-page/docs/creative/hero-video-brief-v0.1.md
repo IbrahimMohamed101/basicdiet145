@@ -1,124 +1,128 @@
-# Hero Video Brief v0.1
+# Hero Video Brief v1.0
 
-**Status:** Creative direction ready for exploration  
-**Preferred production tool:** Google Flow or equivalent high-quality generative video workflow  
-**Role:** Primary visual in the Basic Diet landing-page hero
+**Status:** FINAL PRE-PRODUCTION BRIEF  
+**Preferred tool:** Google Flow or equivalent  
+**Role:** Primary hero media
 
-## Objective
+## Goal
 
-Make the visitor immediately feel:
+First reaction:
 
-**"ده أكل نفسي آكله فعلًا… ومش شكله دايت ممل."**
+**"ده أكل نفسي آكله فعلًا، ومش شكله دايت ممل."**
 
-The video should sell food desire before explaining nutrition or subscription mechanics.
+Sell desire before nutrition.
 
-## Format
+## Final layout context
 
-Recommended first test:
-- duration: 6–10 seconds
-- seamless or near-seamless loop
-- landscape master suitable for desktop hero
-- separate mobile crop/version
-- silent/muted by default
-- no baked-in typography
-- no logo distortion
-- no narration in the hero loop
+The video is a **separate media panel**, not a text background.
 
-## Main concept — “Real food, measured life”
+Desktop:
+- video left
+- copy right
+- 4:3 or 5:4
 
-### Shot 1 — appetite hook
-Macro cinematic close-up of a desirable meal:
-- crisp texture
-- fresh steam
-- sauce/glaze movement
+Mobile:
+- video first
+- copy below
+- 4:5 or 1:1
+
+No artificial negative space is required inside the video.
+
+## Duration
+
+Desktop master:
+6–8 seconds.
+
+Mobile:
+5–7 seconds.
+
+Near-seamless loop preferred.  
+Muted/no required audio.
+
+## Real Basic Diet references
+
+Use:
+- دجاج بالزبدة
+- استربس دجاج
+- وجبة ستيك
+- سلطة بيسك
+
+Generated food must remain believable relative to these real products.
+
+## Storyboard
+
+### Shot 1 — desire
+Macro detail:
+- chicken/sear/sauce
+- natural steam
 - shallow depth of field
 
 ### Shot 2 — variety
-Fast elegant transition across 2–3 visually different meal types:
-- chicken / protein
-- pasta or rice-based dish
-- fresh salad or colorful side
-
-Goal:
-break the stereotype that diet food is one repetitive plate.
+Controlled shift between:
+- warm protein plate
+- colorful salad
+- rice/pasta cue
 
 ### Shot 3 — finish
-Premium plated spread / meal-box composition with clean modern presentation.
+Clean premium balanced plate/spread.
 
-End frame should leave enough visual negative space for the HTML hero copy/CTA.
+End on a stable frame suitable for poster extraction.
 
-## Visual direction
+## Camera
 
-- premium restaurant commercial
-- warm appetizing lighting
-- natural food texture
-- realistic portions
-- subtle camera movement
-- no fantasy ingredients
-- no impossible steam/sauce physics
-- no hyper-saturated plastic food
-- no bodybuilding cliché
-- no weighing scale / measuring tape cliché
+- slow controlled push
+- subtle lateral movement
+- no fast orbit
+- no speed-ramp gimmicks
+- no morphing food or utensils
 
-## Brand alignment rule
+## Lighting
 
-AI-generated food must be judged against the real Basic Diet meal library.
+- warm restaurant light
+- natural highlights
+- no neon
+- no plastic/HDR look
 
-Preferred workflow:
-1. select real Basic Diet references,
-2. use them as visual grounding/reference where the generation workflow allows,
-3. generate variants,
-4. reject anything that looks materially different from what customers actually receive.
+## Prompt A — premium balanced meal
 
-## Hero composition rule
+Create an 8-second premium cinematic food commercial for a Saudi healthy meal subscription brand. Show a realistic balanced chicken and rice meal inspired by real restaurant food: warm golden chicken, natural grilled texture, clean white rice, subtle steam, premium black plate, soft cream environment, shallow depth of field, gentle camera push, realistic portion size, high-end restaurant photography, natural colors, no people, no text, no logo, no fitness clichés, no surreal ingredients. End on a stable composed plate suitable for a website poster frame. 4:3 composition, food centered.
 
-Text and CTA remain real HTML/CSS elements.
+## Prompt B — variety
 
-Do not generate:
-- headline inside video
-- CTA inside video
-- fake app UI inside video
-- fake review numbers inside video
+Create a 7-second premium cinematic food sequence for a Saudi healthy meal subscription brand. Begin with a realistic close-up of juicy grilled chicken, transition cleanly to a colorful fresh salad, then to a premium protein-and-rice plate. Show natural food texture, believable steam and sauce movement, premium black serving plates, cream-toned environment, controlled camera movement, realistic portions, warm soft lighting. No text, no logos, no people, no bodybuilder imagery, no morphing utensils, no fantasy ingredients. End with a stable food composition suitable for a seamless website hero loop.
 
-## Mobile rule
+## Prompt C — indulgent but measured
 
-On mobile:
-- protect food subject from text overlap
-- keep focal point near center
-- avoid high-motion cuts
-- consider shorter/lighter file
-- serve poster image when data-saving/performance requires it
+Create a 6-second cinematic food commercial showing crispy chicken strips with realistic crunch and natural golden texture, followed by a balanced plated meal with fresh vegetables. The result should feel indulgent but believable as a measured meal subscription. Warm restaurant lighting, shallow depth of field, clean premium presentation, subtle steam, slow camera movement. No text, no branding, no people, no exaggerated grease, no unrealistic food transformations. 4:3 website hero composition.
 
-## Performance target
+## Generation process
 
-Implementation target:
-- compressed modern video format(s)
-- lazy/non-blocking strategy where appropriate
-- strong poster image
-- avoid delaying LCP
-- respect reduced-motion preference
+Generate 2–4 candidates.
 
-## Candidate generation prompts
+For each:
+1. compare with real Basic Diet references
+2. check plate/ingredient continuity
+3. test desktop crop
+4. test mobile crop
+5. extract poster frame
+6. reject synthetic-looking results
 
-### Concept A — premium close-up
-Create a premium cinematic food commercial for a Saudi healthy meal subscription brand. Start with an extreme macro close-up of crispy grilled chicken with realistic texture and gentle steam, move to a rich but natural sauce detail, then reveal a clean plated balanced meal with rice and colorful vegetables. Warm restaurant lighting, shallow depth of field, slow controlled camera motion, realistic portions, high-end food photography, natural colors, no text, no logos, no people, no fantasy ingredients. Leave clean negative space on the left side for website copy. 8-second seamless-feeling loop.
+## Reject if
 
-### Concept B — anti-boring variety
-Create an elegant cinematic sequence showing variety in a healthy meal subscription: first a juicy chicken dish, then a premium pasta dish, then a fresh colorful salad, ending on a composed spread of multiple balanced meals. Realistic food textures, appetizing steam, subtle sauce movement, modern Saudi food-commercial aesthetic, premium but believable, warm soft lighting, controlled camera movement, no text, no people, no brand marks, no exaggerated fitness imagery. Compose for a website hero with negative space for Arabic copy.
+- ingredients morph
+- plate/cutlery deform
+- food looks plastic
+- portion is unrealistic
+- food materially differs from Basic Diet
+- motion distracts
+- crop fails on mobile
+- final frame cannot work as poster
 
-## Review checklist
+## Final exports
 
-Reject a candidate if:
-- food looks synthetic
-- portions look unrealistic
-- ingredients morph between frames
-- cutlery/plates deform
-- branding is invented
-- motion distracts from CTA
-- there is no clean area for copy
-- mobile crop breaks the subject
-- it implies a dish Basic Diet cannot realistically deliver
+- desktop optimized video
+- mobile optimized video
+- poster image
+- master/source archive
 
-## Decision for next phase
-
-During A2/B work, test 2–4 video variants against the actual hero layout before final selection.
+Implementation must respect reduced-motion preferences.
