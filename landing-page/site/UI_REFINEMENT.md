@@ -41,3 +41,7 @@ Validation: production build passes. Rendered 1440px and 768px: all six real ima
 ## Phase 3 — flexibility
 
 Replaced the inert configurator with native radio groups and an aria-live example summary. The editorial salmon image uses the same internal asset as the meal gallery; changing grams does not pretend to resize the food or calculate pricing. Copy distinguishes trying options from completing customization in the app. Reused brand/type/motion tokens. Desktop pairs controls with an arched photograph; mobile gives controls full width before the image. Production build and 1440/390 rendered inspection pass, zero overflow. Artifacts: `.audit/refinement/flexibility/`.
+
+## Phase 4 — connected journey
+
+Replaced three competing card-like columns with a continuous numbered editorial list. Desktop aligns each action with its supporting choice; mobile follows a vertical 01→02→03 reading order. Shared Reveal uses existing motion durations, observer, reduced-motion behavior and visible SSR content. The closing link leads directly to the official Reels gallery. Production build and desktop/mobile rendered inspection pass; zero overflow and preserved Hero/App geometry. Artifacts: `.audit/refinement/journey/`.

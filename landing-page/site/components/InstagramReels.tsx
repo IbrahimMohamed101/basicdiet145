@@ -37,7 +37,7 @@ function InstagramMark() {
 
 export function InstagramReels() {
   return (
-    <section className="reels-section" aria-labelledby="reels-title">
+    <section id="reels" className="reels-section" aria-labelledby="reels-title">
       <div className="page-shell reels-shell">
         <div className="reels-heading">
           <div>
