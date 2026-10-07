@@ -45,3 +45,7 @@ Replaced the inert configurator with native radio groups and an aria-live exampl
 ## Phase 4 — connected journey
 
 Replaced three competing card-like columns with a continuous numbered editorial list. Desktop aligns each action with its supporting choice; mobile follows a vertical 01→02→03 reading order. Shared Reveal uses existing motion durations, observer, reduced-motion behavior and visible SSR content. The closing link leads directly to the official Reels gallery. Production build and desktop/mobile rendered inspection pass; zero overflow and preserved Hero/App geometry. Artifacts: `.audit/refinement/journey/`.
+
+## Phase 5 — official Reels gallery
+
+Dark full-width gallery with four official embeds, a 320px minimum frame width, RTL snap scrolling, keyboard focus and direct per-Reel/profile links. No iframe exists at initial load; shared visibility observation mounts only visible cards, staggered by 180ms. No autoplay permission and no downloaded Instagram assets. No-JS visitors retain all four direct links. Production build, desktop/mobile layout and live official embeds inspected (`.audit/refinement/reels/1440-live.png`). Zero page overflow. Instagram owns its internal chrome/content and emits Permissions-Policy warnings for features unsupported by the test Chromium; these are third-party response headers, not first-party hydration/runtime errors. One media preview was temporarily black in live capture; direct links remain available.

@@ -1,3 +1,8 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { observeMotionVisibility } from "@/lib/motion";
+
 const reels = [
   {
     shortcode: "DTLby6gDBgM",
@@ -25,13 +30,31 @@ const reels = [
   },
 ] as const;
 
-function InstagramMark() {
+function Reel({ reel, index }: { reel: (typeof reels)[number]; index: number }) {
+  const ref = useRef<HTMLElement>(null);
+  const [load, setLoad] = useState(false);
+  useEffect(() => {
+    if (load || !ref.current) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = observeMotionVisibility(ref.current, (visible) => {
+      clearTimeout(timer);
+      if (visible) timer = setTimeout(() => setLoad(true), index * 180);
+    });
+    return () => { clearTimeout(timer); stop(); };
+  }, [index, load]);
+
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="17.4" cy="6.8" r="1" fill="currentColor" stroke="none" />
-    </svg>
+    <article ref={ref} className="reel-card">
+      <div className="reel-card-head"><span>{String(index + 1).padStart(2, "0")}</span><span>{reel.label}</span></div>
+      <div className="reel-embed-window">
+        {load ? (
+          <iframe src={`https://www.instagram.com/reel/${reel.shortcode}/embed/`} title={reel.title} loading="lazy" allow="encrypted-media; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
+        ) : (
+          <button type="button" className="reel-load" onClick={() => setLoad(true)} aria-label={`تحميل مقطع ${reel.title}`}><span aria-hidden="true">▷</span><span>شاهد المقطع</span></button>
+        )}
+      </div>
+      <div className="reel-card-foot"><h3>{reel.title}</h3><a href={reel.url} target="_blank" rel="noopener noreferrer" aria-label={`فتح ${reel.title} على Instagram`}>شاهد على Instagram <span aria-hidden="true">↗</span></a></div>
+    </article>
   );
 }
 
@@ -40,73 +63,14 @@ export function InstagramReels() {
     <section id="reels" className="reels-section" aria-labelledby="reels-title">
       <div className="page-shell reels-shell">
         <div className="reels-heading">
-          <div>
-            <p className="eyebrow eyebrow--light">
-              <span />
-              من Instagram
-            </p>
-
-            <h2 id="reels-title">
-              شوف الأكل
-              <br />
-              <span>على الحقيقة.</span>
-            </h2>
-          </div>
-
-          <div className="reels-heading-copy">
-            <p>
-              أربع لقطات من المطعم والأكل والتحضير. افتح أي فيديو وشوف التجربة بنفسك.
-            </p>
-
-            <a
-              className="reels-profile-link"
-              href="https://www.instagram.com/basicdiet.sa/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <InstagramMark />
-              @basicdiet.sa
-              <span aria-hidden="true">↗</span>
-            </a>
-          </div>
+          <div><p className="eyebrow eyebrow--light"><span />من قلب التجربة</p><h2 id="reels-title">أقرب للوجبة.<br /><span>أقرب للتجربة.</span></h2></div>
+          <div className="reels-heading-copy"><p>أربع لقطات من حسابنا. شوفها بطريقتك.</p><a className="reels-profile-link" href="https://www.instagram.com/basicdiet.sa/" target="_blank" rel="noopener noreferrer"><bdi>@basicdiet.sa</bdi><span aria-hidden="true">↗</span></a></div>
         </div>
-
-        <div className="reels-grid" aria-label="فيديوهات Basic Diet على Instagram">
-          {reels.map((reel, index) => (
-            <article className="reel-card" key={reel.shortcode}>
-              <div className="reel-card-head">
-                <span className="reel-card-index">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="reel-card-label">{reel.label}</span>
-              </div>
-
-              <div className="reel-embed-window">
-                <iframe
-                  src={`https://www.instagram.com/reel/${reel.shortcode}/embed/`}
-                  title={reel.title}
-                  loading="lazy"
-                  allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                  allowFullScreen
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              </div>
-
-              <div className="reel-card-foot">
-                <strong>{reel.title}</strong>
-                <a
-                  href={reel.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`فتح ${reel.title} على Instagram`}
-                >
-                  <span>Instagram</span>
-                  <span aria-hidden="true">↗</span>
-                </a>
-              </div>
-            </article>
-          ))}
+        <p className="reels-scroll-hint">اسحب لاستكشاف المقاطع <span aria-hidden="true">←</span></p>
+        <div className="reels-grid" role="region" tabIndex={0} aria-label="فيديوهات Basic Diet على Instagram؛ مرّر أفقيًا للمزيد">
+          {reels.map((reel, index) => <Reel key={reel.shortcode} reel={reel} index={index} />)}
         </div>
+        <noscript><style>{`.reel-embed-window { display: none; }`}</style><p>شاهد المقاطع الأربعة من روابط Instagram أعلاه.</p></noscript>
       </div>
     </section>
   );
