@@ -241,3 +241,76 @@ This can be refined after visual composition testing without reopening A1–A4.
 A1 through A5 are complete enough to move into Part B visual-system work.
 
 Implementation remains gated until Part B is defined.
+
+
+---
+
+## 2026-10-07 — Part B visual system locked
+
+**Status:** DECISION
+
+V1 identity:
+- Tajawal
+- #108055 primary green
+- #E95E2C accent orange
+- #FFFAE8 main cream
+- #F6F4E2 alternate cream
+- #161A16 primary ink
+
+Orange is accent, not the primary CTA color.
+
+---
+
+## 2026-10-07 — Hero composition locked
+
+**Status:** DECISION
+
+Hero video is a separate media panel.
+
+Desktop:
+video left / Arabic copy right.
+
+Mobile:
+video first / copy below.
+
+This supersedes the earlier idea that the generated video needs negative space for overlaid copy.
+
+---
+
+## 2026-10-07 — Canonical logo selection
+
+**Status:** DECISION
+
+Light/cream background:
+`Logo-High-Qualty.png`
+
+Dark/green background:
+`Logo-white.png`
+
+---
+
+## 2026-10-07 — Implementation stack locked
+
+**Status:** DECISION
+
+V1:
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- Arabic/RTL-first
+
+Use latest stable versions when implementation begins.
+
+---
+
+## 2026-10-07 — Pre-code design/specification complete
+
+**Status:** DECISION
+
+Strategy, copy direction, visual system, components, responsive rules, analytics, SEO and QA are complete.
+
+Remaining tasks are asset production/verification:
+- hero media
+- app screenshots
+- destination verification
+- launch-time proof refresh.
