@@ -1,6 +1,6 @@
 # Implementation Gate
 
-**Current status: WAITING FOR MINIMUM ASSET PACK**
+**Current status: WAITING FOR CTA DESTINATION CONFIRMATION**
 
 ## Pre-code decisions completed
 
@@ -22,7 +22,7 @@
 
 ## Minimum asset pack before code
 
-- [ ] final hero video OR approved poster-first temporary state
+- [x] final hero video + poster approved
 - [x] canonical logos selected
 - [x] food shortlist selected
 - [x] official App Store screenshot source identified
