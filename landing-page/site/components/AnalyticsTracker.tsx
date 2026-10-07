@@ -45,11 +45,18 @@ export function AnalyticsTracker() {
       pushEvent("lp_cta_click", detail);
     };
 
+    const onStoreClick = (event: Event) => {
+      const detail = (event as CustomEvent).detail ?? {};
+      pushEvent("lp_store_click", detail);
+    };
+
     window.addEventListener("basicdiet:cta", onCta);
+    window.addEventListener("basicdiet:store_click", onStoreClick);
 
     return () => {
       observer.disconnect();
       window.removeEventListener("basicdiet:cta", onCta);
+      window.removeEventListener("basicdiet:store_click", onStoreClick);
     };
   }, []);
 
