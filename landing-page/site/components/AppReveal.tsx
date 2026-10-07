@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef } from "react";
 import { StoreLinks } from "./StoreLinks";
 import {
@@ -202,11 +203,14 @@ export function AppReveal() {
             <div className="hero-meal-float">
               <div className="hero-plate">
                 <span className="hero-plate-rim" aria-hidden="true" />
-                <img
+                <Image
                   src="/meals/butter-chicken.png"
                   alt="وجبة دجاج بالزبدة"
                   className="hero-meal-image"
-                  decoding="async"
+                  width={896}
+                  height={760}
+                  sizes="(max-width: 640px) 56vw, (max-width: 980px) 420px, 446px"
+                  quality={76}
                   loading="lazy"
                 />
               </div>
