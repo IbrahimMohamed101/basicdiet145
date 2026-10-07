@@ -3588,8 +3588,8 @@ html[data-document-hidden="true"] .hero-media-badge {
   position: relative;
   z-index: 4;
   min-height: 92svh;
-  margin-top: -88px;
-  padding-top: 154px;
+  margin-top: -28px;
+  padding-top: 118px;
   border-radius: 52px 52px 0 0;
   box-shadow: 0 -24px 72px rgb(5 20 13 / 10%);
 }
@@ -3652,8 +3652,8 @@ html[data-document-hidden="true"] .hero-media-badge {
   }
 
   .app-reveal-section {
-    margin-top: -64px;
-    padding-top: 126px;
+    margin-top: -24px;
+    padding-top: 104px;
     border-radius: 42px 42px 0 0;
   }
 
@@ -3714,8 +3714,8 @@ html[data-document-hidden="true"] .hero-media-badge {
   }
 
   .app-reveal-section {
-    margin-top: -44px;
-    padding-top: 92px;
+    margin-top: -18px;
+    padding-top: 84px;
     border-radius: 32px 32px 0 0;
   }
 
