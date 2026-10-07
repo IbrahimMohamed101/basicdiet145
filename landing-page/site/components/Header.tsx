@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppCta } from "./AppCta";
 
 const links = [
@@ -15,115 +15,183 @@ export function Header() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeHref, setActiveHref] = useState("");
+  const sentinel = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const brand = useRef<HTMLAnchorElement>(null);
+  const unlockScroll = useRef<(() => void) | null>(null);
+
+  function closeMenu() {
+    if (!dialog.current?.open) return;
+    dialog.current.close();
+    unlockScroll.current?.();
+    unlockScroll.current = null;
+    setOpen(false);
+    // A breakpoint change can hide the opener; keep focus in the navigation.
+    const target = toggle.current?.getClientRects().length ? toggle.current : brand.current;
+    target?.focus({ preventScroll: true });
+  }
+
+  function openMenu() {
+    const panel = dialog.current;
+    if (!panel || panel.open) return;
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    const gap = window.innerWidth - root.clientWidth;
+    const header = toggle.current?.closest("header");
+    const side = root.clientLeft >= gap && gap > 0 ? "paddingLeft" : "paddingRight";
+    const previousPadding = root.style[side];
+    const previousHeaderPadding = header?.style[side] ?? "";
+    // Compensate classic scrollbars without changing viewport units or touch layouts.
+    if (gap > 0) {
+      root.style[side] = `${parseFloat(getComputedStyle(root)[side]) + gap}px`;
+      if (header) header.style[side] = `${parseFloat(getComputedStyle(header)[side]) + gap}px`;
+    }
+    root.style.overflow = "hidden";
+    unlockScroll.current = () => {
+      root.style.overflow = previousOverflow;
+      root.style[side] = previousPadding;
+      if (header) header.style[side] = previousHeaderPadding;
+    };
+    panel.showModal();
+    setOpen(true);
+  }
+
+  function trapFocus(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== "Tab") return;
+    const controls = event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
+  }
 
   useEffect(() => {
-    const update = () => setScrolled(window.scrollY > 12);
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    return () => window.removeEventListener("scroll", update);
-  }, []);
-
-  useEffect(() => {
-    const sections = links
-      .map((link) => document.querySelector(link.href))
-      .filter((section): section is Element => Boolean(section));
-
-    if (!sections.length) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const active = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-
-        if (active?.target.id) {
-          setActiveHref(`#${active.target.id}`);
-        }
-      },
-      {
-        rootMargin: "-28% 0px -58% 0px",
-        threshold: [0, 0.2, 0.5, 0.8],
-      },
-    );
-
-    sections.forEach((section) => observer.observe(section));
+    if (!window.IntersectionObserver || !sentinel.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setScrolled(!entry.isIntersecting);
+    });
+    observer.observe(sentinel.current);
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    if (!window.IntersectionObserver) return;
+    // Observe all sections so unlinked sections clear a stale active item too.
+    const sections = Array.from(document.querySelectorAll("main section"));
+    let observer: IntersectionObserver;
+    function observeSections() {
+      observer?.disconnect();
+      const height = window.innerHeight;
+      const bandStart = Math.min(120, height * 0.2);
+      observer = new IntersectionObserver(() => {
+        const current = sections.find((section) => {
+          const rect = section.getBoundingClientRect();
+          return rect.top <= height * 0.45 && rect.bottom > bandStart;
+        });
+        const href = current?.id ? `#${current.id}` : "";
+        setActiveHref(links.some((link) => link.href === href) ? href : "");
+      }, { rootMargin: `-${bandStart}px 0px -${height * 0.55}px 0px`, threshold: 0 });
+      sections.forEach((section) => observer.observe(section));
+    }
+    observeSections();
+    window.addEventListener("resize", observeSections, { passive: true });
     return () => {
-      document.body.style.overflow = "";
+      observer.disconnect();
+      window.removeEventListener("resize", observeSections);
     };
-  }, [open]);
+  }, []);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 981px)");
+    const onChange = () => { if (desktop.matches) closeMenu(); };
+    desktop.addEventListener("change", onChange);
+    return () => {
+      desktop.removeEventListener("change", onChange);
+      unlockScroll.current?.();
+    };
+  }, []);
+
+  const navLinks = links.map((link) => (
+    <a
+      key={link.href}
+      href={link.href}
+      aria-current={activeHref === link.href ? "location" : undefined}
+    >
+      {link.label}
+    </a>
+  ));
 
   return (
-    <header className="site-header">
-      <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
-        <a href="#top" className="brand" aria-label="Basic Diet - الرئيسية">
-          <img
-            className="brand-logo"
-            src="/brand/logo-primary.png"
-            alt=""
-          />
-          <span className="brand-name">Basic Diet</span>
-        </a>
-
-        <nav className="desktop-nav" aria-label="التنقل الرئيسي">
-          {links.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className={activeHref === link.href ? "nav-link--active" : ""}
+    <>
+      <div ref={sentinel} className="nav-sentinel" aria-hidden="true" />
+      <header className="site-header" data-menu-open={open}>
+        <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
+          <a ref={brand} href="#top" className="brand" aria-label="Basic Diet - الرئيسية">
+            <img className="brand-logo" src="/brand/logo-primary.png" alt="" width="52" height="48" fetchPriority="low" decoding="async" />
+            <span className="brand-name">Basic Diet</span>
+          </a>
+          <nav className="desktop-nav" aria-label="التنقل الرئيسي">{navLinks}</nav>
+          <div className="nav-actions">
+            <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>
+            <button
+              ref={toggle}
+              type="button"
+              className="menu-toggle"
+              aria-label="فتح القائمة"
+              aria-expanded={open}
+              aria-controls="mobile-menu"
+              aria-haspopup="dialog"
+              onClick={openMenu}
             >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-
-        <div className="nav-actions">
-          <AppCta location="header" className="button button--small">
-            ابدأ اشتراكك
-          </AppCta>
-
-          <button
-            type="button"
-            className={`menu-toggle ${open ? "menu-toggle--open" : ""}`}
-            aria-label={open ? "إغلاق القائمة" : "فتح القائمة"}
-            aria-expanded={open}
-            aria-controls="mobile-menu"
-            onClick={() => setOpen((value) => !value)}
-          >
-            <span />
-            <span />
-          </button>
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div
-        id="mobile-menu"
-        className={`mobile-menu ${open ? "mobile-menu--open" : ""}`}
-        aria-hidden={!open}
-      >
-        <nav aria-label="التنقل على الجوال">
-          {links.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className={activeHref === link.href ? "nav-link--active" : ""}
-              onClick={() => setOpen(false)}
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-      </div>
+        <dialog
+          ref={dialog}
+          id="mobile-menu"
+          className="nav-dialog"
+          aria-labelledby="mobile-menu-title"
+          onCancel={(event) => { event.preventDefault(); closeMenu(); }}
+          onClick={(event) => { if (event.target === event.currentTarget) closeMenu(); }}
+          onKeyDown={trapFocus}
+        >
+          <div className="nav-sheet">
+            <div className="nav-sheet-heading">
+              <h2 id="mobile-menu-title">التنقل الرئيسي</h2>
+              <button type="button" className="menu-close" aria-label="إغلاق القائمة" onClick={closeMenu} autoFocus>
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <nav aria-label="التنقل على الجوال" onClick={(event) => {
+              if ((event.target as Element).closest("a")) closeMenu();
+            }}>{navLinks}</nav>
+            <div className="nav-sheet-cta" onClickCapture={closeMenu}>
+              <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>
+            </div>
+          </div>
+        </dialog>
 
-      <div className="mobile-sticky-cta">
-        <AppCta location="header" className="button">
-          ابدأ اشتراكك
-        </AppCta>
-      </div>
-    </header>
+        <noscript>
+          <style>{`.site-header { position: relative; } .site-header .nav-actions, .site-header .mobile-sticky-cta, .site-header .desktop-nav { display: none; }`}</style>
+          <nav className="nav-fallback" aria-label="التنقل الرئيسي">
+            {links.map((link) => <a key={link.href} href={link.href}>{link.label}</a>)}
+            <a href="#app" className="button">ابدأ اشتراكك</a>
+          </nav>
+        </noscript>
+
+        <div className="mobile-sticky-cta" hidden={open}>
+          <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>
+        </div>
+      </header>
+    </>
   );
 }

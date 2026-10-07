@@ -150,7 +150,7 @@ test("current interactions remain usable with CPU throttled 4x", async ({ page }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "فتح القائمة", exact: true }).click();
-  await expect(page.locator("#mobile-menu")).toHaveAttribute("aria-hidden", "false");
+  await expect(page.getByRole("dialog", { name: "التنقل الرئيسي" })).toBeVisible();
   await page.getByRole("button", { name: "إغلاق القائمة", exact: true }).click();
   const question = page.locator(".faq-item button").nth(1);
   await question.click();
