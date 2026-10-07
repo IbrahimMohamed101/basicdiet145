@@ -194,3 +194,50 @@ Food desire comes before pricing.
 Header → Hero → Value strip → Food experience → Tagline reveal → Why Basic Diet → How it works → App control → Plans → Quality/customer proof → FAQ → Final CTA → Footer.
 
 Proof is distributed beside the claims it supports.
+
+
+---
+
+## 2026-10-07 — A3 layout confirmed
+
+**Status:** DECISION
+
+Layout A — Classic hero + sections remains the selected structure.
+
+---
+
+## 2026-10-07 — Primary CTA locked
+
+**Status:** DECISION
+
+Primary CTA for V1:
+
+**ابدأ اشتراكك**
+
+Use consistently across header, hero, app, plans and final CTA.
+
+---
+
+## 2026-10-07 — Hero copy direction v0.1
+
+**Status:** COPY DIRECTION
+
+Recommended hero headline:
+
+**وجبات تحبها، بكميات محسوبة تناسب روتينك.**
+
+Supporting line:
+
+اختر مدة اشتراكك، كمية الوجبة وعدد وجباتك يوميًا، وتحكم في اشتراكك من تطبيق Basic Diet.
+
+This can be refined after visual composition testing without reopening A1–A4.
+
+---
+
+## 2026-10-07 — Part A closed
+
+**Status:** DECISION
+
+A1 through A5 are complete enough to move into Part B visual-system work.
+
+Implementation remains gated until Part B is defined.
