@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { AppCta } from "./AppCta";
+import { HERO_POSTER_URL, HERO_VIDEO_URL } from "@/lib/app-links";
 import {
   observeMotionVisibility,
   useDocumentVisible,
@@ -9,8 +10,8 @@ import {
   useReducedMotion,
 } from "@/lib/motion";
 
-const APP_SCREENSHOT =
-  "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/09/72/b9/0972b9b2-9271-fef6-c5c7-8c2a374af4fb/Simulator_Screenshot_-_iPhone_16_Pro_Max_-_2026-06-02_at_19.01.23.png/471x1024.webp";
+const APP_HOME_SCREENSHOT =
+  "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/8d/c0/d3/8dc0d30c-c63a-5caa-6ed4-c476435f7444/Simulator_Screenshot_-_iPhone_16_Pro_Max_-_2026-06-02_at_18.59.40.png/471x1024.webp";
 
 export function Hero() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -146,6 +147,22 @@ export function Hero() {
           data-testid="hero-visual-stage"
           aria-label="وجبة Basic Diet مع واجهة التطبيق"
         >
+          <div className="hero-video-layer" aria-hidden="true">
+            <video
+              className="hero-background-video"
+              data-motion-video=""
+              muted
+              loop
+              playsInline
+              preload="none"
+              poster={HERO_POSTER_URL || undefined}
+              tabIndex={-1}
+            >
+              <source data-src={HERO_VIDEO_URL} type="video/mp4" />
+            </video>
+            <span className="hero-video-wash" />
+          </div>
+
           <div className="hero-visual-glow hero-visual-glow--green" aria-hidden="true" />
           <div className="hero-visual-glow hero-visual-glow--orange" aria-hidden="true" />
           <div className="hero-orbit hero-orbit--one" aria-hidden="true" />
@@ -156,8 +173,8 @@ export function Hero() {
               <div className="hero-phone-shell">
                 <span className="hero-phone-speaker" aria-hidden="true" />
                 <img
-                  src={APP_SCREENSHOT}
-                  alt="واجهة تطبيق Basic Diet"
+                  src={APP_HOME_SCREENSHOT}
+                  alt="الشاشة الرئيسية لتطبيق Basic Diet"
                   className="hero-phone-screen"
                   decoding="async"
                   fetchPriority="low"

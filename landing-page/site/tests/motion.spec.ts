@@ -126,14 +126,14 @@ test("visibility consumers share an observer and release all targets", async ({ 
   });
 });
 
-test("layered hero uses real app screenshot and local meal without video", async ({ page }) => {
+test("layered hero uses the app home screen, local meal, and approved background video", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.locator("video")).toHaveCount(0);
+  await expect(page.locator("video[data-motion-video]")).toHaveCount(1);
   await expect(page.getByTestId("hero-visual-stage")).toBeVisible();
   await expect(page.locator(".hero-phone-screen")).toHaveAttribute(
     "src",
-    /mzstatic\.com/,
+    /18\.59\.40/,
   );
   await expect(page.locator(".hero-meal-image")).toHaveAttribute(
     "src",
@@ -240,6 +240,13 @@ test("reduced motion keeps the layered hero static", async ({ page }) => {
       (element) => getComputedStyle(element).animationName,
     ),
   ).toBe("none");
+
+  expect(
+    await page.locator("video[data-motion-video]").evaluate((video: HTMLVideoElement) => ({
+      paused: video.paused,
+      source: video.querySelector("source")?.getAttribute("src"),
+    })),
+  ).toEqual({ paused: true, source: null });
 });
 
 for (const reduced of [false, true]) {
@@ -256,7 +263,14 @@ for (const reduced of [false, true]) {
     await expect(page.locator("h1")).toBeVisible();
     await expect(page.locator(".hero-meal-image")).toBeVisible();
     await expect(page.locator(".hero-phone-screen")).toBeVisible();
-    await expect(page.locator("video")).toHaveCount(0);
+    await expect(page.locator("video[data-motion-video]")).toHaveCount(1);
+    expect(
+      await page.locator("video[data-motion-video]").evaluate((video: HTMLVideoElement) => ({
+        paused: video.paused,
+        source: video.querySelector("source")?.getAttribute("src"),
+        poster: Boolean(video.poster),
+      })),
+    ).toEqual({ paused: true, source: null, poster: true });
 
     await context.close();
   });
@@ -339,3 +353,30 @@ test("reveal CSS shows content without enhancement and caps stagger", async ({ p
   ).toEqual({ opacity: "1", animation: "none" });
 });
 // Layered Hero QA: parallax bounds use rendered pixel offsets.
+
+
+test("Save-Data keeps the hybrid hero on its poster", async ({ page }) => {
+  const mediaRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith(".mp4")) mediaRequests.push(request.url());
+  });
+
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "connection", {
+      configurable: true,
+      value: Object.assign(new EventTarget(), { saveData: true }),
+    });
+  });
+
+  await page.goto("/");
+
+  expect(
+    await page.locator("video[data-motion-video]").evaluate((video: HTMLVideoElement) => ({
+      paused: video.paused,
+      source: video.querySelector("source")?.getAttribute("src"),
+      poster: Boolean(video.poster),
+    })),
+  ).toEqual({ paused: true, source: null, poster: true });
+
+  expect(mediaRequests).toEqual([]);
+});
