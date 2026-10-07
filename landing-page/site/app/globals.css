@@ -1270,7 +1270,8 @@ a {
 
   .steps-timeline .step-card {
     min-height: 240px;
-    padding: 28px 26px 24px 88px;
+    padding: 28px 26px 24px;
+    padding-inline-start: 88px;
   }
 
   .step-marker {
@@ -1313,7 +1314,8 @@ a {
 
   .steps-timeline .step-card {
     min-height: 230px;
-    padding: 24px 20px 22px 72px;
+    padding: 24px 20px 22px;
+    padding-inline-start: 72px;
     border-radius: 20px;
   }
 
