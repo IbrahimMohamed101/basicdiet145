@@ -2,57 +2,97 @@ const steps = [
   {
     number: "01",
     key: "plan",
-    eyebrow: "حدد المدة",
-    title: "اختر الباقة",
-    copy: "ابدأ بمدة تناسب روتينك: 7 أو 26 أو 30 يوم.",
-    meta: "7 · 26 · 30 يوم",
+    eyebrow: "اختار المدة",
+    title: "ابدأ بالباقة",
+    copy: "حدد المدة اللي تناسب روتينك من غير تفاصيل زيادة.",
   },
   {
     number: "02",
     key: "customize",
-    eyebrow: "اضبط يومك",
+    eyebrow: "ظبط يومك",
     title: "خصص وجباتك",
-    copy: "اختر كمية الوجبة وعدد الوجبات اليومية، وبعدها حدد أصنافك.",
-    meta: "100g · 150g · 200g  /  1–5 وجبات",
+    copy: "اختار الكمية وعدد الوجبات وبعدها أصنافك اليومية.",
   },
   {
     number: "03",
-    key: "follow",
-    eyebrow: "ابدأ وتابع",
+    key: "receive",
+    eyebrow: "ابدأ فعليًا",
     title: "استلم وتابع",
-    copy: "اختر التوصيل أو الاستلام، وتابع تفاصيل اشتراكك من التطبيق.",
-    meta: "توصيل أو استلام",
+    copy: "توصيل أو استلام، وكل تفاصيل اشتراكك تفضل معاك في التطبيق.",
   },
 ] as const;
 
-function StepIcon({ type }: { type: (typeof steps)[number]["key"] }) {
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="5.5" width="16" height="14" rx="3" />
+      <path d="M8 3.5v4M16 3.5v4M4 9.5h16" />
+    </svg>
+  );
+}
+
+function SlidersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 6h14M5 12h14M5 18h14" />
+      <circle cx="9" cy="6" r="2" />
+      <circle cx="15" cy="12" r="2" />
+      <circle cx="11" cy="18" r="2" />
+    </svg>
+  );
+}
+
+function DeliveryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3.5 7h10.5v9H3.5zM14 10h3l3.5 3.5V16H14z" />
+      <circle cx="7" cy="17.5" r="1.5" />
+      <circle cx="17.5" cy="17.5" r="1.5" />
+    </svg>
+  );
+}
+
+function StepVisual({ type }: { type: (typeof steps)[number]["key"] }) {
   if (type === "plan") {
     return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="6.5" y="8" width="19" height="17.5" rx="3" />
-        <path d="M10 5.5v5M22 5.5v5M7 13h18" />
-      </svg>
+      <div className="journey-visual journey-visual--plans" aria-label="7 أو 26 أو 30 يوم">
+        <span>7</span>
+        <span className="is-active">26</span>
+        <span>30</span>
+        <small>يوم</small>
+      </div>
     );
   }
 
   if (type === "customize") {
     return (
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M7 9h18M7 16h18M7 23h18" />
-        <circle cx="12" cy="9" r="2.3" />
-        <circle cx="21" cy="16" r="2.3" />
-        <circle cx="15" cy="23" r="2.3" />
-      </svg>
+      <div className="journey-visual journey-visual--customize" aria-label="150 جرام و3 وجبات">
+        <span className="journey-gram">150g</span>
+        <div className="journey-meal-dots">
+          <i />
+          <i />
+          <i className="is-active" />
+          <i />
+          <i />
+        </div>
+        <small>3 وجبات يوميًا</small>
+      </div>
     );
   }
 
   return (
-    <svg viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="10" y="4.5" width="12" height="23" rx="3" />
-      <path d="M13 9h6M14 23h4" />
-      <path d="m23.5 11.5 2.5 2.5-4.5 4.5" />
-    </svg>
+    <div className="journey-visual journey-visual--delivery" aria-label="توصيل أو استلام">
+      <span className="is-active">توصيل</span>
+      <span>استلام</span>
+      <small>تابع من التطبيق</small>
+    </div>
   );
+}
+
+function StepIcon({ type }: { type: (typeof steps)[number]["key"] }) {
+  if (type === "plan") return <CalendarIcon />;
+  if (type === "customize") return <SlidersIcon />;
+  return <DeliveryIcon />;
 }
 
 export function HowItWorks() {
@@ -77,32 +117,40 @@ export function HowItWorks() {
           </div>
 
           <p>
-            ثلاث خطوات واضحة فقط. تختار، تخصص، وبعدها تدير كل شيء من التطبيق.
+            الرحلة أبسط مما تبدو: اختار الباقة، ظبط يومك، وبعدها سيب الباقي علينا.
           </p>
         </div>
 
-        <div className="steps-timeline" aria-label="خطوات الاشتراك">
-          <div className="steps-line" aria-hidden="true" />
+        <div className="journey-road" aria-label="رحلة الاشتراك">
+          <div className="journey-track" aria-hidden="true">
+            <span />
+          </div>
 
           {steps.map((step) => (
-            <article className="step-card" key={step.number}>
-              <div className="step-marker" aria-hidden="true">
-                <span>{step.number}</span>
+            <article className="journey-step" key={step.number}>
+              <span className="journey-number" aria-hidden="true">{step.number}</span>
+
+              <div className="journey-step-top">
+                <span className="journey-icon">
+                  <StepIcon type={step.key} />
+                </span>
+                <span className="journey-eyebrow">{step.eyebrow}</span>
               </div>
 
-              <div className="step-icon">
-                <StepIcon type={step.key} />
-              </div>
+              <StepVisual type={step.key} />
 
-              <div className="step-copy">
-                <span className="step-eyebrow">{step.eyebrow}</span>
+              <div className="journey-copy">
                 <h3>{step.title}</h3>
                 <p>{step.copy}</p>
               </div>
-
-              <span className="step-meta">{step.meta}</span>
             </article>
           ))}
+        </div>
+
+        <div className="journey-handoff">
+          <span>وبعدها؟</span>
+          <strong>شوف التجربة على الحقيقة.</strong>
+          <span className="journey-handoff-arrow" aria-hidden="true">↓</span>
         </div>
       </div>
     </section>
