@@ -1,0 +1,33 @@
+# Landing UI refinement — 2026-10-08
+
+Scope: `landing-page/site` only. Starting commit: `537984e1`. This session's eight-stage brief supersedes the earlier one-phase-at-a-time navbar task. No backend, dashboard, API/proxy, business logic, mobile app or infrastructure changes. Local commits on `landing-page-research`; no deployment command.
+
+## Phase 1 — rendered audit and plan (before implementation)
+
+Inspected local production build and the Railway preview in Chromium at 1440 and 390, including every section. Screenshots: repository-local `.audit/refinement/before/` (excluded from Git). Installed existing dependencies with npm, no lockfile/dependency change; initial production build passes.
+
+Strong / preserve:
+- Cinematic, uncluttered Hero and approved video/poster.
+- Real phone UI and food composition in AppReveal, with direct verified store links.
+- Six selected meal assets and allowlisted internal image proxy; never swap for direct Drive URLs.
+- Native modal navigation, keyboard behavior and shared motion tokens.
+
+Weak / redesign:
+- 5,055-line globals.css includes abandoned Hero/App generations and repeated selectors in the same media context. Later overrides complicate breakpoints.
+- Actual mobile document overflow: 522px at a 390px viewport, reproduced on production. Benefits is clipped.
+- Flexibility looks like a dashboard mockup with non-working options, repeated copy, tiny labels and multiple borders/gradients.
+- Journey repeats three equal columns, decorative badges and customization data; little progression.
+- Four Instagram widgets load at once when nearby; native chrome dominates narrow frames. Existing allow="web-share" produces Chromium warnings.
+- Plans have large unused space; FAQ repeats information across eight questions; closing CTA repeats a generic action.
+- Initial tests include stale AppReveal selectors; existing failures are recorded in `.audit/refinement/before/tests.log` and will be fixed with current-behavior assertions.
+
+Implementation sequence:
+1. Consolidate live styles into canonical section stylesheets; remove obsolete declarations. Protect Hero/App/meal geometry across breakpoints.
+2. Flexibility: editorial two-column photo + genuine native radio demo (100/150/200g, 1–5 meals, delivery/pickup), compact live summary. Explicit demo; app remains the place to subscribe. No pricing/calorie simulation.
+3. Journey: a continuous RTL path, large 01/02/03, a shared visual rather than three cards, vertical progression on mobile; handoff to real Reels.
+4. Reels: dark gallery, four official embeds with staged loading, readable attribution, useful fallback links, contained mobile snap scrolling. No scraped media or invented metrics.
+5. Plans: compact comparison, shared options once, neutral 26-day emphasis, accurate price-in-app note.
+6. Six concise FAQs with meaningful no-JS behavior; final direct-download composition; useful footer with verified links only.
+7. Full QA at ten specified viewports, 80/90/100/110/125% zoom equivalents, reduced motion, keyboard, no-JS; real image decoding and rectangle checks.
+
+After each major change: production build, rendered section inspection, regression checks, scoped conventional commit. Final report records all checks, design decisions and remaining platform limitations here.
