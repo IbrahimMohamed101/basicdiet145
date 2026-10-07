@@ -1,4 +1,4 @@
-import { faqItems } from "@/components/FAQ";
+import { faqItems } from "@/lib/faq-data";
 
 export function StructuredData() {
   const restaurant = {
