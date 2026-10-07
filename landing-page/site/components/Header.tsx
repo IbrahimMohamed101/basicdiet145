@@ -107,10 +107,11 @@ export function Header() {
       const height = window.innerHeight;
       const bandStart = Math.min(120, height * 0.2);
       observer = new IntersectionObserver(() => {
-        const current = sections.find((section) => {
+        const visibleSections = sections.filter((section) => {
           const rect = section.getBoundingClientRect();
           return rect.top <= height * 0.45 && rect.bottom > bandStart;
         });
+        const current = visibleSections[visibleSections.length - 1];
         const href = current?.id ? `#${current.id}` : "";
         setActiveHref(links.some((link) => link.href === href) ? href : "");
       }, { rootMargin: `-${bandStart}px 0px -${height * 0.55}px 0px`, threshold: 0 });

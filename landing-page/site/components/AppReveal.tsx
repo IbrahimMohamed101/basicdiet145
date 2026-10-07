@@ -183,7 +183,7 @@ export function AppReveal() {
                   alt="الشاشة الرئيسية لتطبيق Basic Diet"
                   className="hero-phone-screen"
                   decoding="async"
-                  fetchPriority="low"
+                  loading="eager"
                 />
               </div>
             </div>
