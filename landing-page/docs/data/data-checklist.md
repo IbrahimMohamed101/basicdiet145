@@ -13,7 +13,7 @@
 - [ ] Rank top 3 objections using internal/private VOC.
 - [ ] Confirm initial landing-page traffic mix.
 - [ ] Confirm final primary CTA wording.
-- [ ] Confirm public cancellation/pause/refund promise.
+- [x] Cancellation policy excluded from landing-page core content by decision.
 
 ## Brand
 
@@ -25,6 +25,11 @@
 - [ ] Final landing-page tone locked after A1.
 
 ## Product / Meals
+
+- [ ] Hero video concept and storyboard.
+- [ ] Generate/test hero video candidate (e.g. Google Flow).
+- [ ] Verify generated food visually matches Basic Diet quality and brand.
+- [ ] Create poster/fallback image and mobile optimized version.
 
 - [x] مكتبة كبيرة من صور الوجبات الحقيقية موجودة.
 - [ ] Shortlist 6–12 hero/landing-quality images.
