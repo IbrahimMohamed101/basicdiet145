@@ -142,6 +142,7 @@ test("cinematic hero uses the approved full video and hands off to the interacti
   );
   await expect(page.locator(".hero-cinema-title-line")).toHaveCount(3);
   await expect(page.locator(".app-reveal-section")).toHaveCount(1);
+  await expect(page.locator(".proof-strip")).toHaveCount(0);
 });
 
 test("hero pointer parallax is bounded and returns to neutral", async ({ page }) => {

@@ -68,10 +68,6 @@ export function Hero() {
           </ul>
         </div>
       </div>
-
-      <a className="hero-scroll-cue" href="#app" aria-label="انتقل إلى قسم التطبيق">
-        <span aria-hidden="true" />
-      </a>
     </section>
   );
 }

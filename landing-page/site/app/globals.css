@@ -3510,3 +3510,263 @@ html[data-document-hidden="true"] .hero-media-badge {
     transform: none;
   }
 }
+
+
+/* Phase 3E — cinematic handoff polish */
+.hero-cinema-video {
+  filter: saturate(1.08) contrast(1.02) brightness(0.94);
+  object-position: 48% center;
+}
+
+.hero-cinema-shade {
+  background:
+    linear-gradient(
+      90deg,
+      rgb(5 14 10 / 3%) 0%,
+      rgb(5 14 10 / 9%) 35%,
+      rgb(5 14 10 / 60%) 69%,
+      rgb(5 14 10 / 86%) 100%
+    );
+}
+
+.hero-cinema-vignette {
+  background:
+    linear-gradient(
+      180deg,
+      rgb(5 14 10 / 34%) 0%,
+      transparent 21%,
+      transparent 69%,
+      rgb(5 14 10 / 55%) 100%
+    ),
+    radial-gradient(
+      circle at 80% 46%,
+      rgb(5 14 10 / 13%) 0%,
+      rgb(5 14 10 / 20%) 28%,
+      transparent 60%
+    );
+}
+
+.hero .hero-cinema-title {
+  max-width: 680px;
+  font-size: clamp(48px, 5.45vw, 80px);
+  line-height: 1.055;
+}
+
+.hero-cinema-copy {
+  width: min(690px, 58%);
+}
+
+.hero-cinema-meta {
+  width: min(650px, 100%);
+  margin-top: 34px;
+  padding: 0;
+  display: flex;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.hero-cinema-meta li {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 14px;
+  background: rgb(9 24 17 / 34%);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 10%);
+  backdrop-filter: blur(10px);
+}
+
+.hero-cinema-meta li + li {
+  border-inline-start: 1px solid rgb(255 255 255 / 18%);
+}
+
+.app-reveal-section {
+  position: relative;
+  z-index: 4;
+  min-height: 92svh;
+  margin-top: -88px;
+  padding-top: 154px;
+  border-radius: 52px 52px 0 0;
+  box-shadow: 0 -24px 72px rgb(5 20 13 / 10%);
+}
+
+.app-reveal-section::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 108px;
+  height: 5px;
+  left: 50%;
+  top: 24px;
+  border-radius: 999px;
+  background: rgb(16 128 85 / 17%);
+  transform: translateX(-50%);
+}
+
+.app-reveal-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.app-reveal-stage {
+  min-height: 690px;
+}
+
+.app-reveal-stage .hero-phone-layer {
+  width: clamp(260px, 42%, 332px);
+  inset-inline-end: 8%;
+  top: -1%;
+}
+
+.app-reveal-stage .hero-meal-layer {
+  width: min(63%, 446px);
+  inset-inline-end: 20%;
+  bottom: -3%;
+}
+
+.app-reveal-stage .hero-orbit--one {
+  width: 70%;
+  height: 38%;
+  inset-inline-end: 8%;
+  opacity: 0.72;
+}
+
+.app-reveal-stage .hero-orbit--two {
+  width: 54%;
+  height: 28%;
+  inset-inline-end: 20%;
+  opacity: 0.28;
+}
+
+.app-reveal-stage .hero-chip {
+  box-shadow: 0 18px 42px rgb(20 32 26 / 10%);
+}
+
+@media (max-width: 980px) {
+  .hero-cinema-copy {
+    width: min(670px, 72%);
+  }
+
+  .app-reveal-section {
+    margin-top: -64px;
+    padding-top: 126px;
+    border-radius: 42px 42px 0 0;
+  }
+
+  .app-reveal-stage {
+    min-height: 560px;
+  }
+
+  .app-reveal-stage .hero-phone-layer {
+    width: clamp(224px, 38%, 292px);
+    inset-inline-end: 12%;
+  }
+
+  .app-reveal-stage .hero-meal-layer {
+    width: min(61%, 420px);
+    inset-inline-end: 21%;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-cinema-video {
+    object-position: 56% center;
+    filter: saturate(1.06) contrast(1.02) brightness(0.88);
+  }
+
+  .hero-cinema-shade {
+    background:
+      linear-gradient(
+        180deg,
+        rgb(5 14 10 / 28%) 0%,
+        rgb(5 14 10 / 11%) 30%,
+        rgb(5 14 10 / 46%) 61%,
+        rgb(5 14 10 / 88%) 100%
+      );
+  }
+
+  .hero .hero-cinema-title {
+    font-size: clamp(38px, 11.2vw, 54px);
+    line-height: 1.07;
+  }
+
+  .hero-cinema-meta {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .hero-cinema-meta li {
+    padding: 10px 11px;
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+  }
+
+  .hero-cinema-meta li:nth-child(3) {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+    border-top: 1px solid rgb(255 255 255 / 18%);
+  }
+
+  .app-reveal-section {
+    margin-top: -44px;
+    padding-top: 92px;
+    border-radius: 32px 32px 0 0;
+  }
+
+  .app-reveal-section::before {
+    width: 74px;
+    top: 18px;
+  }
+
+  .app-reveal-stage {
+    min-height: 350px;
+  }
+
+  .app-reveal-stage .hero-phone-layer {
+    width: 39%;
+    min-width: 138px;
+    inset-inline-end: 7%;
+    top: -1%;
+  }
+
+  .app-reveal-stage .hero-meal-layer {
+    width: 60%;
+    inset-inline-end: 23%;
+    bottom: -5%;
+  }
+
+  .app-reveal-stage .hero-orbit--two {
+    display: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .hero-cinema-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-cinema-meta li,
+  .hero-cinema-meta li:nth-child(3) {
+    grid-column: auto;
+    padding: 9px 8px;
+    border-top: 1px solid rgb(255 255 255 / 18%);
+  }
+
+  .hero-cinema-meta li:first-child {
+    border-top: 1px solid rgb(255 255 255 / 18%);
+  }
+
+  .hero-cinema-meta li:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .app-reveal-stage {
+    min-height: 320px;
+  }
+}

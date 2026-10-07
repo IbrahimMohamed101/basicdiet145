@@ -213,11 +213,6 @@ export function AppReveal() {
             <strong>من 1 إلى 5</strong>
             <span>وجبات يوميًا</span>
           </div>
-
-          <span className="hero-particle hero-particle--one" aria-hidden="true" />
-          <span className="hero-particle hero-particle--two" aria-hidden="true" />
-          <span className="hero-particle hero-particle--three" aria-hidden="true" />
-          <span className="hero-particle hero-particle--four" aria-hidden="true" />
         </div>
       </div>
     </section>

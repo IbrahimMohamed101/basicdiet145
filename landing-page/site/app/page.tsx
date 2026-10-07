@@ -1,7 +1,6 @@
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { AppReveal } from "@/components/AppReveal";
-import { ProofStrip } from "@/components/ProofStrip";
 import { MealGallery } from "@/components/MealGallery";
 import { Benefits } from "@/components/Benefits";
 import { HowItWorks } from "@/components/HowItWorks";
@@ -26,7 +25,6 @@ export default function Home() {
         <div id="top" />
         <Hero />
         <AppReveal />
-        <ProofStrip />
         <MealGallery />
         <Benefits />
         <HowItWorks />
