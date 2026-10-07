@@ -303,3 +303,56 @@ GitHub Actions:
 - الفيديو الخارجي 3.30MB وصور الأكل الكبيرة ما زالت عوامل أداء مستقلة موثقة من Phase 1.
 - Safari/iOS فعلي وقارئ شاشة بشري لم يُختبرا في هذا التنفيذ؛ Chromium QA هو التحقق الآلي المتاح.
 - لم تبدأ Phase 4.
+
+
+---
+
+# Phase 3B — Layered 3D Hero (video replacement)
+
+التاريخ: 2026-10-07. بعد تجارب الفيديو التوليدي، تم اعتماد اتجاه مختلف للـHero: **مشهد 3D متعدد الطبقات داخل المتصفح بدل فيديو AI** حتى يبقى التطبيق الحقيقي مقروءًا وتكون الحركة تحت السيطرة.
+
+## التنفيذ النهائي
+
+- أزيل الفيديو من الـHero بالكامل؛ لا يوجد MP4 أو autoplay في أول الصفحة.
+- استخدمت واجهة تطبيق Basic Diet الحقيقية من لقطة App Store الموجودة أصلًا في المشروع، داخل إطار هاتف CSS ثلاثي الأبعاد.
+- استخدمت صورة الوجبة الحقيقية `/meals/butter-chicken.png` داخل طبق منظور 3D بدل طعام مولّد.
+- أضيفت طبقات عمق خفيفة: هاتف، طبق، حلقات، إضاءات خضراء/برتقالية، badges حقيقية (`150g` و`من 1 إلى 5`) وعناصر زخرفية محدودة.
+- Desktop fine pointer: parallax منخفض التكلفة عبر CSS custom properties وrequestAnimationFrame فقط أثناء الحركة؛ لا React state داخل كل frame.
+- touch/mobile: لا mouse-follow، والمشهد يبقى ثابتًا مع دخول بسيط.
+- reduced-motion: جميع animations المستمرة متوقفة.
+- تم حذف preload الخاص بـhero poster واستبداله بـpreload لصورة الوجبة المحلية.
+- الـmobile sticky CTA أصبح مخفيًا أثناء بقاء الـHero مرئيًا لمنع تكرار الزر وتغطية محتوى أول الشاشة.
+
+## التحقق
+
+Commit الأساسي:
+`123a2fee583322ef8227f4325e7fb697464b8684`
+
+إصلاح CSS:
+`37bd409ebc2187a263c65e304b7fb935d2de9ac8`
+
+إصلاح QA والموبايل:
+`c850fbdffd2a11b42bb0542f16134088d0d86863`
+
+Commit تشغيل الـCI النهائي:
+`a2e0b373f006a214648c49a30565cbdf0bb30907`
+
+GitHub Actions:
+- Landing Page Build run `37655858702`: **success**
+- typecheck: ناجح
+- Next.js build: ناجح
+- production server: ناجح
+- Playwright / Visual QA: ناجح بالكامل
+- screenshots generated للـdesktop/tablet/mobile
+
+Railway:
+- service `basicdiet-landing`
+- latest deployment: **SUCCESS**
+- source branch: `landing-page-research`
+
+## النتيجة البصرية
+
+- Desktop: الهاتف الحقيقي خلف الطبق مع منظور وعمق وإضاءات subtle، والنص في الجانب المقابل.
+- Mobile: المشهد مضغوط بدون overflow، الهاتف والطبق يظهران قبل العنوان مع الحفاظ على CTA واضح.
+- أزيل تداخل الـsticky CTA مع محتوى الـHero على الهاتف.
+- لم تبدأ Phase 4.
