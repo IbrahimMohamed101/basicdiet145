@@ -7,7 +7,7 @@ const steps = [
   {
     number: "02",
     title: "خصص وجباتك",
-    copy: "اختر كمية الوجبة وعدد وجباتك ووجباتك من التطبيق.",
+    copy: "اختر كمية الوجبة وعدد وجباتك، ثم حدد أصنافك من التطبيق.",
   },
   {
     number: "03",
@@ -41,7 +41,6 @@ export function HowItWorks() {
             <article className="step-card" key={step.number}>
               <div className="step-top">
                 <span>{step.number}</span>
-                <span aria-hidden="true">←</span>
               </div>
               <h3>{step.title}</h3>
               <p>{step.copy}</p>
