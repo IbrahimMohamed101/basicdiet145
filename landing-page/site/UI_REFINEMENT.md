@@ -49,3 +49,7 @@ Replaced three competing card-like columns with a continuous numbered editorial 
 ## Phase 5 — official Reels gallery
 
 Dark full-width gallery with four official embeds, a 320px minimum frame width, RTL snap scrolling, keyboard focus and direct per-Reel/profile links. No iframe exists at initial load; shared visibility observation mounts only visible cards, staggered by 180ms. No autoplay permission and no downloaded Instagram assets. No-JS visitors retain all four direct links. Production build, desktop/mobile layout and live official embeds inspected (`.audit/refinement/reels/1440-live.png`). Zero page overflow. Instagram owns its internal chrome/content and emits Permissions-Policy warnings for features unsupported by the test Chromium; these are third-party response headers, not first-party hydration/runtime errors. One media preview was temporarily black in live capture; direct links remain available.
+
+## Phase 6 — plans
+
+A single comparison surface replaces detached rounded cards. Duration dominates; the 26-day column uses a quiet green emphasis and the existing neutral “الخيار المتوازن” label. Common options appear once. Mobile uses short rows with aligned actions; exact pricing and plan selection remain explicitly inside the app. No prices or popularity claims added. Production build and 1440/390 rendered inspection pass; zero overflow. Artifacts: `.audit/refinement/plans/`.
