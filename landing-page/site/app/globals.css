@@ -869,9 +869,11 @@ a {
     display: flex;
     gap: 12px;
     overflow-x: auto;
+    overscroll-behavior-inline: contain;
     scroll-snap-type: x mandatory;
-    padding: 0 16px 10px;
-    margin-inline: -16px;
+    scroll-padding-inline: 2px;
+    padding: 0 2px 10px;
+    margin-inline: 0;
     scrollbar-width: none;
   }
 
@@ -886,6 +888,7 @@ a {
     flex: 0 0 min(82vw, 330px);
     height: 390px;
     grid-column: auto;
+    scroll-snap-align: start;
   }
 
   .meal-card figcaption {
