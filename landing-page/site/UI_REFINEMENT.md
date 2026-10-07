@@ -31,3 +31,9 @@ Implementation sequence:
 7. Full QA at ten specified viewports, 80/90/100/110/125% zoom equivalents, reduced motion, keyboard, no-JS; real image decoding and rectangle checks.
 
 After each major change: production build, rendered section inspection, regression checks, scoped conventional commit. Final report records all checks, design decisions and remaining platform limitations here.
+
+## Phase 2 — canonical CSS and image geometry
+
+Replaced 5,055-line globals.css with a small import manifest and canonical section stylesheets; removed abandoned section generations. Fixed the missing tablet/mobile FAQ grid breakpoint, the actual source of the 132px page overflow. Preserved Hero/App presentation and motion/navbar tokens. Meal geometry now uses explicit grid tracks/aspect ratios and a contained mobile carousel. Next Image optimizes the existing allowlisted proxy URLs; no API edits. Local image patterns permit query strings only on that proxy.
+
+Validation: production build passes. Rendered 1440px and 768px: all six real images decoded, positive card/image geometry, zero document overflow. Hero/App before/after screenshots inspected. Remaining section refinements and complete test suite follow in subsequent phases.

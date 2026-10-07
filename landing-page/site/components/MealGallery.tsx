@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const meals = [
   {
     name: "وجبة ستيك",
@@ -47,7 +49,7 @@ export function MealGallery() {
           <div>
             <p className="eyebrow">
               <span />
-              منيو متنوع كل يوم
+              من قائمة وجباتنا
             </p>
             <h2 id="food-title">
               أكل محسوب بطعم
@@ -58,21 +60,23 @@ export function MealGallery() {
 
           <p>
             اختيارات متنوعة بين اللحوم والدجاج والبحريات، عشان تلتزم بخطتك
-            بدون ما تحس إنك بتكرر نفس الوجبة.
+            بدون ما تحس إنك تكرر نفس الوجبة.
           </p>
         </div>
 
         <div className="meal-grid meal-showcase">
-          {meals.map((meal, index) => (
+          {meals.map((meal) => (
             <figure
               key={meal.name}
               className={`meal-card${meal.featured ? " meal-card--featured" : ""}`}
             >
               <div className="meal-image-wrap">
-                <img
+                <Image
+                  fill
+                  sizes={meal.featured ? "(max-width: 640px) 82vw, (max-width: 1100px) 48vw, 620px" : "(max-width: 640px) 82vw, (max-width: 1100px) 48vw, 310px"}
                   src={meal.image}
                   alt={`وجبة ${meal.name}`}
-                  loading={index < 2 ? "eager" : "lazy"}
+                  loading="lazy"
                   decoding="async"
                 />
               </div>
@@ -88,7 +92,7 @@ export function MealGallery() {
         </div>
 
         <div className="food-footer">
-          <p>دي مجرد عينة من الوجبات المتاحة داخل التطبيق.</p>
+          <p>مجرد لمحة من الوجبات المتاحة في التطبيق.</p>
           <a className="food-link" href="#how-it-works">
             شوف كيف تختار وجباتك
             <span aria-hidden="true">←</span>
