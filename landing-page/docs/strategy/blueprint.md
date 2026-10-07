@@ -1,167 +1,69 @@
 # Landing Page Blueprint
 
-**Version:** 0.1 — Hypothesis, not final
+**Version:** 0.2 — A2 structure locked  
+**Date:** 2026-10-07
 
-هذا الملف يتغير مع كل معلومة جديدة حتى نصل إلى Blueprint V1 المعتمد.
+## Layout type
 
-## 1. Header
+**A — Classic hero + sections**
 
-مبدئيًا:
-- Logo.
-- روابط مختصرة لأهم الأقسام فقط.
-- CTA واضح لتحميل التطبيق/الاشتراك.
+Reason:
+Basic Diet is understandable quickly with strong food visuals and a simple subscription model. The page needs structured proof and objection handling, not a long-form editorial story.
 
-Mobile navigation يجب أن يكون بسيطًا جدًا.
+## Conversion path
 
----
+`Food desire → value → variety proof → belief shift → benefits → simple process → app control → plans → trust → FAQ → CTA`
 
-## 2. Hero
+## Section order
 
-### الهدف
-خلال ثوانٍ يعرف الزائر:
-- ماذا تقدم Basic Diet؟
-- لماذا يهتم؟
-- ماذا يفعل الآن؟
+0. Header
+1. Hero video
+2. Value/proof strip
+3. Food experience
+4. Tagline reveal
+5. Why Basic Diet
+6. How it works
+7. App experience
+8. Plans
+9. Quality/customer proof
+10. FAQ
+11. Final CTA
+12. Footer
 
-### العناصر المتوقعة
-- **Hero video قصير، Premium، food-first** يكون العنصر البصري الأساسي. يمكن إنتاجه بأداة توليد فيديو مثل Google Flow ثم مراجعته بصريًا قبل الاعتماد.
-- صورة fallback محسنة للموبايل/الاتصالات البطيئة.
-- Headline عربي قصير.
-- Supporting copy قصير.
-- Primary CTA.
-- Secondary CTA اختياري لاستكشاف الباقات.
-- Trust cue صغير إذا توفر رقم/تقييم حقيقي.
+## Structural rules
 
-### Video direction
-- مدة قصيرة وLoop نظيف بدون إحساس إعلان مزعج.
-- يركز على texture، steam، plating، close-ups وحركة الطعام أكثر من النصوص.
-- لا نعتمد على فيديو مولد إذا كان شكل الأكل غير واقعي أو يخالف المنتج الحقيقي.
-- لا يبدأ بصوت تلقائي؛ الفيديو البصري هو الأساس.
-- نجهز Poster image قوية ونسخة خفيفة للموبايل.
+- Hero leads with food, not price.
+- One primary CTA above the fold.
+- Proof sits beside the claim it supports.
+- Real meals appear before plans.
+- App is a major proof section.
+- Plans show 7 / 26 / 30 day families without a huge pricing matrix.
+- Trust proof comes before FAQ.
+- Final CTA repeats the same action as the hero.
+- Mobile preserves the same conversion sequence.
 
-### ممنوع
-- Paragraph طويل.
-- أكثر من هدف رئيسي.
-- stock photography إذا كانت لدينا صور منتجات حقيقية جيدة.
+## Tagline reveal
 
----
+Directional message:
 
-## 3. Immediate Trust / Value Strip
+`الأكل المحسوب مش لازم يكون ممل. اختيارات تحبها، بكميات تناسب روتينك.`
 
-يعرض 3–4 نقاط فقط بعد الـHero، مثل:
-- وجبات محسوبة.
-- خيارات متعددة.
-- توصيل في المناطق المؤكدة.
-- إدارة الاشتراك من التطبيق.
+Not final copy.
 
-النص النهائي يعتمد على Facts حقيقية.
+## FAQ scope
 
----
+Focus on:
+- plan selection
+- meals/day
+- portion size
+- meal choice/change
+- delivery/pickup
+- app management
+- nutrition data
+- service availability
 
-## 4. Meals / Food Experience
+Cancellation is intentionally excluded.
 
-### الهدف
-بيع المنتج بصريًا.
+## Future feature
 
-محتمل أن يشمل:
-- Gallery أو Cards منتقاة.
-- اسم الوجبة.
-- Calories / Protein / Carbs عند توفر بيانات موثوقة.
-- توضيح تنوع الوجبات بدون تحويل الصفحة إلى Menu كامل.
-
----
-
-## 5. Why Basic Diet
-
-3–4 أسباب فقط، يجب أن تكون Competitive Advantages حقيقية وليست عبارات عامة.
-
-**TODO:** نحتاج تحديد هذه الأسباب من بيانات العمل والعملاء.
-
----
-
-## 6. How It Works
-
-رحلة مبسطة محتملة:
-
-1. اختر الباقة.
-2. خصص وجباتك.
-3. حدد الاستلام/التوصيل.
-4. تابع اشتراكك من التطبيق.
-
-يتم تحديثها بعد مراجعة رحلة التطبيق الحقيقية.
-
----
-
-## 7. Plans
-
-### المبدأ
-نعرض القدر الذي يساعد على اتخاذ القرار فقط.
-
-مبدئيًا يمكن تعريف:
-- 7 أيام.
-- 26 يومًا.
-- 30 يومًا.
-
-لكن لا نعرض matrix ضخمة لكل عدد وجبات × جرامات × إضافات.
-
-CTA: الانتقال للتطبيق للتخصيص الكامل.
-
----
-
-## 8. App Experience
-
-Section رئيسي وليس ثانوي.
-
-محتمل أن يشمل screenshots حقيقية لـ:
-- اختيار الوجبات.
-- الاشتراك.
-- متابعة الرصيد/الأيام.
-- إدارة التجربة.
-
-### Hypothesis
-ربط الطعام مباشرة بصورة التطبيق يوضح أن Basic Diet خدمة منظمة وليست مجرد مطعم وجبات منفردة.
-
----
-
-## 9. Social Proof
-
-- Reviews حقيقية فقط.
-- Google ratings أو مصادر موثقة إن وجدت.
-- صور/أسماء فقط عندما يكون لدينا إذن مناسب.
-
-لا نضع أرقامًا غير مؤكدة.
-
----
-
-## 10. FAQ
-
-الأسئلة النهائية تستخرج من اعتراضات العملاء الفعلية، وليس FAQ Generic.
-
-مرشحات أولية:
-- أين التوصيل؟
-- كيف أختار الباقة؟
-- هل أستطيع تغيير الوجبات؟
-- ماذا يحدث إذا أردت إيقاف/إلغاء الاشتراك؟
-- كيف يتم التوصيل؟
-- ماذا عن الحساسية والمكونات؟
-
----
-
-## 11. Final CTA
-
-رسالة نهائية قصيرة + CTA رئيسي.
-
-ممكن دعمها بصورة وجبة قوية أو App visual.
-
----
-
-## Future Feature — Recommendation Calculator
-
-ليست ضمن V1 الحالية.
-
-الفكرة:
-- بيانات بسيطة عن المستخدم والهدف.
-- تقدير احتياج تقريبي.
-- اقتراح plan مناسب.
-
-يجب التحقق من المنطق الغذائي وتجربة المستخدم قبل التنفيذ.
+Package/calorie recommendation calculator remains outside V1.
