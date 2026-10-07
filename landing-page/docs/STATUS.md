@@ -89,6 +89,28 @@ The 320px QA initially detected horizontal overflow in the meal carousel/app pho
 5. Live verification before publishing numeric rating/review claims
 6. Live verification before publishing exact SAR pricing
 
+## Railway deployment
+
+**Production service:** `basicdiet-landing`
+
+**Railway project:** `dependable-alignment`
+
+**Production URL:**  
+https://basicdiet-landing-production.up.railway.app
+
+Deployment status:
+- Railway build: SUCCESS
+- Healthcheck `/`: SUCCESS
+- Service state: Online
+- Replicas: 1 running / 0 crashed
+- Active warnings: 0
+- Active critical issues: 0
+
+Source:
+- Repo: `IbrahimMohamed101/basicdiet145`
+- Branch: `landing-page-research`
+- Root directory: `landing-page/site`
+
 ## Next execution phase
 
-**Preview / deployment + final launch QA**
+**Live visual review + final launch QA**
