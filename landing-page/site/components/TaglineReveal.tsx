@@ -9,7 +9,7 @@ const words =
 
 export function TaglineReveal() {
   const rootRef = useRef<HTMLElement | null>(null);
-  const [visibleCount, setVisibleCount] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(4);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -38,7 +38,7 @@ export function TaglineReveal() {
             }
             return count + 1;
           });
-        }, 95);
+        }, 70);
       },
       { threshold: 0.35 },
     );
