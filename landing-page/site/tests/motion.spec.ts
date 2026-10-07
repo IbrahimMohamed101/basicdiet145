@@ -126,10 +126,11 @@ test("visibility consumers share an observer and release all targets", async ({ 
   });
 });
 
-test("layered hero uses the app home screen, local meal, and approved background video", async ({ page }) => {
+test("cinematic hero uses the approved full video and hands off to the interactive app reveal", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.locator("video[data-motion-video]")).toHaveCount(1);
+  await expect(page.locator(".hero--cinematic")).toBeVisible();
   await expect(page.getByTestId("hero-visual-stage")).toBeVisible();
   await expect(page.locator(".hero-phone-screen")).toHaveAttribute(
     "src",
@@ -139,7 +140,8 @@ test("layered hero uses the app home screen, local meal, and approved background
     "src",
     "/meals/butter-chicken.png",
   );
-  await expect(page.locator(".hero-title-line")).toHaveCount(3);
+  await expect(page.locator(".hero-cinema-title-line")).toHaveCount(3);
+  await expect(page.locator(".app-reveal-section")).toHaveCount(1);
 });
 
 test("hero pointer parallax is bounded and returns to neutral", async ({ page }) => {
@@ -283,10 +285,10 @@ test("initial reduced motion keeps smooth scrolling disabled", async ({ page }) 
   await page.locator(".button--hero").click();
   await expect(page.locator("#app")).toBeInViewport();
 
-  await page.locator(".button--light").first().hover();
+  await page.locator(".app-reveal-cta").hover();
 
   expect(
-    await page.locator(".button--light").first().evaluate((element) => ({
+    await page.locator(".app-reveal-cta").evaluate((element) => ({
       transform: getComputedStyle(element).transform,
       scroll: getComputedStyle(document.documentElement).scrollBehavior,
     })),
@@ -355,7 +357,7 @@ test("reveal CSS shows content without enhancement and caps stagger", async ({ p
 // Layered Hero QA: parallax bounds use rendered pixel offsets.
 
 
-test("Save-Data keeps the hybrid hero on its poster", async ({ page }) => {
+test("Save-Data keeps the cinematic hero on its poster", async ({ page }) => {
   const mediaRequests: string[] = [];
   page.on("request", (request) => {
     if (request.url().endsWith(".mp4")) mediaRequests.push(request.url());
