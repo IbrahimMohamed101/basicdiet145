@@ -75,9 +75,9 @@ export function InstagramReels() {
 
           <aside className="reels-side-note" aria-label="تابع Basic Diet على Instagram">
             <span className="reels-side-mark" aria-hidden="true">◎</span>
-            <strong>المزيد قريبًا هنا.</strong>
+            <strong>المزيد من اللقطات على Instagram.</strong>
             <p>
-              القسم جاهز لإضافة أفضل Reels من الحساب بدون ما نكسر تصميم الصفحة أو سرعة التحميل.
+              تابع الحساب وشوف باقي الفيديوهات، الأطباق الجديدة، وكواليس التجربة.
             </p>
             <a
               href="https://www.instagram.com/basicdiet.sa/"
