@@ -240,3 +240,66 @@ LCP النهائي: **3.924 / 4.353 / 2.939s**. هدف <=2.5s ووسيط Perform
 أثناء التحقق ظهرت نتيجة وسيطة أسوأ (LCP نحو 15s)، فتم حفظها في `.audit/phase2/initial-performance/` وإجراء مقارنة متتابعة مع نسخة مصدر Phase 1 معزولة داخل `.audit/phase2/reference/`، وتقاريرها في `.audit/phase2/paired/`. كشفت الشبكة أولوية شعار High؛ بعد ضبطها Low مع async decoding أعيدت القياسات الثلاثة أعلاه. لا تُنسب كل فروق الزمن إلى الكود وحده بسبب تذبذب الوسائط الخارجية والمحاكاة. لم يُعدل Hero لمعالجة القياس.
 
 سجلات الفحص: `.audit/phase2/playwright.log`، `root-test.log`، `after/accessibility.json`، `before/lighthouse-{1,2,3}.json` و`after/lighthouse-{1,2,3}.json`، و`before/bundle.json` و`after/bundle.json`.
+
+
+---
+
+# Phase 3 — Hero
+
+التاريخ: 2026-10-07. النطاق: **Hero فقط**. لم تبدأ Phase 4 ولم تتغير أقسام Meals أو Benefits أو App Showcase أو Plans أو FAQ أو Footer.
+
+## التنفيذ
+
+| الملف | السبب |
+|---|---|
+| `landing-page/site/components/Hero.tsx` | تحويل Hero إلى مكوّن عميل محدود النطاق لإدارة 3D tilt الخفيف، إيقاف/تشغيل الفيديو يدويًا، وحالة Save-Data/reduced-motion دون إضافة مكتبة حركة. |
+| `landing-page/site/components/MotionRuntime.tsx` | احترام الإيقاف اليدوي للفيديو عبر `data-user-paused` حتى لا تعيد دورة الرؤية تشغيل الفيديو ضد اختيار المستخدم. |
+| `landing-page/site/app/globals.css` | إضافة طبقات العمق، حدود وظلال Hero، motion للعناوين، micro-interactions للـCTA، CSS 3D، وضبط الموبايل. |
+| `landing-page/site/tests/motion.spec.ts` | اختبارات حدود الـtilt، تعطيله على touch، استمرار manual pause عبر دورة الرؤية، وreduced-motion poster-only. |
+
+### السلوك البصري
+
+- بطاقة الفيديو حصلت على radius من tokens وحدّ خفيف وelevation مضبوط بدل إضافة تأثيرات WebGL أو blur ثقيل.
+- أضيفت طبقتا عمق CSS فقط: أخضر وبرتقالي باستخدام radial gradients بدون صور أو claims جديدة.
+- الشارة الحالية **«وجبات فعلية، روتين أسهل»** أُبقيت لأنها موجودة مسبقًا في المشروع؛ لم تُضف شارة تسويقية جديدة.
+- Desktop pointer:fine: المنظور 1400px، حد `rotateX` الأقصى ±2deg وحد `rotateY` الأقصى ±3deg، مع lerp عبر requestAnimationFrame. الحلقة تعمل فقط عند الحاجة، وتعود للصفر عند مغادرة المؤشر.
+- `will-change` يظهر فقط أثناء التفاعل الفعلي عبر `data-hero-interacting`.
+- touch/mobile: لا يوجد pointer tilt. البطاقة ثابتة ويقتصر الدخول على opacity/translate.
+- العنوان العربي أصبح 3 أسطر DOM واضحة، بدون تقسيم حروف وبدون letter-spacing. التأخير 100/175/250ms مع reveal 650ms، أي أن تسلسل العنوان ينتهي قبل 1s.
+- CTA يستخدم lift بسيط حتى 2px وlight sweep واحد على hover-capable pointers، مع active scale الموجود.
+- على <=640px تم ضبط بطاقة الفيديو إلى 16:10 وتقليل padding/gap حتى يبقى CTA أقرب لأول viewport بدون تصغير النص الأساسي.
+
+### الفيديو والتحكم اليدوي
+
+- الفيديو المعتمد لم يُستبدل ولم يُعاد ترميزه، والـposter الحالي بقي كما هو.
+- زر تشغيل/إيقاف 44×44px يظهر بعد hydration فقط عندما تكون الحركة مسموحة ولا يكون Save-Data أو reduced-motion مفعّلًا.
+- الضغط على Pause يضع `data-user-paused="true"`. `MotionRuntime` يفحص هذه القيمة قبل أي autoplay مبني على الرؤية، لذلك الخروج من Hero والعودة إليه لا يعيد التشغيل تلقائيًا.
+- الضغط على Play يحذف تفضيل الإيقاف، يعيد توصيل المصدر إن كان fallback قد أزاله، ثم يحاول التشغيل. رفض `play()` يبقى آمنًا ويعيد poster.
+- reduced-motion وSave-Data و`data-motion="off"`: poster-only ولا يظهر زر وسائط غير مفيد.
+
+## Quality Gate الفعلي
+
+Commit التنفيذ:
+`c878d734b620f606b78e5c3cfe65112dca73bdf5`
+
+GitHub Actions:
+- Workflow: **Landing Page Build**
+- Run: **37642898767**
+- النتيجة: **success**
+- Typecheck: نجح.
+- Next.js build: نجح.
+- Chromium installation/server startup: نجحا.
+- Visual QA / Playwright: نجح workflow بالكامل، بما فيه اختبارات Phase 3 الجديدة والاختبارات السابقة.
+- Artifact `landing-page-visual-qa` تم إنشاؤه للقطات QA.
+- لم تُضف dependency أو تغييرات backend.
+
+لا يوجد lint script كما في المرحلتين السابقتين.
+
+## الأداء والقيود
+
+- baseline المعتمد قبل هذه المرحلة يبقى Phase 2: Performance median ~88، LCP ~3.924s، CLS 0، Accessibility 100.
+- لم تُشغّل Lighthouse ثلاث مرات لهذه المرحلة داخل workflow الحالي، لذلك لا يتم ادعاء رقم Phase 3 جديد. الـCI يثبت build/typecheck/Playwright فقط.
+- التغيير يضيف منطق Hero عميلًا محدودًا وCSS، لكن لا توجد مكتبة animation أو WebGL جديدة.
+- الفيديو الخارجي 3.30MB وصور الأكل الكبيرة ما زالت عوامل أداء مستقلة موثقة من Phase 1.
+- Safari/iOS فعلي وقارئ شاشة بشري لم يُختبرا في هذا التنفيذ؛ Chromium QA هو التحقق الآلي المتاح.
+- لم تبدأ Phase 4.
