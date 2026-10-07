@@ -121,19 +121,11 @@ a {
   direction: ltr;
 }
 
-.brand-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--brand-green);
-  color: white;
-  font-size: 20px;
-}
-
-.brand-name {
-  font-size: 18px;
+.brand-logo {
+  width: 118px;
+  height: 44px;
+  display: block;
+  object-fit: contain;
 }
 
 .desktop-nav {
@@ -504,12 +496,8 @@ a {
     padding: 6px 7px 6px 12px;
   }
 
-  .brand-name {
-    display: none;
-  }
-
-  .brand-mark {
-    width: 40px;
+  .brand-logo {
+    width: 88px;
     height: 40px;
   }
 
@@ -720,7 +708,7 @@ a {
   margin-top: 48px;
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  grid-auto-rows: 210px;
+  grid-auto-rows: 230px;
   gap: 16px;
 }
 
@@ -739,10 +727,6 @@ a {
   grid-column: span 8;
 }
 
-.meal-card--wide {
-  grid-column: span 8;
-  grid-row: span 1;
-}
 
 .meal-card img {
   width: 100%;
@@ -1601,18 +1585,11 @@ a {
   direction: ltr;
 }
 
-.footer-brand span {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--brand-green);
-  font-weight: 700;
-}
-
-.footer-brand strong {
-  font-size: 18px;
+.footer-brand img {
+  width: 138px;
+  height: 52px;
+  display: block;
+  object-fit: contain;
 }
 
 .footer-grid > div:first-child > p {
