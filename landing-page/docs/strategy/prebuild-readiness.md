@@ -1,7 +1,7 @@
 # Pre-Build Readiness Gate
 
 **Date:** 2026-10-07  
-**Status:** DESIGN/SPEC READY — ASSET PRODUCTION REMAINS
+**Status:** HERO ASSET APPROVED — CTA DESTINATION REMAINS
 
 ## Strategy
 - [x] A1 Intake
@@ -29,9 +29,9 @@
 - [x] canonical dark-background logo
 - [x] meal shortlist
 - [x] hero video brief
-- [ ] generate 2–4 hero video candidates
-- [ ] select final video
-- [ ] poster fallback
+- [x] hero video candidates explored
+- [x] final hero video approved
+- [x] poster fallback generated
 - [x] official current App Store screenshot source identified (10 screenshots)
 - [ ] approve testimonial quotes
 - [ ] refresh exact rating if displayed
