@@ -338,3 +338,4 @@ test("reveal CSS shows content without enhancement and caps stagger", async ({ p
     })),
   ).toEqual({ opacity: "1", animation: "none" });
 });
+// Layered Hero QA: parallax bounds use rendered pixel offsets.
