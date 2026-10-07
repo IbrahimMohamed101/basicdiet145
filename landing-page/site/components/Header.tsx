@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppCta } from "./AppCta";
 
@@ -134,7 +135,7 @@ export function Header() {
       <header className="site-header" data-menu-open={open}>
         <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
           <a ref={brand} href="#top" className="brand" aria-label="Basic Diet - الرئيسية">
-            <img className="brand-logo" src="/brand/logo-primary.png" alt="" width="52" height="48" fetchPriority="low" decoding="async" />
+            <Image className="brand-logo" src="/brand/logo-primary.png" alt="" width={52} height={48} sizes="52px" priority quality={78} />
             <span className="brand-name">Basic Diet</span>
           </a>
           <nav className="desktop-nav" aria-label="التنقل الرئيسي">{navLinks}</nav>
