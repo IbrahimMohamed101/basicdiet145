@@ -62,8 +62,13 @@ Remaining evidence gaps:
 4. Reviews معتمدة للنشر.
 5. صور الوجبات المختارة.
 6. Screenshots التطبيق.
-7. public cancellation/pause/refund promise.
-8. delivery/coverage wording النهائي.
+7. delivery/coverage wording النهائي.
+
+## New Decisions
+
+- Hero = short premium food video as the primary visual.
+- Video generation can be explored with Google Flow, then validated against real Basic Diet food.
+- Cancellation policy is intentionally not part of the core landing-page content.
 
 ## Next Step
 
