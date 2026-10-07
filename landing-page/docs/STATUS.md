@@ -46,7 +46,7 @@ Completed:
 - desktop: video left / Arabic copy right
 - mobile: video first / copy below
 - no baked-in text
-- poster fallback required
+- poster fallback generated and approved
 
 ## Layout
 
@@ -65,8 +65,8 @@ Header → Hero → Proof Strip → Food → Tagline → Benefits → How It Wor
 
 ## Remaining non-code production items
 
-1. Generate/select hero video + poster
-2. Capture/collect 3–5 current app screenshots
+1. Hero video + poster ✅ APPROVED
+2. Official App Store screenshot source ✅ READY
 3. Approve testimonial quotes
 4. Re-check exact public rating if shown
 5. Verify Android destination if used
@@ -77,4 +77,4 @@ These are asset/verification tasks, not unresolved strategy or design decisions.
 
 **NOT STARTED.**
 
-Open the code gate once the minimum asset pack is ready.
+Hero media gate is now complete. Remaining gate item: CTA platform destinations.
