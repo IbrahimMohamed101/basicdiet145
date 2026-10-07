@@ -951,7 +951,7 @@ a {
 }
 
 .tag-word {
-  color: rgb(22 26 22 / 23%);
+  color: rgb(22 26 22 / 42%);
   transition: color 500ms var(--ease-fluid);
 }
 
