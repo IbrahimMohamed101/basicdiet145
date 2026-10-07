@@ -10,9 +10,8 @@ export function Footer() {
     <footer className="footer">
       <div className="page-shell footer-grid">
         <div>
-          <a className="footer-brand" href="#top">
-            <span>B</span>
-            <strong>Basic Diet</strong>
+          <a className="footer-brand" href="#top" aria-label="Basic Diet - الرئيسية">
+            <img src="/brand/logo-white.png" alt="Basic Diet" />
           </a>
           <p>وجبات تحبها، بكميات محسوبة تناسب روتينك.</p>
         </div>
