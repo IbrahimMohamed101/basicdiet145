@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Part A — Strategy & Structure COMPLETE ✅**
+**PRE-CODE DESIGN/SPECIFICATION COMPLETE ✅**
 
 Completed:
 - A1 Intake
@@ -12,11 +12,25 @@ Completed:
 - A3 Layout Confirmation
 - A4 Conversion Rules
 - A5 Copy v0.1
-- Initial SEO/AEO direction
+- SEO/AEO direction
+- Part B Visual System
+- Component/Layout Specification
+- Figma Handoff Specification
+- Visual Asset Shortlist
+- Hero Video Brief v1.0
+- Analytics/Attribution Specification
+- Pre-Code QA Checklist
+- Pre-Build Readiness Gate
+- Stack decision
 
-## Layout
+## Locked visual identity
 
-**A — Classic hero + sections**
+- Typeface: Tajawal
+- Primary green: #108055
+- Accent orange: #E95E2C
+- Main cream: #FFFAE8
+- Muted cream: #F6F4E2
+- Ink: #161A16
 
 ## Primary conversion
 
@@ -26,43 +40,41 @@ Completed:
 
 **ابدأ اشتراكك**
 
-## Hero copy v0.1
+## Hero
 
-**وجبات تحبها، بكميات محسوبة تناسب روتينك.**
+- separate premium food video panel
+- desktop: video left / Arabic copy right
+- mobile: video first / copy below
+- no baked-in text
+- poster fallback required
 
-Supporting:
-اختر مدة اشتراكك، كمية الوجبة وعدد وجباتك يوميًا، وتحكم في اشتراكك من تطبيق Basic Diet.
+## Layout
 
-## Page argument
+**Classic Hero + Sections**
 
-`Desire → Relevance → Proof → Control → Simplicity → Value → Trust → Action`
+Order:
+Header → Hero → Proof Strip → Food → Tagline → Benefits → How It Works → App → Plans → Social Proof → FAQ → Final CTA → Footer
 
-## Next phase
+## Build stack
 
-**Part B — Visual System**
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- Arabic/RTL-first
+- indexable evergreen page
 
-Next decisions:
-1. Arabic typography
-2. color system
-3. spacing/radius tokens
-4. hero composition
-5. image treatment
-6. motion
-7. responsive behavior
-8. component visual rules
+## Remaining non-code production items
 
-## Creative dependencies still open
+1. Generate/select hero video + poster
+2. Capture/collect 3–5 current app screenshots
+3. Approve testimonial quotes
+4. Re-check exact public rating if shown
+5. Verify Android destination if used
 
-- hero video candidates
-- final image shortlist
-- app screenshots
-- canonical logo choice
-- final approved testimonials
-- exact rating/review number at launch
-- Android store routing if available
+These are asset/verification tasks, not unresolved strategy or design decisions.
 
-## Implementation status
+## Code status
 
-**Code still intentionally not started.**
+**NOT STARTED.**
 
-Implementation begins after Part B establishes the visual system.
+Open the code gate once the minimum asset pack is ready.
