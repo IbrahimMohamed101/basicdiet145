@@ -181,7 +181,6 @@
 }
 
 .hero-phone-float {
-  animation: hero-layer-float-phone 6.8s var(--motion-ease-in-out) infinite alternate;
 }
 
 .hero-phone-shell {
@@ -244,7 +243,6 @@
 }
 
 .hero-meal-float {
-  animation: hero-layer-float-meal 7.6s var(--motion-ease-in-out) infinite alternate;
 }
 
 .hero-plate {
@@ -318,7 +316,6 @@
       145px
     )
     rotate(-4deg);
-  animation: hero-chip-float 6.3s var(--motion-ease-in-out) infinite alternate;
 }
 
 .hero-chip--meals {
@@ -330,7 +327,6 @@
       100px
     )
     rotate(3deg);
-  animation: hero-chip-float 7.1s var(--motion-ease-in-out) -2.2s infinite alternate-reverse;
 }
 
 .hero-visual-stage[data-scene-moving="true"] .hero-phone-layer {
@@ -1093,15 +1089,15 @@
 }
 @media (prefers-reduced-motion: no-preference) {
 .hero-visual-stage {
-  animation: hero-scene-enter 880ms var(--motion-ease-out) 60ms both;
+  animation: hero-scene-enter var(--motion-duration-hero) var(--motion-ease-out) 60ms both;
 }
 
 .hero-cinema-copy {
-  animation: hero-cinema-copy-in 880ms var(--motion-ease-out) 100ms both;
+  animation: hero-cinema-copy-in var(--motion-duration-hero) var(--motion-ease-out) 100ms both;
 }
 
 .hero-cinema-video {
-  animation: hero-cinema-video-in 1100ms var(--motion-ease-out) both;
+  animation: hero-cinema-video-in var(--motion-duration-hero) var(--motion-ease-out) both;
 }
 
 }
@@ -1148,21 +1144,6 @@
   transform: none;
 }
 
-}
-
-@keyframes hero-layer-float-phone {
-  from { translate: 0 -3px; }
-  to { translate: 0 8px; }
-}
-
-@keyframes hero-layer-float-meal {
-  from { translate: 0 0; }
-  to { translate: 0 -7px; }
-}
-
-@keyframes hero-chip-float {
-  from { translate: 0 -2px; }
-  to { translate: 0 7px; }
 }
 
 @keyframes hero-scene-enter {

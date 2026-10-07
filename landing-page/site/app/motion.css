@@ -43,6 +43,8 @@ html[data-motion="off"] *::after {
     display: block;
   }
 
+  :root .app-store-button:hover,
+  :root .app-store-button:active,
   :root .button:hover,
   :root .button:active,
   :root .text-link:hover span,

@@ -1,3 +1,4 @@
+import { isolateInstagram } from "./helpers";
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -127,7 +128,8 @@ test("visibility consumers share an observer and release all targets", async ({ 
 });
 
 test("cinematic hero uses the approved full video and hands off to the interactive app reveal", async ({ page }) => {
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   await expect(page.locator("video[data-motion-video]")).toHaveCount(1);
   await expect(page.locator(".hero--cinematic")).toBeVisible();
@@ -147,7 +149,8 @@ test("cinematic hero uses the approved full video and hands off to the interacti
 
 test("hero pointer parallax is bounded and returns to neutral", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   const stage = page.getByTestId("hero-visual-stage");
   await stage.evaluate((element) =>
@@ -208,7 +211,8 @@ test("touch hero stays static and has no pointer parallax", async ({ browser }) 
   });
   const page = await context.newPage();
 
-  await page.goto("http://127.0.0.1:3000/");
+  await isolateInstagram(page);
+    await page.goto("http://127.0.0.1:3000/");
 
   const stage = page.getByTestId("hero-visual-stage");
   await expect(stage).toHaveAttribute("data-scene-interactive", "false");
@@ -225,7 +229,8 @@ test("touch hero stays static and has no pointer parallax", async ({ browser }) 
 
 test("reduced motion keeps the layered hero static", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   const stage = page.getByTestId("hero-visual-stage");
   await expect(stage).toHaveAttribute("data-scene-interactive", "false");
@@ -265,6 +270,7 @@ for (const reduced of [false, true]) {
     });
 
     const page = await context.newPage();
+    await isolateInstagram(page);
     await page.goto("http://127.0.0.1:3000/");
 
     await expect(page.locator("h1")).toBeVisible();
@@ -285,15 +291,16 @@ for (const reduced of [false, true]) {
 
 test("initial reduced motion keeps smooth scrolling disabled", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   await page.locator(".button--hero").click();
   await expect(page.locator("#app")).toBeInViewport();
 
-  await page.locator(".app-reveal-cta").hover();
+  await page.locator("#app .app-store-button").first().hover();
 
   expect(
-    await page.locator(".app-reveal-cta").evaluate((element) => ({
+    await page.locator("#app .app-store-button").first().evaluate((element) => ({
       transform: getComputedStyle(element).transform,
       scroll: getComputedStyle(document.documentElement).scrollBehavior,
     })),
@@ -305,7 +312,8 @@ test("current interactions remain usable with CPU throttled 4x", async ({ page }
   await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   await page.getByRole("button", { name: "فتح القائمة", exact: true }).click();
   await expect(
@@ -314,15 +322,16 @@ test("current interactions remain usable with CPU throttled 4x", async ({ page }
 
   await page.getByRole("button", { name: "إغلاق القائمة", exact: true }).click();
 
-  const question = page.locator(".faq-item button").nth(1);
+  const question = page.locator(".faq-item summary").nth(1);
   await question.click();
-  await expect(question).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".faq-item").nth(1)).toHaveAttribute("open", "");
 
   await session.detach();
 });
 
 test("reveal CSS shows content without enhancement and caps stagger", async ({ page }) => {
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   await page.evaluate(() => {
     const fixture = document.createElement("div");
@@ -375,7 +384,8 @@ test("Save-Data keeps the cinematic hero on its poster", async ({ page }) => {
     });
   });
 
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
 
   expect(
     await page.locator("video[data-motion-video]").evaluate((video: HTMLVideoElement) => ({

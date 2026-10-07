@@ -48,6 +48,7 @@ export function Benefits() {
           </div>
         </div>
       </div>
+      <noscript><style>{`.flexibility-receipt { display: none; } .flexibility-visual { padding-bottom: 0; }`}</style></noscript>
     </section>
   );
 }

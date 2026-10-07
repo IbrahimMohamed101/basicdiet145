@@ -23,6 +23,11 @@ button {
   border: 0;
 }
 
+a:focus-visible, summary:focus-visible {
+  outline: 3px solid var(--brand-orange);
+  outline-offset: 4px;
+}
+
 a {
   font: inherit;
   color: inherit;
@@ -141,9 +146,6 @@ a {
   width: 100%;
 }
 
-body {
-  padding-bottom: 76px;
-}
 
 }
 @media (max-width: 360px) {

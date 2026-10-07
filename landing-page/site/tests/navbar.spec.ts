@@ -1,8 +1,9 @@
+import { isolateInstagram } from "./helpers";
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 const widths = [360, 390, 430, 768, 1024, 1440];
 const targets = ["meals", "how-it-works", "app", "plans", "faq"];
-const output = "../../.audit/phase2/after";
+const output = "../../.audit/refinement/final/navbar";
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
@@ -12,6 +13,7 @@ for (const width of widths) {
     page.on("pageerror", e => errors.push(e.message));
     page.on("console", m => { if (["error", "warning"].includes(m.type())) errors.push(m.text()); });
     await page.setViewportSize({ width, height: width === 360 ? 640 : 900 });
+    await isolateInstagram(page);
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
@@ -36,7 +38,7 @@ for (const width of widths) {
       await expect(cta).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(close).toBeFocused();
-      await expect(page.locator(".mobile-sticky-cta")).toBeHidden();
+      await expect(page.locator(".mobile-sticky-cta")).toHaveCount(0);
       await page.screenshot({ animations: "disabled", path: `${output}/${width}-open.png` });
       await page.keyboard.press("Escape");
       await expect(toggle).toBeFocused();
@@ -83,7 +85,8 @@ for (const width of widths) {
       const errors: string[] = [];
       page.on("pageerror", e => errors.push(e.message));
       page.on("console", m => { if (["error", "warning"].includes(m.type())) errors.push(m.text()); });
-      await page.goto("/");
+      await isolateInstagram(page);
+    await page.goto("/");
       if (mode === "no-animation") await page.evaluate(() => { document.documentElement.dataset.motion = "off"; });
       await noOverflow(page);
       if (mode === "no-js") {
@@ -113,6 +116,7 @@ for (const width of widths) {
 test("navbar short landscape and 200% text remain reachable", async ({ page }) => {
   for (const viewport of [{ width: 844, height: 390 }, { width: 360, height: 640 }, { width: 1024, height: 900 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(viewport);
+    await isolateInstagram(page);
     await page.goto("/");
     await page.addStyleTag({ content: "html { font-size: 200%; }" });
     await noOverflow(page);
@@ -138,7 +142,8 @@ test("navbar short landscape and 200% text remain reachable", async ({ page }) =
 
 test("navbar resize closes modal and restores focus", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
   await page.getByRole("button", { name: "فتح القائمة" }).click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("dialog")).not.toBeVisible();
@@ -150,7 +155,8 @@ test("navbar CPU 4x keyboard CTA preserves event and unlocks before scroll", asy
   await page.setViewportSize({ width: 390, height: 844 });
   const session = await page.context().newCDPSession(page);
   await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
   await page.evaluate(() => { window.addEventListener("basicdiet:cta", e => { document.documentElement.dataset.cta = JSON.stringify((e as CustomEvent).detail); }); });
   await page.getByRole("button", { name: "فتح القائمة" }).focus();
   await page.keyboard.press("Space");
@@ -164,7 +170,8 @@ test("navbar CPU 4x keyboard CTA preserves event and unlocks before scroll", asy
 
 test("navbar desktop keyboard, focus outline and stable layout on scroll", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+  await isolateInstagram(page);
+    await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
   await page.keyboard.press("Tab");
   await expect(page.locator(".skip-link")).toBeFocused();
@@ -203,6 +210,7 @@ test("navbar classic scrollbar lock preserves page and header geometry", async (
   const browser = await chromium.launch({ ignoreDefaultArgs: ["--hide-scrollbars"] });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await isolateInstagram(page);
     await page.goto("http://127.0.0.1:3000");
     await page.evaluate(() => document.fonts.ready);
     await page.locator("#app").evaluate(e => e.scrollIntoView({ behavior: "instant" }));
