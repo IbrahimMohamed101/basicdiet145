@@ -14,12 +14,40 @@ const links = [
 export function Header() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [activeHref, setActiveHref] = useState("");
 
   useEffect(() => {
     const update = () => setScrolled(window.scrollY > 12);
     update();
     window.addEventListener("scroll", update, { passive: true });
     return () => window.removeEventListener("scroll", update);
+  }, []);
+
+  useEffect(() => {
+    const sections = links
+      .map((link) => document.querySelector(link.href))
+      .filter((section): section is Element => Boolean(section));
+
+    if (!sections.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const active = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (active?.target.id) {
+          setActiveHref(`#${active.target.id}`);
+        }
+      },
+      {
+        rootMargin: "-28% 0px -58% 0px",
+        threshold: [0, 0.2, 0.5, 0.8],
+      },
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -36,13 +64,18 @@ export function Header() {
           <img
             className="brand-logo"
             src="/brand/logo-primary.png"
-            alt="Basic Diet"
+            alt=""
           />
+          <span className="brand-name">Basic Diet</span>
         </a>
 
         <nav className="desktop-nav" aria-label="التنقل الرئيسي">
           {links.map((link) => (
-            <a key={link.href} href={link.href}>
+            <a
+              key={link.href}
+              href={link.href}
+              className={activeHref === link.href ? "nav-link--active" : ""}
+            >
               {link.label}
             </a>
           ))}
@@ -74,11 +107,22 @@ export function Header() {
       >
         <nav aria-label="التنقل على الجوال">
           {links.map((link) => (
-            <a key={link.href} href={link.href} onClick={() => setOpen(false)}>
+            <a
+              key={link.href}
+              href={link.href}
+              className={activeHref === link.href ? "nav-link--active" : ""}
+              onClick={() => setOpen(false)}
+            >
               {link.label}
             </a>
           ))}
         </nav>
+      </div>
+
+      <div className="mobile-sticky-cta">
+        <AppCta location="header" className="button">
+          ابدأ اشتراكك
+        </AppCta>
       </div>
     </header>
   );
