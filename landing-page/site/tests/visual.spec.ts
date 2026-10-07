@@ -30,14 +30,39 @@ for (const current of cases) {
     await expect(page.locator("#plans")).toBeAttached();
     await expect(page.locator("#faq")).toBeAttached();
 
-    const overflow = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
+    const overflow = await page.evaluate(() => {
+      const clientWidth = document.documentElement.clientWidth;
+      const offenders = Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            tag: element.tagName,
+            className:
+              typeof element.className === "string" ? element.className : "",
+            left: Math.round(rect.left * 100) / 100,
+            right: Math.round(rect.right * 100) / 100,
+            width: Math.round(rect.width * 100) / 100,
+          };
+        })
+        .filter(
+          (item) =>
+            item.width > 0 &&
+            (item.left < -1 || item.right > clientWidth + 1),
+        )
+        .slice(0, 24);
+
+      return {
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth,
+        offenders,
+      };
+    });
 
     expect(
       overflow.scrollWidth,
-      `horizontal overflow at ${current.width}px`,
+      `horizontal overflow at ${current.width}px: ${JSON.stringify(
+        overflow.offenders,
+      )}`,
     ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 
     if (current.width <= 390) {
@@ -45,8 +70,7 @@ for (const current of cases) {
         page.getByRole("button", { name: "ابدأ اشتراكك" }).first(),
       ).toBeVisible();
 
-      const nav = page.locator(".desktop-nav");
-      await expect(nav).toBeHidden();
+      await expect(page.locator(".desktop-nav")).toBeHidden();
     }
 
     await mkdir("artifacts", { recursive: true });
