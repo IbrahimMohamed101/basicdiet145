@@ -333,3 +333,30 @@ Chicken macro → steak/rice → salad → multi-meal spread.
 A poster fallback was extracted from the final spread.
 
 This supersedes all previous experimental hero-video candidates.
+
+
+---
+
+## 2026-10-07 — Mobile visual parity is mandatory
+
+**Status:** DECISION
+
+The Basic Diet landing page must treat mobile as a first-class design surface, not as a reduced desktop version.
+
+Primary mobile design width:
+`390px`
+
+Mandatory narrow-mobile QA:
+`320px`
+
+Large-phone QA:
+`430px`
+
+Acceptance requires desktop and mobile to have equivalent visual quality, message hierarchy and CTA clarity.
+
+Hero, meal gallery, app showcase, plans, FAQ and navigation may use different mobile compositions when needed instead of mechanically shrinking the desktop layout.
+
+Implementation is not considered complete until:
+- 390px visual QA passes
+- 320px overflow QA passes
+- iOS Safari and Android Chrome are tested on real devices
