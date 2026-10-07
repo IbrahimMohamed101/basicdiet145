@@ -1,11 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
 
 type AppCtaProps = {
   location: "header" | "hero";
   className?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 };
 
 function detectPlatform() {
@@ -34,12 +35,12 @@ export function AppCta({
     );
 
     if (platform === "ios") {
-      window.location.href = IOS_APP_URL;
+      window.location.assign(IOS_APP_URL);
       return;
     }
 
     if (platform === "android" && ANDROID_APP_URL) {
-      window.location.href = ANDROID_APP_URL;
+      window.location.assign(ANDROID_APP_URL);
       return;
     }
 
@@ -49,7 +50,7 @@ export function AppCta({
       return;
     }
 
-    window.location.href = IOS_APP_URL;
+    window.location.assign(IOS_APP_URL);
   };
 
   return (
