@@ -4,53 +4,65 @@
 
 ## Current Phase
 
-**A2 Page Structure — COMPLETE ✅**
+**Part A — Strategy & Structure COMPLETE ✅**
 
 Completed:
 - A1 Intake
 - A2 Page Structure
+- A3 Layout Confirmation
+- A4 Conversion Rules
+- A5 Copy v0.1
+- Initial SEO/AEO direction
 
-Next:
-**A3 short confirmation → A4 Conversion Rules → A5 Copy**
-
-## Selected layout
+## Layout
 
 **A — Classic hero + sections**
 
-## Locked page argument
+## Primary conversion
+
+**First paid subscription through the Basic Diet app**
+
+## Primary CTA
+
+**ابدأ اشتراكك**
+
+## Hero copy v0.1
+
+**وجبات تحبها، بكميات محسوبة تناسب روتينك.**
+
+Supporting:
+اختر مدة اشتراكك، كمية الوجبة وعدد وجباتك يوميًا، وتحكم في اشتراكك من تطبيق Basic Diet.
+
+## Page argument
 
 `Desire → Relevance → Proof → Control → Simplicity → Value → Trust → Action`
 
-## Locked section order
+## Next phase
 
-1. Header
-2. Hero video
-3. Value/proof strip
-4. Food experience
-5. Tagline reveal
-6. Why Basic Diet
-7. How it works
-8. App control
-9. Plans
-10. Quality/customer proof
-11. FAQ
-12. Final CTA
-13. Footer
+**Part B — Visual System**
 
-## Main structural decisions
+Next decisions:
+1. Arabic typography
+2. color system
+3. spacing/radius tokens
+4. hero composition
+5. image treatment
+6. motion
+7. responsive behavior
+8. component visual rules
 
-- Hero leads with food, not pricing.
-- One primary CTA above the fold.
-- Proof is distributed next to claims.
-- Food variety appears before plan pricing.
-- App is a major proof section.
-- Plans stay simple: 7 / 26 / 30 days, not a large pricing matrix.
-- Customer proof appears before FAQ.
-- Cancellation remains outside the core landing-page argument.
-- Mobile preserves the same conversion story.
+## Creative dependencies still open
+
+- hero video candidates
+- final image shortlist
+- app screenshots
+- canonical logo choice
+- final approved testimonials
+- exact rating/review number at launch
+- Android store routing if available
 
 ## Implementation status
 
-**Not started intentionally.**
+**Code still intentionally not started.**
 
-Part B visual system and code remain gated until conversion rules/copy direction are completed.
+Implementation begins after Part B establishes the visual system.
