@@ -2,240 +2,336 @@
 
 **Method:** adapted from `elayadesign/ai-design-skills/skills/landing-page-design/SKILL.md`  
 **Date:** 2026-10-07  
-**Status:** Stage 1 in progress
+**Status:** ✅ COMPLETE
 
-This file captures the required intake before page structure, copy, or visual design.
+A1 is closed. Remaining image, screenshot, and platform-link work is now treated as an execution dependency, not a strategy blocker.
 
-## 1. Purpose
+---
 
-### Primary action
+## 1. One offer
 
-**Current decision/hypothesis:** drive the visitor toward **starting a subscription through the app**.
+Basic Diet is a healthy meal subscription service in Saudi Arabia, operationally centered on Jeddah.
 
-Operational expression:
-- Primary CTA direction: download/open the app and start subscription.
-- Secondary exploration may exist later for plans, but it must not compete above the fold.
-
-### Offer
-
-Basic Diet is a healthy meal subscription business in Saudi Arabia, operationally focused on Jeddah.
-
-Known subscription dimensions:
+The customer can configure:
 - 7 / 26 / 30 day plans
 - 100g / 150g / 200g portions
 - 1–5 meals per day
-- Delivery or pickup
-- Optional add-ons
+- delivery or pickup
+- optional add-ons
 
-### What counts as conversion
-
-**Primary commercial conversion:** first paid subscription.
-
-Landing-page measurement should distinguish:
-1. primary CTA click,
-2. app/store/open-app transition,
-3. checkout start,
-4. first paid subscription.
-
-The landing page itself should not optimize for clicks alone if downstream paid conversion can be attributed.
+The landing page will not reproduce the full product configurator.
 
 ---
 
-## 2. Audience and context
+## 2. One primary audience
 
-### Audience hypotheses
+### Core audience
 
-These are current test segments, not final personas:
+**A Jeddah customer who wants enjoyable, measured meals with less daily food planning and more control over portions and routine.**
 
-1. **Busy professional**
-   - Wants measured meals without daily planning/cooking.
-2. **Fitness / gym customer**
-   - Wants visible portion choice and a repeatable routine.
-3. **Weight-management customer**
-   - Wants measured food without repetitive diet meals.
-4. **General healthy-lifestyle customer**
-   - Wants convenience without an extreme diet identity.
-5. **Former customer**
-   - May need an easy path back into routine.
+This is deliberately broader than a single fitness persona but narrow enough to write one coherent page.
 
-### Core problem hypotheses
+### Secondary message variants
 
-- Daily food planning creates friction.
-- Traditional "diet food" can feel boring or restrictive.
-- Customers want healthier control without sacrificing familiar food and taste.
-- Some customers want portion/macronutrient visibility and flexibility.
+These can later receive campaign-specific copy:
+- busy professionals
+- gym / fitness customers
+- weight-management customers
+- general healthy-lifestyle customers
+- former customers returning to routine
 
-### Current top objections — NOT fully validated yet
-
-We do not yet have enough private/internal VOC to rank the top three with confidence.
-
-Current candidates:
-1. **Taste / boredom:** "Will healthy food actually taste good and stay varied?"
-2. **Value / price:** "Is the subscription worth the cost?"
-3. **Control / flexibility:** "Can I choose portions, meals, days, delivery/pickup and manage changes easily?"
-
-Additional candidates:
-- delivery reliability,
-- cancellation/pause terms,
-- menu availability,
-- trust in calories/macros.
-
-**Next evidence source:** WhatsApp/support, cancellation reasons, checkout questions, repeat-customer feedback.
-
-### Traffic source
-
-Expected important sources:
-- Instagram / TikTok organic content
-- paid social campaigns
-- WhatsApp / direct sharing
-- search / branded search
-
-**Status:** exact launch traffic mix is not yet locked.
-
-### What visitors likely know
-
-Assumption for V1:
-- many social visitors know little beyond seeing a food creative or offer,
-- therefore the landing page must explain the offer quickly,
-- ad traffic should later use message matching between the creative and hero.
+The main evergreen landing page is not built as five separate personas.
 
 ---
 
-## 3. Proof and assets
+## 3. One primary action
 
-### Existing proof signals
+**Start a paid subscription through the Basic Diet app.**
 
-Public VOC research currently supports:
-- taste as a positive signal,
-- cleanliness / quality as a positive signal,
-- at least one observed trial-to-subscription journey.
+Landing page conversion path:
 
-Public listing signal:
-- strong rating presence in the high-4 range with roughly 200+ reviews was observed,
-- exact rating and review count must be rechecked live before publication.
+`Landing page → App / store → subscription flow → checkout → first paid subscription`
 
-### Existing product proof
+### Measurement hierarchy
 
-Verified/durable product context includes:
-- 7 / 26 / 30 day durations,
-- 100g / 150g / 200g portion choices,
-- 1–5 meals/day,
-- delivery and pickup,
-- many menu items with nutrition data available in the product system.
+1. Primary CTA click
+2. App/store transition
+3. Checkout start
+4. First paid subscription
 
-### Assets still required for the landing page
-
-Priority:
-1. best real meal photography — **library confirmed, shortlist pending**,
-2. current app screenshots — **still missing/not confirmed**,
-3. logo and brand files — **logo library confirmed, canonical variants pending**,
-4. packaging / preparation / delivery visuals,
-5. approved reviews/testimonials,
-6. verified store links.
-
-### Risk reversal / terms
-
-Existing repository includes:
-- privacy policy,
-- refund policy,
-- account deletion page.
-
-Still to define for landing-page messaging:
-- whether "cancel anytime" is factually allowed,
-- pause policy,
-- refund language suitable for marketing,
-- any guarantee language.
-
-Do not invent a guarantee or risk-reversal statement.
+The commercial KPI is **first paid subscription**, not page clicks alone.
 
 ---
 
-## 4. Constraints
+## 4. Traffic context
 
-### Brand voice
+### Primary traffic assumption for V1
 
-Current marketing direction:
-- direct Arabic / Saudi consumer language,
-- appetizing and product-first,
-- specific facts over generic wellness claims,
-- no medical or guaranteed weight-loss promises,
-- avoid AI-sounding generic copy.
+**Social-first landing page**
 
-### Design direction
+Expected priority:
+1. Instagram / TikTok organic and paid social
+2. WhatsApp / direct sharing
+3. Branded/direct search
 
-Current direction:
-- clean,
-- premium,
-- food-first,
-- strong real imagery,
-- **hero led by a premium short food video / cinematic loop**,
-- app experience used as proof,
-- not a dense e-commerce catalog.
+Implication:
+- mobile-first layout
+- food visual must communicate immediately
+- paid campaigns should message-match the hero
+- the page must work for visitors with low prior brand knowledge
 
-### Mobile priority
-
-**Yes — high priority.**
-
-Reasons:
-- expected social traffic,
-- primary journey continues into the mobile app,
-- mobile should be treated as the default design context.
-
-### Arabic-first override
-
-The external skill recommends a fixed set of Latin typefaces. That rule is **not adopted literally** because the project is Arabic-first and the typography must support Arabic properly.
-
-A separate Arabic typography decision will be made in Part B.
+Exact channel percentages are not required to close A1.
 
 ---
 
-## 5. Working positioning for the page
+## 5. Core customer problem
 
-Current positioning from the Marketing OS:
+Working job-to-be-done:
+
+> Get enjoyable food that fits a measured routine without having to decide, plan, or prepare every meal every day.
+
+Supporting tensions:
+- healthy food can feel repetitive
+- meal planning creates daily friction
+- customers want control without a complicated experience
+- diet food must still look and taste desirable
+
+---
+
+## 6. Top three objections for V1
+
+These are ranked using the currently available Basic Diet public VOC, market research, product structure, and app capability evidence.
+
+### #1 — Taste and boredom
+
+**Question in the customer's head:**  
+Will healthy food actually taste good, or will I get bored?
+
+**Confidence:** High enough for V1
+
+Evidence:
+- Basic Diet public reviews explicitly praise taste.
+- A public reviewer described enjoying crispy chicken without the usual diet-food guilt tension.
+- Competitor/category reviews repeatedly make taste, repetition, dryness, and variety salient.
+- Basic Diet has a broad real menu and real meal imagery.
+
+Landing-page response:
+- lead with appetite
+- use hero food video
+- show real meal variety
+- support with nutrition facts after desire is established
+
+### #2 — Control and flexibility
+
+**Question:**  
+Can I make the subscription fit my routine instead of changing my life around the subscription?
+
+**Confidence:** Medium-high
+
+Evidence:
+- real configuration dimensions: duration, grams, meals/day, delivery/pickup.
+- current App Store listing describes subscription management, delivery management, freezing, skipping days, and pickup.
+
+Landing-page response:
+- make customization understandable
+- show how it works simply
+- use app screenshots as proof
+- avoid dumping the full configuration matrix onto the page
+
+### #3 — Quality and trust
+
+**Question:**  
+Will the meals and service feel consistently high quality?
+
+**Confidence:** Medium
+
+Evidence:
+- public Basic Diet review language includes cleanliness and high quality.
+- current public business listing shows a strong rating/review signal.
+- category research shows preparation consistency and availability are common concerns.
+
+Landing-page response:
+- real food photography
+- selected customer proof
+- preparation/packaging proof if visually strong
+- verified nutrition facts where appropriate
+
+### Price/value
+
+Price remains important, but current evidence is weaker for ranking it above the three objections above.
+
+It will still be handled in the plans/value argument, but it is not the primary emotional story of the page.
+
+---
+
+## 7. Positioning
+
+Working positioning:
 
 > **Basic Diet = أكل حقيقي تحبه، بكميات محسوبة، بخيارات كثيرة، ويوفر عليك قرار الأكل كل يوم.**
 
-Current hierarchy:
+Messaging hierarchy:
 1. Taste
 2. Choice
 3. Convenience
 
 Supporting proof:
-- portions,
-- verified calories/macros,
-- menu variety,
-- real meal imagery,
-- app/subscription convenience,
-- customer proof.
+- real food
+- portion choice
+- verified calories/macros
+- menu breadth
+- app control
+- real customer proof
 
-This is a working positioning, not final hero copy.
+This is positioning, not final hero copy.
 
 ---
 
-## 6. Stage 1 gaps
+## 8. Proof inventory
 
-Before considering A1 complete, we still need stronger evidence for:
+### Public proof available
 
-- [ ] top three objections ranked by real customer evidence,
-- [ ] primary traffic mix for initial launch,
-- [ ] exact app/store links,
-- [ ] approved real reviews/testimonials,
-- [x] meal image library exists,
-- [ ] current best meal image shortlist,
-- [ ] current app screenshots,
-- [ ] cancellation/pause/refund promise suitable for public copy,
-- [ ] final primary CTA wording,
-- [ ] exact city/coverage/delivery promise suitable for the page.
+Current public research shows:
+- taste praise
+- cleanliness/quality praise
+- an observed try-to-subscribe customer journey
+- a strong local review signal
 
-## A1 completion rule
+**Publication rule:** exact rating/review count must be checked again at launch before putting a number on the page.
 
-A1 does **not** require every asset to be final.
+### Product proof available
 
-It is complete when:
-- offer and conversion are fixed,
-- audience is specific enough to write for,
-- top objections have usable evidence,
-- proof inventory is known,
-- major constraints are documented.
+- 7 / 26 / 30 day plans
+- 100g / 150g / 200g
+- 1–5 meals/day
+- delivery/pickup
+- nutrition data for many menu items
+- a broad real meal library
 
-Until then, do not finalize hero copy or visual system.
+### App proof
+
+A current Apple App Store listing is publicly verifiable for **Basic Diet**.
+
+The listing describes:
+- browsing meal plans
+- subscribing to plans
+- managing deliveries
+- freezing subscription
+- skipping days
+- pickup
+
+Verified iOS listing:
+https://apps.apple.com/ar/app/basic-diet/id6775085745
+
+### Android
+
+A public Google Play listing was not verified during A1.
+
+**Decision:** Android store verification is an implementation dependency, not a blocker to page strategy.
+
+---
+
+## 9. Location / delivery claim
+
+Safe V1 statement:
+- Basic Diet is a Jeddah-based service and delivery is part of the offering.
+
+Do **not** claim:
+- delivery to every area in Jeddah
+- exact delivery radius
+- exact delivery times
+
+until operational coverage is verified for launch copy.
+
+Location detail is not required in the hero.
+
+---
+
+## 10. Assets
+
+### Confirmed available
+
+- multiple Basic Diet logo variants
+- large real meal photography library
+- menu/product dataset
+- nutrition fields for many items
+- videos
+- packaging and delivery-car design assets
+- existing social creative
+
+### Still needed before final design/build
+
+- 6–12 image shortlist
+- current app screenshots
+- canonical logo variant
+- final hero video
+- hero poster/fallback
+- approved testimonials for direct quotation
+- Android link if/when available
+
+These do not reopen A1.
+
+---
+
+## 11. Hero direction
+
+**DECISION:** Hero uses a premium short food video as the primary visual.
+
+Production can use Google Flow or another high-quality generation workflow.
+
+Rules:
+- food-first
+- cinematic but realistic
+- no baked-in text
+- no fake nutrition claims
+- must visually fit actual Basic Diet food
+- muted visual experience
+- optimized poster/fallback required
+- mobile performance is mandatory
+
+See:
+`docs/creative/hero-video-brief-v0.1.md`
+
+---
+
+## 12. Constraints
+
+### Brand voice
+
+- Arabic-first
+- direct Saudi consumer language
+- appetizing, not clinical
+- real specifics over generic wellness slogans
+- no unsupported weight-loss claims
+- no fake metrics/testimonials
+
+### Design
+
+- premium
+- clean
+- food-first
+- mobile-first
+- not a dense ecommerce catalog
+- app experience used as proof
+
+### Cancellation
+
+Cancellation policy exists operationally but is intentionally excluded from the core landing-page argument.
+
+---
+
+# A1 completion test
+
+- [x] One offer defined
+- [x] One core audience defined
+- [x] One primary action defined
+- [x] Conversion defined
+- [x] Traffic context defined
+- [x] Top three objections ranked with confidence
+- [x] Proof inventory known
+- [x] Major constraints documented
+- [x] Hero media direction defined
+
+**Result: A1 COMPLETE.**
+
+Next phase: **A2 — Page Structure**
