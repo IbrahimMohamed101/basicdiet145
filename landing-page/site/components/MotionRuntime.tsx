@@ -26,7 +26,7 @@ export function MotionRuntime() {
       let playPending = false;
       const source = video.querySelector<HTMLSourceElement>("source[data-src]");
       const shouldPlay = () => !disposed && visible && !document.hidden && documentVisible &&
-        !reduce && !connection?.saveData && root.dataset.motion !== "off";
+        !reduce && !connection?.saveData && root.dataset.motion !== "off" && video.dataset.userPaused !== "true";
       const sync = () => {
         if (!shouldPlay()) {
           video.pause();

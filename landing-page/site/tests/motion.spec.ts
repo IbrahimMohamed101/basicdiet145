@@ -172,3 +172,100 @@ test("reveal CSS shows content without enhancement and caps stagger", async ({ p
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await fixture.evaluate((el) => ({ opacity: getComputedStyle(el).opacity, animation: getComputedStyle(el).animationName }))).toEqual({ opacity: "1", animation: "none" });
 });
+
+
+test("hero tilt is fine-pointer only, bounded, and returns to rest", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  const stage = page.getByTestId("hero-media-stage");
+  await expect(stage).toHaveAttribute("data-hero-tilt", "on");
+
+  const box = await stage.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+
+  await page.mouse.move(box.x + box.width * 0.92, box.y + box.height * 0.12);
+  const card = stage.locator(".hero-media");
+
+  await expect.poll(async () => {
+    const values = await card.evaluate((element: HTMLElement) => ({
+      x: parseFloat(element.style.getPropertyValue("--hero-tilt-x")) || 0,
+      y: parseFloat(element.style.getPropertyValue("--hero-tilt-y")) || 0,
+    }));
+    return Math.abs(values.x) + Math.abs(values.y);
+  }).toBeGreaterThan(0.2);
+
+  const values = await card.evaluate((element: HTMLElement) => ({
+    x: Math.abs(parseFloat(element.style.getPropertyValue("--hero-tilt-x")) || 0),
+    y: Math.abs(parseFloat(element.style.getPropertyValue("--hero-tilt-y")) || 0),
+  }));
+  expect(values.x).toBeLessThanOrEqual(2.01);
+  expect(values.y).toBeLessThanOrEqual(3.01);
+
+  await page.mouse.move(10, 10);
+  await expect.poll(async () => {
+    return card.evaluate((element: HTMLElement) => {
+      const x = Math.abs(parseFloat(element.style.getPropertyValue("--hero-tilt-x")) || 0);
+      const y = Math.abs(parseFloat(element.style.getPropertyValue("--hero-tilt-y")) || 0);
+      return x + y;
+    });
+  }).toBeLessThan(0.05);
+});
+
+test("hero has no pointer tilt on touch devices", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await page.goto("http://127.0.0.1:3000/");
+
+  const stage = page.getByTestId("hero-media-stage");
+  await expect(stage).toHaveAttribute("data-hero-tilt", "off");
+  expect(await stage.locator(".hero-media").evaluate((element: HTMLElement) => ({
+    x: element.style.getPropertyValue("--hero-tilt-x"),
+    y: element.style.getPropertyValue("--hero-tilt-y"),
+  }))).toEqual({ x: "0.000deg", y: "0.000deg" });
+
+  await context.close();
+});
+
+test("hero manual pause survives viewport autoplay lifecycle", async ({ page }) => {
+  await page.goto("/");
+  const video = page.locator("video[data-motion-video]");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+
+  await page.getByRole("button", { name: "إيقاف فيديو الوجبات" }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
+    paused: element.paused,
+    userPaused: element.dataset.userPaused,
+  }))).toEqual({ paused: true, userPaused: "true" });
+
+  await page.locator("#app").scrollIntoViewIfNeeded();
+  await page.locator(".hero").scrollIntoViewIfNeeded();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+
+  await page.getByRole("button", { name: "تشغيل فيديو الوجبات" }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+  expect(await video.evaluate((element: HTMLVideoElement) => element.dataset.userPaused)).toBeUndefined();
+});
+
+test("reduced motion keeps hero poster static and removes media control", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith(".mp4")) requests.push(request.url());
+  });
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: /فيديو الوجبات/ })).toHaveCount(0);
+  await expect(page.locator(".hero-title-line")).toHaveCount(3);
+  expect(await page.locator(".hero-title-line").first().evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+  expect(await page.locator("video[data-motion-video]").evaluate((element: HTMLVideoElement) => ({
+    paused: element.paused,
+    source: element.querySelector("source")?.getAttribute("src"),
+  }))).toEqual({ paused: true, source: null });
+  expect(requests).toEqual([]);
+});
