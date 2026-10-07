@@ -4,6 +4,7 @@ import { AppReveal } from "@/components/AppReveal";
 import { MealGallery } from "@/components/MealGallery";
 import { Benefits } from "@/components/Benefits";
 import { HowItWorks } from "@/components/HowItWorks";
+import { InstagramReels } from "@/components/InstagramReels";
 import { Plans } from "@/components/Plans";
 import { FAQ } from "@/components/FAQ";
 import { FinalCTA } from "@/components/FinalCTA";
@@ -27,6 +28,7 @@ export default function Home() {
         <MealGallery />
         <Benefits />
         <HowItWorks />
+        <InstagramReels />
         <Plans />
         <FAQ />
         <FinalCTA />
