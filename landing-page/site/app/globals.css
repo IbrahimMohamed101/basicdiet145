@@ -2268,7 +2268,14 @@ html[data-document-hidden="true"] .hero-media-badge {
 }
 
 .hero-visual-stage {
-  --scene-near-x: 0px;\n  --scene-near-y: 0px;\n  --scene-mid-x: 0px;\n  --scene-mid-y: 0px;\n  --scene-far-x: 0px;\n  --scene-far-y: 0px;\n  --scene-angle-x: 0deg;\n  --scene-angle-y: 0deg;
+  --scene-near-x: 0px;
+  --scene-near-y: 0px;
+  --scene-mid-x: 0px;
+  --scene-mid-y: 0px;
+  --scene-far-x: 0px;
+  --scene-far-y: 0px;
+  --scene-angle-x: 0deg;
+  --scene-angle-y: 0deg;
   position: relative;
   min-width: 0;
   min-height: 590px;
