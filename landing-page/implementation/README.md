@@ -25,7 +25,7 @@
 - [ ] final hero video OR approved poster-first temporary state
 - [x] canonical logos selected
 - [x] food shortlist selected
-- [ ] at least 3 current app screenshots
+- [x] official App Store screenshot source identified
 - [ ] CTA platform destinations confirmed
 
 ## Can be finalized during implementation but cannot ship unverified
