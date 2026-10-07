@@ -5,7 +5,6 @@ import { MealGallery } from "@/components/MealGallery";
 import { Benefits } from "@/components/Benefits";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Plans } from "@/components/Plans";
-import { QualityProof } from "@/components/QualityProof";
 import { FAQ } from "@/components/FAQ";
 import { FinalCTA } from "@/components/FinalCTA";
 import { Footer } from "@/components/Footer";
@@ -29,7 +28,6 @@ export default function Home() {
         <Benefits />
         <HowItWorks />
         <Plans />
-        <QualityProof />
         <FAQ />
         <FinalCTA />
       </main>
