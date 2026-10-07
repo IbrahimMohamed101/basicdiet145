@@ -1,50 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-const items = [
-  {
-    question: "كيف أختار الباقة المناسبة؟",
-    answer:
-      "اختر المدة الأقرب لروتينك، وبعدها خصص كمية الوجبة وعدد وجباتك اليومية من التطبيق.",
-  },
-  {
-    question: "كم عدد الوجبات اللي أقدر أختارها يوميًا؟",
-    answer:
-      "تقدر تختار من وجبة واحدة إلى خمس وجبات يوميًا حسب الباقة والإعدادات المتاحة.",
-  },
-  {
-    question: "هل أقدر أختار وزن الوجبة؟",
-    answer: "نعم. خيارات الكمية الحالية تشمل 100g و150g و200g.",
-  },
-  {
-    question: "كيف أختار وجباتي؟",
-    answer:
-      "اختيار الوجبات يتم من خلال التطبيق حسب الخيارات المتاحة في اشتراكك.",
-  },
-  {
-    question: "هل يوجد توصيل واستلام؟",
-    answer:
-      "نعم، Basic Diet يوفر التوصيل والاستلام. تفاصيل التوفر تظهر حسب موقعك وخيارات الاشتراك.",
-  },
-  {
-    question: "كيف أدير اشتراكي؟",
-    answer:
-      "من خلال التطبيق، حيث تقدر تتابع اشتراكك وتدير الخيارات المتاحة لك.",
-  },
-  {
-    question: "هل توجد معلومات للسعرات أو الماكروز؟",
-    answer:
-      "تتوفر معلومات غذائية للعديد من أصناف Basic Diet، ونستخدم في الصفحة فقط البيانات الموثقة.",
-  },
-  {
-    question: "أين تتوفر الخدمة؟",
-    answer:
-      "Basic Diet يعمل في جدة. تفاصيل التغطية الدقيقة للتوصيل يتم تأكيدها حسب الموقع عند الطلب.",
-  },
-];
-
-export const faqItems = items;
+import { faqItems } from "@/lib/faq-data";
 
 export function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
@@ -65,7 +22,7 @@ export function FAQ() {
         </div>
 
         <div className="faq-list">
-          {items.map((item, index) => {
+          {faqItems.map((item, index) => {
             const open = openIndex === index;
             return (
               <article className="faq-item" key={item.question}>
