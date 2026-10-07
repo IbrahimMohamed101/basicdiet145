@@ -10,10 +10,18 @@ const tajawal = Tajawal({
   variable: "--font-tajawal",
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+
 export const metadata: Metadata = {
+  metadataBase: siteUrl ? new URL(siteUrl) : undefined,
   title: "Basic Diet | اشتراكات وجبات صحية في جدة",
   description:
     "وجبات متنوعة بكميات محسوبة وخيارات اشتراك مرنة. اختر مدة الباقة، كمية الوجبة وعدد وجباتك اليومية وابدأ اشتراكك مع Basic Diet في جدة.",
+  alternates: siteUrl
+    ? {
+        canonical: "/",
+      }
+    : undefined,
   robots: {
     index: true,
     follow: true,
@@ -24,6 +32,7 @@ export const metadata: Metadata = {
       "اختر مدة اشتراكك، كمية الوجبة وعدد وجباتك يوميًا، وتحكم في اشتراكك من تطبيق Basic Diet.",
     locale: "ar_SA",
     type: "website",
+    url: siteUrl || undefined,
   },
 };
 
