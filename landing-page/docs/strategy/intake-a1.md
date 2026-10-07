@@ -168,6 +168,7 @@ Current direction:
 - premium,
 - food-first,
 - strong real imagery,
+- **hero led by a premium short food video / cinematic loop**,
 - app experience used as proof,
 - not a dense e-commerce catalog.
 
