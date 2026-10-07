@@ -1,38 +1,17 @@
 const meals = [
   {
     name: "دجاج بالزبدة",
-    image:
-      "https://drive.google.com/uc?export=view&id=1H2InhiMdECMrs8bsf6L_h9yM-rOfYqw6",
+    image: "/meals/butter-chicken.png",
     className: "meal-card--large",
   },
   {
     name: "سلمون",
-    image:
-      "https://drive.google.com/uc?export=view&id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
+    image: "/meals/salmon.png",
     className: "",
   },
   {
     name: "سلطة بيسك",
-    image:
-      "https://drive.google.com/uc?export=view&id=1wCFHNOyUeKD87rLuGVvWAWGVLnndI8a5",
-    className: "",
-  },
-  {
-    name: "وجبة ستيك",
-    image:
-      "https://drive.google.com/uc?export=view&id=1tASbr8vUBgPqdeJywruTTGdUrS7l-unS",
-    className: "meal-card--wide",
-  },
-  {
-    name: "باستا ألفريدو",
-    image:
-      "https://drive.google.com/uc?export=view&id=1JR-lQhqRwbwjB9p7nk2n6LNBBiAW1Dne",
-    className: "",
-  },
-  {
-    name: "تشيزكيك توت",
-    image:
-      "https://drive.google.com/uc?export=view&id=1GPoa36urXJ-H_pZQc1N3t4qc98yI_1WX",
+    image: "/meals/basic-salad.png",
     className: "",
   },
 ];
