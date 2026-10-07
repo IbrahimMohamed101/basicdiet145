@@ -4,9 +4,14 @@
 
 ## Current Phase
 
-**PRE-CODE DESIGN/SPECIFICATION COMPLETE ✅**
+**V1 IMPLEMENTED + AUTOMATED RESPONSIVE QA PASSED ✅**
 
-Completed:
+The strategy/design gate is closed and the first production-oriented landing-page implementation now exists under:
+
+`landing-page/site/`
+
+## Completed
+
 - A1 Intake
 - A2 Page Structure
 - A3 Layout Confirmation
@@ -17,11 +22,25 @@ Completed:
 - Component/Layout Specification
 - Figma Handoff Specification
 - Visual Asset Shortlist
-- Hero Video Brief v1.0
+- Hero Video Brief + approved Hero Video v1
 - Analytics/Attribution Specification
-- Pre-Code QA Checklist
-- Pre-Build Readiness Gate
-- Stack decision
+- Next.js implementation scaffold
+- Header + Hero
+- Proof strip
+- Food experience using vendored real Basic Diet images
+- Tagline reveal
+- Benefits
+- How it works
+- App showcase using official App Store screenshots
+- Plans
+- Grounded quality proof
+- FAQ
+- Final CTA
+- Footer
+- Structured data
+- Landing analytics hooks
+- GitHub Actions build/typecheck
+- Playwright responsive visual QA
 
 ## Locked visual identity
 
@@ -42,39 +61,62 @@ Completed:
 
 ## Hero
 
-- separate premium food video panel
+- approved Hero Video v1
 - desktop: video left / Arabic copy right
 - mobile: video first / copy below
 - no baked-in text
-- poster fallback generated and approved
+- safe fallback behavior
 
 ## Layout
 
-**Classic Hero + Sections**
-
-Order:
-Header → Hero → Proof Strip → Food → Tagline → Benefits → How It Works → App → Plans → Social Proof → FAQ → Final CTA → Footer
+Header → Hero → Proof Strip → Food → Tagline → Benefits → How It Works → App → Plans → Quality Proof → FAQ → Final CTA → Footer
 
 ## Build stack
 
-- Next.js App Router
+- Next.js 16 App Router
+- React 19
 - TypeScript
-- Tailwind CSS
+- Tailwind CSS 4
 - Arabic/RTL-first
 - indexable evergreen page
 
-## Remaining non-code production items
+## Automated verification
 
-1. Hero video + poster ✅ APPROVED
-2. Official App Store screenshot source ✅ READY
-3. Approve testimonial quotes
-4. Re-check exact public rating if shown
-5. Verify Android destination if used
+Latest successful workflow:
 
-These are asset/verification tasks, not unresolved strategy or design decisions.
+**Landing Page Build — PASS**
 
-## Code status
+Run:
+https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/37561914192
 
-**NOT STARTED.**
+Checks passed:
+- npm install
+- TypeScript typecheck
+- Next production build
+- Chromium production-server smoke
+- 1440px full-page visual QA
+- 390px mobile visual QA
+- 320px narrow-mobile overflow QA
 
-Hero media gate is now complete. Remaining gate item: CTA platform destinations.
+The 320px QA previously found a real 4px carousel overflow; it was fixed and the final run passed.
+
+## Remaining before public launch
+
+1. Verify/publish the final Android destination if Android CTA should go to Google Play.
+2. Set final public `NEXT_PUBLIC_SITE_URL`.
+3. Deploy the Next.js landing service/domain.
+4. Real-device QA:
+   - iOS Safari
+   - Android Chrome
+5. Launch-time proof refresh if exact rating/review count is shown.
+6. Add approved testimonial quotes only if verified.
+
+## CTA behavior in current V1
+
+- iOS → verified Apple App Store listing.
+- Android → uses `NEXT_PUBLIC_ANDROID_APP_URL` only when a verified URL is configured.
+- If Android URL is not configured, CTA safely returns the visitor to the app section instead of inventing a destination.
+
+## Current implementation status
+
+**CODE V1 COMPLETE. NOT YET PUBLICLY DEPLOYED.**
