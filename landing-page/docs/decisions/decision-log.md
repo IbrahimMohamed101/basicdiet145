@@ -160,3 +160,37 @@ Remaining screenshots, hero production, image selection, Android link, exact rev
 
 Next phase:
 **A2 — Page Structure**
+
+
+---
+
+## 2026-10-07 — A2 layout type selected
+
+**Status:** DECISION
+
+Selected layout:
+
+**A — Classic hero + sections**
+
+**Reason:**
+Basic Diet can be understood quickly through food video + concise offer explanation. The page still needs structured proof for taste, flexibility, and trust, so a minimal page is insufficient and long-form storytelling is unnecessary for social-first mobile traffic.
+
+---
+
+## 2026-10-07 — A2 page argument locked
+
+**Status:** DECISION
+
+`Desire → Relevance → Proof → Control → Simplicity → Value → Trust → Action`
+
+Food desire comes before pricing.
+
+---
+
+## 2026-10-07 — A2 section order locked
+
+**Status:** DECISION
+
+Header → Hero → Value strip → Food experience → Tagline reveal → Why Basic Diet → How it works → App control → Plans → Quality/customer proof → FAQ → Final CTA → Footer.
+
+Proof is distributed beside the claims it supports.
