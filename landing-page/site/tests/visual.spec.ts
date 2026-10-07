@@ -51,6 +51,25 @@ for (const current of cases) {
       `broken meal images: ${JSON.stringify(brokenMealImages)}`,
     ).toEqual([]);
 
+    if (current.width >= 1024) {
+      const mealLayout = await page.locator("#meals .meal-card").first().evaluate((card) => {
+        const image = card.querySelector<HTMLImageElement>("img");
+        const wrap = card.querySelector<HTMLElement>(".meal-image-wrap");
+        return {
+          cardHeight: card.getBoundingClientRect().height,
+          imageHeight: image?.getBoundingClientRect().height ?? 0,
+          wrapHeight: wrap?.getBoundingClientRect().height ?? 0,
+        };
+      });
+
+      expect(
+        mealLayout.cardHeight,
+        `collapsed meal card at ${current.width}px: ${JSON.stringify(mealLayout)}`,
+      ).toBeGreaterThan(300);
+      expect(mealLayout.imageHeight).toBeGreaterThan(200);
+      expect(mealLayout.wrapHeight).toBeGreaterThan(200);
+    }
+
     await expect(page.locator("#how-it-works")).toBeAttached();
     await expect(page.locator("#app")).toBeAttached();
     await expect(page.locator("#plans")).toBeAttached();
