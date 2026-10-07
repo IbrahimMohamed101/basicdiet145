@@ -3,12 +3,21 @@ import { mkdir } from "node:fs/promises";
 
 const cases = [
   { name: "desktop-1440", width: 1440, height: 1100 },
+  { name: "desktop-1024", width: 1024, height: 900 },
+  { name: "tablet-768", width: 768, height: 1024 },
+  { name: "mobile-430", width: 430, height: 932 },
   { name: "mobile-390", width: 390, height: 844 },
+  { name: "mobile-360", width: 360, height: 640 },
   { name: "mobile-320", width: 320, height: 720 },
 ] as const;
 
 for (const current of cases) {
   test(current.name, async ({ page }) => {
+    const browserErrors: string[] = [];
+    page.on("pageerror", (error) => browserErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error" || message.type() === "warning") browserErrors.push(message.text());
+    });
     await page.setViewportSize({
       width: current.width,
       height: current.height,
@@ -16,6 +25,7 @@ for (const current of cases) {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1800);
+    expect(browserErrors).toEqual([]);
 
     await expect(
       page.getByRole("heading", {

@@ -1,28 +1,17 @@
 @import "tailwindcss";
+@import "./tokens.css";
+@import "./motion.css";
 
-@theme {
-  --color-brand-green: #108055;
-  --color-brand-green-hover: #0d6e49;
-  --color-brand-orange: #e95e2c;
-  --color-cream: #fffae8;
-  --color-cream-muted: #f6f4e2;
-  --color-ink: #161a16;
-  --color-text-muted: #667069;
-  --color-border: #ddd9c8;
+@theme inline {
+  --color-brand-green: var(--brand-green);
+  --color-brand-green-hover: var(--brand-green-hover);
+  --color-brand-orange: var(--brand-orange);
+  --color-cream: var(--cream);
+  --color-cream-muted: var(--cream-muted);
+  --color-ink: var(--ink);
+  --color-text-muted: var(--muted);
+  --color-border: var(--border);
   --font-sans: var(--font-tajawal), system-ui, sans-serif;
-}
-
-:root {
-  --brand-green: #108055;
-  --brand-green-hover: #0d6e49;
-  --brand-orange: #e95e2c;
-  --cream: #fffae8;
-  --cream-muted: #f6f4e2;
-  --surface: #ffffff;
-  --ink: #161a16;
-  --muted: #667069;
-  --border: #ddd9c8;
-  --ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 * {
@@ -62,7 +51,7 @@ a {
   position: fixed;
   inset-inline-start: 16px;
   top: 12px;
-  z-index: 1000;
+  z-index: var(--z-skip-link);
   transform: translateY(-150%);
   border-radius: 12px;
   background: var(--ink);
@@ -154,21 +143,21 @@ a {
 .button {
   min-height: 48px;
   padding: 0 22px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: var(--brand-green);
   color: white;
   font-weight: 700;
   cursor: pointer;
   transition:
-    background-color 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
+    background-color var(--motion-duration-micro) var(--motion-ease-out),
+    transform var(--motion-duration-micro) var(--motion-ease-out),
+    box-shadow var(--motion-duration-micro) var(--motion-ease-out);
 }
 
 .button:hover {
   background: var(--brand-green-hover);
   transform: translateY(-1px);
-  box-shadow: 0 10px 26px rgb(16 128 85 / 20%);
+  box-shadow: var(--shadow-glow);
 }
 
 .button:active {
@@ -1707,30 +1696,6 @@ a {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  .hero-video {
-    display: none;
-  }
-
-  .hero-media {
-    background: #e7e1cc;
-  }
-}
-
-
 /* QA fixes — keep intentional carousels/compositions inside viewport */
 @media (max-width: 640px) {
   .food-section {
@@ -1777,22 +1742,13 @@ a {
 
 
 /* Visual refinement batch — 2026-10-07 */
-:root {
-  --cream: #fbfaf5;
-  --cream-muted: #eef5e6;
-  --surface: #ffffff;
-  --ink: #14201a;
-  --muted: #5f6b63;
-  --border: #dfe3d8;
-}
-
 html,
 body {
   background: var(--cream);
 }
 
 .page-shell {
-  width: min(1240px, calc(100% - 48px));
+  width: min(var(--container-page), calc(100% - var(--space-9)));
 }
 
 .nav-shell {

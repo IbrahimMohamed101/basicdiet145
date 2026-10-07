@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
+import { scrollIntoViewWithMotion } from "@/lib/motion";
 
 type AppCtaProps = {
   location: "header" | "hero" | "app" | "plans" | "final";
@@ -46,7 +47,7 @@ export function AppCta({
 
     const appSection = document.getElementById("app");
     if (appSection) {
-      appSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      scrollIntoViewWithMotion(appSection);
       return;
     }
 

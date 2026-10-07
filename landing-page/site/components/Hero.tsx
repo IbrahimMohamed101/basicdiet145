@@ -8,7 +8,7 @@ export function Hero() {
         <div className="hero-media">
           <video
             className="hero-video"
-            autoPlay
+            data-motion-video=""
             muted
             loop
             playsInline
@@ -16,7 +16,7 @@ export function Hero() {
             poster={HERO_POSTER_URL || undefined}
             aria-label="وجبات Basic Diet متنوعة"
           >
-            <source src={HERO_VIDEO_URL} type="video/mp4" />
+            <source data-src={HERO_VIDEO_URL} type="video/mp4" />
           </video>
           <div className="hero-media-badge" aria-hidden="true">
             <span className="pulse-dot" />
