@@ -32,6 +32,7 @@ const reels = [
 
 function Reel({ reel, index }: { reel: (typeof reels)[number]; index: number }) {
   const ref = useRef<HTMLElement>(null);
+  const titleId = `reel-title-${reel.shortcode}`;
   const [load, setLoad] = useState(false);
   useEffect(() => {
     if (load || !ref.current) return;
@@ -50,10 +51,10 @@ function Reel({ reel, index }: { reel: (typeof reels)[number]; index: number }) 
         {load ? (
           <iframe src={`https://www.instagram.com/reel/${reel.shortcode}/embed/`} title={reel.title} loading="lazy" allow="encrypted-media; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
         ) : (
-          <button type="button" className="reel-load" onClick={() => setLoad(true)} aria-label={`تحميل مقطع ${reel.title}`}><span aria-hidden="true">▷</span><span>شاهد المقطع</span></button>
+          <button type="button" className="reel-load" onClick={() => setLoad(true)} aria-describedby={titleId}><span aria-hidden="true">▷</span><span>شاهد المقطع</span></button>
         )}
       </div>
-      <div className="reel-card-foot"><h3>{reel.title}</h3><a href={reel.url} target="_blank" rel="noopener noreferrer" aria-label={`فتح ${reel.title} على Instagram`}>شاهد على Instagram <span aria-hidden="true">↗</span></a></div>
+      <div className="reel-card-foot"><h3 id={titleId}>{reel.title}</h3><a href={reel.url} target="_blank" rel="noopener noreferrer" aria-describedby={titleId}>شاهد على Instagram <span aria-hidden="true">↗</span></a></div>
     </article>
   );
 }
