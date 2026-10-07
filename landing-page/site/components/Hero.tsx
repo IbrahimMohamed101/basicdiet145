@@ -13,7 +13,7 @@ export function Hero() {
             loop
             playsInline
             preload="metadata"
-            poster={HERO_POSTER_URL}
+            poster={HERO_POSTER_URL || undefined}
             aria-label="وجبات Basic Diet متنوعة"
           >
             <source src={HERO_VIDEO_URL} type="video/mp4" />
