@@ -98,3 +98,65 @@
 
 **Reason:**
 ليست ضرورية لإقناع الزائر في الصفحة الحالية، ونريد الحفاظ على تركيز الصفحة على المنتج، القيمة، الثقة، والتطبيق.
+
+
+---
+
+## 2026-10-07 — A1 core audience locked
+
+**Status:** DECISION
+
+Core evergreen landing-page audience:
+
+**Jeddah customer who wants enjoyable, measured meals with less daily food planning and more control over portions and routine.**
+
+Campaign variants can narrow to gym, weight management, busy professionals, or returning customers without fragmenting the main page.
+
+---
+
+## 2026-10-07 — A1 objection ranking
+
+**Status:** DECISION FOR V1
+
+Ranked objections:
+1. Taste / boredom
+2. Control / flexibility
+3. Quality / trust
+
+Price/value remains important but is not the lead emotional argument based on current evidence.
+
+---
+
+## 2026-10-07 — Social-first traffic assumption
+
+**Status:** DECISION FOR V1
+
+Design the evergreen page primarily for mobile social traffic, then direct/WhatsApp and branded search.
+
+This assumption can be changed later from measured channel data without reopening the full intake.
+
+---
+
+## 2026-10-07 — Official iOS listing verified
+
+**Status:** FACT
+
+Basic Diet is publicly listed on Apple App Store:
+https://apps.apple.com/ar/app/basic-diet/id6775085745
+
+Public listing describes plan browsing, subscriptions, delivery management, freezing, skipping days, and pickup.
+
+No public Google Play listing was verified during A1.
+
+---
+
+## 2026-10-07 — Close A1
+
+**Status:** DECISION
+
+A1 Intake is complete.
+
+Remaining screenshots, hero production, image selection, Android link, exact review count, and exact delivery coverage are treated as later creative/implementation dependencies rather than strategy blockers.
+
+Next phase:
+**A2 — Page Structure**
