@@ -1,84 +1,53 @@
 # Landing Page Implementation
 
-**Current status: V1 IMPLEMENTED + CI/RESPONSIVE QA PASSED**
+Status: **v0.1 implemented and responsive-QA verified**
 
-Source:
+App:
 `landing-page/site/`
 
-## Implemented
+## Local commands
 
-- [x] Next.js App Router scaffold
-- [x] TypeScript
-- [x] Tailwind CSS
-- [x] Tajawal Arabic typography
-- [x] RTL
-- [x] design tokens
-- [x] Header
-- [x] Hero
-- [x] approved Hero Video v1 wired
-- [x] proof strip
-- [x] real Basic Diet meal gallery
-- [x] tagline reveal
-- [x] benefits
-- [x] how it works
-- [x] official App Store screenshot showcase
-- [x] plans
-- [x] grounded quality proof
-- [x] accessible FAQ
-- [x] final CTA
-- [x] footer
-- [x] SEO metadata
-- [x] FAQ + Restaurant JSON-LD
-- [x] CTA analytics hooks
-- [x] UTM capture hooks
-- [x] responsive rules
-- [x] reduced-motion handling
-- [x] CI build/typecheck
-- [x] Playwright visual QA
+```bash
+cd landing-page/site
+npm install
+npm run typecheck
+npm run build
+npm run dev
+```
 
-## Vendored assets
+Responsive QA:
 
-Local project assets now include:
-- canonical Basic Diet primary logo
-- white Basic Diet logo
-- real butter-chicken image
-- real salmon image
-- real Basic Diet salad image
+```bash
+npx playwright install chromium
+npm run qa:visual
+```
 
-This avoids relying on Google Drive hotlinks in the page.
+## Environment
 
-## Responsive QA
+Copy `.env.example` to `.env.local` when deploying.
 
-Final automated PASS:
-- 1440px desktop
-- 390px mobile
-- 320px narrow mobile
+- `NEXT_PUBLIC_SITE_URL` — final production domain
+- `NEXT_PUBLIC_IOS_APP_URL` — defaults to verified Basic Diet App Store URL
+- `NEXT_PUBLIC_ANDROID_APP_URL` — set only after public Google Play URL is verified
+- `NEXT_PUBLIC_HERO_VIDEO_URL` — optional hero media override
+- `NEXT_PUBLIC_HERO_POSTER_URL` — optional poster override
 
-Workflow:
-https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/37561914192
+## CI
 
-## CTA destinations
+`.github/workflows/landing-page-build.yml`
 
-Verified:
-- iOS: https://apps.apple.com/ar/app/basic-diet/id6775085745
+CI runs install, typecheck, production build, Chromium responsive QA and screenshot artifact generation.
 
-Pending:
-- Android public destination
+Viewport gates:
+- 1440×1100
+- 390×844
+- 320×720
 
-Environment:
-- `NEXT_PUBLIC_IOS_APP_URL`
-- `NEXT_PUBLIC_ANDROID_APP_URL`
-- `NEXT_PUBLIC_SITE_URL`
-- optional hero media override URLs
+The QA fails on horizontal page overflow.
 
-## Remaining launch work
+## Launch dependencies
 
-- [ ] verified Android destination
-- [ ] public site/domain deployment
-- [ ] final canonical site URL
-- [ ] real-device iOS Safari QA
-- [ ] real-device Android Chrome QA
-- [ ] final Lighthouse/Core Web Vitals check on deployed URL
-- [ ] launch-time proof/rating refresh if displayed
-
-Do not add fabricated reviews, ratings, delivery coverage, prices or Android store URLs.
+- final production domain
+- verified Android Store URL if Android direct routing is required
+- final live CTA/store smoke test
+- optional migration of hero video to Basic Diet-owned CDN
