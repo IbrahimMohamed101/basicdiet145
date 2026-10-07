@@ -3,39 +3,39 @@ const meals = [
     name: "وجبة ستيك",
     category: "لحوم",
     image:
-      "https://drive.google.com/thumbnail?id=1tASbr8vUBgPqdeJywruTTGdUrS7l-unS&sz=w1600",
+      "/api/meal-image?id=1tASbr8vUBgPqdeJywruTTGdUrS7l-unS",
     featured: true,
   },
   {
     name: "سلمون",
     category: "بحريات",
     image:
-      "https://drive.google.com/thumbnail?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH&sz=w1600",
+      "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
     featured: true,
   },
   {
     name: "جمبري",
     category: "بحريات",
     image:
-      "https://drive.google.com/thumbnail?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b&sz=w1200",
+      "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b",
   },
   {
     name: "دجاج بالزبدة",
     category: "دجاج",
     image:
-      "https://drive.google.com/thumbnail?id=1H2InhiMdECMrs8bsf6L_h9yM-rOfYqw6&sz=w1200",
+      "/api/meal-image?id=1H2InhiMdECMrs8bsf6L_h9yM-rOfYqw6",
   },
   {
     name: "شيش طاووق",
     category: "دجاج",
     image:
-      "https://drive.google.com/thumbnail?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu&sz=w1200",
+      "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
   },
   {
     name: "لحم استرغانوف",
     category: "لحوم",
     image:
-      "https://drive.google.com/thumbnail?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_&sz=w1200",
+      "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
   },
 ];
 
