@@ -38,3 +38,31 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start production server
+        run: |
+          npm start -- --hostname 127.0.0.1 > /tmp/basicdiet-landing.log 2>&1 &
+          echo $! > /tmp/basicdiet-landing.pid
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/basicdiet-landing.log
+          exit 1
+
+      - name: Visual QA
+        run: npm run qa:visual
+
+      - name: Upload QA screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-page-visual-qa
+          path: landing-page/site/artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
