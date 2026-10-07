@@ -2,21 +2,36 @@
 
 هذا الملف يحدد ما يجب جمعه قبل أن نثبت التصميم النهائي.
 
+## A1 Intake — high priority
+
+- [x] Core offer defined.
+- [x] Primary commercial conversion defined: first paid subscription.
+- [x] Initial audience hypotheses documented.
+- [x] Working positioning documented.
+- [x] Initial public VOC reviewed.
+- [x] Competitor context available.
+- [ ] Rank top 3 objections using internal/private VOC.
+- [ ] Confirm initial landing-page traffic mix.
+- [ ] Confirm final primary CTA wording.
+- [ ] Confirm public cancellation/pause/refund promise.
+
 ## Brand
 
 - [ ] Logo — SVG/PNG عالي الجودة.
 - [ ] الألوان الرسمية.
 - [ ] الخط المستخدم حاليًا إن وجد.
 - [ ] أي Brand guideline موجود.
-- [ ] Tone of voice الحالي للعلامة.
+- [x] Tone direction موجود في Marketing OS.
+- [ ] Final landing-page tone locked after A1.
 
 ## Product / Meals
 
 - [ ] 10–20 صورة قوية للوجبات الحقيقية.
-- [ ] أسماء الوجبات.
-- [ ] بيانات calories/macros إذا كانت موثقة.
+- [ ] Shortlist hero-quality images.
+- [x] Menu/product dataset exists.
+- [x] Nutrition data exists for many items.
+- [ ] Select the meals/nutrition facts suitable for public page.
 - [ ] صور packaging والتوصيل إن كانت جيدة.
-- [ ] معلومات الوجبات المميزة والإضافات التي تستحق الظهور.
 
 ## App
 
@@ -28,40 +43,47 @@
 
 ## Plans & Pricing
 
-Known context to verify before publishing:
-- [ ] 7-day plan.
-- [ ] 26-day plan.
-- [ ] 30-day plan.
-- [ ] gram options: 100g / 150g / 200g.
-- [ ] meals/day options: 1–5.
-- [ ] delivery/pickup policy.
-- [ ] هل نظهر سعر يبدأ من؟ وإذا نعم، ما السعر المعتمد؟
+Known context — verify live before publishing:
+- [x] 7-day plan exists.
+- [x] 26-day plan exists.
+- [x] 30-day plan exists.
+- [x] gram options: 100g / 150g / 200g.
+- [x] meals/day options: 1–5.
+- [x] delivery and pickup exist.
+- [ ] Verify live price used on landing page, if any.
+- [ ] Decide whether to show "starting from" pricing.
 
-> لا ننشر أي أسعار من الذاكرة فقط؛ يتم التحقق من المصدر الحي قبل الإطلاق.
+> لا ننشر أي سعر زمني أو عرض بدون التحقق من المصدر الحي.
 
 ## Operations
 
 - [ ] مناطق التوصيل الحالية.
 - [ ] أوقات/نوافذ التوصيل.
-- [ ] سياسة الإيقاف والإلغاء.
+- [ ] سياسة الإيقاف والإلغاء المناسبة للنشر.
 - [ ] طريقة التواصل وخدمة العملاء.
 - [ ] WhatsApp الرسمي.
 
 ## Trust
 
-- [ ] Google rating الحالي إن وجد.
-- [ ] Reviews حقيقية قابلة للاستخدام.
+- [x] Initial public review themes exist.
+- [ ] Re-check exact live rating/review count before publishing.
+- [ ] Reviews حقيقية معتمدة للاستخدام.
 - [ ] عدد العملاء/الاشتراكات فقط إذا كان رقمًا موثقًا ومناسبًا للنشر.
 - [ ] أي اعتماد/شهادة/شراكة حقيقية.
 
 ## Customer Insight
 
-نحتاج إجابات على:
-- [ ] لماذا يشترك العميل أصلًا؟
-- [ ] ما أكثر 3 مخاوف قبل الدفع؟
-- [ ] ما أكثر سبب يؤدي لخروج المستخدم بدون اشتراك؟
-- [ ] ما الذي يحبه العملاء الحاليون تحديدًا؟
-- [ ] هل السعر، التنوع، الراحة، السعرات، أو جودة الطعم هو الدافع الأقوى؟
+Available:
+- [x] Initial public VOC.
+- [x] Initial jobs-to-be-done hypotheses.
+
+Still needed:
+- [ ] WhatsApp/support objections.
+- [ ] cancellation reasons.
+- [ ] checkout/payment questions.
+- [ ] repeat-customer reasons to renew.
+- [ ] strongest buying reason ranking.
+- [ ] strongest abandonment reason ranking.
 
 ## Analytics — قبل الإطلاق أو معه
 
