@@ -4,7 +4,11 @@
 
 ## Current Phase
 
-Research & Landing Page Direction
+**Stage 1 — A1 Intake / Research**
+
+Method adopted:
+- `elayadesign/ai-design-skills`
+- skill: `landing-page-design`
 
 ## What is done
 
@@ -14,49 +18,59 @@ Research & Landing Page Direction
   - Origin Meals — https://originmeals.sa/
   - Diet Plus — https://dietplus.sa/
   - Fit Home — https://fithome.sa/
-- تم تحليل Template `mhaecal/skilline-landing-page` وتحديد أنه مرجع بصري فقط، وليس أساسًا مناسبًا للمشروع.
-- تم تحديد اتجاه أولي للصفحة:
-  - Visual quality قريب من أسلوب Origin Meals.
-  - Conversion structure أقرب إلى Diet Plus.
-  - الاستفادة لاحقًا من فكرة calorie/package recommendation الموجودة لدى Healthy Corner.
-  - تجنب كثافة وإحساس المتجر المزدحم.
-- تم الاتفاق أن التطبيق جزء أساسي من قصة البيع وليس مجرد رابط تحميل في الـFooter.
+- تم تحليل Template `mhaecal/skilline-landing-page` وتحديد أنه مرجع بصري فقط.
+- تم ربط Landing Page Research بالـMarketing OS الموجود في المشروع بدل تكرار جمع نفس البيانات.
+- تم اعتماد منهج `ai-design-skills/landing-page-design` كإطار العمل الرئيسي.
+- تم بدء وتنفيذ A1 Intake في:
+  - `docs/strategy/intake-a1.md`
+- تم تثبيت المعلومات الموجودة بالفعل عن:
+  - العرض,
+  - التحويل الأساسي,
+  - شرائح الجمهور الحالية,
+  - positioning,
+  - proof المتاح,
+  - constraints,
+  - gaps المطلوبة لإغلاق المرحلة.
 
-## Current Hypothesis
+## Current positioning
 
-Landing Page يجب أن تبيع 4 أشياء بالترتيب:
+> **Basic Diet = أكل حقيقي تحبه، بكميات محسوبة، بخيارات كثيرة، ويوفر عليك قرار الأكل كل يوم.**
 
-1. شهية وجودة الوجبة.
-2. وضوح ومرونة الاشتراك.
-3. الثقة في Basic Diet.
-4. سهولة التحكم من التطبيق.
+Working hierarchy:
+1. Taste
+2. Choice
+3. Convenience
 
-## Main Conversion
+## Primary Conversion
 
-Primary CTA:
+**First paid subscription**
 
-**تحميل التطبيق / بدء الاشتراك**
+Landing page journey target:
+`Landing page → App / subscription flow → Checkout → First paid subscription`
 
-Secondary CTA المحتمل:
+## A1 Status
 
-**استكشف الباقات**
+**In progress, substantially filled.**
 
-> لم يتم اعتماد نصوص الأزرار النهائية بعد.
+Remaining evidence gaps:
+1. ترتيب أهم 3 اعتراضات بناء على VOC داخلي.
+2. تحديد traffic mix الأولي.
+3. App/store links.
+4. Reviews معتمدة للنشر.
+5. صور الوجبات المختارة.
+6. Screenshots التطبيق.
+7. public cancellation/pause/refund promise.
+8. delivery/coverage wording النهائي.
 
-## Next Research Priorities
+## Next Step
 
-1. جمع Brand assets الأصلية لـ Basic Diet.
-2. جمع أفضل صور الوجبات الحقيقية.
-3. جمع Screenshots من التطبيق.
-4. تحديد أهم 3 أسباب تجعل العميل يختار Basic Diet بدل المنافسين.
-5. جمع Reviews حقيقية قابلة للنشر.
-6. تأكيد مناطق وأوقات التوصيل.
-7. تحديد معلومات الباقات التي تستحق الظهور على Landing Page بدل عرض كل التفاصيل.
-8. جمع أي أرقام موثقة يمكن استخدامها كـSocial Proof.
-9. مراجعة المزيد من Landing Pages قوية من خارج المنافسين المباشرين للاستفادة من UX/CRO patterns.
+نكمل **A1 فقط** بجمع البيانات الناقصة عالية القيمة.
+
+بعد إغلاق A1 ننتقل إلى:
+**A2 — Page Structure**
+
+ولا نبدأ Part B أو الكود قبل ذلك.
 
 ## Implementation Status
 
 **Not started intentionally.**
-
-لا يبدأ التنفيذ الفعلي قبل الوصول إلى Blueprint V1 + Content/Asset checklist بدرجة كافية.
