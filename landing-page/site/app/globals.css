@@ -2002,13 +2002,6 @@ a {
     overflow-x: clip;
   }
 
-  .meal-grid {
-    width: 100%;
-    margin-inline: 0;
-    padding-inline: 0;
-    overscroll-behavior-inline: contain;
-  }
-
   .phones {
     width: 100%;
     margin-inline: 0;
@@ -2017,12 +2010,6 @@ a {
 }
 
 @media (max-width: 360px) {
-  .meal-card,
-  .meal-card--large,
-  .meal-card:first-child {
-    flex-basis: 82vw;
-  }
-
   .phone-card {
     width: 44%;
   }
@@ -2113,9 +2100,6 @@ body {
   padding: 24px 22px 26px;
 }
 
-.food-section,
-.benefits-section,
-.how-section,
 .plans-section,
 .quality-section,
 .faq-section {
@@ -2126,110 +2110,6 @@ body {
 .quality-heading h2,
 .faq-heading h2 {
   text-wrap: balance;
-}
-
-.meal-grid {
-  margin-top: 44px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: auto;
-  gap: 18px;
-}
-
-.meal-card,
-.meal-card--large,
-.meal-card--wide {
-  grid-column: auto;
-  grid-row: auto;
-  min-height: 0;
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: #f6f8ee;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.meal-image-wrap {
-  height: 390px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  background: linear-gradient(180deg, #f8faef 0%, #eef5e6 100%);
-}
-
-.meal-card img {
-  width: 100%;
-  height: 100%;
-  padding: 22px;
-  object-fit: contain;
-  object-position: center;
-}
-
-.meal-card:hover img {
-  transform: scale(1.025);
-}
-
-.meal-card figcaption {
-  position: static;
-  width: auto;
-  max-width: none;
-  padding: 18px 20px 20px;
-  color: var(--ink);
-  background: rgb(255 255 255 / 72%);
-  backdrop-filter: none;
-  border-top: 1px solid rgb(20 32 26 / 6%);
-}
-
-.meal-card figcaption span {
-  color: var(--ink);
-  font-size: 20px;
-}
-
-.meal-card figcaption small {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.benefit-card {
-  min-height: 220px;
-  padding: 26px;
-  background: rgb(255 255 255 / 68%);
-}
-
-.benefit-number {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: #e5f1e7;
-  color: var(--brand-green);
-  font-size: 13px;
-}
-
-.benefit-card h3 {
-  margin: 30px 0 0;
-  font-size: 24px;
-}
-
-.benefit-card p {
-  margin-top: 10px;
-}
-
-.step-card {
-  min-height: 240px;
-  padding: 26px;
-  border: 1px solid rgb(20 32 26 / 6%);
-}
-
-.step-top {
-  justify-content: flex-start;
-}
-
-.step-card h3 {
-  margin: 54px 0 0;
-  font-size: 26px;
 }
 
 .final-cta-inner {
@@ -2256,9 +2136,6 @@ body {
     font-size: clamp(40px, 4.7vw, 58px);
   }
 
-  .meal-image-wrap {
-    height: 340px;
-  }
 }
 
 @media (max-width: 980px) {
@@ -2277,14 +2154,6 @@ body {
     max-width: 760px;
   }
 
-  .meal-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .meal-image-wrap {
-    height: 290px;
-  }
 }
 
 @media (max-width: 640px) {
@@ -2346,61 +2215,6 @@ body {
     padding-bottom: 48px;
   }
 
-  .food-section,
-  .benefits-section,
-  .how-section,
-  .plans-section,
-  .quality-section,
-  .faq-section {
-    padding-block: 64px;
-  }
-
-  .meal-grid {
-    margin-top: 30px;
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    padding-bottom: 8px;
-  }
-
-  .meal-card,
-  .meal-card--large,
-  .meal-card--wide,
-  .meal-card:first-child {
-    flex: 0 0 min(84vw, 340px);
-    height: auto;
-    scroll-snap-align: start;
-  }
-
-  .meal-image-wrap {
-    height: 310px;
-  }
-
-  .meal-card img {
-    padding: 18px;
-  }
-
-  .benefit-grid {
-    gap: 12px;
-  }
-
-  .benefit-card {
-    min-height: 0;
-    padding: 22px;
-  }
-
-  .benefit-card h3 {
-    margin-top: 24px;
-  }
-
-  .step-card {
-    min-height: 0;
-  }
-
-  .step-card h3 {
-    margin-top: 38px;
-  }
 
   .final-cta h2 {
     font-size: clamp(36px, 10vw, 46px);
@@ -2426,16 +2240,6 @@ body {
     font-size: 0.96em;
   }
 
-  .meal-card,
-  .meal-card--large,
-  .meal-card--wide,
-  .meal-card:first-child {
-    flex-basis: 86vw;
-  }
-
-  .meal-image-wrap {
-    height: 280px;
-  }
 }
 
 
