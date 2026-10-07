@@ -1,28 +1,62 @@
 # Implementation Gate
 
-**Current status: BLOCKED BY DESIGN — intentionally.**
+**Current status: WAITING FOR MINIMUM ASSET PACK**
 
-لا يبدأ بناء الواجهة الفعلية حتى تتحقق المتطلبات التالية:
+## Pre-code decisions completed
 
-- [ ] Blueprint V1 تم اعتماده.
-- [ ] Brand assets متاحة.
-- [ ] صور الوجبات الأساسية متاحة.
-- [ ] Screenshots التطبيق متاحة.
-- [ ] CTA ومسار التحويل محددان.
-- [ ] بيانات الباقات المنشورة تم التحقق منها.
-- [ ] المناطق/التوصيل/FAQ الأساسية مؤكدة.
-- [ ] Reviews/Social proof المسموح استخدامها متاحة.
+- [x] Strategy / audience / objections
+- [x] Page structure
+- [x] Conversion rules
+- [x] Copy v0.1
+- [x] SEO/AEO direction
+- [x] Visual system
+- [x] Typography
+- [x] Color tokens
+- [x] Spacing/radius
+- [x] Motion rules
+- [x] Responsive behavior
+- [x] Component specification
+- [x] Figma handoff spec
+- [x] Analytics events
+- [x] Stack selected
 
-## عند فتح Gate التنفيذ
+## Minimum asset pack before code
 
-سيتم تحديد Stack التنفيذ، ثم إنشاء التطبيق داخل هذا المستودع مع الحفاظ على مجلد `docs/` كمصدر القرارات.
+- [ ] final hero video OR approved poster-first temporary state
+- [x] canonical logos selected
+- [x] food shortlist selected
+- [ ] at least 3 current app screenshots
+- [ ] CTA platform destinations confirmed
 
-المرشح المبدئي للتنفيذ لاحقًا:
-- Next.js أو React framework حديث.
-- Tailwind CSS حديث.
-- RTL/Arabic-first.
-- Mobile-first.
-- SEO + OpenGraph + structured metadata.
-- Analytics events من أول نسخة.
+## Can be finalized during implementation but cannot ship unverified
 
-**لا يوجد قرار نهائي للـstack حتى الآن.**
+- testimonial quotes
+- exact public rating/review count
+- Android store link
+- exact delivery coverage claim
+
+## Stack
+
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- RTL / Arabic-first
+- indexable evergreen page
+
+## Build order when gate opens
+
+1. project scaffold + tokens
+2. Header + Hero
+3. Proof strip + Food experience
+4. Tagline + Benefits
+5. How it works
+6. App showcase
+7. Plans
+8. Social proof
+9. FAQ
+10. Final CTA + Footer
+11. SEO/structured data
+12. Analytics
+13. performance/accessibility QA
+
+Build section-by-section. Do not generate the whole page in one uncontrolled pass.
