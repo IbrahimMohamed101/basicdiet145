@@ -32,7 +32,7 @@
 - [ ] generate 2–4 hero video candidates
 - [ ] select final video
 - [ ] poster fallback
-- [ ] capture 3–5 current app screenshots
+- [x] official current App Store screenshot source identified (10 screenshots)
 - [ ] approve testimonial quotes
 - [ ] refresh exact rating if displayed
 - [ ] verify Android store destination if used
@@ -74,7 +74,7 @@ Actual UI code starts after minimum asset pack:
 1. final hero video OR approved poster-first temporary state
 2. canonical logos
 3. selected food assets
-4. at least 3 current app screenshots
+4. official App Store screenshots or refreshed production screenshots
 5. CTA platform destinations confirmed
 
 Testimonials/exact rating may remain placeholders locally but cannot ship unverified.
