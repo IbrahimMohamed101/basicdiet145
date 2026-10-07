@@ -267,6 +267,75 @@ Every interactive element needs:
 - no autoplay audio
 - tap targets >=44px
 
+
+## Mobile-first quality bar
+
+Mobile is a first-class design target, not a scaled-down desktop layout.
+
+### Required target widths
+- 390px primary mobile design
+- 320px narrow-mobile QA
+- 430px large-phone QA
+- 768px tablet transition
+
+### Mobile composition rules
+- Every section must be intentionally recomposed for a single-column reading flow.
+- No desktop card row may simply shrink until text becomes cramped.
+- Avoid horizontal overflow at every target width.
+- Keep readable line lengths and preserve Arabic RTL hierarchy.
+- Primary CTA must remain visually dominant and easy to reach.
+- Minimum interactive target: 44px.
+- Avoid tiny labels, cramped cards, and multi-column content below 640px unless proven usable.
+
+### Mobile Hero
+- Hero media must never dominate the whole first screen.
+- Target media height should leave headline + CTA reachable with minimal scroll.
+- Use the approved poster when autoplay is restricted or reduced-motion is enabled.
+- Preserve the main food subject when cropping the 16:9 master.
+- If center-crop damages the food composition, use a dedicated mobile crop rather than forcing desktop framing.
+- No text over the video on mobile.
+
+### Mobile navigation
+- Compact logo + primary CTA + hamburger.
+- Menu must open as a clear full-screen/large-sheet navigation surface.
+- No tiny desktop nav links squeezed into mobile.
+
+### Mobile food section
+- Prefer one strong card at a time or a deliberate horizontal swipe pattern.
+- Do not display 3–4 narrow meal cards side by side.
+- Images must stay large enough to sell appetite.
+
+### Mobile app showcase
+- One primary screenshot/phone at a time.
+- Supporting screens can swipe/stack.
+- Avoid overlapping devices that make screen content unreadable.
+
+### Mobile plans
+- Stack 7 / 26 / 30 day cards vertically.
+- CTA stays full-width or near full-width.
+- Do not compress three pricing cards into one row.
+
+### Mobile FAQ
+- Full-width accordion rows.
+- Comfortable vertical spacing.
+- Question text may wrap to multiple lines without clipping.
+
+### Mobile performance
+- Prefer poster-first loading for slow networks.
+- Lazy-load below-the-fold images/screenshots.
+- Serve appropriately sized responsive images.
+- Video must not block LCP or first interaction.
+
+### Acceptance rule
+A design is not approved because desktop looks good.
+
+V1 requires visual approval at:
+- 1440px desktop
+- 390px mobile
+- 320px narrow mobile
+
+No implementation section is considered complete until those three widths are checked.
+
 ## Result
 
 Part B visual system is locked for V1.
