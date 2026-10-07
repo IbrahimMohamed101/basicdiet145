@@ -17,7 +17,7 @@
 
 ## Brand
 
-- [ ] Logo — SVG/PNG عالي الجودة.
+- [x] Logo PNG assets موجودة في Drive.
 - [ ] الألوان الرسمية.
 - [ ] الخط المستخدم حاليًا إن وجد.
 - [ ] أي Brand guideline موجود.
@@ -26,8 +26,8 @@
 
 ## Product / Meals
 
-- [ ] 10–20 صورة قوية للوجبات الحقيقية.
-- [ ] Shortlist hero-quality images.
+- [x] مكتبة كبيرة من صور الوجبات الحقيقية موجودة.
+- [ ] Shortlist 6–12 hero/landing-quality images.
 - [x] Menu/product dataset exists.
 - [x] Nutrition data exists for many items.
 - [ ] Select the meals/nutrition facts suitable for public page.
