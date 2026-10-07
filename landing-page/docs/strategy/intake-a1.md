@@ -126,9 +126,9 @@ Verified/durable product context includes:
 ### Assets still required for the landing page
 
 Priority:
-1. best real meal photography,
-2. current app screenshots,
-3. logo and brand files,
+1. best real meal photography — **library confirmed, shortlist pending**,
+2. current app screenshots — **still missing/not confirmed**,
+3. logo and brand files — **logo library confirmed, canonical variants pending**,
 4. packaging / preparation / delivery visuals,
 5. approved reviews/testimonials,
 6. verified store links.
@@ -219,7 +219,8 @@ Before considering A1 complete, we still need stronger evidence for:
 - [ ] primary traffic mix for initial launch,
 - [ ] exact app/store links,
 - [ ] approved real reviews/testimonials,
-- [ ] current best meal images,
+- [x] meal image library exists,
+- [ ] current best meal image shortlist,
 - [ ] current app screenshots,
 - [ ] cancellation/pause/refund promise suitable for public copy,
 - [ ] final primary CTA wording,
