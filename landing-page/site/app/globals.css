@@ -1740,8 +1740,6 @@ a {
   }
 
   .hero-media {
-    background:
-      center / cover no-repeat
-      var(--hero-poster, url("/media/basicdiet-hero-poster-v1.jpg"));
+    background: #e7e1cc;
   }
 }
