@@ -4,81 +4,88 @@
 
 ## Current Phase
 
-**Stage 1 — A1 Intake / Research**
+**A1 Intake — COMPLETE ✅**
 
-Method adopted:
+Next:
+**A2 — Page Structure**
+
+Method:
 - `elayadesign/ai-design-skills`
-- skill: `landing-page-design`
+- `landing-page-design`
 
-## What is done
+## A1 decisions now fixed
 
-- تم تحديد أن الهدف الحالي هو بناء تصور تدريجي قبل كتابة الكود.
-- تم تحديد 4 مراجع مباشرة من السوق السعودي:
-  - Healthy Corner — https://healthycorner.sa
-  - Origin Meals — https://originmeals.sa/
-  - Diet Plus — https://dietplus.sa/
-  - Fit Home — https://fithome.sa/
-- تم تحليل Template `mhaecal/skilline-landing-page` وتحديد أنه مرجع بصري فقط.
-- تم ربط Landing Page Research بالـMarketing OS الموجود في المشروع بدل تكرار جمع نفس البيانات.
-- تم اعتماد منهج `ai-design-skills/landing-page-design` كإطار العمل الرئيسي.
-- تم بدء وتنفيذ A1 Intake في:
-  - `docs/strategy/intake-a1.md`
-- تم تثبيت المعلومات الموجودة بالفعل عن:
-  - العرض,
-  - التحويل الأساسي,
-  - شرائح الجمهور الحالية,
-  - positioning,
-  - proof المتاح,
-  - constraints,
-  - gaps المطلوبة لإغلاق المرحلة.
-- تم فحص Google Drive المتصل وحصر أصول Landing Page الموجودة بالفعل.
-- تم تأكيد وجود مكتبة قوية من صور الوجبات وشعارات متعددة ومواد منيو وفيديو وPackaging.
-- تم تسجيل أن App screenshots ما زالت Gap واضحة.
+### Offer
+Healthy meal subscription with real configuration:
+- 7 / 26 / 30 days
+- 100 / 150 / 200g
+- 1–5 meals/day
+- delivery or pickup
 
-## Current positioning
+### Core audience
+Jeddah customer who wants enjoyable measured meals with less daily food planning and more control.
 
+### Primary action
+**Start a paid subscription through the app.**
+
+### Commercial conversion
+**First paid subscription**
+
+### Traffic assumption
+**Social-first**, then WhatsApp/direct and branded search.
+
+### Positioning
 > **Basic Diet = أكل حقيقي تحبه، بكميات محسوبة، بخيارات كثيرة، ويوفر عليك قرار الأكل كل يوم.**
 
-Working hierarchy:
+Hierarchy:
 1. Taste
 2. Choice
 3. Convenience
 
-## Primary Conversion
+### Top objections
+1. Taste / boredom
+2. Control / flexibility
+3. Quality / trust
 
-**First paid subscription**
+### Hero
+**Premium short food video** is the primary hero visual.
 
-Landing page journey target:
-`Landing page → App / subscription flow → Checkout → First paid subscription`
+Google Flow can be used for generation/exploration.
 
-## A1 Status
+### Cancellation
+Excluded from the core landing-page argument by decision.
 
-**In progress, substantially filled.**
+## Evidence confirmed
 
-Remaining evidence gaps:
-1. ترتيب أهم 3 اعتراضات بناء على VOC داخلي.
-2. تحديد traffic mix الأولي.
-3. App/store links.
-4. Reviews معتمدة للنشر.
-5. صور الوجبات المختارة.
-6. Screenshots التطبيق.
-7. delivery/coverage wording النهائي.
+- Strong real food-image library exists in Drive.
+- Multiple brand/logo assets exist.
+- Product/menu/nutrition data exists.
+- Official Basic Diet Apple App Store listing is verified.
+- Public Basic Diet evidence supports taste and quality themes.
+- Basic Diet is publicly identifiable as a Jeddah business with delivery.
 
-## New Decisions
+## Dependencies moved out of A1
 
-- Hero = short premium food video as the primary visual.
-- Video generation can be explored with Google Flow, then validated against real Basic Diet food.
-- Cancellation policy is intentionally not part of the core landing-page content.
+These remain required before final production but no longer block strategy:
+- final meal image shortlist
+- app screenshots
+- final hero video
+- poster/mobile fallback
+- approved direct testimonials
+- exact launch rating/review number
+- Google Play link if available
+- exact delivery coverage wording
+- final CTA wording
 
-## Next Step
+## New files
 
-نكمل **A1 فقط** بجمع البيانات الناقصة عالية القيمة.
-
-بعد إغلاق A1 ننتقل إلى:
-**A2 — Page Structure**
-
-ولا نبدأ Part B أو الكود قبل ذلك.
+- `docs/strategy/intake-a1.md`
+- `docs/research/a1-evidence-summary.md`
+- `docs/creative/hero-video-brief-v0.1.md`
+- `docs/data/asset-inventory-a1.md`
 
 ## Implementation Status
 
 **Not started intentionally.**
+
+A2 structure comes next. Part B visual system and code remain gated.
