@@ -15,6 +15,7 @@ export function Header() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeHref, setActiveHref] = useState("");
+  const [heroVisible, setHeroVisible] = useState(true);
   const sentinel = useRef<HTMLDivElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -77,6 +78,22 @@ export function Header() {
       setScrolled(!entry.isIntersecting);
     });
     observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!window.IntersectionObserver) return;
+    const hero = document.querySelector(".hero");
+    if (!hero) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setHeroVisible(entry.isIntersecting && entry.intersectionRatio > 0.12);
+      },
+      { threshold: [0, 0.12, 0.5] },
+    );
+
+    observer.observe(hero);
     return () => observer.disconnect();
   }, []);
 
@@ -188,7 +205,7 @@ export function Header() {
           </nav>
         </noscript>
 
-        <div className="mobile-sticky-cta" hidden={open}>
+        <div className="mobile-sticky-cta" hidden={open || heroVisible}>
           <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>
         </div>
       </header>

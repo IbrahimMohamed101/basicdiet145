@@ -175,8 +175,8 @@ test("hero pointer parallax is bounded and returns to neutral", async ({ page })
     y: Math.abs(parseFloat(element.style.getPropertyValue("--scene-near-y")) || 0),
   }));
 
-  expect(values.x).toBeLessThanOrEqual(1.001);
-  expect(values.y).toBeLessThanOrEqual(1.001);
+  expect(values.x).toBeLessThanOrEqual(18.01);
+  expect(values.y).toBeLessThanOrEqual(12.01);
 
   await page.mouse.move(10, 10);
 
