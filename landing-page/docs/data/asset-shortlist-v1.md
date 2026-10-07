@@ -98,6 +98,13 @@ Before direct quotes:
 Visual shortlist complete.
 
 Remaining production:
-- hero video generation/selection
-- current app screenshots
 - final testimonial approval
+- launch-time proof refresh
+
+## Approved hero media
+
+Hero Video v1 is approved.
+Canonical SHA-256:
+`e8060486513d04a8876b7d22c30515cbce5ce41db6ebed471dcab0aee63070e3`
+
+Poster fallback generated from final frame.
