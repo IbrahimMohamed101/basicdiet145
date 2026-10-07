@@ -149,6 +149,7 @@ test("hero pointer parallax is bounded and returns to neutral", async ({ page })
   await page.goto("/");
 
   const stage = page.getByTestId("hero-visual-stage");
+  await stage.scrollIntoViewIfNeeded();
   await expect(stage).toHaveAttribute("data-scene-interactive", "true");
 
   const box = await stage.boundingBox();
