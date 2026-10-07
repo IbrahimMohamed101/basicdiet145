@@ -1729,3 +1729,48 @@ a {
     background: #e7e1cc;
   }
 }
+
+
+/* QA fixes — keep intentional carousels/compositions inside viewport */
+@media (max-width: 640px) {
+  .food-section {
+    overflow-x: clip;
+  }
+
+  .meal-grid {
+    width: 100%;
+    margin-inline: 0;
+    padding-inline: 0;
+    overscroll-behavior-inline: contain;
+  }
+
+  .phones {
+    width: 100%;
+    margin-inline: 0;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 360px) {
+  .meal-card,
+  .meal-card--large,
+  .meal-card:first-child {
+    flex-basis: 82vw;
+  }
+
+  .phone-card {
+    width: 44%;
+  }
+
+  .phone-card--1 {
+    inset-inline-start: 28%;
+  }
+
+  .phone-card--2 {
+    inset-inline-start: 2%;
+  }
+
+  .phone-card--3 {
+    inset-inline-end: 2%;
+  }
+}
