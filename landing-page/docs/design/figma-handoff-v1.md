@@ -1,0 +1,117 @@
+# Figma / Design Handoff Specification
+
+**Status:** READY FOR FIGMA
+
+## Frames
+
+- Desktop: 1440px
+- Tablet: 768px
+- Mobile: 390px
+- QA narrow mobile: 320px
+
+## Grid
+
+Desktop:
+- 12 columns
+- 24px gutters
+- 1200px max content
+
+Tablet:
+- 8 columns
+- 24px outer padding
+
+Mobile:
+- 4 columns
+- 16px margins
+- 16px gutters
+
+## Variables
+
+Create variables for:
+- colors
+- spacing
+- radii
+- typography roles
+- border
+- surface
+
+## Text styles
+
+- Hero
+- Tagline
+- SectionHeading
+- CardHeading
+- Lead
+- Body
+- Small
+- Button
+
+Typeface: Tajawal.
+
+## Reusable components
+
+- PrimaryButton
+- TextLink
+- Nav
+- ProofItem
+- MealCard
+- BenefitCard
+- StepCard
+- PhoneScreenCard
+- PlanCard
+- ReviewCard
+- FAQItem
+- StoreLink
+
+## Variants
+
+Buttons:
+default / hover / pressed / focus / disabled
+
+FAQ:
+open / closed
+
+Nav:
+desktop / mobile / mobile-open / scrolled
+
+## Prototype
+
+Prototype:
+- anchor nav
+- mobile menu
+- FAQ
+- CTA destination placeholder
+- app screenshot carousel if used
+
+## Section annotations
+
+Each section frame includes a non-export note:
+- purpose
+- objection handled
+- proof required
+- asset source
+
+## Source documents
+
+Copy:
+`docs/copy/landing-page-copy-v0.1.md`
+
+Assets:
+`docs/data/asset-shortlist-v1.md`
+
+Visual:
+`docs/design/visual-system-v1.md`
+
+## QA before code
+
+1. desktop QA
+2. mobile QA
+3. Arabic line breaks
+4. contrast/focus
+5. asset authenticity
+6. CTA consistency
+7. no unverified claims
+
+## Acceptance
+
+Figma is accepted when desktop + mobile represent every section and no structural/copy decision is left to the developer.
