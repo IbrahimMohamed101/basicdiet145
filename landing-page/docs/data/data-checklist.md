@@ -84,3 +84,28 @@
 - [ ] Privacy/terms footer links
 - [ ] SEO/AEO decision
 - [ ] Performance validation
+
+
+---
+
+## Part B / Pre-code completion — 2026-10-07
+
+- [x] Visual direction
+- [x] Tajawal typography
+- [x] Brand color system
+- [x] Spacing tokens
+- [x] Radius system
+- [x] Icon system
+- [x] Hero composition
+- [x] Responsive behavior
+- [x] Motion/reduced-motion
+- [x] Component specification
+- [x] Figma handoff specification
+- [x] Asset shortlist
+- [x] Analytics event map
+- [x] UTM convention
+- [x] Pre-code QA checklist
+- [x] Stack decision
+- [ ] Hero video final asset
+- [ ] 3–5 current app screenshots
+- [ ] CTA destination verification
