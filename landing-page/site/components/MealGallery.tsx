@@ -2,17 +2,14 @@ const meals = [
   {
     name: "دجاج بالزبدة",
     image: "/meals/butter-chicken.png",
-    className: "meal-card--large",
   },
   {
     name: "سلمون",
     image: "/meals/salmon.png",
-    className: "",
   },
   {
     name: "سلطة بيسك",
     image: "/meals/basic-salad.png",
-    className: "",
   },
 ];
 
@@ -27,9 +24,9 @@ export function MealGallery() {
               أكل يشهي أولًا
             </p>
             <h2 id="food-title">
-              أكل محسوب ما يشبه فكرة
+              أكل محسوب بطعم
               <br />
-              <span>“أكل الدايت” التقليدية.</span>
+              <span>تحب ترجع له كل يوم.</span>
             </h2>
           </div>
 
@@ -41,11 +38,10 @@ export function MealGallery() {
 
         <div className="meal-grid">
           {meals.map((meal) => (
-            <figure
-              key={meal.name}
-              className={`meal-card ${meal.className}`.trim()}
-            >
-              <img src={meal.image} alt={`وجبة ${meal.name} من Basic Diet`} />
+            <figure key={meal.name} className="meal-card">
+              <div className="meal-image-wrap">
+                <img src={meal.image} alt={`وجبة ${meal.name} من Basic Diet`} />
+              </div>
               <figcaption>
                 <span>{meal.name}</span>
                 <small>من أصناف Basic Diet</small>
