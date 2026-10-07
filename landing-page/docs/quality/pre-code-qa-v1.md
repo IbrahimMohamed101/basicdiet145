@@ -68,6 +68,24 @@
 - [ ] final canonical URL at deployment
 - [ ] final structured data validation during build
 
+
+## Mobile QA
+- [x] Mobile is a first-class acceptance target
+- [x] 390px primary frame required
+- [x] 320px narrow-mobile QA required
+- [x] 430px large-phone QA recommended
+- [x] Hero mobile crop rules defined
+- [x] CTA tap target >=44px
+- [x] Single-column section behavior defined
+- [x] App screenshot readability rule defined
+- [x] Plans stack vertically on phone
+- [x] FAQ full-width on phone
+- [ ] 390px full-page visual QA during implementation
+- [ ] 320px overflow QA during implementation
+- [ ] Real-device iOS Safari QA
+- [ ] Real-device Android Chrome QA
+- [ ] Mobile performance/LCP QA
+
 ## Gate
 
 Code may start when:
