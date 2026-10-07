@@ -244,6 +244,12 @@ a {
   grid-template-columns: minmax(0, 7fr) minmax(380px, 5fr);
   gap: 64px;
   align-items: center;
+  direction: ltr;
+}
+
+.hero-media,
+.hero-copy {
+  direction: rtl;
 }
 
 .hero-media {
