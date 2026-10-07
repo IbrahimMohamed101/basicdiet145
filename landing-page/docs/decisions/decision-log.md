@@ -360,3 +360,18 @@ Implementation is not considered complete until:
 - 390px visual QA passes
 - 320px overflow QA passes
 - iOS Safari and Android Chrome are tested on real devices
+
+
+## 2026-10-07 — Landing implementation v0.1
+
+**DECISION:** The landing page is an isolated Next.js app under `landing-page/site` so the existing Basic Diet backend remains untouched.
+
+**DECISION:** Primary CTA stays `ابدأ اشتراكك`.
+
+**DECISION:** iOS uses the verified public App Store listing. Android direct routing stays environment-controlled until a verified public Google Play URL exists.
+
+**DECISION:** Use real Basic Diet food assets and official App Store screenshots rather than generated static product placeholders.
+
+**DECISION:** Automated responsive QA covers 1440px, 390px and 320px. A 320px horizontal-overflow issue was detected and fixed before closing v0.1.
+
+**DECISION:** Exact prices, numeric ratings and named testimonials stay out of the evergreen page until live verification.
