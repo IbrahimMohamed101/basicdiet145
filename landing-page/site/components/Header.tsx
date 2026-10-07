@@ -33,10 +33,11 @@ export function Header() {
     <header className="site-header">
       <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
         <a href="#top" className="brand" aria-label="Basic Diet - الرئيسية">
-          <span className="brand-mark" aria-hidden="true">
-            B
-          </span>
-          <span className="brand-name">Basic Diet</span>
+          <img
+            className="brand-logo"
+            src="/brand/logo-primary.png"
+            alt="Basic Diet"
+          />
         </a>
 
         <nav className="desktop-nav" aria-label="التنقل الرئيسي">
