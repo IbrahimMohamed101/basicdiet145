@@ -1,101 +1,86 @@
 # Data & Assets Checklist
 
-هذا الملف يحدد ما يجب جمعه قبل أن نثبت التصميم النهائي.
+## Strategy gate
 
-## A1 Intake — high priority
+### A1 Intake
+- [x] Core offer defined
+- [x] One core audience defined
+- [x] Primary action defined
+- [x] Commercial conversion defined
+- [x] Traffic context defined
+- [x] Top 3 objections ranked
+- [x] Working positioning defined
+- [x] Proof inventory documented
+- [x] Major constraints documented
+- [x] Hero medium decided
 
-- [x] Core offer defined.
-- [x] Primary commercial conversion defined: first paid subscription.
-- [x] Initial audience hypotheses documented.
-- [x] Working positioning documented.
-- [x] Initial public VOC reviewed.
-- [x] Competitor context available.
-- [ ] Rank top 3 objections using internal/private VOC.
-- [ ] Confirm initial landing-page traffic mix.
-- [ ] Confirm final primary CTA wording.
-- [x] Cancellation policy excluded from landing-page core content by decision.
+**A1 = COMPLETE**
 
-## Brand
+### A2 Page Structure
+- [ ] Section order
+- [ ] Above-the-fold information hierarchy
+- [ ] Problem → solution argument
+- [ ] Benefit structure
+- [ ] How-it-works structure
+- [ ] Proof placement
+- [ ] FAQ themes
+- [ ] Final CTA placement
+- [ ] Layout type selected
 
-- [x] Logo PNG assets موجودة في Drive.
-- [ ] الألوان الرسمية.
-- [ ] الخط المستخدم حاليًا إن وجد.
-- [ ] أي Brand guideline موجود.
-- [x] Tone direction موجود في Marketing OS.
-- [ ] Final landing-page tone locked after A1.
+---
 
-## Product / Meals
+## Creative / asset dependencies
 
-- [ ] Hero video concept and storyboard.
-- [ ] Generate/test hero video candidate (e.g. Google Flow).
-- [ ] Verify generated food visually matches Basic Diet quality and brand.
-- [ ] Create poster/fallback image and mobile optimized version.
+### Hero video
+- [x] Hero video chosen as primary visual
+- [x] Hero video concept/brief v0.1
+- [ ] Generate 2–4 candidates
+- [ ] Compare against real Basic Diet food
+- [ ] Select final
+- [ ] Produce desktop optimization
+- [ ] Produce mobile optimization
+- [ ] Produce poster/fallback
 
-- [x] مكتبة كبيرة من صور الوجبات الحقيقية موجودة.
-- [ ] Shortlist 6–12 hero/landing-quality images.
-- [x] Menu/product dataset exists.
-- [x] Nutrition data exists for many items.
-- [ ] Select the meals/nutrition facts suitable for public page.
-- [ ] صور packaging والتوصيل إن كانت جيدة.
+### Brand
+- [x] Logo PNG library exists
+- [ ] Select canonical light/dark variants
+- [ ] Confirm official colors
+- [ ] Confirm/choose Arabic web font during Part B
 
-## App
+### Meals
+- [x] Large real food library exists
+- [x] Menu/product dataset exists
+- [x] Nutrition fields exist for many items
+- [ ] Shortlist 6–12 landing-page images
+- [ ] Select public nutrition examples
+- [ ] Shortlist packaging/preparation proof
 
-- [ ] رابط Google Play.
-- [ ] رابط App Store إن وجد.
-- [ ] Screenshots حديثة للشاشات المهمة.
-- [ ] خطوات الاشتراك الحقيقية من أول فتح التطبيق حتى الدفع.
-- [ ] أهم Features التي يراها العميل قيمة فعلية.
+### App
+- [x] Apple App Store listing verified
+- [ ] Google Play listing/link if available
+- [ ] Capture current app screenshots
+- [ ] Choose 3–5 screenshots for landing page
 
-## Plans & Pricing
+### Trust
+- [x] Public VOC themes identified
+- [x] Strong current local rating signal exists
+- [ ] Refresh exact rating/review count at launch
+- [ ] Approve direct testimonials if quoted
 
-Known context — verify live before publishing:
-- [x] 7-day plan exists.
-- [x] 26-day plan exists.
-- [x] 30-day plan exists.
-- [x] gram options: 100g / 150g / 200g.
-- [x] meals/day options: 1–5.
-- [x] delivery and pickup exist.
-- [ ] Verify live price used on landing page, if any.
-- [ ] Decide whether to show "starting from" pricing.
+### Operations
+- [x] Jeddah operational context established
+- [x] Delivery exists
+- [ ] Verify exact coverage only if page copy needs it
+- [ ] Verify any time-specific delivery promise before use
 
-> لا ننشر أي سعر زمني أو عرض بدون التحقق من المصدر الحي.
+---
 
-## Operations
+## Launch / implementation dependencies
 
-- [ ] مناطق التوصيل الحالية.
-- [ ] أوقات/نوافذ التوصيل.
-- [ ] سياسة الإيقاف والإلغاء المناسبة للنشر.
-- [ ] طريقة التواصل وخدمة العملاء.
-- [ ] WhatsApp الرسمي.
-
-## Trust
-
-- [x] Initial public review themes exist.
-- [ ] Re-check exact live rating/review count before publishing.
-- [ ] Reviews حقيقية معتمدة للاستخدام.
-- [ ] عدد العملاء/الاشتراكات فقط إذا كان رقمًا موثقًا ومناسبًا للنشر.
-- [ ] أي اعتماد/شهادة/شراكة حقيقية.
-
-## Customer Insight
-
-Available:
-- [x] Initial public VOC.
-- [x] Initial jobs-to-be-done hypotheses.
-
-Still needed:
-- [ ] WhatsApp/support objections.
-- [ ] cancellation reasons.
-- [ ] checkout/payment questions.
-- [ ] repeat-customer reasons to renew.
-- [ ] strongest buying reason ranking.
-- [ ] strongest abandonment reason ranking.
-
-## Analytics — قبل الإطلاق أو معه
-
-- [ ] GA4 أو analytics equivalent.
-- [ ] CTA click tracking.
-- [ ] App store outbound clicks.
-- [ ] WhatsApp clicks.
-- [ ] Scroll depth.
-- [ ] Plan-section interaction.
-- [ ] UTM convention للحملات.
+- [ ] Final CTA wording
+- [ ] Final App Store / platform routing
+- [ ] Analytics events
+- [ ] UTM convention
+- [ ] Privacy/terms footer links
+- [ ] SEO/AEO decision
+- [ ] Performance validation
