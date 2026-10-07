@@ -53,3 +53,22 @@
 - Diet Plus → conversion-oriented structure.
 - Healthy Corner → future recommendation/calculator concept.
 - Fit Home → inspiration for variety, مع تجنب الزحام.
+
+
+---
+
+## 2026-10-07 — Adopt ai-design-skills landing-page-design methodology
+
+**Status:** DECISION
+
+تم اعتماد `elayadesign/ai-design-skills/skills/landing-page-design/SKILL.md` كمنهج رئيسي لبناء Landing Page.
+
+**Adopted principle:**
+
+`Part A Strategy & Structure → Part B Visual System → Section-by-section implementation`
+
+**Reason:**
+يتوافق مع بروتوكول المشروع الحالي ويمنع القفز إلى تصميم أو كود قبل تثبيت العرض والجمهور والاعتراضات والـproof.
+
+**Project override:**
+قواعد الخطوط اللاتينية في Part B لن تطبق حرفيًا لأن الصفحة Arabic-first. سيتم اختيار نظام Typography عربي مناسب لاحقًا.
