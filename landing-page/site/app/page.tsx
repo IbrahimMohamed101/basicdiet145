@@ -1,5 +1,7 @@
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
+import { ProofStrip } from "@/components/ProofStrip";
+import { MealGallery } from "@/components/MealGallery";
 
 export default function Home() {
   return (
@@ -11,12 +13,8 @@ export default function Home() {
       <main id="main">
         <div id="top" />
         <Hero />
-
-        <section className="next-stage" id="meals" aria-label="المرحلة التالية">
-          <div className="page-shell">
-            <p>سيتم بناء قسم الوجبات في الحزمة التالية بعد مراجعة الـHero.</p>
-          </div>
-        </section>
+        <ProofStrip />
+        <MealGallery />
 
         <div id="how-it-works" />
         <div id="app" />
