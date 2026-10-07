@@ -33,7 +33,7 @@ export function Hero() {
           <h1 id="hero-title">
             وجبات تحبها،
             <br />
-            <span>بكميات محسوبة</span>
+            <span className="hero-nowrap">بكميات محسوبة</span>
             <br />
             تناسب روتينك.
           </h1>
@@ -59,8 +59,8 @@ export function Hero() {
               <span>أحجام مرنة</span>
             </li>
             <li>
-              <strong>1–5</strong>
-              <span>وجبات يوميًا</span>
+              <strong>من 1 إلى 5 وجبات</strong>
+              <span>يوميًا</span>
             </li>
             <li>
               <strong>توصيل أو استلام</strong>
