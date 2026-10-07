@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
 
 type AppCtaProps = {
-  location: "header" | "hero";
+  location: "header" | "hero" | "app" | "plans" | "final";
   className?: string;
   children?: ReactNode;
 };
