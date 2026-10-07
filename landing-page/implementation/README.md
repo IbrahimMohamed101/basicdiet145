@@ -1,62 +1,84 @@
-# Implementation Gate
+# Landing Page Implementation
 
-**Current status: WAITING FOR CTA DESTINATION CONFIRMATION**
+**Current status: V1 IMPLEMENTED + CI/RESPONSIVE QA PASSED**
 
-## Pre-code decisions completed
+Source:
+`landing-page/site/`
 
-- [x] Strategy / audience / objections
-- [x] Page structure
-- [x] Conversion rules
-- [x] Copy v0.1
-- [x] SEO/AEO direction
-- [x] Visual system
-- [x] Typography
-- [x] Color tokens
-- [x] Spacing/radius
-- [x] Motion rules
-- [x] Responsive behavior
-- [x] Component specification
-- [x] Figma handoff spec
-- [x] Analytics events
-- [x] Stack selected
+## Implemented
 
-## Minimum asset pack before code
+- [x] Next.js App Router scaffold
+- [x] TypeScript
+- [x] Tailwind CSS
+- [x] Tajawal Arabic typography
+- [x] RTL
+- [x] design tokens
+- [x] Header
+- [x] Hero
+- [x] approved Hero Video v1 wired
+- [x] proof strip
+- [x] real Basic Diet meal gallery
+- [x] tagline reveal
+- [x] benefits
+- [x] how it works
+- [x] official App Store screenshot showcase
+- [x] plans
+- [x] grounded quality proof
+- [x] accessible FAQ
+- [x] final CTA
+- [x] footer
+- [x] SEO metadata
+- [x] FAQ + Restaurant JSON-LD
+- [x] CTA analytics hooks
+- [x] UTM capture hooks
+- [x] responsive rules
+- [x] reduced-motion handling
+- [x] CI build/typecheck
+- [x] Playwright visual QA
 
-- [x] final hero video + poster approved
-- [x] canonical logos selected
-- [x] food shortlist selected
-- [x] official App Store screenshot source identified
-- [ ] CTA platform destinations confirmed
+## Vendored assets
 
-## Can be finalized during implementation but cannot ship unverified
+Local project assets now include:
+- canonical Basic Diet primary logo
+- white Basic Diet logo
+- real butter-chicken image
+- real salmon image
+- real Basic Diet salad image
 
-- testimonial quotes
-- exact public rating/review count
-- Android store link
-- exact delivery coverage claim
+This avoids relying on Google Drive hotlinks in the page.
 
-## Stack
+## Responsive QA
 
-- Next.js App Router
-- TypeScript
-- Tailwind CSS
-- RTL / Arabic-first
-- indexable evergreen page
+Final automated PASS:
+- 1440px desktop
+- 390px mobile
+- 320px narrow mobile
 
-## Build order when gate opens
+Workflow:
+https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/37561914192
 
-1. project scaffold + tokens
-2. Header + Hero
-3. Proof strip + Food experience
-4. Tagline + Benefits
-5. How it works
-6. App showcase
-7. Plans
-8. Social proof
-9. FAQ
-10. Final CTA + Footer
-11. SEO/structured data
-12. Analytics
-13. performance/accessibility QA
+## CTA destinations
 
-Build section-by-section. Do not generate the whole page in one uncontrolled pass.
+Verified:
+- iOS: https://apps.apple.com/ar/app/basic-diet/id6775085745
+
+Pending:
+- Android public destination
+
+Environment:
+- `NEXT_PUBLIC_IOS_APP_URL`
+- `NEXT_PUBLIC_ANDROID_APP_URL`
+- `NEXT_PUBLIC_SITE_URL`
+- optional hero media override URLs
+
+## Remaining launch work
+
+- [ ] verified Android destination
+- [ ] public site/domain deployment
+- [ ] final canonical site URL
+- [ ] real-device iOS Safari QA
+- [ ] real-device Android Chrome QA
+- [ ] final Lighthouse/Core Web Vitals check on deployed URL
+- [ ] launch-time proof/rating refresh if displayed
+
+Do not add fabricated reviews, ratings, delivery coverage, prices or Android store URLs.
