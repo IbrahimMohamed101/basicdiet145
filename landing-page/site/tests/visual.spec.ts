@@ -35,6 +35,22 @@ for (const current of cases) {
     ).toBeVisible();
 
     await expect(page.locator("#meals")).toBeAttached();
+
+    const mealImages = page.locator("#meals .meal-card img");
+    await expect(mealImages).toHaveCount(6);
+
+    const brokenMealImages = await mealImages.evaluateAll((images) =>
+      images
+        .map((image) => image as HTMLImageElement)
+        .filter((image) => !image.complete || image.naturalWidth < 40)
+        .map((image) => image.getAttribute("src")),
+    );
+
+    expect(
+      brokenMealImages,
+      `broken meal images: ${JSON.stringify(brokenMealImages)}`,
+    ).toEqual([]);
+
     await expect(page.locator("#how-it-works")).toBeAttached();
     await expect(page.locator("#app")).toBeAttached();
     await expect(page.locator("#plans")).toBeAttached();
