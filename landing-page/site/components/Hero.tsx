@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { AppCta } from "./AppCta";
-import { HERO_POSTER_URL, HERO_VIDEO_URL } from "@/lib/app-links";
 import {
   observeMotionVisibility,
   useDocumentVisible,
@@ -10,66 +9,18 @@ import {
   useReducedMotion,
 } from "@/lib/motion";
 
-type Connection = EventTarget & { saveData?: boolean };
-
-const TILT_X_MAX = 2;
-const TILT_Y_MAX = 3;
+const APP_SCREENSHOT =
+  "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/09/72/b9/0972b9b2-9271-fef6-c5c7-8c2a374af4fb/Simulator_Screenshot_-_iPhone_16_Pro_Max_-_2026-06-02_at_19.01.23.png/471x1024.webp";
 
 export function Hero() {
   const stageRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const reduce = useReducedMotion();
   const pointerFine = usePointerFine();
+  const reduce = useReducedMotion();
   const documentVisible = useDocumentVisible();
-  const [mounted, setMounted] = useState(false);
-  const [saveData, setSaveData] = useState(false);
-  const [motionOff, setMotionOff] = useState(false);
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    const connection = (navigator as Navigator & { connection?: Connection }).connection;
-    const root = document.documentElement;
-    const sync = () => {
-      setSaveData(Boolean(connection?.saveData));
-      setMotionOff(root.dataset.motion === "off");
-    };
-    sync();
-
-    const attributes = new MutationObserver(sync);
-    attributes.observe(root, { attributes: true, attributeFilter: ["data-motion"] });
-    connection?.addEventListener("change", sync);
-
-    return () => {
-      attributes.disconnect();
-      connection?.removeEventListener("change", sync);
-    };
-  }, []);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    video.addEventListener("play", onPlay);
-    video.addEventListener("pause", onPause);
-    setPlaying(!video.paused);
-
-    return () => {
-      video.removeEventListener("play", onPlay);
-      video.removeEventListener("pause", onPause);
-    };
-  }, []);
 
   useEffect(() => {
     const stage = stageRef.current;
-    const card = cardRef.current;
-    if (!stage || !card) return;
+    if (!stage) return;
 
     let visible = false;
     let frame = 0;
@@ -80,27 +31,38 @@ export function Hero() {
     let bounds = stage.getBoundingClientRect();
 
     const write = () => {
-      card.style.setProperty("--hero-tilt-x", `${currentX.toFixed(3)}deg`);
-      card.style.setProperty("--hero-tilt-y", `${currentY.toFixed(3)}deg`);
+      stage.style.setProperty("--scene-near-x", `${(currentX * 18).toFixed(2)}px`);
+      stage.style.setProperty("--scene-near-y", `${(currentY * 12).toFixed(2)}px`);
+      stage.style.setProperty("--scene-mid-x", `${(currentX * 10).toFixed(2)}px`);
+      stage.style.setProperty("--scene-mid-y", `${(currentY * 7).toFixed(2)}px`);
+      stage.style.setProperty("--scene-far-x", `${(currentX * 5).toFixed(2)}px`);
+      stage.style.setProperty("--scene-far-y", `${(currentY * 4).toFixed(2)}px`);
+      stage.style.setProperty("--scene-angle-x", `${(currentX * 1.6).toFixed(3)}deg`);
+      stage.style.setProperty("--scene-angle-y", `${(currentY * 1.2).toFixed(3)}deg`);
     };
 
     const animate = () => {
       frame = 0;
-      currentX += (targetX - currentX) * 0.16;
-      currentY += (targetY - currentY) * 0.16;
+      currentX += (targetX - currentX) * 0.14;
+      currentY += (targetY - currentY) * 0.14;
 
-      if (Math.abs(targetX - currentX) < 0.015) currentX = targetX;
-      if (Math.abs(targetY - currentY) < 0.015) currentY = targetY;
+      if (Math.abs(targetX - currentX) < 0.0025) currentX = targetX;
+      if (Math.abs(targetY - currentY) < 0.0025) currentY = targetY;
 
       write();
 
       if (currentX !== targetX || currentY !== targetY) {
-        frame = window.requestAnimationFrame(animate);
+        frame = requestAnimationFrame(animate);
+      } else {
+        stage.dataset.sceneMoving = "false";
       }
     };
 
     const requestFrame = () => {
-      if (!frame) frame = window.requestAnimationFrame(animate);
+      if (!frame) {
+        stage.dataset.sceneMoving = "true";
+        frame = requestAnimationFrame(animate);
+      }
     };
 
     const reset = () => {
@@ -111,58 +73,42 @@ export function Hero() {
 
     const stopVisibility = observeMotionVisibility(stage, (isVisible) => {
       visible = isVisible;
-      stage.dataset.heroVisible = String(isVisible);
+      stage.dataset.sceneVisible = String(isVisible);
       if (!isVisible) reset();
     });
 
-    const root = document.documentElement;
-    let disabledByQa = root.dataset.motion === "off";
-    const motionAttributes = new MutationObserver(() => {
-      disabledByQa = root.dataset.motion === "off";
-      if (disabledByQa) reset();
-    });
-    motionAttributes.observe(root, { attributes: true, attributeFilter: ["data-motion"] });
-
     if (!pointerFine || reduce || !documentVisible) {
-      stage.dataset.heroTilt = "off";
+      stage.dataset.sceneInteractive = "false";
       currentX = 0;
       currentY = 0;
       write();
 
       return () => {
         stopVisibility();
-        motionAttributes.disconnect();
-        if (frame) window.cancelAnimationFrame(frame);
+        if (frame) cancelAnimationFrame(frame);
       };
     }
 
-    stage.dataset.heroTilt = "on";
+    stage.dataset.sceneInteractive = "true";
 
     const updateBounds = () => {
       bounds = stage.getBoundingClientRect();
     };
 
-    const onPointerEnter = () => {
-      updateBounds();
-      stage.dataset.heroInteracting = "true";
-    };
+    const onPointerEnter = () => updateBounds();
 
     const onPointerMove = (event: PointerEvent) => {
-      if (!visible || disabledByQa) return;
+      if (!visible) return;
 
-      const x = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-      const y = Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height));
+      const normalizedX = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+      const normalizedY = ((event.clientY - bounds.top) / bounds.height) * 2 - 1;
 
-      targetX = (0.5 - y) * (TILT_X_MAX * 2);
-      targetY = (x - 0.5) * (TILT_Y_MAX * 2);
+      targetX = Math.max(-1, Math.min(1, normalizedX));
+      targetY = Math.max(-1, Math.min(1, normalizedY));
       requestFrame();
     };
 
-    const onPointerLeave = () => {
-      delete stage.dataset.heroInteracting;
-      reset();
-    };
-
+    const onPointerLeave = () => reset();
     const onResize = () => updateBounds();
 
     stage.addEventListener("pointerenter", onPointerEnter, { passive: true });
@@ -172,92 +118,83 @@ export function Hero() {
 
     return () => {
       stopVisibility();
-      motionAttributes.disconnect();
-      if (frame) window.cancelAnimationFrame(frame);
+      if (frame) cancelAnimationFrame(frame);
       stage.removeEventListener("pointerenter", onPointerEnter);
       stage.removeEventListener("pointermove", onPointerMove);
       stage.removeEventListener("pointerleave", onPointerLeave);
       window.removeEventListener("resize", onResize);
-      card.style.removeProperty("--hero-tilt-x");
-      card.style.removeProperty("--hero-tilt-y");
-      delete stage.dataset.heroTilt;
-      delete stage.dataset.heroInteracting;
+      stage.style.removeProperty("--scene-near-x");
+      stage.style.removeProperty("--scene-near-y");
+      stage.style.removeProperty("--scene-mid-x");
+      stage.style.removeProperty("--scene-mid-y");
+      stage.style.removeProperty("--scene-far-x");
+      stage.style.removeProperty("--scene-far-y");
+      stage.style.removeProperty("--scene-angle-x");
+      stage.style.removeProperty("--scene-angle-y");
+      delete stage.dataset.sceneInteractive;
+      delete stage.dataset.sceneMoving;
     };
   }, [documentVisible, pointerFine, reduce]);
 
-  const mediaEnabled = mounted && !reduce && !saveData && !motionOff;
-
-  const togglePlayback = async () => {
-    const video = videoRef.current;
-    if (!video || !mediaEnabled) return;
-
-    if (!video.paused) {
-      video.dataset.userPaused = "true";
-      video.pause();
-      return;
-    }
-
-    delete video.dataset.userPaused;
-
-    const source = video.querySelector<HTMLSourceElement>("source[data-src]");
-    if (source && !source.hasAttribute("src") && source.dataset.src) {
-      source.src = source.dataset.src;
-      video.load();
-    }
-
-    try {
-      await video.play();
-    } catch {
-      video.pause();
-      source?.removeAttribute("src");
-      video.load();
-    }
-  };
-
   return (
-    <section className="hero" aria-labelledby="hero-title">
-      <div className="page-shell hero-grid">
+    <section className="hero hero--layered" aria-labelledby="hero-title">
+      <div className="page-shell hero-grid hero-grid--layered">
         <div
           ref={stageRef}
-          className="hero-media-stage"
-          data-hero-visible="false"
-          data-testid="hero-media-stage"
+          className="hero-visual-stage"
+          data-scene-visible="false"
+          data-testid="hero-visual-stage"
+          aria-label="وجبة Basic Diet مع واجهة التطبيق"
         >
-          <span className="hero-depth hero-depth--green" aria-hidden="true" />
-          <span className="hero-depth hero-depth--orange" aria-hidden="true" />
+          <div className="hero-visual-glow hero-visual-glow--green" aria-hidden="true" />
+          <div className="hero-visual-glow hero-visual-glow--orange" aria-hidden="true" />
+          <div className="hero-orbit hero-orbit--one" aria-hidden="true" />
+          <div className="hero-orbit hero-orbit--two" aria-hidden="true" />
 
-          <div ref={cardRef} className="hero-media">
-            <video
-              ref={videoRef}
-              className="hero-video"
-              data-motion-video=""
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              poster={HERO_POSTER_URL || undefined}
-              aria-label="وجبات Basic Diet متنوعة"
-            >
-              <source data-src={HERO_VIDEO_URL} type="video/mp4" />
-            </video>
-
-            <div className="hero-media-badge" aria-hidden="true">
-              <span className="pulse-dot" />
-              وجبات فعلية، روتين أسهل
+          <div className="hero-phone-layer">
+            <div className="hero-phone-float">
+              <div className="hero-phone-shell">
+                <span className="hero-phone-speaker" aria-hidden="true" />
+                <img
+                  src={APP_SCREENSHOT}
+                  alt="واجهة تطبيق Basic Diet"
+                  className="hero-phone-screen"
+                  decoding="async"
+                  fetchPriority="low"
+                />
+              </div>
             </div>
-
-            {mediaEnabled ? (
-              <button
-                type="button"
-                className="hero-media-control"
-                onClick={togglePlayback}
-                aria-label={playing ? "إيقاف فيديو الوجبات" : "تشغيل فيديو الوجبات"}
-                title={playing ? "إيقاف الفيديو" : "تشغيل الفيديو"}
-              >
-                <span aria-hidden="true">{playing ? "Ⅱ" : "▶"}</span>
-              </button>
-            ) : null}
           </div>
+
+          <div className="hero-meal-layer">
+            <div className="hero-meal-float">
+              <div className="hero-plate">
+                <span className="hero-plate-rim" aria-hidden="true" />
+                <img
+                  src="/meals/butter-chicken.png"
+                  alt="وجبة دجاج بالزبدة من Basic Diet"
+                  className="hero-meal-image"
+                  decoding="async"
+                  fetchPriority="high"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="hero-chip hero-chip--grams">
+            <strong>150g</strong>
+            <span>حجم الوجبة</span>
+          </div>
+
+          <div className="hero-chip hero-chip--meals">
+            <strong>من 1 إلى 5</strong>
+            <span>وجبات يوميًا</span>
+          </div>
+
+          <span className="hero-particle hero-particle--one" aria-hidden="true" />
+          <span className="hero-particle hero-particle--two" aria-hidden="true" />
+          <span className="hero-particle hero-particle--three" aria-hidden="true" />
+          <span className="hero-particle hero-particle--four" aria-hidden="true" />
         </div>
 
         <div className="hero-copy">

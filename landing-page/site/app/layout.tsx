@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Tajawal } from "next/font/google";
 import { MotionRuntime } from "@/components/MotionRuntime";
-import { HERO_POSTER_URL } from "@/lib/app-links";
 import "./globals.css";
 
 const tajawal = Tajawal({
@@ -47,7 +46,7 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" className={tajawal.variable}>
       <head>
         <link rel="icon" href="/brand/logo-primary.png" />
-        <link rel="preload" as="image" href={HERO_POSTER_URL} fetchPriority="high" />
+        <link rel="preload" as="image" href="/meals/butter-chicken.png" fetchPriority="high" />
       </head>
       <body>
         <MotionRuntime />
