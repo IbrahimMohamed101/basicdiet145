@@ -935,6 +935,397 @@ a {
   }
 }
 
+
+/* Batch 3 — belief shift + benefits + how it works + app */
+
+.tagline-section {
+  min-height: 72vh;
+  padding: 96px 0;
+  display: grid;
+  place-items: center;
+  background: var(--cream-muted);
+}
+
+.tagline-wrap {
+  max-width: 980px;
+}
+
+.tagline-wrap p {
+  margin: 0;
+  font-size: clamp(48px, 6.6vw, 92px);
+  line-height: 1.3;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.tag-word {
+  color: rgb(22 26 22 / 23%);
+  transition: color 500ms var(--ease-fluid);
+}
+
+.tag-word--active {
+  color: var(--ink);
+}
+
+.tag-word--active:nth-child(6),
+.tag-word--active:nth-child(7),
+.tag-word--active:nth-child(8) {
+  color: var(--brand-green);
+}
+
+.benefits-section {
+  padding: 96px 0;
+  background: var(--cream);
+}
+
+.section-heading--compact {
+  max-width: 760px;
+}
+
+.benefit-grid {
+  margin-top: 48px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.benefit-card {
+  min-height: 260px;
+  padding: 30px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgb(255 255 255 / 45%);
+  display: flex;
+  flex-direction: column;
+}
+
+.benefit-number {
+  color: var(--brand-orange);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.benefit-card h3 {
+  margin: auto 0 0;
+  font-size: 26px;
+  line-height: 1.35;
+}
+
+.benefit-card p {
+  max-width: 480px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.how-section {
+  padding: 96px 0;
+  background: #fff;
+  scroll-margin-top: 96px;
+}
+
+.steps-grid {
+  margin-top: 48px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.step-card {
+  min-height: 310px;
+  padding: 26px;
+  border-radius: 20px;
+  background: var(--cream-muted);
+  display: flex;
+  flex-direction: column;
+}
+
+.step-top {
+  display: flex;
+  justify-content: space-between;
+  color: var(--brand-green);
+  font-weight: 700;
+}
+
+.step-top span:last-child {
+  color: var(--brand-orange);
+  font-size: 20px;
+}
+
+.step-card h3 {
+  margin: auto 0 0;
+  font-size: 28px;
+}
+
+.step-card p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.app-section {
+  padding: 112px 0;
+  color: white;
+  background: var(--brand-green);
+  overflow: hidden;
+  scroll-margin-top: 90px;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.82fr) minmax(0, 1.18fr);
+  gap: 80px;
+  align-items: center;
+}
+
+.eyebrow--light {
+  color: #d8f3e7;
+}
+
+.eyebrow--light > span {
+  background: #ff9b72;
+}
+
+.app-copy h2 {
+  margin: 0;
+  font-size: clamp(44px, 5vw, 72px);
+  line-height: 1.14;
+  letter-spacing: -0.035em;
+}
+
+.app-copy h2 span {
+  color: #d8f3e7;
+}
+
+.app-description {
+  max-width: 560px;
+  margin: 24px 0 0;
+  color: rgb(255 255 255 / 78%);
+  font-size: 18px;
+  line-height: 1.9;
+}
+
+.app-labels {
+  margin: 28px 0 32px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 18px;
+}
+
+.app-labels li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 500;
+}
+
+.app-labels li span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--brand-green);
+  background: #d8f3e7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.button--light {
+  min-height: 54px;
+  background: white;
+  color: var(--brand-green);
+}
+
+.button--light:hover {
+  background: var(--cream);
+  color: var(--brand-green-hover);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 12%);
+}
+
+.phones {
+  position: relative;
+  min-height: 620px;
+}
+
+.phone-card {
+  position: absolute;
+  margin: 0;
+  width: min(34%, 245px);
+  overflow: hidden;
+  border: 8px solid #101611;
+  border-radius: 34px;
+  background: #101611;
+  box-shadow: 0 30px 70px rgb(0 0 0 / 20%);
+}
+
+.phone-card img {
+  width: 100%;
+  display: block;
+  border-radius: 24px;
+}
+
+.phone-card--1 {
+  inset-inline-start: 34%;
+  top: 0;
+  z-index: 3;
+  transform: rotate(-1.5deg);
+}
+
+.phone-card--2 {
+  inset-inline-start: 6%;
+  top: 86px;
+  z-index: 1;
+  transform: rotate(7deg);
+}
+
+.phone-card--3 {
+  inset-inline-end: 3%;
+  top: 110px;
+  z-index: 2;
+  transform: rotate(-6deg);
+}
+
+@media (max-width: 980px) {
+  .tagline-section {
+    min-height: 58vh;
+  }
+
+  .benefit-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .step-card {
+    min-height: 220px;
+  }
+
+  .app-grid {
+    grid-template-columns: 1fr;
+    gap: 50px;
+  }
+
+  .phones {
+    min-height: 560px;
+  }
+}
+
+@media (max-width: 640px) {
+  .tagline-section {
+    min-height: 54vh;
+    padding: 72px 0;
+  }
+
+  .tagline-wrap p {
+    font-size: clamp(38px, 12vw, 54px);
+    text-align: start;
+  }
+
+  .benefits-section,
+  .how-section {
+    padding: 64px 0;
+  }
+
+  .benefit-grid {
+    margin-top: 32px;
+    grid-template-columns: 1fr;
+  }
+
+  .benefit-card {
+    min-height: 210px;
+    padding: 24px;
+  }
+
+  .benefit-card h3 {
+    font-size: 23px;
+  }
+
+  .steps-grid {
+    margin-top: 32px;
+  }
+
+  .step-card {
+    min-height: 210px;
+    padding: 22px;
+  }
+
+  .app-section {
+    padding: 72px 0 64px;
+  }
+
+  .app-grid {
+    gap: 38px;
+  }
+
+  .app-copy h2 {
+    font-size: 42px;
+  }
+
+  .app-description {
+    font-size: 16px;
+  }
+
+  .app-labels {
+    grid-template-columns: 1fr;
+  }
+
+  .button--light {
+    width: 100%;
+  }
+
+  .phones {
+    min-height: 510px;
+    margin-inline: -10px;
+  }
+
+  .phone-card {
+    width: 49%;
+    max-width: 210px;
+    border-width: 6px;
+    border-radius: 28px;
+  }
+
+  .phone-card img {
+    border-radius: 20px;
+  }
+
+  .phone-card--1 {
+    inset-inline-start: 25%;
+  }
+
+  .phone-card--2 {
+    inset-inline-start: 0;
+    top: 110px;
+  }
+
+  .phone-card--3 {
+    inset-inline-end: 0;
+    top: 128px;
+  }
+}
+
+@media (max-width: 360px) {
+  .tagline-wrap p {
+    font-size: 36px;
+  }
+
+  .phones {
+    min-height: 455px;
+  }
+
+  .phone-card {
+    width: 47%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
