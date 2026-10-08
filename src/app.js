@@ -261,6 +261,10 @@ function createApp() {
   app.use("/api/marketing-agent", require("./routes/marketingAgent").router);
   // Server-to-server landing event intake and admin-only aggregate report.
   app.use("/api/landing-analytics", require("./routes/landingAnalytics").router);
+  // Public landing catalogue and consented lead intake; admin-only CRM routes.
+  const landingLeads = require("./routes/landingLeads");
+  app.use("/api/landing", landingLeads.publicRouter);
+  app.use("/api/dashboard/landing-leads", landingLeads.adminRouter);
   app.use("/api", requestLanguageMiddleware, routes);
 
   // JSON 404 handler for unknown /api/* routes.
