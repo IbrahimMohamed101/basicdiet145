@@ -10,6 +10,7 @@ import { FAQ } from "@/components/FAQ";
 import { FinalCTA } from "@/components/FinalCTA";
 import { Footer } from "@/components/Footer";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
+import { LeadDialog } from "@/components/LeadDialog";
 import { StructuredData } from "@/components/StructuredData";
 
 export default function Home() {
@@ -17,6 +18,7 @@ export default function Home() {
     <>
       <StructuredData />
       <AnalyticsTracker />
+      <LeadDialog />
       <a className="skip-link" href="#main">
         انتقل للمحتوى
       </a>
