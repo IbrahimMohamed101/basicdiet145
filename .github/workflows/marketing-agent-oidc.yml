@@ -1,0 +1,41 @@
+name: Marketing agent OIDC read-only contracts
+
+on:
+  pull_request:
+    paths:
+      - "src/middleware/marketingAgentOidc.js"
+      - "src/routes/marketingAgent.js"
+      - "src/app.js"
+      - "tests/marketingAgentOidc.test.js"
+      - ".github/workflows/marketing-agent-oidc.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/middleware/marketingAgentOidc.js"
+      - "src/routes/marketingAgent.js"
+      - "src/app.js"
+      - "tests/marketingAgentOidc.test.js"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Syntax
+        run: |
+          node --check src/middleware/marketingAgentOidc.js
+          node --check src/routes/marketingAgent.js
+          node --check src/app.js
+      - name: Verify OIDC and privacy contracts
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/marketingAgentOidc.test.js
