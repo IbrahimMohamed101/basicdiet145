@@ -66,11 +66,16 @@ test("mobile sheet keeps layout within viewport and 7-day plan selection survive
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: /7 يوم/ })).toHaveAttribute("aria-pressed", "true");
+  // The sheet intentionally animates from below the viewport for ~260ms.
+  // Poll for the settled position instead of measuring the entrance frame.
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return box ? box.y + box.height : Infinity;
+  }).toBeLessThanOrEqual(845);
   const box = await dialog.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(391);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(845);
   await dialog.getByRole("button", { name: "إغلاق النافذة" }).click();
   await expect(dialog).not.toBeVisible();
 });
