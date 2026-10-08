@@ -41,3 +41,41 @@ Lead records stay only in restricted CRM; campaign/source can support aggregate 
 
 The site does not create a registered Flutter account, place a real paid order, send WhatsApp
 messages automatically, or promise app-install/payment attribution.
+
+## Final technical audit (2026-10-09)
+
+Scope: existing Hero, Plans and Benefits ("الاشتراك على مقاسك") buttons; responsive
+dialog; backend catalog/lead intake; role-gated dashboard inbox; aggregate analytics.
+The Benefits CTA preserves grams, meals/day, and pickup/delivery preference; final
+selection is validated again against a real sellable plan on the server.
+
+- Backend lead security tests: PASS in GitHub Actions workflow `Landing lead security contracts`,
+  PR #150 (checks also cover disabled meal options in the public catalog).
+- Landing browser tests: 4 PASS in GitHub Actions workflow `Landing page build`,
+  PR #151. Scenarios: Benefits selected 200g/5/pickup -> accepted mocked POST with
+  consent; mobile 7-day bottom sheet positioning; catalog offline fallback; privacy
+  notice link. These are mocked end-to-end UI tests, **not a production PII submission**.
+- Dashboard production build and role regression: PR #53. The `admin` role route
+  was missing in navigation and is now explicitly included along with
+  `superadmin` and `restaurant`; kitchen, courier and cashier remain denied.
+- `/privacy` is a dedicated Arabic landing consent notice; the existing backend
+  `/privacy-policy` continues to govern the mobile app.
+- Marketing Analytics now includes **uniqueLeads** counted from real saved MongoDB
+  lead documents within the selected interval, not anonymous repeat browser events.
+- Railway HTTP proxy logs showed five 2xx responses for public /api/lead-options
+  and backend /api/landing/options in the 24-hour review window, zero 5xx on those
+  paths. No /api/leads POST appeared in that window.
+
+### Explicit remaining acceptance (requires an authorized real test phone)
+The site has not been confirmed with a production lead submission via the browser
+and a dashboard operator opening/updating the resulting record. Do not send test
+customer PII without the owner's authorization. Once the customer-service team
+completes this step, record the test time, source UTM, and anonymized request ID
+here. Do not log the full phone number.
+
+### Measurement boundaries
+A `202` may refer to a same-day deduplicated lead; therefore count unique saved
+leads through `uniqueLeads`, not just `lp_lead_submitted`.
+A lead is **not** a completed Flutter registration, installed app, or payment.
+Any dashboard `converted` status remains an operator tag until reconciled against
+real paid subscriptions.
