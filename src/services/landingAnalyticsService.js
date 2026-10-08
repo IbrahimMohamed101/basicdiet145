@@ -17,7 +17,7 @@ const ALLOWED = {
 };
 function stringValue(value, max = 64) {
   if (typeof value !== "string") return "";
-  return value.trim().slice(0, max).replace(/[^a-zA-Z0-9_\- .]/g, "");
+  return value.trim().slice(0, max).replace(/[^\p{L}\p{N}_\- .]/gu, "");
 }
 function enumValue(key, value) {
   return ALLOWED[key].has(value) ? value : "";
