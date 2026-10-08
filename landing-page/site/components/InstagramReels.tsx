@@ -45,7 +45,7 @@ function Reel({ reel, index }: { reel: (typeof reels)[number]; index: number }) 
   }, [index, load]);
 
   return (
-    <article ref={ref} className="reel-card">
+    <article ref={ref} className="reel-card" data-reel-shortcode={reel.shortcode}>
       <div className="reel-card-head"><span>{String(index + 1).padStart(2, "0")}</span><span>{reel.label}</span></div>
       <div className="reel-embed-window">
         {load ? (
