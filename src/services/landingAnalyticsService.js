@@ -9,7 +9,7 @@ const EVENTS = new Set([
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED = {
   device: new Set(["ios", "android", "desktop", "other"]),
-  location: new Set(["header", "hero", "app", "plans", "final"]),
+  location: new Set(["header", "hero", "app", "plans", "final", "benefits"]),
   section: new Set(["top", "meals", "how-it-works", "app", "plans", "faq", "reels"]),
   platform: new Set(["ios", "android", "desktop"]),
   store: new Set(["app_store", "google_play"]),
