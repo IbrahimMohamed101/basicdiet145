@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppCta } from "./AppCta";
+import { usePathname } from "next/navigation";
 
 const links = [
   { href: "#meals", label: "الوجبات" },
@@ -13,6 +14,8 @@ const links = [
 ];
 
 export function Header() {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeHref, setActiveHref] = useState("");
@@ -122,7 +125,7 @@ export function Header() {
   const navLinks = links.map((link) => (
     <a
       key={link.href}
-      href={link.href}
+      href={isHome ? link.href : "/" + link.href}
       aria-current={activeHref === link.href ? "location" : undefined}
     >
       {link.label}
@@ -134,7 +137,7 @@ export function Header() {
       <div ref={sentinel} className="nav-sentinel" aria-hidden="true" />
       <header className="site-header" data-menu-open={open}>
         <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
-          <a ref={brand} href="#top" className="brand" aria-label="Basic Diet - الرئيسية">
+          <a ref={brand} href={isHome ? "#top" : "/"} className="brand" aria-label="Basic Diet - الرئيسية">
             <Image className="brand-logo" src="/brand/logo-primary.png" alt="" width={52} height={48} sizes="52px" priority quality={78} />
             <span className="brand-name">Basic Diet</span>
           </a>

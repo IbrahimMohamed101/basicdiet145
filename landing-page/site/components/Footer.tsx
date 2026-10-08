@@ -65,9 +65,10 @@ export function Footer() {
 
         <div className="footer-linkbar">
           <nav className="footer-nav" aria-label="روابط أسفل الصفحة">
-            <a href="#meals">الوجبات</a>
-            <a href="#plans">الباقات</a>
-            <a href="#faq">الأسئلة</a>
+            <a href="/#meals">الوجبات</a>
+            <a href="/#plans">الباقات</a>
+            <a href="/jeddah/healthy-meals">اشتراكات وجبات صحية جدة</a>
+            <a href="/#faq">الأسئلة</a>
             <a href="/privacy">خصوصية طلب التواصل</a>
           </nav>
 

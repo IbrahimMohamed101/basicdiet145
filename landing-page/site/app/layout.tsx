@@ -12,18 +12,14 @@ const tajawal = Tajawal({
   variable: "--font-tajawal",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdiet-landing-production.up.railway.app";
 
 export const metadata: Metadata = {
-  metadataBase: siteUrl ? new URL(siteUrl) : undefined,
-  title: "Basic Diet | اشتراكات وجبات صحية في جدة",
+  metadataBase: new URL(siteUrl),
+  title: "اشتراكات وجبات صحية في جدة | Basic Diet",
   description:
-    "وجبات متنوعة بكميات محسوبة وخيارات اشتراك مرنة. اختر مدة الباقة، كمية الوجبة وعدد وجباتك اليومية وابدأ اشتراكك مع Basic Diet في جدة.",
-  alternates: siteUrl
-    ? {
-        canonical: "/",
-      }
-    : undefined,
+    "اشتراكات وجبات صحية في جدة من Basic Diet. اختر باقة 7 أو 26 أو 30 يومًا، وحدد حجم الوجبة وعدد الوجبات اليومية، ثم اطلب التواصل أو حمّل التطبيق.",
+  alternates: { canonical: "/" },
   robots: {
     index: true,
     follow: true,

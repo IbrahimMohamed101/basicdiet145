@@ -4,7 +4,18 @@ export function StructuredData() {
   const restaurant = {
     "@context": "https://schema.org",
     "@type": "Restaurant",
-    name: "Basic Diet",
+    "@id": (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdiet-landing-production.up.railway.app") + "/#restaurant",
+    name: "بيسك دايت - Basic Diet",
+    alternateName: ["Basic Diet", "بيسك دايت"],
+    url: process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdiet-landing-production.up.railway.app",
+    logo: (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdiet-landing-production.up.railway.app") + "/brand/logo-primary.png",
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: "H4GX+JF7، السلامة",
+      addressLocality: "جدة",
+      addressRegion: "مكة المكرمة",
+      addressCountry: "SA",
+    },
     areaServed: {
       "@type": "City",
       name: "Jeddah",
