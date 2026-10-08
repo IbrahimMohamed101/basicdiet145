@@ -42,8 +42,8 @@ async function getAvailableOptions() {
     gramsOptions: (plan.gramsOptions || []).filter(g => g.isActive !== false).map(g => ({
       grams: g.grams,
       mealsPerDay: (g.mealsOptions || []).filter(m => m.isActive !== false).map(m => m.mealsPerDay),
-    })),
-  }));
+    })).filter(g => g.mealsPerDay.length > 0),
+  })).filter(p => p.gramsOptions.length > 0);
 }
 async function submitLead(body) {
   if (!isValidRequest(body)) return { ok: false, status: 400, code: "INVALID_REQUEST" };
