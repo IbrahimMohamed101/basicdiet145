@@ -50,7 +50,7 @@ async function verifyMarketingOidc(token, options = {}) {
     || claims.repository_visibility !== "private"
     || claims.ref !== "refs/heads/main" || claims.ref_type !== "branch"
     || claims.workflow_ref !== WORKFLOW_REF
-    || !["workflow_dispatch", "schedule"].includes(claims.event_name)
+    || !["workflow_dispatch", "schedule", "push"].includes(claims.event_name)
     || !Number.isInteger(claims.iat) || !Number.isInteger(claims.exp) || !Number.isInteger(claims.nbf)
     || claims.nbf > now + 30 || claims.exp <= now || claims.iat > now + 30
     || now - claims.iat > 600 || claims.exp - claims.iat > 900
