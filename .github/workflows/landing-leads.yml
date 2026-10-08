@@ -1,0 +1,30 @@
+name: Landing lead security contracts
+on:
+  pull_request:
+    paths:
+      - "src/models/LandingLead.js"
+      - "src/models/LandingAnalyticsEvent.js"
+      - "src/services/landingLeadService.js"
+      - "src/services/landingAnalyticsService.js"
+      - "src/routes/landingLeads.js"
+      - "tests/landingLeads.test.js"
+      - "package.json"
+      - ".github/workflows/landing-leads.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/models/LandingLead.js"
+      - "src/services/landingLeadService.js"
+      - "src/routes/landingLeads.js"
+      - "tests/landingLeads.test.js"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:landing-leads

@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 
 const EVENTS = [
   "lp_view", "lp_section_view", "lp_cta_click", "lp_store_click",
-  "lp_nav_click", "lp_faq_open", "lp_reel_click",
+  "lp_nav_click", "lp_faq_open", "lp_reel_click", "lp_lead_submitted",
 ];
 
 const schema = new mongoose.Schema({
