@@ -878,14 +878,37 @@
   bottom: 13%;
 }
 
+/* Mobile is portrait; keep the entire 16:9 film in view instead of
+   cropping it into a full-height portrait viewport. Desktop remains cover. */
 .hero--cinematic {
   min-height: 100svh;
+  display: grid;
+  grid-template-rows: calc(56.25vw + 145px) minmax(max-content, 1fr);
+}
+
+.hero-cinema-media::before {
+  content: "";
+  position: absolute;
+  inset: -32px;
+  background: url("/media/hero-poster.webp") center / cover no-repeat;
+  filter: blur(30px) saturate(0.85) brightness(0.38);
+  opacity: 0.85;
+  pointer-events: none;
 }
 
 .hero-cinema-video {
-  transform: scale(1.035);
-  object-position: 56% center;
-  filter: saturate(1.06) contrast(1.02) brightness(0.88);
+  position: absolute;
+  inset-inline: 0;
+  top: clamp(124px, 15svh, 148px);
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  object-position: center;
+  transform: none;
+  filter: saturate(1.06) contrast(1.02) brightness(0.92);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 84%, transparent 100%);
 }
 
 .hero-cinema-shade {
@@ -911,9 +934,10 @@
 }
 
 .hero-cinema-content {
-  min-height: 100svh;
-  padding-top: 112px;
-  padding-bottom: 84px;
+  grid-row: 2;
+  min-height: 0;
+  padding-top: 18px;
+  padding-bottom: 72px;
   align-items: flex-end;
 }
 
@@ -1176,5 +1200,12 @@
   to {
     opacity: 1;
     transform: scale(1.018);
+  }
+}
+
+/* The desktop entrance animation scales its video; never reapply that crop on phones. */
+@media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
+  .hero-cinema-video {
+    animation: none;
   }
 }

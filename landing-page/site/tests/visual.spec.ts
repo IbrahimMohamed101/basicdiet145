@@ -139,3 +139,36 @@ test("FAQ and download links work without JavaScript", async ({ browser }) => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   } finally { await context.close(); }
 });
+
+// Prevent mobile cover/scale regressions without changing the cinematic desktop hero.
+for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 640, height: 720 }]) {
+  test(`mobile Hero displays uncropped video at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const geometry = await page.locator(".hero-cinema-video").evaluate((video) => {
+      const videoBox = video.getBoundingClientRect();
+      const titleBox = document.querySelector(".hero-cinema-title")!.getBoundingClientRect();
+      return {
+        fit: getComputedStyle(video).objectFit,
+        transform: getComputedStyle(video).transform,
+        width: videoBox.width,
+        height: videoBox.height,
+        videoBottom: videoBox.bottom,
+        titleTop: titleBox.top,
+        documentWidth: document.documentElement.scrollWidth,
+      };
+    });
+    expect(geometry.fit).toBe("contain");
+    expect(geometry.transform).toBe("none");
+    expect(geometry.width / geometry.height).toBeCloseTo(16 / 9, 1);
+    expect(geometry.videoBottom).toBeLessThan(geometry.titleTop);
+    expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width + 1);
+  });
+}
+
+test("desktop Hero keeps its full-height cinematic cover video", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const fit = await page.locator(".hero-cinema-video").evaluate(video => getComputedStyle(video).objectFit);
+  expect(fit).toBe("cover");
+});

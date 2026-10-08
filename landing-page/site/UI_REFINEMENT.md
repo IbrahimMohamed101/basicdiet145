@@ -53,3 +53,7 @@ Dark full-width gallery with four official embeds, a 320px minimum frame width, 
 ## Phase 6 — plans
 
 A single comparison surface replaces detached rounded cards. Duration dominates; the 26-day column uses a quiet green emphasis and the existing neutral “الخيار المتوازن” label. Common options appear once. Mobile uses short rows with aligned actions; exact pricing and plan selection remain explicitly inside the app. No prices or popularity claims added. Production build and 1440/390 rendered inspection pass; zero overflow. Artifacts: `.audit/refinement/plans/`.
+
+## Mobile Hero video framing — 2026-10-08
+
+The approved Hero film and poster are landscape (16:9). On portrait phones, full-height `object-fit: cover` with additional CSS scaling cropped almost all the food plates. Restricted the fix to the existing <=640px CSS breakpoint: a native-ratio `contain` video sits in a dedicated mobile visual row over a dimmed, blurred poster backdrop; title/CTA occupy the following row so neither obscures the food. Removed the mobile animation's scaling override. The desktop Hero, media URLs, playback lifecycle, copy, and links are unchanged. Added 320/390/430/640px mobile framing and 1440px desktop-style regression checks to Playwright.
