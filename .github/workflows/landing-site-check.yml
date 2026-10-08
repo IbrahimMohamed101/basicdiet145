@@ -23,3 +23,12 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Browser QA for lead capture
+        run: |
+          npm run start -- --hostname 127.0.0.1 > /tmp/landing-qa.log 2>&1 &
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then break; fi
+            sleep 1
+          done
+          npx playwright test tests/lead-flow.spec.ts || { cat /tmp/landing-qa.log; exit 1; }

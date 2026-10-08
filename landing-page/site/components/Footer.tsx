@@ -68,6 +68,7 @@ export function Footer() {
             <a href="#meals">الوجبات</a>
             <a href="#plans">الباقات</a>
             <a href="#faq">الأسئلة</a>
+            <a href="/privacy">خصوصية طلب التواصل</a>
           </nav>
 
           <nav className="footer-socials" aria-label="حسابات Basic Diet">
