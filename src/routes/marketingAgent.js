@@ -76,4 +76,17 @@ router.get("/commercial-report", marketingAgentAuth, async (req,res,next)=>{
     return res.status(200).json({status:true,data:aggregateOnly(result,from,to)});
   } catch (err) { return next(err); }
 });
+// The agent sees the same de-identified aggregates as the admin report.
+router.get("/landing-report", marketingAgentAuth, async (req,res,next)=>{
+  const {from,to}=req.query;
+  if (!dateValid(from) || !dateValid(to) || from>to || dayCount(from,to)>90) {
+    return res.status(400).json({status:false,error:{code:"INVALID_RANGE"}});
+  }
+  try {
+    const {buildLandingAnalyticsReport}=require("../services/landingAnalyticsService");
+    const data=await buildLandingAnalyticsReport({from,to});
+    res.set("Cache-Control","no-store");
+    return res.json({status:true,data});
+  } catch(err) {return next(err);}
+});
 module.exports={router,aggregateOnly,dateValid,dayCount};
