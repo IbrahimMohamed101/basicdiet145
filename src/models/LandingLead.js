@@ -11,6 +11,8 @@ const LandingLeadSchema = new mongoose.Schema({
   daysCount: { type: Number, required: true },
   grams: { type: Number, required: true },
   mealsPerDay: { type: Number, required: true },
+  // Non-binding customer preference, confirmed later by the restaurant.
+  fulfillmentMethod: { type: String, enum: ["delivery", "pickup", "unspecified"], default: "unspecified" },
   contactConsent: { type: Boolean, required: true },
   marketingConsent: { type: Boolean, default: false },
   consentAt: { type: Date, required: true },
