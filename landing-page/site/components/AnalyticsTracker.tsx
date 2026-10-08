@@ -115,12 +115,15 @@ export function AnalyticsTracker() {
       }
     };
 
+    const onLead = (event: Event) => track("lp_lead_submitted", (event as CustomEvent).detail || {});
+    window.addEventListener("basicdiet:lead_submitted", onLead);
     window.addEventListener("basicdiet:cta", onCta);
     window.addEventListener("basicdiet:store_click", onStoreClick);
     document.addEventListener("click", onClick, { capture: true });
     document.addEventListener("toggle", onToggle, true);
     return () => {
       observer?.disconnect();
+      window.removeEventListener("basicdiet:lead_submitted", onLead);
       window.removeEventListener("basicdiet:cta", onCta);
       window.removeEventListener("basicdiet:store_click", onStoreClick);
       document.removeEventListener("click", onClick, true);
