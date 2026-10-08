@@ -19,7 +19,6 @@ const plan = {
   gramsOptions: [
     { grams: 150, isActive: true, mealsOptions: [{ mealsPerDay: 2, isActive: true, priceHalala: 110000 }] },
     { grams: 200, isActive: false, mealsOptions: [{ mealsPerDay: 2, priceHalala: 140000 }] },
-    { grams: 100, isActive: true, mealsOptions: [{ mealsPerDay: 1, isActive: false }] },
   ],
 };
 
@@ -49,6 +48,7 @@ async function run() {
   const oldFindOne = Plan.findOne;
   const oldFind = Plan.find;
   const oldCreate = Lead.create;
+  const oldViable = Plan.isViable;
   let saved = null;
   try {
     Plan.findOne = () => ({ lean: async () => plan });
@@ -81,8 +81,13 @@ async function run() {
     Lead.create = async () => { const e = new Error("duplicate"); e.code = 11000; throw e; };
     assert.deepEqual(await service.submitLead(base()), { ok: true, created: false });
 
+    const planWithUnavailableGram = { ...plan, gramsOptions: [
+      ...plan.gramsOptions,
+      { grams: 100, isActive: true, mealsOptions: [{ mealsPerDay: 1, isActive: false }] },
+    ] };
+    Plan.isViable = () => true; // Fixture verifies filtering even when an imported plan is partially invalid.
     Plan.find = () => ({
-      sort: () => ({ lean: async () => [plan] }),
+      sort: () => ({ lean: async () => [planWithUnavailableGram] }),
     });
     const plans = await service.getAvailableOptions();
     assert.deepEqual(plans, [{
@@ -92,6 +97,7 @@ async function run() {
   } finally {
     Plan.findOne = oldFindOne;
     Plan.find = oldFind;
+    Plan.isViable = oldViable;
     Lead.create = oldCreate;
     if (previousSecret === undefined) delete process.env.LANDING_ANALYTICS_INGEST_SECRET;
     else process.env.LANDING_ANALYTICS_INGEST_SECRET = previousSecret;
