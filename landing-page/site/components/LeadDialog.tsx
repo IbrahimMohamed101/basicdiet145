@@ -15,7 +15,7 @@ type OpenEvent = CustomEvent<{
 
 const ATTRIBUTION_KEY = "basicdiet_lp_attribution_v1";
 const SESSION_KEY = "basicdiet_lp_session_v1";
-const PRIVACY_URL = "https://basicdiet145-production-51e9.up.railway.app/privacy-policy";
+const PRIVACY_URL = "/privacy";
 
 function normalizePhone(value: string) {
   let s = value.replace(/[\s()-]/g, "");
