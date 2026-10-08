@@ -1,5 +1,6 @@
 "use strict";
 const LandingAnalyticsEvent = require("../models/LandingAnalyticsEvent");
+const LandingLead = require("../models/LandingLead");
 const { resolveRange } = require("./dashboard/marketingAnalyticsService");
 
 const EVENTS = new Set([
@@ -79,7 +80,7 @@ async function groupByField(base, event, field) {
 async function buildLandingAnalyticsReport({ from, to }) {
   const period = resolveRange(from, to);
   const base = { createdAt: { $gte: period.start, $lte: period.end } };
-  const [totals, daily, uniques, sources, campaigns, devices, ctas, sections, stores, reels, referrers, plans] =
+  const [totals, daily, uniques, sources, campaigns, devices, ctas, sections, stores, reels, referrers, plans, uniqueLeads] =
     await Promise.all([
       LandingAnalyticsEvent.aggregate([
         { $match: base }, { $group: { _id: "$event", count: { $sum: 1 } } },
@@ -102,6 +103,7 @@ async function buildLandingAnalyticsReport({ from, to }) {
       groupByField(base, "lp_reel_click", "reel"),
       groupByField(base, "lp_view", "referrerHost"),
       groupByField(base, "lp_cta_click", "planDays"),
+      LandingLead.countDocuments({ createdAt: base.createdAt }),
     ]);
   const countMap = Object.fromEntries(totals.map(r => [r._id, r.count]));
   const days = new Map();
@@ -118,6 +120,7 @@ async function buildLandingAnalyticsReport({ from, to }) {
     kpis: {
       pageViews: countMap.lp_view || 0,
       leadSubmissions: countMap.lp_lead_submitted || 0,
+      uniqueLeads,
       sessions: uniques[0]?.count || 0,
       ctaClicks: countMap.lp_cta_click || 0,
       storeClicks: countMap.lp_store_click || 0,
