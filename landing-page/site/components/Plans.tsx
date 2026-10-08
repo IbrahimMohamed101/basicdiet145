@@ -16,7 +16,7 @@ export function Plans() {
             <article className={`plan-option${plan.days === "26" ? " plan-option--featured" : ""}`} key={plan.days}>
               <div className="plan-duration"><strong>{plan.days}</strong><span>{plan.unit}</span></div>
               <div className="plan-copy"><h3>{plan.label}</h3><p>{plan.copy}</p></div>
-              <AppCta location="plans" className="button plan-button">ابدأ مع {plan.days} {plan.unit}<span aria-hidden="true">←</span></AppCta>
+              <AppCta location="plans" planDays={Number(plan.days)} className="button plan-button">ابدأ مع {plan.days} {plan.unit}<span aria-hidden="true">←</span></AppCta>
             </article>
           ))}
         </div>
