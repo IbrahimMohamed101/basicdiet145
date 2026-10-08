@@ -5,7 +5,13 @@ import { StoreLinks } from "./StoreLinks";
 
 type GramOption = { grams: number; mealsPerDay: number[] };
 type PlanOption = { planId: string; daysCount: number; gramsOptions: GramOption[] };
-type OpenEvent = CustomEvent<{ location?: string; planDays?: number }>;
+type OpenEvent = CustomEvent<{
+  location?: string;
+  planDays?: number;
+  grams?: number;
+  mealsPerDay?: number;
+  fulfillmentMethod?: "delivery" | "pickup";
+}>;
 
 const ATTRIBUTION_KEY = "basicdiet_lp_attribution_v1";
 const SESSION_KEY = "basicdiet_lp_session_v1";
@@ -22,12 +28,15 @@ function normalizePhone(value: string) {
 export function LeadDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
   const requestId = useRef("");
+  const loadId = useRef(0);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [planId, setPlanId] = useState("");
   const [grams, setGrams] = useState(150);
   const [mealsPerDay, setMealsPerDay] = useState(2);
   const [location, setLocation] = useState("hero");
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<"delivery" | "pickup">("delivery");
+  const [selectionNotice, setSelectionNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -46,33 +55,45 @@ export function LeadDialog() {
     let cancelled = false;
     const open = (evt: Event) => {
       const details = (evt as OpenEvent).detail || {};
-      setStep(1); setError(""); setPhone(""); setName("");
+      const currentLoad = ++loadId.current;
+      setStep(1); setError(""); setPhone(""); setName(""); setSelectionNotice("");
       setContactConsent(false); setMarketingConsent(false); setWebsite("");
       setLocation(details.location || "hero"); setLoading(true); setPlans([]);
+      setFulfillmentMethod(details.fulfillmentMethod === "pickup" ? "pickup" : "delivery");
       requestId.current = crypto.randomUUID();
       if (!dialog.current?.open) dialog.current?.showModal();
       setActive(true);
       void fetch("/api/lead-options", { cache: "no-store" })
         .then(res => { if (!res.ok) throw new Error("catalog"); return res.json(); })
         .then((result: { data?: PlanOption[] }) => {
-          if (cancelled || !dialog.current?.open) return;
+          if (cancelled || currentLoad !== loadId.current || !dialog.current?.open) return;
           const options = Array.isArray(result.data) ? result.data : [];
           const desired = options.find(p => p.daysCount === details.planDays)
             || options.find(p => p.daysCount === 26) || options[0];
           setPlans(options);
           setPlanId(desired?.planId || "");
-          const choice = desired?.gramsOptions.find(g => g.grams === 150) || desired?.gramsOptions[0];
+          const choice = desired?.gramsOptions.find(g => g.grams === details.grams)
+            || desired?.gramsOptions.find(g => g.grams === 150)
+            || desired?.gramsOptions[0];
+          const chosenMeals = details.mealsPerDay && choice?.mealsPerDay.includes(details.mealsPerDay)
+            ? details.mealsPerDay
+            : choice?.mealsPerDay.includes(2) ? 2 : choice?.mealsPerDay[0] || 1;
           setGrams(choice?.grams || 150);
-          setMealsPerDay(choice?.mealsPerDay.includes(2) ? 2 : choice?.mealsPerDay[0] || 1);
+          setMealsPerDay(chosenMeals);
+          if (desired && ((details.grams && details.grams !== choice?.grams)
+            || (details.mealsPerDay && details.mealsPerDay !== chosenMeals))) {
+            setSelectionNotice("بعض اختياراتك غير متاحة في الباقة الحالية، فعدّلناها لأقرب خيار متاح.");
+          }
           setLoading(false);
         })
-        .catch(() => { if (!cancelled) { setError("تعذر تحميل الباقات الآن. تقدر تبدأ مباشرة من التطبيق."); setLoading(false); } });
+        .catch(() => { if (!cancelled && currentLoad === loadId.current) { setError("تعذر تحميل الباقات الآن. تقدر تبدأ مباشرة من التطبيق."); setLoading(false); } });
     };
     window.addEventListener("basicdiet:open-lead", open);
     return () => { cancelled = true; window.removeEventListener("basicdiet:open-lead", open); };
   }, []);
 
   const close = () => {
+    loadId.current += 1;
     dialog.current?.close();
     setActive(false);
   };
@@ -118,6 +139,7 @@ export function LeadDialog() {
         body: JSON.stringify({
           requestId: requestId.current,
           planId: selected.planId, daysCount: selected.daysCount, grams, mealsPerDay,
+          fulfillmentMethod,
           phone: normalized, name: name.trim().slice(0, 70),
           contactConsent, marketingConsent, location, sessionId, referrerHost, website,
           source: attribution.source || "",
@@ -204,7 +226,19 @@ export function LeadDialog() {
                               </select>
                             </label>
                           </div>
-                          <p className="lead-small-note">الأسعار والإضافات النهائية تُحدد داخل التطبيق.</p>
+                          <div className="lead-fulfillment">
+                            <span className="lead-field-label">طريقة الاستلام المفضلة</span>
+                            <div className="lead-fulfillment-options" role="group" aria-label="طريقة الاستلام المفضلة">
+                              <button type="button" aria-pressed={fulfillmentMethod === "delivery"}
+                                className={fulfillmentMethod === "delivery" ? "is-selected" : ""}
+                                onClick={() => setFulfillmentMethod("delivery")}>توصيل</button>
+                              <button type="button" aria-pressed={fulfillmentMethod === "pickup"}
+                                className={fulfillmentMethod === "pickup" ? "is-selected" : ""}
+                                onClick={() => setFulfillmentMethod("pickup")}>استلام</button>
+                            </div>
+                          </div>
+                          {selectionNotice && <p className="lead-small-note" role="status">{selectionNotice}</p>}
+                          <p className="lead-small-note">الأسعار وطريقة الاستلام النهائية يؤكدها فريقنا.</p>
                         </>
                       ) : <p role="status" className="lead-state-message">الباقات مش متاحة للعرض دلوقتي. تقدر تبدأ من التطبيق مباشرة.</p>}
                     </>
@@ -220,7 +254,7 @@ export function LeadDialog() {
                 <form className="lead-fields" onSubmit={submit}>
                   <div className="lead-selection-summary">
                     <span>اختيارك</span>
-                    <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا</strong>
+                    <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا · {fulfillmentMethod === "delivery" ? "توصيل" : "استلام"}</strong>
                   </div>
                   <label className="lead-field">
                     <span>اسمك <em>(اختياري)</em></span>
