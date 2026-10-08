@@ -167,9 +167,6 @@ export function AppReveal() {
             <span><FeatureIcon />متابعة الاشتراك</span>
           </div>
 
-          <StoreLinks location="app" />
-
-          <p className="app-store-note">كل تفاصيل اشتراكك من مكان واحد.</p>
         </div>
 
         <div
@@ -226,6 +223,12 @@ export function AppReveal() {
             <strong>من 1 إلى 5</strong>
             <span>وجبات يوميًا</span>
           </div>
+        </div>
+
+        <div className="app-reveal-download">
+          <p className="app-reveal-download-label">حمّل التطبيق وابدأ باقتك</p>
+          <StoreLinks location="app" />
+          <p className="app-store-note">كل تفاصيل اشتراكك من مكان واحد.</p>
         </div>
       </div>
     </section>

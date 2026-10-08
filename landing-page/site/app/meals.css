@@ -29,11 +29,41 @@
   .section-heading--split { grid-template-columns: 1fr; gap: 20px; }
 }
 @media (max-width: 640px) {
-  .section-heading--split > p { font-size: 16px; }
-  .meal-showcase { display: flex; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: var(--brand-green) var(--cream-muted); padding-block-end: 16px; gap: 12px; }
-  .meal-card { flex: 0 0 min(82vw, 330px); block-size: 390px; aspect-ratio: auto; scroll-snap-align: start; }
-  .meal-card--featured figcaption span { font-size: 24px; }
-  .food-footer { align-items: start; flex-direction: column; gap: 8px; }
+  .food-section { padding-block: 52px 58px; }
+  .section-heading .eyebrow { margin-block-end: 12px; }
+  .section-heading h2 { font-size: clamp(29px, 7.7vw, 35px); line-height: 1.23; }
+  .section-heading--split { gap: 14px; }
+  .section-heading--split > p { max-inline-size: 39ch; font-size: 14px; line-height: 1.8; }
+  .meal-grid { margin-block-start: 24px; }
+  .meal-showcase {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: auto;
+    gap: 10px;
+    overflow: visible;
+  }
+  .meal-card {
+    grid-column: auto;
+    grid-row: auto;
+    min-inline-size: 0;
+    block-size: clamp(210px, 56vw, 248px);
+    aspect-ratio: auto;
+    border-radius: 18px;
+  }
+  .meal-card:first-child {
+    grid-column: 1 / -1;
+    block-size: clamp(250px, 72vw, 315px);
+  }
+  .meal-card:last-child {
+    grid-column: 1 / -1;
+    block-size: clamp(224px, 61vw, 268px);
+  }
+  .meal-card figcaption { inset-inline: 12px; inset-block-end: 12px; gap: 2px; }
+  .meal-card figcaption small { font-size: 11px; }
+  .meal-card figcaption span, .meal-card--featured figcaption span { font-size: clamp(15px, 4vw, 19px); }
+  .meal-card:first-child figcaption span, .meal-card:last-child figcaption span { font-size: 23px; }
+  .meal-card-shade { background: linear-gradient(180deg, transparent 40%, rgb(8 19 13 / 76%) 100%); }
+  .food-footer { margin-block-start: 18px; align-items: start; flex-direction: column; gap: 8px; }
+  .food-footer > p { font-size: 14px; }
 }
-@media (max-width: 360px) { .meal-card { block-size: 350px; } }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) { .meal-card:hover img { transform: scale(1.035); } }

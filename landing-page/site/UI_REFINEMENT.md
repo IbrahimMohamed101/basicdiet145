@@ -57,3 +57,8 @@ A single comparison surface replaces detached rounded cards. Duration dominates;
 ## Mobile Hero video framing — 2026-10-08
 
 The approved Hero film and poster are landscape (16:9). On portrait phones, full-height `object-fit: cover` with additional CSS scaling cropped almost all the food plates. Restricted the fix to the existing <=640px CSS breakpoint: a native-ratio `contain` video sits in a dedicated mobile visual row over a dimmed, blurred poster backdrop; title/CTA occupy the following row so neither obscures the food. Removed the mobile animation's scaling override. The desktop Hero, media URLs, playback lifecycle, copy, and links are unchanged. Added 320/390/430/640px mobile framing and 1440px desktop-style regression checks to Playwright.
+
+
+## Mobile app showcase and meal gallery — 2026-10-08
+
+Source: real portrait screenshot review. The original <=390px breakpoint stacked giant black store buttons before a small phone scene; the gallery exposed one very tall card with a cropped neighbor. Refined only the relevant landing sections: AppReveal now places its verified phone/meal scene between the introductory copy and a compact paired store-download row on <=980px; on desktop the text, actions and scene remain in two columns. Mobile stage gains measured height, a quiet light green background and larger screenshot geometry. The six real menu-image assets remain unchanged, served through the same image proxy; their mobile layout is now a curated 2-column grid with a wide opening and closing card instead of a clipped horizontal carousel. Desktop 12-column composition and all destinations remain unchanged. Added layout tests for 320px app CTA order and 390px gallery vs desktop layout; existing image-geometry test accounts for narrower cards.

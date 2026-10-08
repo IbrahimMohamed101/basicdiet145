@@ -505,7 +505,10 @@
 .app-reveal-grid {
   display: grid;
   grid-template-columns: minmax(340px, 0.76fr) minmax(0, 1.24fr);
-  gap: clamp(42px, 6vw, 92px);
+  grid-template-rows: auto auto;
+  grid-template-areas: "copy stage" "download stage";
+  column-gap: clamp(42px, 6vw, 92px);
+  row-gap: 0;
   align-items: center;
   direction: rtl;
   position: relative;
@@ -513,8 +516,21 @@
 }
 
 .app-reveal-copy {
+  grid-area: copy;
+  align-self: end;
   position: relative;
   z-index: 8;
+}
+
+.app-reveal-download {
+  grid-area: download;
+  align-self: start;
+  position: relative;
+  z-index: 8;
+}
+
+.app-reveal-download-label {
+  display: none;
 }
 
 .app-reveal-copy h2 {
@@ -656,6 +672,7 @@
 }
 
 .app-reveal-stage {
+  grid-area: stage;
   width: 100%;
   margin-inline: auto;
   min-height: 690px;
@@ -759,7 +776,9 @@
 
 .app-reveal-grid {
   grid-template-columns: 1fr;
-  gap: 22px;
+  grid-template-rows: auto auto auto;
+  grid-template-areas: "copy" "stage" "download";
+  row-gap: 22px;
 }
 
 .app-reveal-copy {
@@ -970,91 +989,119 @@
 }
 
 .app-reveal-section {
-  padding: 72px 0 68px;
+  padding: 64px 0 52px;
   margin-top: -18px;
-  padding-top: 84px;
-  border-radius: 32px 32px 0 0;
+  padding-top: 76px;
+  border-radius: 30px 30px 0 0;
 }
 
 .app-reveal-grid {
-  gap: 12px;
+  grid-template-areas: "copy" "stage" "download";
+  row-gap: 0;
 }
 
 .app-reveal-copy h2 {
-  font-size: clamp(38px, 11vw, 52px);
+  font-size: clamp(32px, 8.6vw, 39px);
+  line-height: 1.17;
+  letter-spacing: -0.025em;
 }
 
 .app-reveal-copy > p:not(.eyebrow) {
-  margin-top: 18px;
-  font-size: 16px;
+  margin-top: 14px;
+  font-size: 15px;
+  line-height: 1.75;
 }
 
 .app-reveal-points {
-  margin-top: 20px;
-  gap: 8px;
+  margin-top: 16px;
+  gap: 7px;
 }
 
 .app-reveal-points span {
-  min-height: 38px;
-  padding-inline: 11px;
-  font-size: 12px;
+  min-height: 34px;
+  padding-inline: 9px;
+  font-size: 11px;
+  box-shadow: none;
 }
 
-.app-store-actions {
-  margin-top: 24px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 9px;
-}
-
-.app-store-button {
-  min-width: 0;
-  width: 100%;
-  min-height: 58px;
-  padding: 8px 11px;
-  border-radius: 13px;
-  gap: 8px;
-}
-
-.app-store-icon {
-  width: 24px;
-  height: 24px;
-}
-
-.app-store-icon--play {
-  width: 24px;
-  height: 24px;
-}
-
-.app-store-copy strong {
-  font-size: 16px;
-}
-
-.app-store-copy small {
-  font-size: 9px;
-}
-
-.app-store-note {
-  margin-top: 10px !important;
-  font-size: 12px !important;
+.app-reveal-points svg {
+  width: 14px;
+  height: 14px;
 }
 
 .app-reveal-stage {
-  margin-top: 12px;
-  min-height: 350px;
+  margin-top: 18px;
+  min-height: clamp(370px, 112vw, 480px);
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgb(16 128 85 / 10%);
+  background: radial-gradient(ellipse at 52% 30%, #fffef9 0%, #f0f5e9 52%, #e3eee3 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 88%), 0 16px 40px rgb(12 45 28 / 7%);
 }
 
 .app-reveal-stage .hero-phone-layer {
-  width: 39%;
-  min-width: 138px;
-  inset-inline-end: 7%;
-  top: -1%;
+  width: 49%;
+  min-width: 148px;
+  inset-inline-end: 12%;
+  top: 3%;
 }
 
 .app-reveal-stage .hero-meal-layer {
-  width: 60%;
-  inset-inline-end: 23%;
-  bottom: -5%;
+  width: 59%;
+  inset-inline-end: 25%;
+  bottom: -2%;
+}
+
+.app-reveal-stage .hero-chip--grams {
+  inset-inline-start: 3%;
+  top: 19%;
+}
+
+.app-reveal-download {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.app-reveal-download-label {
+  display: block;
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.app-reveal-download .app-store-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.app-reveal-download .app-store-button {
+  min-width: 0;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 9px;
+  border-radius: 14px;
+  gap: 6px;
+}
+
+.app-reveal-download .app-store-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.app-reveal-download .app-store-copy strong {
+  font-size: clamp(12px, 3.5vw, 15px);
+}
+
+.app-reveal-download .app-store-copy small {
+  font-size: 9px;
+}
+
+.app-reveal-download .app-store-note {
+  margin-top: 12px !important;
+  font-size: 12px !important;
 }
 
 .app-reveal-section::before {
@@ -1078,6 +1125,10 @@
 
 .app-store-actions {
   grid-template-columns: 1fr;
+}
+
+.app-reveal-download .app-store-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .app-store-button {
