@@ -63,7 +63,7 @@ async function run() {
     assert.equal((await service.submitLead({ ...base(), mealsPerDay: 5 })).code, "OPTION_UNAVAILABLE");
     Plan.findOne = () => ({ lean: async () => null });
     assert.equal((await service.submitLead(base())).code, "PLAN_UNAVAILABLE");
-    Plan.findOne = async () => plan;
+    Plan.findOne = () => ({ lean: async () => plan });
     saved = null;
     assert.deepEqual(await service.submitLead({ ...base(), website: "bot" }), { ok: true, created: false });
     assert.equal(saved, null);
