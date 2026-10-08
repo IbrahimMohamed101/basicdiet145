@@ -4,7 +4,7 @@ const { resolveRange } = require("./dashboard/marketingAnalyticsService");
 
 const EVENTS = new Set([
   "lp_view", "lp_section_view", "lp_cta_click", "lp_store_click",
-  "lp_nav_click", "lp_faq_open", "lp_reel_click",
+  "lp_nav_click", "lp_faq_open", "lp_reel_click", "lp_lead_submitted",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED = {
@@ -117,6 +117,7 @@ async function buildLandingAnalyticsReport({ from, to }) {
     range: { from: period.from, to: period.to, days: period.days, timezone: "Asia/Riyadh" },
     kpis: {
       pageViews: countMap.lp_view || 0,
+      leadSubmissions: countMap.lp_lead_submitted || 0,
       sessions: uniques[0]?.count || 0,
       ctaClicks: countMap.lp_cta_click || 0,
       storeClicks: countMap.lp_store_click || 0,
