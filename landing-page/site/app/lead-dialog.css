@@ -88,3 +88,10 @@
   .lead-dialog[open] { animation: none; }
   .lead-step-line span { transition: none; }
 }
+
+/* Compact delivery preference follows the preselected meal options. */
+.lead-fulfillment { display: grid; gap: 7px; }
+.lead-fulfillment-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lead-fulfillment-options button { min-height: 40px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; background: white; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.lead-fulfillment-options button.is-selected { border-color: var(--brand-green); background: #eaf4ec; color: var(--brand-green); font-weight: 700; }
+.lead-fulfillment-options button:focus-visible { outline: 3px solid var(--brand-orange); outline-offset: 2px; }
