@@ -104,7 +104,7 @@ export function AnalyticsTracker() {
       }
       if (target?.closest(".reel-load")) {
         const card = target.closest(".reel-card");
-        const reel = card?.querySelector("iframe")?.getAttribute("src")?.match(/\/reel\/([a-zA-Z0-9_-]+)/)?.[1] || "";
+        const reel = card?.getAttribute("data-reel-shortcode") || "";
         track("lp_reel_click", { reel, action: "embed" });
       }
     };
