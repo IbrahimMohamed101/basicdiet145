@@ -257,6 +257,8 @@ function createApp() {
   });
 
   app.use("/", paymentRoutes.publicRouter);
+  // Scoped OIDC endpoint for aggregate marketing reads. No dashboard admin token.
+  app.use("/api/marketing-agent", require("./routes/marketingAgent").router);
   app.use("/api", requestLanguageMiddleware, routes);
 
   // JSON 404 handler for unknown /api/* routes.
