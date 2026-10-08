@@ -10,7 +10,8 @@ const ID = "507f1f77bcf86cd799439011";
 const base = () => ({
   requestId: crypto.randomUUID(), planId: ID, daysCount: 26, grams: 150,
   mealsPerDay: 2, phone: "0501234567",
-  contactConsent: true, marketingConsent: false, location: "hero",
+  contactConsent: true, marketingConsent: false, location: "benefits",
+  fulfillmentMethod: "pickup",
   campaign: "حملة_جدة", sessionId: crypto.randomUUID(),
 });
 const plan = {
@@ -34,6 +35,9 @@ async function run() {
   assert.equal(Boolean(service.isValidRequest({ ...base(), daysCount: 14 })), false);
   assert.equal(Boolean(service.isValidRequest({ ...base(), mealsPerDay: 0 })), false);
   assert.equal(Boolean(service.isValidRequest({ ...base(), requestId: "wrong" })), false);
+  assert.equal(Boolean(service.isValidRequest({ ...base(), fulfillmentMethod: "courier" })), false);
+  assert.equal(Boolean(service.isValidRequest({ ...base(), fulfillmentMethod: null })), false);
+  assert.ok(service.isValidRequest({ ...base(), fulfillmentMethod: undefined }));
 
   const previousSecret = process.env.LANDING_ANALYTICS_INGEST_SECRET;
   process.env.LANDING_ANALYTICS_INGEST_SECRET = "test-only-secret-no-production";
@@ -54,6 +58,11 @@ async function run() {
     assert.equal(saved.contactConsent, true);
     assert.equal(saved.marketingConsent, false);
     assert.equal(saved.campaign, "حملة_جدة");
+    assert.equal(saved.fulfillmentMethod, "pickup");
+    assert.equal(saved.location, "benefits");
+    const fallback = await service.submitLead({ ...base(), fulfillmentMethod: undefined });
+    assert.equal(fallback.ok, true);
+    assert.equal(saved.fulfillmentMethod, "unspecified");
     assert.equal(saved.phoneHash.length, 64);
     assert.equal(saved.status, undefined);
     assert.equal(saved.expiresAt.getTime() > Date.now(), true);

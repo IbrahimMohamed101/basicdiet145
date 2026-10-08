@@ -30,7 +30,8 @@ function isValidRequest(body) {
     && /^[0-9a-f]{24}$/i.test(body.planId || "")
     && DURATIONS.has(body.daysCount)
     && Number.isInteger(body.grams) && body.grams > 0 && body.grams <= 1000
-    && Number.isInteger(body.mealsPerDay) && body.mealsPerDay > 0 && body.mealsPerDay <= 10;
+    && Number.isInteger(body.mealsPerDay) && body.mealsPerDay > 0 && body.mealsPerDay <= 10
+    && (body.fulfillmentMethod === undefined || ["delivery", "pickup"].includes(body.fulfillmentMethod));
 }
 async function getAvailableOptions() {
   const plans = await Plan.find(Plan.getSellableQuery())
@@ -67,12 +68,13 @@ async function submitLead(body) {
       name: clean(body.name, 70),
       phone, phoneHash, dayBucket: now.toISOString().slice(0, 10),
       planId: plan._id, daysCount: plan.daysCount, grams: body.grams,
-      mealsPerDay: body.mealsPerDay, contactConsent: true,
+      mealsPerDay: body.mealsPerDay,
+      fulfillmentMethod: body.fulfillmentMethod || "unspecified", contactConsent: true,
       marketingConsent: body.marketingConsent === true, consentAt: now,
       source: clean(body.source), medium: clean(body.medium),
       campaign: clean(body.campaign, 100), content: clean(body.content, 100),
       referrerHost: validSourceHost(body.referrerHost),
-      location: ["header", "hero", "app", "plans", "final"].includes(body.location) ? body.location : "",
+      location: ["header", "hero", "app", "plans", "final", "benefits"].includes(body.location) ? body.location : "",
       sessionId: UUID.test(body.sessionId || "") ? body.sessionId.toLowerCase() : "",
       expiresAt: new Date(now.getTime() + 180 * 86400000),
     });
