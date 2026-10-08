@@ -7,6 +7,7 @@ const EVENTS = [
 ];
 
 const schema = new mongoose.Schema({
+  _id: { type: String, required: true },
   eventId: { type: String, required: true, unique: true, immutable: true },
   sessionId: { type: String, required: true, index: true },
   event: { type: String, required: true, enum: EVENTS, index: true },
