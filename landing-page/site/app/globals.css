@@ -10,6 +10,7 @@
 @import "./reels.css";
 @import "./plans.css";
 @import "./closing.css";
+@import "./lead-dialog.css";
 
 @theme inline {
   --color-brand-green: var(--brand-green);
