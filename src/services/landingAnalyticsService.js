@@ -28,6 +28,7 @@ function parseEvent(body) {
   const path = typeof body.path === "string" && /^\/[a-zA-Z0-9/_-]{0,100}$/.test(body.path)
     ? body.path : "/";
   const record = {
+    _id: body.eventId.toLowerCase(),
     eventId: body.eventId.toLowerCase(),
     sessionId: body.sessionId.toLowerCase(),
     event: body.event,
