@@ -138,10 +138,9 @@ test("cinematic hero uses the approved full video and hands off to the interacti
     "src",
     /18\.59\.40/,
   );
-  await expect(page.locator(".hero-meal-image")).toHaveAttribute(
-    "src",
-    "/meals/butter-chicken.png",
-  );
+  // Next/Image may serve the same asset through its optimized /_next/image URL.
+  const mealImageSrc = await page.locator(".hero-meal-image").getAttribute("src");
+  expect(decodeURIComponent(mealImageSrc ?? "")).toContain("/meals/butter-chicken.png");
   await expect(page.locator(".hero-cinema-title-line")).toHaveCount(3);
   await expect(page.locator(".app-reveal-section")).toHaveCount(1);
   await expect(page.locator(".proof-strip")).toHaveCount(0);
