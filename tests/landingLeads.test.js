@@ -19,6 +19,7 @@ const plan = {
   gramsOptions: [
     { grams: 150, isActive: true, mealsOptions: [{ mealsPerDay: 2, isActive: true, priceHalala: 110000 }] },
     { grams: 200, isActive: false, mealsOptions: [{ mealsPerDay: 2, priceHalala: 140000 }] },
+    { grams: 100, isActive: true, mealsOptions: [{ mealsPerDay: 1, isActive: false }] },
   ],
 };
 
