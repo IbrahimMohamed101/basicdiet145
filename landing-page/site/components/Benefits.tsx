@@ -13,6 +13,19 @@ export function Benefits() {
     { name: "delivery", label: "طريقة الاستلام", options: ["توصيل", "استلام"], value: delivery, set: setDelivery },
   ];
 
+  const handleSubscriptionRequest = () => {
+    const details = {
+      location: "benefits" as const,
+      grams: Number(grams),
+      mealsPerDay: Number(meals),
+      fulfillmentMethod: delivery === "توصيل" ? "delivery" as const : "pickup" as const,
+    };
+    const ua = navigator.userAgent.toLowerCase();
+    const platform = /iphone|ipad|ipod/.test(ua) ? "ios" : /android/.test(ua) ? "android" : "desktop";
+    window.dispatchEvent(new CustomEvent("basicdiet:cta", { detail: { location: details.location, platform } }));
+    window.dispatchEvent(new CustomEvent("basicdiet:open-lead", { detail: details }));
+  };
+
   return (
     <section className="benefits-section" aria-labelledby="benefits-title">
       <div className="page-shell benefits-shell">
@@ -35,7 +48,12 @@ export function Benefits() {
               </fieldset>
             ))}
           </div>
-          <p className="flexibility-note">جرّب الخيارات هنا، وأكمل تخصيصك في التطبيق.</p>
+          <div className="flexibility-submit-row">
+            <button type="button" className="button flexibility-submit-button" onClick={handleSubscriptionRequest}>
+              اطلب اشتراكك <span aria-hidden="true">←</span>
+            </button>
+            <p className="flexibility-note">اختياراتك هتنتقل لطلب التواصل مباشرة.</p>
+          </div>
         </div>
         <div className="flexibility-visual">
           <div className="flexibility-photo">
