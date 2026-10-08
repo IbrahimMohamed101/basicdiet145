@@ -46,7 +46,7 @@ async function run() {
   const oldCreate = Lead.create;
   let saved = null;
   try {
-    Plan.findOne = async () => plan;
+    Plan.findOne = () => ({ lean: async () => plan });
     Lead.create = async values => { saved = values; return values; };
     const first = await service.submitLead(base());
     assert.deepEqual(first, { ok: true, created: true });
@@ -61,7 +61,7 @@ async function run() {
 
     assert.equal((await service.submitLead({ ...base(), grams: 200 })).code, "OPTION_UNAVAILABLE");
     assert.equal((await service.submitLead({ ...base(), mealsPerDay: 5 })).code, "OPTION_UNAVAILABLE");
-    Plan.findOne = async () => null;
+    Plan.findOne = () => ({ lean: async () => null });
     assert.equal((await service.submitLead(base())).code, "PLAN_UNAVAILABLE");
     Plan.findOne = async () => plan;
     saved = null;
