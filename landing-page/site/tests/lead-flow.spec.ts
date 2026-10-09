@@ -84,7 +84,9 @@ test("disabled plan catalog displays an app fallback without collecting a phone"
   await page.route("**/api/lead-options", route =>
     route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ status: false, data: [] }) })
   );
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/", { waitUntil: "load" });
+  // Ensure the dialog event listener is hydrated before simulating a visitor click.
+  await page.waitForTimeout(200);
   await page.getByRole("button", { name: "اسأل المطعم عن اختياراتك" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
