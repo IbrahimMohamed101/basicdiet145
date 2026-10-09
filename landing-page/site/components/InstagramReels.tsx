@@ -51,7 +51,7 @@ export function InstagramReels() {
         <div className="reels-grid" role="region" tabIndex={0} aria-label="فيديوهات Basic Diet على Instagram؛ مرّر أفقيًا للمزيد">
           {reels.map((reel, index) => <Reel key={reel.shortcode} reel={reel} index={index} />)}
         </div>
-        <noscript><p>تقدر تشاهد المقاطع الأربعة من روابط Instagram.</p></noscript>
+        <noscript><style>{`.reel-embed-window { display: none; }`}</style><p>تقدر تشاهد المقاطع الأربعة من روابط Instagram.</p></noscript>
       </div>
     </section>
   );
