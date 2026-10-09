@@ -1,0 +1,51 @@
+/* One product demonstration: native controls, editorial image, live receipt. */
+.benefits-section { padding-block: clamp(64px, 7vw, 112px); background: var(--cream-muted); }
+.benefits-shell { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: clamp(40px, 6vw, 88px); }
+.benefits-intro h2 { margin: 0; font-size: var(--text-heading); font-weight: 700; line-height: 1.25; }
+.benefits-intro h2 span { color: var(--brand-green); }
+.benefits-intro > p:not(.eyebrow) { color: var(--muted); line-height: 1.8; margin: 20px 0 0; }
+.flexibility-controls { margin-top: 36px; }
+.flexibility-controls fieldset { border: 0; padding: 0; margin: 0 0 24px; min-width: 0; }
+.flexibility-controls legend { padding: 0; margin-bottom: 10px; font-size: 16px; font-weight: 700; }
+.flexibility-options { display: flex; gap: 8px; }
+.flexibility-options label { position: relative; flex: 1; min-width: 0; cursor: pointer; }
+.flexibility-options input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.flexibility-options label > span { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 48px; border: 1px solid #b9c9b7; border-radius: 8px; font-size: 19px; background: rgb(255 255 255 / 40%); transition: background-color var(--motion-duration-micro), color var(--motion-duration-micro); }
+.flexibility-options small { font-size: 13px; }
+.flexibility-options input:checked + span { background: var(--brand-green); border-color: var(--brand-green); color: white; }
+.flexibility-options input:focus-visible + span { outline: 3px solid var(--brand-orange); outline-offset: 3px; }
+.flexibility-options label:hover > span { border-color: var(--brand-green); }
+.benefits-intro > .flexibility-note { font-size: 14px; }
+.flexibility-visual { position: relative; padding-bottom: 66px; min-width: 0; }
+.flexibility-photo { position: relative; aspect-ratio: 1 / 1.13; border-radius: 160px 160px 12px 12px; overflow: hidden; background: #d6ddce; }
+.flexibility-photo img { object-fit: cover; }
+.flexibility-receipt { position: absolute; bottom: 0; inset-inline: 24px; padding: 22px 28px; background: var(--cream); border-top: 3px solid var(--brand-orange); box-shadow: var(--shadow-elevation-1); }
+.flexibility-receipt > span { font-size: 14px; color: var(--muted); }
+.flexibility-receipt > div { display: flex; align-items: center; gap: 24px; padding-block: 12px; }
+.flexibility-receipt strong { font-size: clamp(48px, 5vw, 68px); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.flexibility-receipt strong small { font-size: 24px; }
+.flexibility-receipt i { width: 1px; height: 48px; background: var(--border); }
+.flexibility-receipt p { margin: 0; font-size: 22px; }
+.flexibility-receipt p small { font-size: 16px; color: var(--muted); }
+.flexibility-receipt > small { font-size: 12px; color: var(--muted); }
+@media (max-width: 800px) {
+  .benefits-shell { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .benefits-intro { max-width: 600px; }
+  .flexibility-visual { width: min(100%, 540px); margin-inline: auto; }
+  .flexibility-photo { aspect-ratio: 1.18; border-radius: 100px 100px 12px 12px; }
+}
+@media (max-width: 400px) {
+  .flexibility-receipt { inset-inline: 14px; padding: 18px; }
+  .flexibility-receipt > div { gap: 16px; }
+}
+
+/* Compact CTA shares the existing option group without adding another section. */
+.flexibility-submit-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; margin-top: 8px; }
+.flexibility-submit-button { display: inline-flex; align-items: center; justify-content: space-between; gap: 22px; min-width: 0; min-height: 48px; padding: 12px 20px; white-space: normal; line-height: 1.45; text-align: center; }
+.flexibility-submit-button > span { font-size: 22px; font-weight: 400; line-height: 1; }
+.benefits-intro .flexibility-submit-row .flexibility-note { flex: 1; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+@media (max-width: 500px) {
+  .flexibility-submit-row { align-items: stretch; gap: 8px; }
+  .flexibility-submit-button { width: 100%; min-height: 46px; }
+  .benefits-intro .flexibility-submit-row .flexibility-note { flex-basis: 100%; text-align: center; font-size: 12px; }
+}

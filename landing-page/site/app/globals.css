@@ -1,0 +1,25 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./base.css";
+@import "./motion.css";
+@import "./navbar.css";
+@import "./presentation.css";
+@import "./meals.css";
+@import "./flexibility.css";
+@import "./journey.css";
+@import "./reels.css";
+@import "./plans.css";
+@import "./closing.css";
+@import "./lead-dialog.css";
+
+@theme inline {
+  --color-brand-green: var(--brand-green);
+  --color-brand-green-hover: var(--brand-green-hover);
+  --color-brand-orange: var(--brand-orange);
+  --color-cream: var(--cream);
+  --color-cream-muted: var(--cream-muted);
+  --color-ink: var(--ink);
+  --color-text-muted: var(--muted);
+  --color-border: var(--border);
+  --font-sans: var(--font-tajawal), system-ui, sans-serif;
+}

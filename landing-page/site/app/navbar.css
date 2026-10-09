@@ -1,0 +1,334 @@
+/* Phase 2: fixed navigation does not resize the page when compacting. */
+.nav-sentinel {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 1px;
+  block-size: 16px;
+  pointer-events: none;
+}
+
+.site-header {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+
+.nav-shell {
+  pointer-events: auto;
+  inline-size: min(var(--container-page), calc(100% - var(--space-9)));
+  margin: var(--space-5) auto 0;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-background);
+  box-shadow: var(--shadow-elevation-1);
+  transition: transform var(--motion-duration-ui) var(--motion-ease-out);
+}
+
+.nav-shell--scrolled {
+  padding-block: var(--space-3);
+  transform: translateY(-6px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-elevation-2);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .nav-shell {
+    background: color-mix(in srgb, var(--color-background) 94%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .nav-shell--scrolled {
+    background: color-mix(in srgb, var(--color-surface) 97%, transparent);
+  }
+}
+
+.brand {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: 44px;
+  direction: ltr;
+}
+
+.brand-logo {
+  inline-size: 52px;
+  block-size: 48px;
+  object-fit: contain;
+}
+
+.brand-name {
+  color: var(--color-text);
+  font-size: var(--text-body);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.desktop-nav,
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.desktop-nav { flex-wrap: wrap; justify-content: center; }
+
+.desktop-nav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: var(--space-3);
+  color: var(--color-text);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  white-space: nowrap;
+  font-weight: 700;
+  border-radius: var(--radius-control);
+}
+
+.desktop-nav a::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--space-3);
+  inset-block-end: var(--space-2);
+  block-size: 2px;
+  background: var(--color-action);
+  border-radius: var(--radius-pill);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform var(--motion-duration-micro) var(--motion-ease-out);
+}
+
+.desktop-nav a[aria-current]::after {
+  transform: scaleX(1);
+}
+
+.site-header a[aria-current] {
+  color: var(--color-action-hover);
+  font-weight: 700;
+}
+
+.site-header :is(a, button):focus-visible {
+  outline: 2px solid var(--color-action-hover);
+  outline-offset: 3px;
+}
+
+.site-header .button {
+  min-block-size: 44px;
+  font-size: var(--text-body);
+  line-height: 1.5;
+  padding: var(--space-3) var(--space-5);
+}
+
+.menu-toggle,
+.menu-close {
+  flex: 0 0 44px;
+  inline-size: 44px;
+  block-size: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  background: var(--color-background-muted);
+  cursor: pointer;
+}
+
+.menu-toggle {
+  display: none;
+  position: relative;
+}
+
+.menu-toggle span {
+  position: absolute;
+  inset-inline: var(--space-4);
+  inset-block-start: 17px;
+  block-size: 2px;
+  background: currentColor;
+  border-radius: var(--radius-pill);
+}
+
+.menu-toggle span + span {
+  transform: translateY(8px);
+}
+
+/* Native modal top layer makes the rest of the document inert. */
+.nav-dialog {
+  position: fixed;
+  inset: 0;
+  inline-size: 100%;
+  max-inline-size: none;
+  block-size: 100dvh;
+  max-block-size: none;
+  margin: 0;
+  padding: var(--space-5);
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  pointer-events: auto;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--motion-duration-ui) var(--motion-ease-out),
+    display var(--motion-duration-ui) allow-discrete,
+    overlay var(--motion-duration-ui) allow-discrete;
+}
+
+.nav-dialog[open] {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 1;
+}
+
+.nav-dialog::backdrop {
+  background: color-mix(in srgb, var(--color-text) 40%, transparent);
+  opacity: 0;
+  transition: opacity var(--motion-duration-ui) var(--motion-ease-out),
+    display var(--motion-duration-ui) allow-discrete,
+    overlay var(--motion-duration-ui) allow-discrete;
+}
+
+.nav-dialog[open]::backdrop {
+  opacity: 1;
+}
+
+.nav-sheet {
+  inline-size: min(100%, 30rem);
+  max-block-size: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-6);
+  padding-block-end: max(var(--space-6), env(safe-area-inset-bottom));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-background);
+  box-shadow: var(--shadow-elevation-3);
+  transform: translateY(var(--space-5));
+  transition: transform var(--motion-duration-ui) var(--motion-ease-out);
+}
+
+.nav-dialog[open] .nav-sheet {
+  transform: translateY(0);
+}
+
+@starting-style {
+  .nav-dialog[open], .nav-dialog[open]::backdrop { opacity: 0; }
+  .nav-dialog[open] .nav-sheet { transform: translateY(var(--space-5)); }
+}
+
+.nav-sheet-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-block-end: var(--space-4);
+}
+
+.nav-sheet-heading h2 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.menu-close {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.nav-sheet nav {
+  display: grid;
+}
+
+.nav-sheet nav a {
+  position: relative;
+  min-block-size: 52px;
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-block-start: 1px solid var(--color-border);
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+.nav-sheet nav a::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 3px;
+  block-size: 1.25em;
+  border-radius: var(--radius-pill);
+  background: var(--color-action);
+  transform: scaleY(0);
+  transition: transform var(--motion-duration-micro) var(--motion-ease-out);
+}
+
+.nav-sheet nav a[aria-current]::before { transform: scaleY(1); }
+.nav-sheet-cta { margin-block-start: var(--space-5); }
+.nav-sheet-cta .button { inline-size: 100%; min-block-size: 52px; }
+
+.nav-actions > .button,
+.nav-sheet-cta > .button { display: inline-flex; align-items: center; justify-content: center; }
+
+.nav-enquiry-button { margin-block-start: 10px; background: transparent; color: var(--brand-green); border: 1px solid var(--brand-green); }
+.nav-enquiry-button:hover { background: var(--cream-muted); color: var(--brand-green); }
+
+.nav-fallback {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--color-background);
+}
+
+.nav-fallback a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding: var(--space-3) var(--space-4);
+}
+
+:is(#top, #main, #meals, #how-it-works, #app, #plans, #faq) {
+  scroll-margin-top: max(104px, 7rem);
+}
+
+
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-nav a:hover::after { transform: scaleX(1); }
+  .nav-sheet nav a:hover { background: var(--color-background-muted); }
+}
+
+@media (max-width: 1100px) {
+  .brand-name { display: none; }
+  .nav-shell { gap: var(--space-3); }
+}
+
+@media (max-width: 980px) {
+  .desktop-nav { display: none; }
+  .menu-toggle { display: block; }
+}
+
+@media (max-width: 640px) {
+  .nav-shell {
+    inline-size: calc(100% - var(--space-6));
+    margin-block-start: var(--space-3);
+    padding: var(--space-3);
+  }
+  .nav-shell--scrolled { transform: translateY(-2px); padding-block: var(--space-2); }
+  .brand-logo { inline-size: 46px; block-size: 44px; }
+  .nav-dialog { padding: var(--space-3); padding-block-start: max(var(--space-3), env(safe-area-inset-top)); }
+  .nav-sheet { padding: var(--space-5); padding-block-end: max(var(--space-5), env(safe-area-inset-bottom)); }
+
+}
