@@ -1,6 +1,6 @@
 # Basic Diet Landing Page — STATUS
 
-**Last updated:** 2026-10-07  
+**Last updated:** 2026-10-09  
 **Branch:** `landing-page-research`
 
 ## Current state
@@ -51,7 +51,10 @@ Implemented sections:
 13. Footer
 
 Conversion:
-- Primary CTA: `ابدأ اشتراكك`
+- Primary CTA: `حمّل التطبيق` (direct app store on iOS/Android; store section on desktop)
+- Secondary CTA: `اسأل المطعم` (existing enquiry/lead form, including selected plan where available)
+- Landing page intentionally shows no package prices; final pricing remains in the app
+- Instagram reels are click-to-load; no-JavaScript mode preserves working Instagram links
 - iOS routes to verified App Store URL
 - Android Store URL remains environment-controlled until a public verified listing is available
 - CTA and section-view analytics hooks are implemented
