@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedSameOrigin } from "@/lib/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,8 +7,8 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   // The browser only talks to this same-origin endpoint. The shared secret
   // stays on Railway's server and is never included in public JS.
-  const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
+  // Railway may provide an internal request.nextUrl.origin; the browser sends the public Host.
+  if (!isAllowedSameOrigin(request.headers.get("origin"), request.headers.get("host"))) {
     return NextResponse.json({ ok: false }, { status: 403 });
   }
   const backend = process.env.LANDING_ANALYTICS_BACKEND_URL?.replace(/\/+$/, "");
