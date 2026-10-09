@@ -1,4 +1,5 @@
 import { AppCta } from "./AppCta";
+import { DownloadCta } from "./DownloadCta";
 import { HERO_POSTER_URL, HERO_VIDEO_URL } from "@/lib/app-links";
 
 export function Hero() {
@@ -24,6 +25,7 @@ export function Hero() {
 
       <div className="page-shell hero-cinema-content">
         <div className="hero-cinema-copy">
+          <p className="hero-cinema-kicker">اشتراكات وجبات صحية في جدة <span aria-hidden="true">✳</span></p>
           <h1 id="hero-title" className="hero-cinema-title">
             <span className="hero-cinema-title-line">وجبات تحبها،</span>
             <span className="hero-cinema-title-line hero-cinema-title-line--accent">
@@ -37,10 +39,14 @@ export function Hero() {
           </p>
 
           <div className="hero-cinema-actions">
-            <AppCta location="hero" className="button button--hero button--hero-cinema">
-              ابدأ اشتراكك
+            <DownloadCta location="hero" className="button button--hero button--hero-cinema">
+              حمّل التطبيق <span aria-hidden="true">↗</span>
+            </DownloadCta>
+            <AppCta location="hero" className="button button--hero button--hero-contact">
+              اسأل المطعم <span aria-hidden="true">←</span>
             </AppCta>
           </div>
+          <p className="hero-cinema-hint">اختر باقتك من التطبيق، أو خلّ فريقنا يساعدك تختار.</p>
         </div>
       </div>
     </section>
