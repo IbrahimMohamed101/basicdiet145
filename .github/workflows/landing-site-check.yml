@@ -31,4 +31,4 @@ jobs:
             if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then break; fi
             sleep 1
           done
-          npx playwright test tests/lead-flow.spec.ts tests/seo-jeddah.spec.ts || { cat /tmp/landing-qa.log; exit 1; }
+          npx playwright test tests/lead-flow.spec.ts tests/seo-jeddah.spec.ts tests/lead-origin.spec.ts tests/analytics-origin.spec.ts || { cat /tmp/landing-qa.log; exit 1; }
