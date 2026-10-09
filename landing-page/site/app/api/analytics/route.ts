@@ -7,7 +7,10 @@ export async function POST(request: NextRequest) {
   // The browser only talks to this same-origin endpoint. The shared secret
   // stays on Railway's server and is never included in public JS.
   const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
+  // Host comes from the public request, while nextUrl may use an internal
+  // hostname behind Railway's proxy (or the 127.0.0.1 test server).
+  const publicHost = request.headers.get("host");
+  if (origin && (!publicHost || new URL(origin).host !== publicHost)) {
     return NextResponse.json({ ok: false }, { status: 403 });
   }
   const backend = process.env.LANDING_ANALYTICS_BACKEND_URL?.replace(/\/+$/, "");

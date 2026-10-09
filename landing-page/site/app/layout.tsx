@@ -28,6 +28,8 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  applicationName: "Basic Diet",
+  keywords: ["اشتراكات وجبات صحية جدة", "وجبات صحية جدة", "اشتراك وجبات دايت", "Basic Diet"],
   openGraph: {
     title: "Basic Diet | وجبات تحبها، بكميات محسوبة",
     description:
@@ -35,6 +37,13 @@ export const metadata: Metadata = {
     locale: "ar_SA",
     type: "website",
     url: siteUrl || undefined,
+    images: [{ url: "/media/hero-poster.webp", alt: "Basic Diet - وجبات صحية" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Basic Diet | اشتراكات وجبات صحية في جدة",
+    description: "اختر اشتراكك ووجباتك من تطبيق Basic Diet، أو تواصل مع المطعم للمساعدة.",
+    images: ["/media/hero-poster.webp"],
   },
 };
 

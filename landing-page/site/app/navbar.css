@@ -276,6 +276,12 @@
 .nav-sheet-cta { margin-block-start: var(--space-5); }
 .nav-sheet-cta .button { inline-size: 100%; min-block-size: 52px; }
 
+.nav-actions > .button,
+.nav-sheet-cta > .button { display: inline-flex; align-items: center; justify-content: center; }
+
+.nav-enquiry-button { margin-block-start: 10px; background: transparent; color: var(--brand-green); border: 1px solid var(--brand-green); }
+.nav-enquiry-button:hover { background: var(--cream-muted); color: var(--brand-green); }
+
 .nav-fallback {
   pointer-events: auto;
   display: flex;

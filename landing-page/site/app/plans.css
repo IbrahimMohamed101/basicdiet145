@@ -21,6 +21,11 @@
 .plans-shared-options strong { font-weight: 700; }
 .plans-shared-options span { color: var(--muted); }
 .plans-note { color: var(--muted); line-height: 1.8; font-size: 14px; margin: 20px 0 0; }
+.plans-next-step { margin-top: 26px; border-radius: 20px; background: var(--cream-muted); padding: 22px 26px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.plans-next-step p { color: var(--ink); font-size: 16px; line-height: 1.7; margin: 0; }
+.plans-download-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; gap: 12px; }
+@media (max-width: 700px) { .plans-next-step { flex-direction: column; align-items: stretch; padding: 20px; text-align: center; } .plans-next-step p { font-size: 14px; } .plans-download-button { width: 100%; } }
+
 @media (max-width: 1000px) { .plan-option { padding: 28px 20px; } }
 @media (max-width: 700px) {
   .plans-heading { display: block; margin-bottom: 32px; }

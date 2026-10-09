@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - landing-page-research
+      - "codex/landing-*"
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-page-build.yml"
@@ -54,6 +55,9 @@ jobs:
           done
           cat /tmp/basicdiet-landing.log
           exit 1
+
+      - name: Responsive zoom smoke
+        run: npx playwright test tests/navbar.spec.ts --grep "navbar short landscape"
 
       - name: Visual QA
         run: npm run qa:visual

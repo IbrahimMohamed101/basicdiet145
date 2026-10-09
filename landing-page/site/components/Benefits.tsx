@@ -50,9 +50,9 @@ export function Benefits() {
           </div>
           <div className="flexibility-submit-row">
             <button type="button" className="button flexibility-submit-button" onClick={handleSubscriptionRequest}>
-              اطلب اشتراكك <span aria-hidden="true">←</span>
+              اسأل المطعم عن اختياراتك <span aria-hidden="true">←</span>
             </button>
-            <p className="flexibility-note">اختياراتك هتنتقل لطلب التواصل مباشرة.</p>
+            <p className="flexibility-note">بنرسل اختياراتك للمطعم عشان يتواصل معك ويساعدك.</p>
           </div>
         </div>
         <div className="flexibility-visual">

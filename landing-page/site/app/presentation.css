@@ -453,6 +453,15 @@
   text-shadow: 0 10px 34px rgb(16 128 85 / 24%);
 }
 
+/* Clear brand context and two distinct conversion paths. */
+.hero-cinema-kicker { display: inline-flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 0 0 20px; border: 1px solid rgb(255 255 255 / 35%); border-radius: 999px; color: #f3f8ed; background: rgb(4 27 17 / 36%); font-size: 14px; font-weight: 700; backdrop-filter: blur(5px); }
+.hero-cinema-kicker span { color: #bfeac6; }
+.hero-cinema-actions .button { display: inline-flex; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+.hero-cinema-actions .button > span { font-size: 20px; line-height: 1; }
+.hero-cinema-hint { margin: 20px 0 0; color: #eff5ec; font-size: 14px; line-height: 1.7; text-shadow: 0 2px 15px rgb(0 0 0 / 40%); }
+.button--hero-contact { color: white; background: rgb(8 24 17 / 45%); border: 1px solid rgb(255 255 255 / 64%); backdrop-filter: blur(6px); }
+.button--hero-contact:hover { color: white; background: rgb(24 62 40 / 78%); border-color: white; }
+
 .hero-cinema-description {
   max-width: 610px;
   margin: 26px 0 0;
@@ -980,9 +989,13 @@
 .hero-cinema-actions {
   margin-top: 22px;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+
+.hero-cinema-kicker { font-size: 12px; padding: 8px 11px; margin-bottom: 15px; }
+.hero-cinema-actions .button { padding-inline: 8px; font-size: 14px; }
+.hero-cinema-hint { margin-top: 14px; font-size: 12px; }
 
 .button--hero-cinema {
   width: 100%;

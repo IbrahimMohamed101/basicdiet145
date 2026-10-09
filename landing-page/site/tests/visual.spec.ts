@@ -114,6 +114,8 @@ test("Reels defer requests and support contained mobile scrolling", async ({ pag
   await expect(cards).toHaveCount(4);
   for (const card of await cards.all()) {
     await card.evaluate(e => e.scrollIntoView({ behavior: "instant", inline: "center", block: "center" }));
+    await expect(card.locator("iframe")).toHaveCount(0);
+    await card.locator(".reel-load").click();
     await expect(card.locator("iframe")).toHaveCount(1);
     await expect(card.locator("iframe")).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -135,6 +137,8 @@ test("FAQ and download links work without JavaScript", async ({ browser }) => {
     await expect(item.locator("p")).toBeVisible();
     await expect(page.locator(".final-cta .app-store-button")).toHaveCount(2);
     await expect(page.locator(".reel-card-foot a")).toHaveCount(4);
+    await expect(page.locator(".reel-embed-window").first()).toBeHidden();
+    await expect(page.locator(".reel-card-foot a").first()).toBeVisible();
     await expect(page.locator(".flexibility-receipt")).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   } finally { await context.close(); }
