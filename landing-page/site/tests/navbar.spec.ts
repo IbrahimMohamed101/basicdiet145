@@ -32,7 +32,7 @@ for (const width of widths) {
       await expect(dialog).toBeVisible();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       const close = dialog.getByRole("button", { name: "إغلاق القائمة" });
-      const cta = dialog.getByRole("button", { name: "ابدأ اشتراكك" });
+      const cta = dialog.getByRole("button", { name: "اسأل المطعم" });
       await expect(close).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(cta).toBeFocused();
@@ -128,7 +128,7 @@ test("navbar short landscape and 200% text remain reachable", async ({ page }) =
     }
     if (viewport.width < 981) {
       await page.getByRole("button", { name: "فتح القائمة" }).click();
-      const cta = page.getByRole("dialog").getByRole("button", { name: "ابدأ اشتراكك" });
+      const cta = page.getByRole("dialog").getByRole("link", { name: "حمّل التطبيق" });
       await cta.focus();
       await expect(cta).toBeInViewport();
       await page.screenshot({ animations: "disabled", path: `${output}/${viewport.width}-text-200-open.png` });
@@ -160,10 +160,10 @@ test("navbar CPU 4x keyboard CTA preserves event and unlocks before scroll", asy
   await page.evaluate(() => { window.addEventListener("basicdiet:cta", e => { document.documentElement.dataset.cta = JSON.stringify((e as CustomEvent).detail); }); });
   await page.getByRole("button", { name: "فتح القائمة" }).focus();
   await page.keyboard.press("Space");
-  await page.keyboard.press("Shift+Tab");
+  await page.getByRole("dialog").getByRole("link", { name: "حمّل التطبيق" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect(page.locator("html")).toHaveAttribute("data-cta", JSON.stringify({ location: "header", platform: "desktop" }));
+  await expect(page.locator("html")).toHaveAttribute("data-cta", JSON.stringify({ location: "header", platform: "desktop", intent: "download" }));
   await expect.poll(() => page.locator("#app").evaluate(e => Math.abs(e.getBoundingClientRect().top - 112) < 2)).toBe(true);
   await session.detach();
 });
