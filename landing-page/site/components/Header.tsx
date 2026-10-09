@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppCta } from "./AppCta";
+import { DownloadCta } from "./DownloadCta";
 
 const links = [
   { href: "#meals", label: "الوجبات" },
@@ -140,7 +141,7 @@ export function Header() {
           </a>
           <nav className="desktop-nav" aria-label="التنقل الرئيسي">{navLinks}</nav>
           <div className="nav-actions">
-            <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>
+            <DownloadCta location="header" className="button button--small">حمّل التطبيق</DownloadCta>
             <button
               ref={toggle}
               type="button"
@@ -177,7 +178,8 @@ export function Header() {
               if ((event.target as Element).closest("a")) closeMenu();
             }}>{navLinks}</nav>
             <div className="nav-sheet-cta" onClickCapture={closeMenu}>
-              <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>
+              <DownloadCta location="header" className="button">حمّل التطبيق</DownloadCta>
+              <AppCta location="header" className="button nav-enquiry-button">اسأل المطعم</AppCta>
             </div>
           </div>
         </dialog>
@@ -186,7 +188,7 @@ export function Header() {
           <style>{`.site-header { position: relative; } .site-header .nav-actions, .site-header .desktop-nav { display: none; }`}</style>
           <nav className="nav-fallback" aria-label="التنقل الرئيسي">
             {links.map((link) => <a key={link.href} href={link.href}>{link.label}</a>)}
-            <a href="#app" className="button">ابدأ اشتراكك</a>
+            <a href="#app" className="button">حمّل التطبيق</a>
           </nav>
         </noscript>
 
