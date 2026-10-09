@@ -293,7 +293,7 @@ test("initial reduced motion keeps smooth scrolling disabled", async ({ page }) 
   await isolateInstagram(page);
     await page.goto("/");
 
-  await page.locator(".button--hero").click();
+  await page.locator(".button--hero-cinema").click();
   await expect(page.locator("#app")).toBeInViewport();
 
   await page.locator("#app .app-store-button").first().hover();
