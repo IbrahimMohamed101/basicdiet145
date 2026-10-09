@@ -137,6 +137,8 @@ test("FAQ and download links work without JavaScript", async ({ browser }) => {
     await expect(item.locator("p")).toBeVisible();
     await expect(page.locator(".final-cta .app-store-button")).toHaveCount(2);
     await expect(page.locator(".reel-card-foot a")).toHaveCount(4);
+    await expect(page.locator(".reel-embed-window").first()).toBeHidden();
+    await expect(page.locator(".reel-card-foot a").first()).toBeVisible();
     await expect(page.locator(".flexibility-receipt")).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   } finally { await context.close(); }
