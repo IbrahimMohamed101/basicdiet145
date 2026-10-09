@@ -5,7 +5,8 @@ const widths = [360, 390, 430, 768, 1024, 1440];
 const targets = ["meals", "how-it-works", "app", "plans", "faq"];
 const output = "../../.audit/refinement/final/navbar";
 async function noOverflow(page: Page) {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const overflow = await page.evaluate(() => ({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, elements: Array.from(document.querySelectorAll("body *")).filter(e => { const b=e.getBoundingClientRect(); return b.left < -2 || b.right > innerWidth + 2; }).slice(0, 12).map(e => ({tag:e.tagName, cls:e.className, left:e.getBoundingClientRect().left, right:e.getBoundingClientRect().right}))}));
+  expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.width);
 }
 for (const width of widths) {
   test(`navbar RTL ${width}: anchors, keyboard, modal and scroll lock`, async ({ page }) => {
@@ -225,8 +226,9 @@ test("navbar classic scrollbar lock preserves page and header geometry", async (
     const session = await page.context().newCDPSession(page);
     const { nodes } = await session.send("Accessibility.getFullAXTree");
     const actions = nodes.filter(n => !n.ignored && ["button", "link"].includes(n.role?.value));
-    expect(actions).toHaveLength(7); // close, five section links, one CTA
-    expect(actions.filter(n => n.name?.value === "ابدأ اشتراكك")).toHaveLength(1);
+    expect(actions).toHaveLength(8); // close, five section links, download and enquiry
+    expect(actions.filter(n => n.name?.value === "حمّل التطبيق")).toHaveLength(1);
+    expect(actions.filter(n => n.name?.value === "اسأل المطعم")).toHaveLength(1);
     await page.keyboard.press("Escape");
     expect(await page.locator("#app").boundingBox()).toEqual(before);
     expect(await page.locator(".nav-shell").boundingBox()).toEqual(header);
