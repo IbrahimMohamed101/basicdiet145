@@ -1,0 +1,44 @@
+/* One comparison surface; common options appear once. */
+.plans-section { padding-block: clamp(64px, 7vw, 104px); background: white; }
+.plans-heading { display: flex; align-items: end; justify-content: space-between; gap: 40px; margin-bottom: 48px; }
+.plans-heading h2 { margin: 0; font-size: var(--text-heading); line-height: 1.25; font-weight: 700; }
+.plans-heading h2 span { color: var(--brand-green); }
+.plans-heading > p { max-width: 300px; color: var(--muted); line-height: 1.8; margin: 0; }
+.plan-comparison { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--border); }
+.plan-option { padding: 36px; display: grid; gap: 24px; }
+.plan-option + .plan-option { border-inline-start: 1px solid var(--border); }
+.plan-option--featured { background: var(--cream-muted); box-shadow: inset 0 3px var(--brand-green); }
+.plan-duration { display: flex; align-items: baseline; gap: 12px; }
+.plan-duration strong { font-size: clamp(64px, 7vw, 96px); line-height: 1; font-weight: 400; font-variant-numeric: tabular-nums; }
+.plan-duration > span { color: var(--muted); font-size: 18px; }
+.plan-copy h3 { margin: 0 0 10px; font-size: 24px; font-weight: 700; }
+.plan-copy p { margin: 0; color: var(--muted); line-height: 1.8; }
+.plan-button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; font-size: 16px; background: transparent; color: var(--brand-green); border: 1px solid var(--brand-green); border-radius: 8px; padding-inline: 16px; }
+.plan-button:hover { color: white; }
+.plan-option--featured .plan-button { background: var(--brand-green); color: white; }
+.plan-option--featured .plan-button:hover { background: var(--brand-green-hover); }
+.plans-shared-options { display: flex; align-items: center; flex-wrap: wrap; gap: 20px 32px; padding-block: 28px; border-bottom: 1px solid var(--border); font-size: 16px; }
+.plans-shared-options strong { font-weight: 700; }
+.plans-shared-options span { color: var(--muted); }
+.plans-note { color: var(--muted); line-height: 1.8; font-size: 14px; margin: 20px 0 0; }
+.plans-next-step { margin-top: 26px; border-radius: 20px; background: var(--cream-muted); padding: 22px 26px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.plans-next-step p { color: var(--ink); font-size: 16px; line-height: 1.7; margin: 0; }
+.plans-download-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; gap: 12px; }
+@media (max-width: 700px) { .plans-next-step { flex-direction: column; align-items: stretch; padding: 20px; text-align: center; } .plans-next-step p { font-size: 14px; } .plans-download-button { width: 100%; } }
+
+@media (max-width: 1000px) { .plan-option { padding: 28px 20px; } }
+@media (max-width: 700px) {
+  .plans-heading { display: block; margin-bottom: 32px; }
+  .plans-heading > p { margin-top: 20px; max-width: 360px; }
+  .plan-comparison { grid-template-columns: minmax(0, 1fr); }
+  .plan-option { grid-template-columns: 82px minmax(0, 1fr); gap: 18px; padding: 26px 18px; align-items: center; }
+  .plan-option + .plan-option { border-inline-start: 0; border-top: 1px solid var(--border); }
+  .plan-option--featured { box-shadow: inset -3px 0 var(--brand-green); }
+  .plan-duration { flex-direction: column; gap: 4px; grid-row: span 2; align-items: center; }
+  .plan-duration strong { font-size: 60px; }
+  .plan-copy h3 { font-size: 21px; margin-bottom: 6px; }
+  .plan-copy p { font-size: 15px; }
+  .plan-button { grid-column: 2; font-size: 15px; }
+  .plans-shared-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 14px; }
+  .plans-shared-options [dir="ltr"] { text-align: right; }
+}

@@ -1,0 +1,72 @@
+name: Landing Page Build
+
+on:
+  push:
+    branches:
+      - landing-page-research
+      - "codex/landing-*"
+    paths:
+      - "landing-page/site/**"
+      - ".github/workflows/landing-page-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing-page/site
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing-page/site/package.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start production server
+        run: |
+          npm start -- --hostname 127.0.0.1 > /tmp/basicdiet-landing.log 2>&1 &
+          echo $! > /tmp/basicdiet-landing.pid
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/basicdiet-landing.log
+          exit 1
+
+      - name: Responsive zoom smoke
+        run: npx playwright test tests/navbar.spec.ts --grep "navbar short landscape"
+
+      - name: Visual QA
+        run: npm run qa:visual
+
+      - name: Upload QA screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-page-visual-qa
+          path: landing-page/site/artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
