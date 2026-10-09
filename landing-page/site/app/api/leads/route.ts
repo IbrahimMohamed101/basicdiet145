@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedSameOrigin } from "@/lib/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
+  // Railway can expose an internal Next.js URL; validate against the public Host header instead.
+  if (!isAllowedSameOrigin(request.headers.get("origin"), request.headers.get("host"))) {
     return NextResponse.json({ status: false, code: "FORBIDDEN" }, { status: 403 });
   }
   if (!(request.headers.get("content-type") ?? "").startsWith("application/json")) {
