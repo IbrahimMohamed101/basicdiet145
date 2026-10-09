@@ -375,3 +375,14 @@ Implementation is not considered complete until:
 **DECISION:** Automated responsive QA covers 1440px, 390px and 320px. A 320px horizontal-overflow issue was detected and fixed before closing v0.1.
 
 **DECISION:** Exact prices, numeric ratings and named testimonials stay out of the evergreen page until live verification.
+
+
+---
+
+## 2026-10-09 — App download first; restaurant enquiry second
+
+**Status:** DECISION — supersedes the 2026-10-07 primary CTA wording `ابدأ اشتراكك`.
+
+Primary conversion action on the landing page is now **`حمّل التطبيق`**. On iOS and Android it opens the configured app-store destination; on desktop it takes visitors to the store buttons. Secondary conversion is **`اسأل المطعم`** using the existing lead/contact flow. The landing page **must not display package prices**: users see their full plan and quote in the app or ask the restaurant for help. Keep the hero video, four real Instagram reels, mobile usability, and analytics event tracking. Reels load external embeds only when the visitor requests playback.
+
+**Reason:** Encourage app installs and direct restaurant enquiries without maintaining potentially stale package prices on the marketing page.
