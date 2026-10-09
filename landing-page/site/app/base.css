@@ -11,6 +11,8 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  max-width: 100%;
+  overflow-x: clip; /* prevent cinematic decorations from widening portrait screens */
   color: var(--ink);
   font-family: var(--font-tajawal), system-ui, sans-serif;
   text-rendering: optimizeLegibility;
