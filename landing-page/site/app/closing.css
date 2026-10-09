@@ -25,6 +25,12 @@
 .final-phone { width: 270px; flex: 0 0 auto; border: 9px solid #13221b; border-radius: 42px; overflow: hidden; transform: rotate(-7deg); box-shadow: 0 28px 48px rgb(0 0 0 / 18%); background: white; }
 .final-phone img { width: 100%; height: auto; display: block; }
 
+.final-contact-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 20px; }
+.final-contact-button { display: inline-flex; justify-content: center; align-items: center; gap: 14px; color: var(--brand-green); background: #fff; border: 1px solid #fff; }
+.final-contact-button:hover { color: var(--brand-green); background: var(--cream); }
+.final-contact-phone { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 48px; font-weight: 700; color: white; text-underline-offset: 5px; text-decoration: underline; }
+@media (max-width: 700px) { .final-contact-actions { align-items: stretch; } .final-contact-button { flex: 1 0 100%; } .final-contact-phone { margin-inline: auto; } }
+
 /* Footer — contact, opening hours, location and verified social channels. */
 .footer {
   padding: 58px 0 24px;
