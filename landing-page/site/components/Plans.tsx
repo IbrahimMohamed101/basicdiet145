@@ -1,4 +1,5 @@
 import { AppCta } from "./AppCta";
+import { DownloadCta } from "./DownloadCta";
 
 const plans = [
   { days: "7", unit: "أيام", label: "بداية مرنة", copy: "تعرّف على التجربة بمدة أقصر." },
@@ -16,12 +17,12 @@ export function Plans() {
             <article className={`plan-option${plan.days === "26" ? " plan-option--featured" : ""}`} key={plan.days}>
               <div className="plan-duration"><strong>{plan.days}</strong><span>{plan.unit}</span></div>
               <div className="plan-copy"><h3>{plan.label}</h3><p>{plan.copy}</p></div>
-              <AppCta location="plans" planDays={Number(plan.days)} className="button plan-button">ابدأ مع {plan.days} {plan.unit}<span aria-hidden="true">←</span></AppCta>
+              <AppCta location="plans" planDays={Number(plan.days)} className="button plan-button">اسأل عن باقة {plan.days} {plan.unit}<span aria-hidden="true">←</span></AppCta>
             </article>
           ))}
         </div>
         <div className="plans-shared-options"><strong>في كل الباقات</strong><span dir="ltr">100g / 150g / 200g</span><span>1–5 وجبات يوميًا</span><span>توصيل أو استلام</span></div>
-        <p className="plans-note">تختار باقتك داخل التطبيق. السعر النهائي يظهر بعد تخصيص الكمية وعدد الوجبات والإضافات.</p>
+        <div className="plans-next-step"><p>جاهز تبدأ؟ حمّل التطبيق وشوف جميع تفاصيل الباقات، أو اطلب من فريقنا يساعدك تختار.</p><DownloadCta location="plans" className="button plans-download-button">حمّل التطبيق <span aria-hidden="true">↗</span></DownloadCta></div>
       </div>
     </section>
   );
