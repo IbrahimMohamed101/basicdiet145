@@ -5,7 +5,15 @@ const widths = [360, 390, 430, 768, 1024, 1440];
 const targets = ["meals", "how-it-works", "app", "plans", "faq"];
 const output = "../../.audit/refinement/final/navbar";
 async function noOverflow(page: Page) {
-  const overflow = await page.evaluate(() => ({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, elements: Array.from(document.querySelectorAll("body *")).filter(e => { const b=e.getBoundingClientRect(); return b.left < -2 || b.right > innerWidth + 2; }).slice(0, 12).map(e => ({tag:e.tagName, cls:e.className, left:e.getBoundingClientRect().left, right:e.getBoundingClientRect().right}))}));
+  const overflow = await page.evaluate(() => {
+    const elements = Array.from(document.querySelectorAll("body *")).map(e => {
+      const r = e.getBoundingClientRect();
+      return { tag: e.tagName, cls: typeof e.className === "string" ? e.className.slice(0, 80) : "", left: Math.round(r.left), right: Math.round(r.right), scrollWidth: e.scrollWidth, clientWidth: e.clientWidth };
+    });
+    return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+      rightOverflow: elements.filter(e => e.right > innerWidth + 2).sort((a, b) => b.right - a.right).slice(0, 18),
+      internalOverflow: elements.filter(e => e.scrollWidth > e.clientWidth + 80).sort((a, b) => (b.scrollWidth - b.clientWidth) - (a.scrollWidth - a.clientWidth)).slice(0, 12) };
+  });
   expect(overflow.scrollWidth, JSON.stringify(overflow)).toBeLessThanOrEqual(overflow.width);
 }
 for (const width of widths) {
