@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - landing-page-research
+      - "codex/landing-*"
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-page-build.yml"
