@@ -29,7 +29,7 @@ test("benefits CTA carries selected grams, meals, delivery and explicit consent 
   await page.locator('label:has(input[name="grams"][value="200"])').click();
   await page.locator('label:has(input[name="meals"][value="5"])').click();
   await page.locator('label:has(input[name="delivery"][value="استلام"])').click();
-  await page.getByRole("button", { name: "اطلب اشتراكك" }).click();
+  await page.getByRole("button", { name: "اسأل المطعم عن اختياراتك" }).click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -85,7 +85,7 @@ test("disabled plan catalog displays an app fallback without collecting a phone"
     route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ status: false, data: [] }) })
   );
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "اطلب اشتراكك" }).click();
+  await page.getByRole("button", { name: "اسأل المطعم عن اختياراتك" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(/تعذر تحميل الباقات/)).toBeVisible();
@@ -98,7 +98,7 @@ test("privacy notice is reachable from required consent and provides the support
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(catalog) })
   );
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "اطلب اشتراكك" }).click();
+  await page.getByRole("button", { name: "اسأل المطعم عن اختياراتك" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: /متابعة/ }).click();
   const link = dialog.getByRole("link", { name: "سياسة الخصوصية" });
