@@ -22,6 +22,7 @@
     "bootstrap:superadmin": "node scripts/bootstrap-superadmin.js",
     "test": "node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/meal_planner_types.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/prepareFinalBasicMealCanonicalOptions.test.js",
     "test:fast": "node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/meal_planner_types.test.js",
+    "test:app-version": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/appVersionContract.test.js",
     "test:prepare-final-basic-meal-canonical-options": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/prepareFinalBasicMealCanonicalOptions.test.js",
     "test:mongodb-test-safety": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/mongoTestSafetyGuard.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/db_isolation.test.js",
     "test:protein-group-quarantine": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/proteinGroupQuarantinePolicy.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/pickupSlotAppendQuarantineMigration.test.js",
