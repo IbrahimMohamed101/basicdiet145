@@ -6,7 +6,7 @@ import { AppCta } from "@/components/AppCta";
 import { LeadDialog } from "@/components/LeadDialog";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 
-const FALLBACK = "https://basicdiet-landing-production.up.railway.app";
+const FALLBACK = "https://basicdietksa.com";
 const canonical = (() => {
   try {
     const value = new URL(process.env.NEXT_PUBLIC_SITE_URL || FALLBACK);
