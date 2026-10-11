@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const DEFAULT_SITE_URL = "https://basicdiet-landing-production.up.railway.app";
+const DEFAULT_SITE_URL = "https://basicdietksa.com";
 
 export function getSitemapOrigin() {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
