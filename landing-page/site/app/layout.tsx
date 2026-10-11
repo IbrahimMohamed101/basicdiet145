@@ -12,7 +12,7 @@ const tajawal = Tajawal({
   variable: "--font-tajawal",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdiet-landing-production.up.railway.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietksa.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
