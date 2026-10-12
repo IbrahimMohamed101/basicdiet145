@@ -11,6 +11,7 @@
 .meal-card--featured { grid-column: span 6; grid-row: span 2; }
 .meal-image-wrap { position: absolute; inset: 0; }
 .meal-card img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; transition: transform var(--motion-duration-reveal) var(--motion-ease-out); }
+.meal-soon-ribbon { position: absolute; z-index: 3; top: 25px; right: -42px; width: 160px; padding: 8px 0; transform: rotate(45deg); background: var(--brand-orange); color: #fff; box-shadow: 0 4px 14px rgb(20 32 26 / 22%); font-size: 13px; font-weight: 800; letter-spacing: .12em; line-height: 1.2; text-align: center; direction: ltr; pointer-events: none; }
 .meal-card-shade { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent 48%, rgb(8 19 13 / 80%) 100%); }
 .meal-card figcaption { position: absolute; z-index: 2; inset-inline: 20px; inset-block-end: 20px; color: white; display: grid; gap: 4px; }
 .meal-card figcaption small { font-size: 13px; }
@@ -58,6 +59,7 @@
     grid-column: 1 / -1;
     block-size: clamp(224px, 61vw, 268px);
   }
+  .meal-soon-ribbon { top: 19px; right: -38px; width: 138px; padding: 7px 0; font-size: 11px; }
   .meal-card figcaption { inset-inline: 12px; inset-block-end: 12px; gap: 2px; }
   .meal-card figcaption small { font-size: 11px; }
   .meal-card figcaption span, .meal-card--featured figcaption span { font-size: clamp(15px, 4vw, 19px); }
