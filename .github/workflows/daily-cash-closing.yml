@@ -1,0 +1,32 @@
+name: Daily Cash Closing
+on:
+  pull_request:
+    paths:
+      - 'src/models/DailyCashClosing.js'
+      - 'src/routes/dashboardDailyCashClosings.js'
+      - 'src/services/dashboard/dailyCashClosingService.js'
+      - 'src/routes/index.js'
+      - 'tests/dailyCashClosing.test.js'
+      - '.github/workflows/daily-cash-closing.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/models/DailyCashClosing.js'
+      - 'src/routes/dashboardDailyCashClosings.js'
+      - 'src/services/dashboard/dailyCashClosingService.js'
+      - 'src/routes/index.js'
+      - 'tests/dailyCashClosing.test.js'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --check src/models/DailyCashClosing.js
+      - run: node --check src/routes/dashboardDailyCashClosings.js
+      - run: node --check src/services/dashboard/dailyCashClosingService.js
+      - run: NODE_ENV=test node --test tests/dailyCashClosing.test.js
