@@ -117,7 +117,7 @@ router.post("/:date/submit", handle(async (req, res) => {
   const automatic = await closingService.subscriptionPaymentsForDate(date);
   const inputs = closingService.inputSnapshot(existing);
   const summary = closingService.calculateClosing(inputs.channels, inputs.collections, automatic, inputs.confirmedSubscriptionCount);
-  if ((summary.subscriptionCountDifference !== 0 || summary.overallDifferenceHalala !== 0)
+  if ((summary.subscriptionCountDifference !== 0 || summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0 || summary.unknownSubscriptionHalala !== 0)
       && !inputs.discrepancyReason.trim())
     throw fail(400, "DISCREPANCY_REASON_REQUIRED", "وضح سبب اختلاف الاشتراكات أو المبالغ قبل الإرسال");
   const snapshot = { ...inputs, automatic, summary, takenAt: new Date() };
