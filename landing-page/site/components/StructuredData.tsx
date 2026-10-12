@@ -1,14 +1,26 @@
 import { faqItems } from "@/lib/faq-data";
 
 export function StructuredData() {
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietksa.com").replace(/\/+$/, "");
+  // A WebSite node on the home page makes the preferred Arabic/English site name explicit.
+  const website = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": siteUrl + "/#website",
+    url: siteUrl + "/",
+    name: "بيسك دايت",
+    alternateName: ["Basic Diet", "بيسك دايت - Basic Diet"],
+    inLanguage: "ar-SA",
+    publisher: { "@id": siteUrl + "/#restaurant" },
+  };
   const restaurant = {
     "@context": "https://schema.org",
     "@type": "Restaurant",
-    "@id": (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietksa.com") + "/#restaurant",
+    "@id": siteUrl + "/#restaurant",
     name: "بيسك دايت - Basic Diet",
     alternateName: ["Basic Diet", "بيسك دايت"],
-    url: process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietksa.com",
-    logo: (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietksa.com") + "/brand/logo-primary.png",
+    url: siteUrl + "/",
+    logo: siteUrl + "/brand/logo-primary.png",
     address: {
       "@type": "PostalAddress",
       streetAddress: "H4GX+JF7، السلامة",
@@ -48,6 +60,7 @@ export function StructuredData() {
 
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(restaurant) }}

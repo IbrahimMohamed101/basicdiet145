@@ -16,16 +16,18 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietks
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "اشتراكات وجبات صحية في جدة | Basic Diet",
+  title: "بيسك دايت | Basic Diet - اشتراكات وجبات صحية في جدة",
+  applicationName: "بيسك دايت - Basic Diet",
   description:
-    "اشتراكات وجبات صحية في جدة من Basic Diet. اختر باقة 7 أو 26 أو 30 يومًا، وحدد حجم الوجبة وعدد الوجبات اليومية، ثم اطلب التواصل أو حمّل التطبيق.",
+    "بيسك دايت (Basic Diet) مطعم وجبات صحية في جدة. اختر اشتراكك لمدة 7 أو 26 أو 30 يومًا، وحدد كمية الوجبات وعددها يوميًا ثم اطلب التواصل أو حمّل التطبيق.",
   alternates: { canonical: "/" },
   robots: {
     index: true,
     follow: true,
   },
   openGraph: {
-    title: "Basic Diet | وجبات تحبها، بكميات محسوبة",
+    siteName: "بيسك دايت - Basic Diet",
+    title: "بيسك دايت | Basic Diet - اشتراكات وجبات صحية في جدة",
     description:
       "اختر مدة اشتراكك، كمية الوجبة وعدد وجباتك يوميًا، وتحكم في اشتراكك من تطبيق Basic Diet.",
     locale: "ar_SA",

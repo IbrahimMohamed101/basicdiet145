@@ -15,11 +15,11 @@ const canonical = (() => {
 })();
 
 export const metadata: Metadata = {
-  title: "اشتراك وجبات صحية في جدة | باقات أسبوعية وشهرية | Basic Diet",
+  title: "اشتراك وجبات صحية في جدة | بيسك دايت Basic Diet",
   description: "تبحث عن اشتراك وجبات صحية في جدة؟ اختر من باقات Basic Diet لمدة 7 أو 26 أو 30 يومًا، وحدد حجم الوجبة وعدد وجباتك اليومية. اطلب تواصلًا أو حمّل التطبيق.",
   alternates: { canonical },
   openGraph: {
-    title: "اشتراكات وجبات صحية في جدة | Basic Diet",
+    title: "اشتراكات وجبات صحية في جدة | بيسك دايت Basic Diet",
     description: "باقات وجبات صحية في جدة بخيارات متعددة لأيام الاشتراك وحجم الوجبة وعدد الوجبات والتوصيل.",
     type: "website", locale: "ar_SA", url: canonical,
   },
@@ -51,11 +51,11 @@ export default function JeddahHealthyMealsPage() {
             <span aria-hidden="true"> / </span> اشتراكات وجبات صحية جدة
           </nav>
           <div className="max-w-3xl">
-            <p className="mb-3 text-sm font-bold" style={{ color: "#108055" }}>Basic Diet · جدة</p>
+            <p className="mb-3 text-sm font-bold" style={{ color: "#108055" }}>بيسك دايت | Basic Diet · جدة</p>
             <h1 className="text-3xl font-extrabold leading-tight md:text-5xl">اشتراك وجبات صحية في جدة، على مقاس يومك</h1>
             <p className="mt-6 text-base leading-8 md:text-lg">
               لو بتدور على اشتراك وجبات دايت في جدة، تقدر تبدأ بتحديد المدة اللي تناسبك وحجم الوجبة
-              وعدد وجباتك اليومية. Basic Diet بيوفر خيارات اشتراك مرنة تخلّيك تختار الوجبات
+              وعدد وجباتك اليومية. بيسك دايت (Basic Diet) بيوفر خيارات اشتراك مرنة تخلّيك تختار الوجبات
               اللي تناسب روتينك، سواء لجدول الأسبوع أو باقات الفترة الأطول.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-4">
