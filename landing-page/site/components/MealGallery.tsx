@@ -7,6 +7,7 @@ const meals = [
     image:
       "/api/meal-image?id=1tASbr8vUBgPqdeJywruTTGdUrS7l-unS",
     featured: true,
+    comingSoon: true,
   },
   {
     name: "سلمون",
@@ -80,6 +81,12 @@ export function MealGallery() {
                   decoding="async"
                 />
               </div>
+
+              {meal.comingSoon && (
+                <span className="meal-soon-ribbon" aria-label="قريبًا">
+                  Soon
+                </span>
+              )}
 
               <div className="meal-card-shade" aria-hidden="true" />
 
