@@ -85,3 +85,15 @@ test("unlinked payment stays in cash reconciliation, but never creates phantom s
   assert.equal(summary.orphanPaymentsCount, 1);
   assert.equal(summary.reviewPaymentsCount, 1);
 });
+
+test("cash closing shows accounting net without silently mutating gross bank reconciliation", () => {
+  const summary = calculateClosing(
+    { restaurantHalala: 10000, hungerstationHalala: 0, keetaHalala: 0, other: [] },
+    { cashHalala: 10000, cardHalala: 5000 },
+    { count: 1, amountHalala: 5000, cashHalala: 0, cardHalala: 5000, moyasarHalala: 0, unknownHalala: 0, refundsHalala: 2000 }, 1
+  );
+  assert.equal(summary.totalSalesHalala, 15000);
+  assert.equal(summary.accountingRefundsHalala, 2000);
+  assert.equal(summary.accountingNetSalesHalala, 13000);
+  assert.equal(summary.overallDifferenceHalala, 0);
+});
