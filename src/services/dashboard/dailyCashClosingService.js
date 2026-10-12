@@ -30,7 +30,7 @@ async function subscriptionPaymentsForDate(date) {
       { paidAt: { $gte: period.start, $lte: period.end } },
       { paidAt: null, createdAt: { $gte: period.start, $lte: period.end } },
     ],
-  }).select("_id subscriptionId amount provider method source metadata paidAt createdAt").lean();
+  }).select("_id subscriptionId amount provider method source metadata providerPaymentId providerInvoiceId paidAt createdAt").lean();
   const rows = payments.map(p => ({
     paymentId: String(p._id),
     subscriptionId: p.subscriptionId ? String(p.subscriptionId) : null,
