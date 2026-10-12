@@ -2,7 +2,7 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { calculateClosing, paymentMethod } = require("../src/services/dashboard/dailyCashClosingService");
+const { calculateClosing, paymentMethod, buildPaidSubscriptionSummary } = require("../src/services/dashboard/dailyCashClosingService");
 const { dashboardRoleHasPermission } = require("../src/constants/dashboardRoles");
 
 test("restaurant and cashier may submit but not approve, admin may approve", () => {
@@ -46,4 +46,42 @@ test("additional channels and payment shortfalls surface a signed difference", (
   assert.equal(actual.totalSalesHalala, 47000);
   assert.equal(actual.overallDifferenceHalala, -3000);
   assert.equal(actual.localDifferenceHalala, -3000);
+});
+
+test("two successful payments do not imply two different subscriptions", () => {
+  const p = [
+    { _id: "paid-1", subscriptionId: "sub-1", type: "subscription_activation", status: "paid", amount: 311330, provider: "moyasar", paidAt: new Date() },
+    { _id: "paid-2", subscriptionId: "sub-1", type: "subscription_activation", status: "paid", amount: 14790, provider: "moyasar", paidAt: new Date() },
+  ];
+  const summary = buildPaidSubscriptionSummary(p, [{ _id: "sub-1", status: "active" }]);
+  assert.equal(summary.paymentCount, 2);
+  assert.equal(summary.count, 1);
+  assert.equal(summary.amountHalala, 326120);
+  assert.equal(summary.moyasarHalala, 326120);
+  assert.equal(summary.reviewPaymentsCount, 1);
+  assert.match(summary.rows[1].reviewReasons.join(" "), /تفعيلان/);
+});
+
+test("renewal is not counted as a newly activated subscription", () => {
+  const p = [
+    { _id: "paid-3", subscriptionId: "sub-old", type: "subscription_renewal", status: "paid", amount: 20000, provider: "manual", method: "visa", paidAt: new Date() },
+    { _id: "paid-4", subscriptionId: "sub-new", type: "subscription_activation", status: "paid", amount: 40000, provider: "cash", paidAt: new Date() },
+  ];
+  const summary = buildPaidSubscriptionSummary(p, [{ _id: "sub-old", status: "active" }, { _id: "sub-new", status: "active" }]);
+  assert.equal(summary.paymentCount, 2);
+  assert.equal(summary.count, 1);
+  assert.equal(summary.renewalPaymentsCount, 1);
+  assert.equal(summary.cardHalala, 20000);
+  assert.equal(summary.cashHalala, 40000);
+});
+
+test("unlinked payment stays in cash reconciliation, but never creates phantom subscription", () => {
+  const summary = buildPaidSubscriptionSummary([
+    { _id: "orphan", subscriptionId: "deleted", type: "subscription_activation", status: "paid", amount: 14790, provider: "moyasar", paidAt: new Date() }
+  ], []);
+  assert.equal(summary.count, 0);
+  assert.equal(summary.paymentCount, 1);
+  assert.equal(summary.amountHalala, 14790);
+  assert.equal(summary.orphanPaymentsCount, 1);
+  assert.equal(summary.reviewPaymentsCount, 1);
 });
