@@ -4,6 +4,7 @@
 // axes. Subscription collections are read from paid Payment rows, never from
 // created subscriptions. Both counts and amounts are kept in the snapshot.
 const Payment = require("../../models/Payment");
+const PaymentRefund = require("../../models/PaymentRefund");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const accounting = require("./accountingDailyReportService");
@@ -34,6 +35,7 @@ function buildPaidSubscriptionSummary(payments = [], subscriptions = [], users =
     const linked = subscriptionId ? subscriptionMap.get(subscriptionId) : null;
     const method = paymentMethod(p);
     const type = String(p.type || "");
+    const paymentStatus = String(p.status || "paid");
     const paymentId = String(p._id);
     const reviewReasons = [];
     if (!linked) reviewReasons.push("دفعة دون سجل اشتراك مرتبط");
@@ -41,6 +43,7 @@ function buildPaidSubscriptionSummary(payments = [], subscriptions = [], users =
     if (linked?.status === "canceled") reviewReasons.push("الاشتراك ملغي؛ تحقق من وجود استرداد");
     if (linked?.status === "pending_payment") reviewReasons.push("الدفعة ناجحة والاشتراك ما زال بانتظار الدفع");
     if (!p.paidAt) reviewReasons.push("تاريخ الدفع غير محفوظ؛ استخدم تاريخ إنشاء العملية");
+    if (paymentStatus === "refunded") reviewReasons.push("الدفعة تم ردها؛ راجع تاريخ الاسترداد والتسوية");
     if (subscriptionId && linked) distinctSubscriptions.add(subscriptionId);
     if (type === "subscription_activation" && linked) {
       if (activationSeen.has(subscriptionId)) reviewReasons.push("تفعيلان مدفوعان لنفس الاشتراك؛ يلزم المراجعة");
@@ -55,6 +58,7 @@ function buildPaidSubscriptionSummary(payments = [], subscriptions = [], users =
       customerName: String(user?.name || "").trim(),
       amountHalala: safeHalala(p.amount),
       method,
+      paymentStatus,
       paymentType: type,
       paymentTypeLabelAr: type === "subscription_activation" ? "تفعيل اشتراك" : "تجديد اشتراك",
       sourceChannel: String(p.source || "").startsWith("dashboard_") ? "dashboard" : p.provider === "moyasar" ? "app" : "unknown",
@@ -89,13 +93,13 @@ async function subscriptionPaymentsForDate(date) {
   const period = await accounting.resolveBusinessPeriod(date);
   const payments = await Payment.find({
     type: { $in: ["subscription_activation", "subscription_renewal"] },
-    status: "paid",
+    status: { $in: ["paid", "refunded"] },
     $or: [
       { paidAt: { $gte: period.start, $lte: period.end } },
       { paidAt: null, createdAt: { $gte: period.start, $lte: period.end } },
     ],
   }).sort({ paidAt: 1, createdAt: 1, _id: 1 })
-    .select("_id userId subscriptionId type amount provider method source metadata providerPaymentId providerInvoiceId paidAt createdAt").lean();
+    .select("_id userId subscriptionId type status amount provider method source metadata providerPaymentId providerInvoiceId paidAt createdAt").lean();
 
   const ids = [...new Set(payments.map(p => p.subscriptionId && String(p.subscriptionId)).filter(Boolean))];
   const subscriptions = ids.length
@@ -108,9 +112,40 @@ async function subscriptionPaymentsForDate(date) {
   const users = userIds.length
     ? await User.find({ _id: { $in: userIds } }).select("_id name").lean()
     : [];
-  return buildPaidSubscriptionSummary(payments, subscriptions, users, {
+  const refunds = await PaymentRefund.find({
+    status: "confirmed",
+    refundedAt: { $gte: period.start, $lte: period.end },
+  }).select("_id paymentId amountHalala refundedAt executionMode settlement.status settlement.settledAmountHalala").lean();
+  const knownPayments = new Map(payments.map(p => [String(p._id), p]));
+  const otherPaymentIds = [...new Set(refunds.map(r => String(r.paymentId)).filter(id => !knownPayments.has(id)))];
+  const otherPayments = otherPaymentIds.length
+    ? await Payment.find({ _id: { $in: otherPaymentIds } }).select("_id type").lean()
+    : [];
+  const refundPaymentTypes = new Map([
+    ...payments.map(p => [String(p._id), String(p.type)]),
+    ...otherPayments.map(p => [String(p._id), String(p.type)]),
+  ]);
+  const subscriptionRefunds = refunds.filter(r =>
+    ["subscription_activation", "subscription_renewal"].includes(refundPaymentTypes.get(String(r.paymentId)))
+  );
+  const refundAmountHalala = subscriptionRefunds.reduce((sum, r) => sum + safeHalala(r.amountHalala), 0);
+  const summary = buildPaidSubscriptionSummary(payments, subscriptions, users, {
     start: period.start, end: period.end, timezone: period.timezone,
   });
+  return {
+    ...summary,
+    grossCollectionsHalala: summary.amountHalala,
+    refundCount: subscriptionRefunds.length,
+    refundsHalala: refundAmountHalala,
+    accountingNetHalala: summary.amountHalala - refundAmountHalala,
+    refunds: subscriptionRefunds.map(r => ({
+      refundId: String(r._id),
+      paymentId: String(r.paymentId),
+      amountHalala: safeHalala(r.amountHalala),
+      executionMode: r.executionMode || "unknown",
+      settlementStatus: r.settlement?.status || "unknown",
+    })),
+  };
 }
 
 function calculateClosing(channels, collections, automatic, confirmedCount) {
@@ -129,6 +164,8 @@ function calculateClosing(channels, collections, automatic, confirmedCount) {
   const recordedPlusReceivablesHalala = localRecordedHalala + moyasarHalala + appReceivablesHalala;
   return {
     restaurantHalala, appReceivablesHalala, subscriptionHalala,
+    accountingRefundsHalala: safeHalala(automatic.refundsHalala),
+    accountingNetSalesHalala: totalSalesHalala - safeHalala(automatic.refundsHalala),
     totalSalesHalala, localExpectedHalala, localRecordedHalala,
     cashHalala, cardHalala, moyasarHalala,
     unknownSubscriptionHalala: safeHalala(automatic.unknownHalala),
