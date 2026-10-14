@@ -88,21 +88,23 @@ async function attachVerifiedSubscriptionsToLeads(leads) {
   }
   const userIds = users.map((user) => user._id);
   if (!userIds.length) return leads.map((lead) => ({ ...lead, verifiedSubscription: null }));
-  // The inbox returns 25 leads per page. Limit the lookback to the request age;
-  // additionally load older active containers because a new purchase can be stacked onto them.
-  const oldestLeadAt = new Date(Math.min(...leads.map((lead) => validTime(lead.createdAt)).filter(Boolean)));
-  const subscriptions = await Subscription.find({
+  // Only purchases recorded after the lead count. Include their older parent
+  // containers (even if now canceled/expired) for stacked subscription cases.
+  const timestamps = leads.map((lead) => validTime(lead.createdAt)).filter(Boolean);
+  if (!timestamps.length) return leads.map((lead) => ({ ...lead, verifiedSubscription: null }));
+  const oldestLeadAt = new Date(Math.min(...timestamps));
+  const batches = await SubscriptionEntitlementBatch.find({
     userId: { $in: userIds },
-    status: { $in: ACTIVATED_STATUSES },
-    $or: [{ createdAt: { $gte: oldestLeadAt } }, { status: { $in: ["active", "frozen"] } }],
-  }).select("_id userId status createdAt cancellationReason contractSource contractSnapshot.meta.source").sort({ createdAt: -1 }).limit(1000).lean();
-  const ids = subscriptions.map((subscription) => subscription._id);
-  const batches = ids.length ? await SubscriptionEntitlementBatch.find({
-    containerSubscriptionId: { $in: ids },
     sourceType: { $in: PURCHASE_SOURCES },
     applicationState: "applied",
     createdAt: { $gte: oldestLeadAt },
-  }).select("containerSubscriptionId sourceType applicationState createdAt").lean() : [];
+  }).select("containerSubscriptionId sourceType applicationState createdAt").lean();
+  const containerIds = batches.map((batch) => batch.containerSubscriptionId);
+  const subscriptions = await Subscription.find({
+    userId: { $in: userIds },
+    status: { $in: ACTIVATED_STATUSES },
+    $or: [{ createdAt: { $gte: oldestLeadAt } }, { _id: { $in: containerIds } }],
+  }).select("_id userId status createdAt cancellationReason contractSource contractSnapshot.meta.source").sort({ createdAt: -1 }).limit(1000).lean();
   const batchesByContainer = new Map();
   for (const batch of batches) {
     const id = String(batch.containerSubscriptionId);
