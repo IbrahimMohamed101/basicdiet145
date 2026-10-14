@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const User = require("../src/models/User");
 const Subscription = require("../src/models/Subscription");
 const Batch = require("../src/models/SubscriptionEntitlementBatch");
-const { acquisitionChannel } = require("../src/services/subscriptionAcquisitionReadService");
+const { acquisitionChannel, paymentChannel } = require("../src/services/subscriptionAcquisitionReadService");
 const {
   normalizePhone,
   selectVerifiedSubscription,
@@ -35,6 +35,10 @@ async function run() {
   assert.equal(acquisitionChannel({ contractSource: "customer_checkout" }), "app");
   assert.equal(acquisitionChannel({ contractSource: "renewal" }), "app");
   assert.equal(acquisitionChannel({ contractSource: "unknown" }), "unknown");
+  assert.equal(paymentChannel({ status: "paid", source: "dashboard_subscription_visa", provider: "manual" }), "cashier");
+  assert.equal(paymentChannel({ status: "paid", provider: "moyasar" }), "app");
+  assert.equal(paymentChannel({ status: "initiated", provider: "moyasar" }), null);
+  assert.equal(acquisitionChannel({ contractSource: "legacy_backfill" }, [], [{ status: "paid", provider: "cash" }]), "cashier");
   assert.equal(acquisitionChannel({ contractSource: "admin_create" }, [
     { sourceType: "checkout", applicationState: "applied" },
   ]), "mixed");
