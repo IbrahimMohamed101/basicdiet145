@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const Plan = require("../models/Plan");
 const LandingLead = require("../models/LandingLead");
+const { attachVerifiedSubscriptionsToLeads } = require("./landingLeadConversionReadService");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUSES = new Set(["new", "contacted", "interested", "converted", "not_interested"]);
@@ -96,7 +97,7 @@ async function listLeads(query) {
       .skip((page - 1) * 25).limit(25).lean(),
     LandingLead.countDocuments(filter),
   ]);
-  return { ok: true, data: { rows, total, page, pageSize: 25 } };
+  return { ok: true, data: { rows: await attachVerifiedSubscriptionsToLeads(rows), total, page, pageSize: 25 } };
 }
 async function updateLead(id, body, dashboardUserId) {
   if (!/^[0-9a-f]{24}$/i.test(id) || !body || !STATUSES.has(body.status)) {
@@ -107,6 +108,6 @@ async function updateLead(id, body, dashboardUserId) {
   if (typeof body.staffNote === "string") updates.staffNote = clean(body.staffNote, 280);
   const lead = await LandingLead.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true })
     .select("-phoneHash -dayBucket -sessionId").lean();
-  return lead ? { ok: true, data: lead } : { ok: false, status: 404, code: "NOT_FOUND" };
+  return lead ? { ok: true, data: (await attachVerifiedSubscriptionsToLeads([lead]))[0] } : { ok: false, status: 404, code: "NOT_FOUND" };
 }
 module.exports = { normalizeSaudiPhone, isValidRequest, getAvailableOptions, submitLead, listLeads, updateLead };
