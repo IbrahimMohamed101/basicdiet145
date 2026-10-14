@@ -5,6 +5,7 @@ const User = require("../../models/User");
 const BuilderProtein = require("../../models/BuilderProtein");
 const Addon = require("../../models/Addon");
 const Subscription = require("../../models/Subscription");
+const { withSubscriptionOrigins } = require("../subscriptionAcquisitionReadService");
 const SubscriptionDay = require("../../models/SubscriptionDay");
 const Setting = require("../../models/Setting");
 const mongoose = require("mongoose");
@@ -449,7 +450,8 @@ async function fetchAdminSubscriptionsPayload(query = {}, { paginate = true, inc
   const userIds = Array.from(new Set(subscriptions.map((subscription) => String(subscription.userId)).filter(Boolean)));
   const lang = String(query.lang || "ar");
   const [userMap, catalog] = await Promise.all([defaultRuntime.buildUserMapByIds(userIds), loadSubscriptionSummaryCatalog(subscriptions, lang)]);
-  return { filters, pagination, total, data: subscriptions.map((subscription) => serializeSubscriptionAdminFromCatalog(subscription, userMap.get(String(subscription.userId)) || null, catalog)) };
+  const serialized = subscriptions.map((subscription) => serializeSubscriptionAdminFromCatalog(subscription, userMap.get(String(subscription.userId)) || null, catalog));
+  return { filters, pagination, total, data: await withSubscriptionOrigins(serialized) };
 }
 
 async function performAdminSubscriptionsSearch(query = {}) {
