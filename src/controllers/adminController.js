@@ -8,6 +8,7 @@ const AppUser = require("../models/AppUser");
 const BuilderProtein = require("../models/BuilderProtein");
 const Addon = require("../models/Addon");
 const Subscription = require("../models/Subscription");
+const { withSubscriptionOrigins } = require("../services/subscriptionAcquisitionReadService");
 const Order = require("../models/Order");
 const Payment = require("../models/Payment");
 const CheckoutDraft = require("../models/CheckoutDraft");
@@ -4724,7 +4725,7 @@ async function getSubscriptionAdmin(req, res) {
   const lang = getRequestLang(req);
   return res.status(200).json({
     status: true,
-    data: await serializeSubscriptionAdmin(settledSubscription || subscription, lang, user),
+    data: (await withSubscriptionOrigins([await serializeSubscriptionAdmin(settledSubscription || subscription, lang, user)]))[0],
   });
 }
 
