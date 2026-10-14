@@ -1,6 +1,7 @@
 "use strict";
 
 const SubscriptionEntitlementBatch = require("../models/SubscriptionEntitlementBatch");
+const Payment = require("../models/Payment");
 
 // These are acquisition channels, not payment methods. "cashier" includes
 // subscriptions manually created by authorized restaurant/dashboard staff.
@@ -23,7 +24,17 @@ function batchChannel(batch) {
   return null; // legacy_seed and migration do not independently prove a channel
 }
 
-function acquisitionChannel(subscription, batches = []) {
+function paymentChannel(payment) {
+  if (!payment || !["paid", "refunded"].includes(payment.status)) return null;
+  const source = String(payment.source || "").trim().toLowerCase();
+  const metadata = payment.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
+  if (source.startsWith("dashboard_subscription_") || payment.collectedBy || metadata.recordingMode === "dashboard_manual") return "cashier";
+  if (payment.provider === "cash") return "cashier";
+  if (payment.provider === "moyasar") return "app";
+  return null;
+}
+
+function acquisitionChannel(subscription, batches = [], payments = []) {
   const sources = new Set();
   const originalChannel = contractChannel(subscription);
   if (originalChannel) sources.add(originalChannel);
@@ -33,6 +44,10 @@ function acquisitionChannel(subscription, batches = []) {
     const channel = batchChannel(batch);
     if (channel) sources.add(channel);
   }
+  for (const payment of payments) {
+    const channel = paymentChannel(payment);
+    if (channel) sources.add(channel);
+  }
   if (sources.size > 1) return "mixed";
   return sources.values().next().value || "unknown";
 }
@@ -40,19 +55,32 @@ function acquisitionChannel(subscription, batches = []) {
 async function withSubscriptionOrigins(subscriptions) {
   if (!Array.isArray(subscriptions) || subscriptions.length === 0) return [];
   const ids = subscriptions.map((row) => row && (row._id || row.id)).filter(Boolean);
-  const batches = await SubscriptionEntitlementBatch.find({
-    containerSubscriptionId: { $in: ids },
-  }).select("containerSubscriptionId sourceType applicationState").lean();
+  const [batches, payments] = await Promise.all([
+    SubscriptionEntitlementBatch.find({ containerSubscriptionId: { $in: ids } })
+      .select("containerSubscriptionId sourceType applicationState").lean(),
+    Payment.find({ subscriptionId: { $in: ids }, type: { $in: ["subscription_activation", "subscription_renewal"] }, status: { $in: ["paid", "refunded"] } })
+      .select("subscriptionId type source status provider collectedBy metadata.recordingMode").lean(),
+  ]);
   const byContainer = new Map();
   for (const batch of batches) {
     const id = String(batch.containerSubscriptionId);
     if (!byContainer.has(id)) byContainer.set(id, []);
     byContainer.get(id).push(batch);
   }
+  const paymentsBySubscription = new Map();
+  for (const payment of payments) {
+    const id = String(payment.subscriptionId);
+    if (!paymentsBySubscription.has(id)) paymentsBySubscription.set(id, []);
+    paymentsBySubscription.get(id).push(payment);
+  }
   return subscriptions.map((row) => ({
     ...row,
-    subscriptionOrigin: acquisitionChannel(row, byContainer.get(String(row._id || row.id)) || []),
+    subscriptionOrigin: acquisitionChannel(
+      row,
+      byContainer.get(String(row._id || row.id)) || [],
+      paymentsBySubscription.get(String(row._id || row.id)) || []
+    ),
   }));
 }
 
-module.exports = { acquisitionChannel, batchChannel, contractChannel, withSubscriptionOrigins };
+module.exports = { acquisitionChannel, batchChannel, contractChannel, paymentChannel, withSubscriptionOrigins };
