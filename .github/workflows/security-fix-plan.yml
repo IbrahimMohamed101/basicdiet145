@@ -29,14 +29,14 @@ jobs:
         run: |
           set -euo pipefail
           [ "$(git branch --show-current)" = "codex/subscription-weekly-menu-20261016" ]
-          if git grep -n -E 'getFirebaseAdmin|firebase-admin|utils/firebase|firebase\.js' -- src scripts tests | grep -v '^src/utils/firebase.js:'; then
-            echo "ERROR: Active Firebase reference found; refuse removal"
+          if git grep -n -E 'require\\(["'\''"]firebase-admin["'\''"]\\)' -- src scripts tests; then
+            echo "ERROR: A direct Firebase Admin import remains; refuse removal"
             exit 1
           fi
           npm uninstall --package-lock-only --ignore-scripts --no-audit --no-fund firebase-admin
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund multer@2.4.0 nodemailer@10.1.2
           npm audit fix --package-lock-only --ignore-scripts --no-fund || true
-          git rm src/utils/firebase.js
+          npm run test:fcm-disabled-safety
           npm ci --no-audit --no-fund
           npm audit --omit=dev --json > /tmp/security-audit.json
           node <<'NODE'
