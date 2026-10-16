@@ -24,6 +24,8 @@ const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
 const { buildCanonicalPlannerCatalogV3 } = require("../src/services/catalog/CatalogService");
 const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
+const dateUtils = require("../src/utils/date");
+const { getRestaurantBusinessDate } = require("../src/services/restaurantHoursService");
 const {
   isConfiguredPremiumLargeSaladProtein,
   isSubscriptionPremiumLargeSaladProtein,
@@ -211,13 +213,17 @@ async function run() {
   const mongoServer = await connect();
   try {
     const fixture = await seedFixture();
+    const businessDate = await getRestaurantBusinessDate();
+    const subscriptionStartDate = dateUtils.addDaysToKSADateString(businessDate, 1);
+    const selectionDate = dateUtils.addDaysToKSADateString(businessDate, 3);
+    const subscriptionEndDate = dateUtils.addDaysToKSADateString(businessDate, 30);
     const user = await User.create({ phone: "+966500000001", password: "password" });
     const subscription = await Subscription.create({
       userId: user._id,
       status: "active",
       planId: new mongoose.Types.ObjectId(),
-      startDate: "2026-10-01",
-      endDate: "2026-10-30",
+      startDate: subscriptionStartDate,
+      endDate: subscriptionEndDate,
       totalMeals: 30,
       remainingMeals: 30,
       selectedMealsPerDay: 1,
@@ -226,7 +232,7 @@ async function run() {
     });
     const api = request(createApp());
     const auth = { Authorization: `Bearer ${tokenFor(user._id)}` };
-    const url = `/api/subscriptions/${subscription._id}/days/2026-10-10/selection/validate`;
+    const url = `/api/subscriptions/${subscription._id}/days/${selectionDate}/selection/validate`;
 
     const plannerCatalog = await buildCanonicalPlannerCatalogV3({
       context: {
@@ -344,7 +350,7 @@ async function run() {
     const persistedPlannerLastEditedAt = new Date("2026-10-02T08:31:00.000Z");
     await SubscriptionDay.create({
       subscriptionId: subscription._id,
-      date: "2026-10-10",
+      date: selectionDate,
       status: "open",
       plannerVersion: "v1",
       plannerState: "draft",
@@ -358,7 +364,7 @@ async function run() {
       },
     });
     const persistedDayBeforeValidation = JSON.parse(JSON.stringify(
-      await SubscriptionDay.findOne({ subscriptionId: subscription._id, date: "2026-10-10" }).lean()
+      await SubscriptionDay.findOne({ subscriptionId: subscription._id, date: selectionDate }).lean()
     ));
 
     const persistedRes = await api.post(url).set(auth).send(slot(fixture, fixture.allowedProtein));
@@ -369,7 +375,7 @@ async function run() {
     assert.strictEqual(persistedRes.body.data.plannerMeta.lastEditedAt, persistedPlannerLastEditedAt.toISOString());
     assert.deepStrictEqual(repeatedPersistedRes.body.data, persistedRes.body.data, "persisted validation remains deterministic");
     assert.deepStrictEqual(
-      JSON.parse(JSON.stringify(await SubscriptionDay.findOne({ subscriptionId: subscription._id, date: "2026-10-10" }).lean())),
+      JSON.parse(JSON.stringify(await SubscriptionDay.findOne({ subscriptionId: subscription._id, date: selectionDate }).lean())),
       persistedDayBeforeValidation,
       "validation does not rewrite the persisted day or its timestamps"
     );

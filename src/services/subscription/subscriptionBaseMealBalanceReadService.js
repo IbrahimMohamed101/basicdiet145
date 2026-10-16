@@ -59,10 +59,17 @@ async function projectBaseMealBalanceForRead(
     .sort({ effectiveStartDate: 1, createdAt: 1, _id: 1 })
     .lean();
 
-  if (!hasStackingBaseBatches(subscription, batches)) return subscription;
+  // Keep the single-subscription projection scoped even if a database adapter,
+  // mock, or future query change returns rows for more than one container.
+  // A foreign entitlement batch must never inflate another customer's balance.
+  const scopedBatches = batches.filter((batch) => (
+    stringId(batch.containerSubscriptionId) === stringId(subscription._id)
+  ));
+
+  if (!hasStackingBaseBatches(subscription, scopedBatches)) return subscription;
 
   const projection = projectSubscriptionEntitlements({
-    batches,
+    batches: scopedBatches,
     businessDate,
   });
 

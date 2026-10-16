@@ -665,7 +665,19 @@ async function runTests() {
     const res = await makeRequest('POST', '/api/subscriptions/quote', buildBaseSubscriptionPayload());
     assertEqual(res.status, 200, 'quote status');
     assertEqual(res.body.status, true, 'status');
-    assertEqual(Number(res.body.data?.breakdown?.basePlanPriceHalala || 0), 55000, 'quote charges the higher legacy value as the base plan price');
+    const configuredMealOption = testPlan.gramsOptions
+      .find((option) => Number(option.grams) === 300)
+      ?.mealsOptions.find((option) => Number(option.mealsPerDay) === 2);
+    assertNotNull(configuredMealOption, 'configured plan meal option exists');
+    assertEqual(
+      Number(res.body.data?.breakdown?.basePlanPriceHalala || 0),
+      Number(configuredMealOption.priceHalala),
+      'quote charges the configured priceHalala sell price'
+    );
+    assertTrue(
+      Number(configuredMealOption.compareAtHalala) !== Number(configuredMealOption.priceHalala),
+      'fixture keeps compareAtHalala distinct so it cannot silently become charge authority'
+    );
     assertEqual((res.body.data?.summary?.addons || []).length, 0, 'summary addons is empty');
     assertEqual(Number(res.body.data?.breakdown?.addonsTotalHalala || 0), 0, 'addons total is zero');
   });
