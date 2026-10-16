@@ -439,9 +439,18 @@ async function expandCatalog(catalog, config, lang = "en") {
             ));
           }
         }
-        const options = [...byId.values()].sort((left, right) =>
-          Number(left.sortOrder || 0) - Number(right.sortOrder || 0)
+        const selectedOrder = new Map(
+          (descriptor.selectedOptionIds || descriptor.optionIds || [])
+            .map((optionId, index) => [String(optionId), index])
         );
+        const options = [...byId.values()].sort((left, right) => {
+          const leftIndex = selectedOrder.get(String(left.id || left.optionId || ""));
+          const rightIndex = selectedOrder.get(String(right.id || right.optionId || ""));
+          if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex - rightIndex;
+          if (leftIndex !== undefined) return -1;
+          if (rightIndex !== undefined) return 1;
+          return Number(left.sortOrder || 0) - Number(right.sortOrder || 0);
+        });
         const next = { ...group, options };
         if (roleFor(descriptor, candidateGroup(context, descriptor)) === "protein") {
           const optionSections = buildProteinOptionSections(options, lang);

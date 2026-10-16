@@ -43,6 +43,12 @@ const MenuOptionSchema = new mongoose.Schema(
     },
     availableForSubscription: { type: Boolean, default: true, index: true },
     nutrition: { type: NutritionSchema, default: () => ({}) },
+    nutritionDataStatus: {
+      type: String,
+      enum: ["unknown", "verified"],
+      default: "verified",
+      index: true,
+    },
     proteinFamilyKey: { type: String, default: "", trim: true },
     displayCategoryKey: { type: String, default: "", trim: true },
     premiumKey: { type: String, default: "", trim: true },

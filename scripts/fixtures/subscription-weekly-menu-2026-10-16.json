@@ -1,0 +1,288 @@
+{
+  "scope": "subscription_weekly_menu",
+  "status": "published",
+  "expectedPublishedVersionId": "6a9c2f192ded2ba2fc5101a0",
+  "expectedPublishedRevisionHash": "sha256:a222416951d9d3b46ab0ac05bdcd6211f7c828988f21ce46710d8a19c8488fe7",
+  "publishedVersionNumber": 11,
+  "publishedVersionId": "6ad2816cbc60cb0d799e626b",
+  "publishedRevisionHash": "sha256:c205d7638f7f0b190b489e84991fbb441a37f490ffcdc8f9f7f73d3a1a04057e",
+  "sections": {
+    "chicken": [
+      {
+        "requestedName": "دجاج مشوي",
+        "optionId": "6a62197b79ee075a57f70128",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج مشوي",
+          "en": "Grilled Chicken"
+        }
+      },
+      {
+        "requestedName": "دجاج بالكريمة",
+        "optionId": "6a62197479ee075a57f70110",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج بالكريمة",
+          "en": "Creamy Chicken"
+        }
+      },
+      {
+        "requestedName": "دجاج مشروم",
+        "optionId": "6ad280325f8b0007a55810cd",
+        "action": "created_subscription_only",
+        "name": {
+          "ar": "دجاج مشروم",
+          "en": "Mushroom Chicken"
+        },
+        "proposedKey": "mushroom_chicken"
+      },
+      {
+        "requestedName": "دجاج مكسيكي",
+        "optionId": "6a62197379ee075a57f7010c",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج مكسيكي",
+          "en": "Mexican Chicken"
+        }
+      },
+      {
+        "requestedName": "دجاج باربكيو",
+        "optionId": "6a9b4f5f9fbb9859232f4461",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج باربكيو",
+          "en": "BBQ Chicken"
+        }
+      },
+      {
+        "requestedName": "دجاج استربس",
+        "optionId": "6a9b4f959fbb9859232f4488",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج استربس",
+          "en": "Chicken Strips"
+        }
+      },
+      {
+        "requestedName": "دجاج ملوخية",
+        "optionId": "6a9b4e939fbb9859232f422d",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج ملوخية",
+          "en": "Chicken with Molokhia"
+        }
+      },
+      {
+        "requestedName": "دجاج هاني مسترد",
+        "optionId": "6ad280365f8b0007a55810db",
+        "action": "created_subscription_only",
+        "name": {
+          "ar": "دجاج هاني مسترد",
+          "en": "Honey Mustard Chicken"
+        },
+        "proposedKey": "honey_mustard_chicken"
+      },
+      {
+        "requestedName": "دجاج سبايسي",
+        "optionId": "6ad280375f8b0007a55810e1",
+        "action": "created_subscription_only",
+        "existingOtherGroupOptionIds": [
+          "6a62251179ee075a57f7022b",
+          "6a6227cc79ee075a57f702a7"
+        ],
+        "name": {
+          "ar": "دجاج سبايسي",
+          "en": "Spicy Chicken"
+        },
+        "proposedKey": "spicy_chicken"
+      },
+      {
+        "requestedName": "دجاج بالروزماري",
+        "optionId": "6a62197579ee075a57f70114",
+        "action": "reactivate_subscription_only",
+        "name": {
+          "ar": "دجاج بالروزماري",
+          "en": "Rosemary Chicken"
+        }
+      },
+      {
+        "requestedName": "دجاج شيش",
+        "optionId": "6a62197b79ee075a57f7012a",
+        "action": "retain",
+        "name": {
+          "ar": "دجاج شيش",
+          "en": "Shish Tawook"
+        }
+      }
+    ],
+    "beef": [
+      {
+        "requestedName": "لحم مشروم",
+        "optionId": "6a62197c79ee075a57f7012c",
+        "action": "retain",
+        "name": {
+          "ar": "لحم مشروم",
+          "en": "Mushroom Beef"
+        }
+      },
+      {
+        "requestedName": "لحم كفتة كباب",
+        "optionId": "6a62197d79ee075a57f70130",
+        "action": "retain",
+        "name": {
+          "ar": "لحم كفتة كباب",
+          "en": "Beef Kofta Kebab"
+        }
+      },
+      {
+        "requestedName": "لحم مفروم",
+        "optionId": "6a9b4fbc9fbb9859232f4499",
+        "action": "retain",
+        "name": {
+          "ar": "لحم مفروم",
+          "en": "Minced Beef"
+        }
+      }
+    ],
+    "fish": [
+      {
+        "requestedName": "سمك مشوي",
+        "optionId": "6a62197f79ee075a57f70136",
+        "action": "retain",
+        "name": {
+          "ar": "سمك مشوي",
+          "en": "Grilled Fish"
+        }
+      },
+      {
+        "requestedName": "سمك كريمي",
+        "optionId": "6a62197e79ee075a57f70134",
+        "action": "retain",
+        "name": {
+          "ar": "سمك كريمي",
+          "en": "Creamy Fish"
+        }
+      }
+    ],
+    "carbs": [
+      {
+        "requestedName": "بطاطس مشوية",
+        "optionId": "6a62198479ee075a57f70148",
+        "action": "retain",
+        "name": {
+          "ar": "بطاطس مشوية",
+          "en": "Roasted Potatoes"
+        }
+      },
+      {
+        "requestedName": "بطاطس مهروسة",
+        "optionId": "6a62198179ee075a57f70140",
+        "action": "retain",
+        "name": {
+          "ar": "بطاطس مهروسة",
+          "en": "Mashed Potatoes"
+        }
+      },
+      {
+        "requestedName": "بطاطا حلوة",
+        "optionId": "6a62198479ee075a57f7014a",
+        "action": "retain",
+        "name": {
+          "ar": "بطاطا حلوة",
+          "en": "Sweet Potatoes"
+        }
+      },
+      {
+        "requestedName": "خضار مشكل مشوي",
+        "optionId": "6a9b4e329fbb9859232f4205",
+        "action": "retain",
+        "name": {
+          "ar": "خضار مشكل مشوي",
+          "en": "Grilled Mixed Vegetables"
+        }
+      },
+      {
+        "requestedName": "رز مصري بالشعيرية",
+        "optionId": "6a62197f79ee075a57f70138",
+        "action": "reactivate_subscription_only",
+        "note": "Restaurant-approved bilingual label for the existing vermicelli rice option; retain its ID and existing data.",
+        "name": {
+          "ar": "رز مصري بالشعيرية",
+          "en": "Egyptian Vermicelli Rice"
+        }
+      },
+      {
+        "requestedName": "رز أبيض",
+        "optionId": "6a969ff743e420ebe617bdd8",
+        "action": "retain",
+        "note": "Preserve the currently published white basmati rice ID; do not add another white rice.",
+        "name": {
+          "ar": "رز أبيض",
+          "en": "White Rice"
+        }
+      },
+      {
+        "requestedName": "رز صيني",
+        "optionId": "6ad280405f8b0007a5581105",
+        "action": "created_subscription_only",
+        "name": {
+          "ar": "رز صيني",
+          "en": "Chinese Rice"
+        },
+        "proposedKey": "chinese_rice"
+      },
+      {
+        "requestedName": "باستا بالكريمة",
+        "optionId": "6a62198279ee075a57f70142",
+        "action": "reactivate_subscription_only",
+        "note": "Use the exact creamy pasta option rather than assume plain white pasta contains cream.",
+        "name": {
+          "ar": "باستا بالكريمة",
+          "en": "Creamy Pasta"
+        }
+      },
+      {
+        "requestedName": "باستا بالصلصة الحمراء",
+        "optionId": "6a62198379ee075a57f70144",
+        "action": "include_existing",
+        "name": {
+          "ar": "باستا بالصلصة الحمراء",
+          "en": "Red Sauce Pasta"
+        }
+      }
+    ]
+  },
+  "excludeFromWeeklySectionsOnly": [
+    {
+      "optionId": "6a62197579ee075a57f70112",
+      "name": "دجاج 65"
+    },
+    {
+      "optionId": "6a9b4f7a9fbb9859232f4473",
+      "name": "دجاج ليمون"
+    },
+    {
+      "optionId": "6a96a00a43e420ebe617bde6",
+      "name": "مكرونة بيضا"
+    },
+    {
+      "optionId": "6a9b4e5b9fbb9859232f4216",
+      "name": "مكرونة بيستو"
+    },
+    {
+      "optionId": "6a9b4dc89fbb9859232f41d5",
+      "name": "رز أبيض آسيوي"
+    },
+    {
+      "optionId": "6a9b4e0d9fbb9859232f41ef",
+      "name": "ارز بالكركم"
+    }
+  ],
+  "namesConfirmedBy": "restaurant_via_user",
+  "publicationRequirements": {
+    "all25OptionsResolved": true,
+    "documentedNewItemNutritionAndPricing": false,
+    "preserveOneTimeAndPremium": true,
+    "noDefaultZeroData": true
+  }
+}

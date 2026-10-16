@@ -24,6 +24,7 @@ const User = require("../src/models/User");
 const moyasarService = require("../src/services/moyasarService");
 const { JWT_SECRET } = require("../src/middleware/auth");
 const { seedOneTimeMenu } = require("../scripts/seed-one-time-menu");
+const { getTomorrowKSADate, addDaysToKSADateString } = require("../src/utils/date");
 
 const TEST_TAG = `mobile-contracts-${Date.now()}`;
 const TEST_DB_NAME = TEST_TAG.replace(/-/g, "_");
@@ -196,6 +197,22 @@ async function seedPublishedCatalog() {
     { upsert: true }
   );
   await seedOneTimeMenu({ actor: { role: "test" }, notes: TEST_TAG, mode: "force" });
+
+  // The test must behave identically regardless of the minute at which CI runs.
+  // Equal opening/closing times are the established 24-hour schedule semantics;
+  // production restaurant hours are never modified by this isolated fixture.
+  await Promise.all([
+    Setting.updateOne(
+      { key: "restaurant_open_time" },
+      { $set: { value: "00:00", description: `${TEST_TAG} all-day test opening` } },
+      { upsert: true }
+    ),
+    Setting.updateOne(
+      { key: "restaurant_close_time" },
+      { $set: { value: "00:00", description: `${TEST_TAG} all-day test closing` } },
+      { upsert: true }
+    ),
+  ]);
 }
 
 async function cleanupCatalog() {
@@ -211,7 +228,7 @@ async function cleanupCatalog() {
     MenuOptionGroup.deleteMany({}),
     MenuProduct.deleteMany({}),
     MenuCategory.deleteMany({}),
-    Setting.deleteMany({ key: "vat_percentage" }),
+    Setting.deleteMany({ key: { $in: ["vat_percentage", "restaurant_open_time", "restaurant_close_time", "restaurant_is_open"] } }),
   ]);
 }
 
@@ -264,7 +281,7 @@ async function cleanupCatalog() {
 
       orderBody = {
         fulfillmentMethod: "pickup",
-        fulfillmentDate: "2026-05-10",
+        fulfillmentDate: getTomorrowKSADate(),
         pickup: {
           branchId: "main",
           pickupWindow: "18:00-20:00",
@@ -277,6 +294,21 @@ async function cleanupCatalog() {
         successUrl: "basicdiet://orders/payment-success",
         backUrl: "basicdiet://orders/payment-cancel",
       };
+    });
+
+    await test("POST /api/orders/quote respects the restaurant closed switch", async () => {
+      await Setting.updateOne(
+        { key: "restaurant_is_open" },
+        { $set: { value: false, description: `${TEST_TAG} closed switch` } },
+        { upsert: true }
+      );
+      try {
+        const res = await api.post("/api/orders/quote").set(clientHeaders).send(orderBody);
+        expectStatus(res, 409, "closed restaurant quote");
+        assert.strictEqual(res.body.error.code, "RESTAURANT_CLOSED");
+      } finally {
+        await Setting.updateOne({ key: "restaurant_is_open" }, { $set: { value: true } });
+      }
     });
 
     await test("POST /api/orders/quote preserves mobile contract", async () => {
@@ -304,7 +336,7 @@ async function cleanupCatalog() {
       const res = await api
         .post("/api/orders")
         .set(clientHeaders)
-        .send({ ...orderBody, fulfillmentDate: "2026-05-11", idempotencyKey: `${TEST_TAG}-body-checkout` });
+        .send({ ...orderBody, fulfillmentDate: addDaysToKSADateString(getTomorrowKSADate(), 1), idempotencyKey: `${TEST_TAG}-body-checkout` });
       expectStatus(res, 201, "body idempotency checkout");
       assert.strictEqual(res.body.status, true);
       assert(res.body.data.orderId, "data.orderId exists");

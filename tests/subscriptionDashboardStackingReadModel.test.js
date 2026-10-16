@@ -112,7 +112,10 @@ async function testProjectsPackagesAndTransactionsWithoutChangingParentIdentity(
   assert.strictEqual(row.stacking.parentRole, "operational_container");
   assert.strictEqual(row.stacking.hasEntitlementBatches, true);
   assert.strictEqual(row.stacking.isCombinedPackage, true);
-  assert.strictEqual(row.stacking.manualDeductionAllowed, false);
+  // Manual deduction is batch-aware for stacked subscriptions: the command
+  // service distributes the debit across eligible entitlement batches under
+  // its transaction, lease, and idempotency guards.
+  assert.strictEqual(row.stacking.manualDeductionAllowed, true);
   assert.strictEqual(row.stacking.packageCount, 2);
   assert.deepStrictEqual(row.stacking.aggregateBalance, {
     totalMeals: 130,

@@ -22,6 +22,8 @@ const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
 const mealBuilderConfigService = require("../src/services/subscription/mealBuilderConfigService");
+const dateUtils = require("../src/utils/date");
+const { getRestaurantBusinessDate } = require("../src/services/restaurantHoursService");
 
 const TEST_DB_NAME = `catalog_validator_consistency_${Date.now()}`;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
@@ -176,14 +178,14 @@ async function seedFixture() {
   return { product, group, linkedOption, unlinkedOption };
 }
 
-async function createClientContext() {
+async function createClientContext({ startDate, endDate }) {
   const user = await User.create({ phone: "+966500000991", password: "password" });
   const subscription = await Subscription.create({
     userId: user._id,
     status: "active",
     planId: new mongoose.Types.ObjectId(),
-    startDate: "2026-10-01",
-    endDate: "2026-10-30",
+    startDate,
+    endDate,
     totalMeals: 30,
     remainingMeals: 30,
     selectedMealsPerDay: 1,
@@ -250,9 +252,12 @@ async function run() {
   await connect();
   try {
     const fixture = await seedFixture();
-    const { subscription, auth } = await createClientContext();
+    const businessDate = await getRestaurantBusinessDate();
+    const startDate = dateUtils.addDaysToKSADateString(businessDate, 1);
+    const date = dateUtils.addDaysToKSADateString(businessDate, 3);
+    const endDate = dateUtils.addDaysToKSADateString(businessDate, 30);
+    const { subscription, auth } = await createClientContext({ startDate, endDate });
     const api = request(createApp());
-    const date = "2026-10-10";
 
     let res = await api.get("/api/subscriptions/meal-planner-menu?contractVersion=v3&lang=en");
     assert.strictEqual(res.status, 200, `catalog status: ${JSON.stringify(res.body)}`);

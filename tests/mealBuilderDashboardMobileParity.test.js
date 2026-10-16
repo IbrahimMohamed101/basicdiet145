@@ -69,14 +69,21 @@ async function disconnect() {
   }
 }
 
+function isoDayOffset(offsetDays) {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() + offsetDays);
+  return day.toISOString().slice(0, 10);
+}
+
 async function createClientContext() {
   const user = await User.create({ phone: `+9665${Date.now().toString().slice(-8)}`, password: "password" });
   const subscription = await Subscription.create({
     userId: user._id,
     status: "active",
     planId: new mongoose.Types.ObjectId(),
-    startDate: "2026-10-01",
-    endDate: "2026-10-30",
+    startDate: isoDayOffset(1),
+    endDate: isoDayOffset(30),
     totalMeals: 30,
     remainingMeals: 30,
     selectedMealsPerDay: 1,
@@ -332,7 +339,7 @@ async function main() {
     ({ headers: adminHeaders } = await dashboardAuth("admin", TEST_TAG));
     const fixture = await createFixture(api);
     const { subscription, auth } = await createClientContext();
-    const date = "2026-10-15";
+    const date = isoDayOffset(7);
 
     let state = await readPlannerState(api, fixture);
     assert(state.dashboardProduct, "Dashboard planner exposes fixture product");

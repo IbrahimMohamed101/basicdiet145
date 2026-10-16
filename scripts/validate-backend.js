@@ -36,6 +36,24 @@ const steps = [
     requiredScript: "test:one-time-full-flow",
   },
   {
+    title: "Weekly subscription menu rollback isolation",
+    command: "npm",
+    args: ["run", "test:weekly-menu-rollback-safety"],
+    requiredScript: "test:weekly-menu-rollback-safety",
+  },
+  {
+    title: "Subscription menu price and gram contracts",
+    command: "npm",
+    args: ["run", "test:weekly-menu-commercial-safety"],
+    requiredScript: "test:weekly-menu-commercial-safety",
+  },
+  {
+    title: "Legacy FCM deactivation safety",
+    command: "npm",
+    args: ["run", "test:fcm-disabled-safety"],
+    requiredScript: "test:fcm-disabled-safety",
+  },
+  {
     title: "Mobile API response contracts",
     command: "npm",
     args: ["run", "test:mobile-contracts"],
