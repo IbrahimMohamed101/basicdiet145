@@ -20,29 +20,34 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Resolve patched Node 20-compatible dependencies without changing repository
+      - name: Check Firebase references and available patched versions
         shell: bash
         run: |
           set -euo pipefail
-          npm install --package-lock-only --ignore-scripts --save-exact --no-audit --no-fund firebase-admin@13.10.0 multer@2.3.1 nodemailer@10.0.6
+          echo "FIREBASE_IMPORT_REFERENCES_BEGIN"
+          git grep -n -E 'getFirebaseAdmin|firebase-admin|utils/firebase|firebase\.js' -- src scripts tests || true
+          echo "FIREBASE_IMPORT_REFERENCES_END"
+          for name in multer nodemailer firebase-admin proxy-addr @fastify/busboy @grpc/grpc-js; do
+            echo "NPM_VERSION_LOOKUP_START $name"
+            npm view "$name" version engines --json || true
+            echo "NPM_VERSION_LOOKUP_END $name"
+          done
+      - name: Plan Node 20 dependency updates in an isolated checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm uninstall --package-lock-only --ignore-scripts --no-audit --no-fund firebase-admin
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund multer@latest nodemailer@latest
           set +e
           npm audit fix --package-lock-only --ignore-scripts --no-fund
-          fix_code=$?
+          code=$?
           set -e
-          echo "LOCK_REMEDIATION_AUDIT_FIX_EXIT=$fix_code"
+          echo "AUDIT_FIX_EXIT_CODE=$code"
           npm ci --ignore-scripts --no-audit --no-fund
           set +e
           npm audit --omit=dev --json > /tmp/security-audit.json
           audit_code=$?
           set -e
-          echo "LOCK_REMEDIATION_AUDIT_EXIT=$audit_code"
-          node -e 'const a=require("/tmp/security-audit.json"); console.log("LOCK_REMEDIATION_AUDIT_SUMMARY="+JSON.stringify({severity:a.metadata?.vulnerabilities,issues:Object.entries(a.vulnerabilities||{}).filter(([,v])=>["high","critical"].includes(v.severity)).map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))}));'
-          node <<'NODE'
-          const fs = require('node:fs');
-          for (const file of ['package.json', 'package-lock.json']) {
-            const data = fs.readFileSync(file).toString('base64');
-            console.log('SECURITY_FILE_START ' + file);
-            for (let i=0;i<data.length;i+=2000) console.log('SECURITY_FILE_CHUNK ' + data.slice(i,i+2000));
-            console.log('SECURITY_FILE_END ' + file);
-          }
-          NODE
+          echo "PRODUCTION_AUDIT_EXIT_CODE=$audit_code"
+          node -e 'const a=require("/tmp/security-audit.json");console.log("AUDIT_RESULT="+JSON.stringify({severity:a.metadata?.vulnerabilities,blocked:Object.entries(a.vulnerabilities||{}).filter(([,v])=>["high","critical"].includes(v.severity)).map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))}));'
+          node -e 'const p=require("./package.json");console.log("UPDATED_DIRECT_DEPS="+JSON.stringify({firebaseAdmin:p.dependencies["firebase-admin"],multer:p.dependencies.multer,nodemailer:p.dependencies.nodemailer}));'
