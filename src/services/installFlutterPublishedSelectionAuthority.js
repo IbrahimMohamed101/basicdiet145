@@ -330,9 +330,17 @@ function pruneMembershipToPublishedSelections(result, config, {
   for (const [type, allowed] of optionsByType.entries()) {
     const scoped = bySelectionType.get(type);
     if (!scoped) continue;
+    const filteredOptions = filterSet(scoped.options, allowed);
+    // Active PremiumUpgradeConfig rows are an independent, authoritative way
+    // to publish Premium options. They may be absent from the descriptor's
+    // selectedOptionIds, so retain the catalog-validated automatic rows in the
+    // write membership as well as the read catalog.
+    for (const optionKey of automaticPremiumOptionsByType.get(type) || []) {
+      filteredOptions.add(String(optionKey));
+    }
     bySelectionType.set(type, {
       ...scoped,
-      options: filterSet(scoped.options, allowed),
+      options: filteredOptions,
     });
   }
 
