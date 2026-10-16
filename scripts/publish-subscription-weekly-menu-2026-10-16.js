@@ -15,6 +15,11 @@ const MenuOption = require("../src/models/MenuOption");
 const ProductGroupOption = require("../src/models/ProductGroupOption");
 const mealBuilderService = require("../src/services/subscription/mealBuilderConfigService");
 const { getDbNameFromUri, resolveMongoUri } = require("../src/utils/mongoUriResolver");
+const {
+  readDocument,
+  recordMutation,
+  rollbackPrepublishMutations,
+} = require("./lib/weeklyMenuSafeRollback");
 
 const manifest = require("./fixtures/subscription-weekly-menu-2026-10-16.json");
 
@@ -149,7 +154,7 @@ async function createBackup(before, destination) {
   return data;
 }
 
-async function resolveOptions({ apply }) {
+async function resolveOptions({ apply, journal = [] }) {
   const resolved = [];
   const createdOptionIds = [];
   const createdRelationIds = [];
@@ -186,6 +191,7 @@ async function resolveOptions({ apply }) {
         publishedAt: new Date(),
       });
       createdOptionIds.push(String(option._id));
+      await recordMutation(mongoose.connection.db, journal, "menuoptions", null, option._id);
     }
     if (!option) {
       resolved.push({ ...row, option: null });
@@ -193,6 +199,7 @@ async function resolveOptions({ apply }) {
     }
     assert.equal(String(option.groupId), GROUP_IDS[row.sectionKey], `${row.name.en} belongs to the wrong option group`);
     if (apply && REACTIVATE_IDS.has(String(option._id))) {
+      const beforeOption = await readDocument(mongoose.connection.db, "menuoptions", option._id);
       option.isActive = true;
       option.isVisible = true;
       option.isAvailable = true;
@@ -200,6 +207,7 @@ async function resolveOptions({ apply }) {
       option.availableForSubscription = true;
       if (!option.publishedAt) option.publishedAt = new Date();
       await option.save();
+      await recordMutation(mongoose.connection.db, journal, "menuoptions", beforeOption, option._id);
     }
     if (apply) {
       let relation = await ProductGroupOption.findOne({
@@ -221,11 +229,14 @@ async function resolveOptions({ apply }) {
           sortOrder: Number(option.sortOrder || 0),
         });
         createdRelationIds.push(String(relation._id));
+        await recordMutation(mongoose.connection.db, journal, "productgroupoptions", null, relation._id);
       } else if (REACTIVATE_IDS.has(String(option._id)) || createdOptionIds.includes(String(option._id))) {
+        const beforeRelation = await readDocument(mongoose.connection.db, "productgroupoptions", relation._id);
         relation.isActive = true;
         relation.isVisible = true;
         relation.isAvailable = true;
         await relation.save();
+        await recordMutation(mongoose.connection.db, journal, "productgroupoptions", beforeRelation, relation._id);
       }
     }
     resolved.push({ ...row, option });
@@ -288,19 +299,6 @@ async function verifyPublished(config, resolvedRows, originalConfig) {
   return reports;
 }
 
-async function restoreBeforePublish(backup, createdOptionIds, createdRelationIds) {
-  const db = mongoose.connection.db;
-  if (createdRelationIds.length) await ProductGroupOption.deleteMany({ _id: { $in: createdRelationIds } });
-  if (createdOptionIds.length) await MenuOption.deleteMany({ _id: { $in: createdOptionIds } });
-  for (const row of backup.menuOptions) await db.collection("menuoptions").replaceOne({ _id: row._id }, row, { upsert: true });
-  for (const row of backup.productGroupOptions) await db.collection("productgroupoptions").replaceOne({ _id: row._id }, row, { upsert: true });
-  const originalIds = new Set(backup.mealBuilderConfigs.map((row) => String(row._id)));
-  const currentConfigs = await db.collection("mealbuilderconfigs").find({}, { projection: { _id: 1 } }).toArray();
-  const extraIds = currentConfigs.filter((row) => !originalIds.has(String(row._id))).map((row) => row._id);
-  if (extraIds.length) await db.collection("mealbuilderconfigs").deleteMany({ _id: { $in: extraIds } });
-  for (const row of backup.mealBuilderConfigs) await db.collection("mealbuilderconfigs").replaceOne({ _id: row._id }, row, { upsert: true });
-}
-
 async function resumeInterruptedPublication({ published, backupPath }) {
   assert.ok(backupPath, "--resume-interrupted-prepublish requires --backup <path>");
   const backup = BSON.EJSON.parse(fs.readFileSync(path.resolve(backupPath), "utf8"));
@@ -354,9 +352,14 @@ async function main() {
   let createdOptionIds = [];
   let createdRelationIds = [];
   let publishedByThisRun = false;
+  let draftMutationStarted = false;
+  let originalPublished = null;
+  let backupPath = null;
+  const journal = [];
   try {
     const published = await currentPublished();
     assert.ok(published, "current published MealBuilderConfig not found");
+    originalPublished = published;
     if (await isAlreadyPublished(published)) {
       console.log(JSON.stringify({ status: "already_published", database: mongoose.connection.name, versionNumber: published.versionNumber, revisionHash: published.revisionHash }, null, 2));
       return;
@@ -370,9 +373,9 @@ async function main() {
     }
 
     const beforeCustomerState = apply ? await customerState() : null;
-    const backupPath = path.resolve(process.cwd(), "tmp", "weekly-menu-release-20261016", `before-${new Date().toISOString().replace(/[:.]/g, "-")}.ejson`);
+    backupPath = path.resolve(process.cwd(), "tmp", "weekly-menu-release-20261016", `before-${new Date().toISOString().replace(/[:.]/g, "-")}.ejson`);
     if (apply) backup = await createBackup(beforeCustomerState, backupPath);
-    const resolution = await resolveOptions({ apply });
+    const resolution = await resolveOptions({ apply, journal });
     createdOptionIds = resolution.createdOptionIds;
     createdRelationIds = resolution.createdRelationIds;
     const unresolved = resolution.rows.filter((row) => !row.option).map((row) => ({ sectionKey: row.sectionKey, key: row.proposedKey, name: row.name }));
@@ -394,6 +397,9 @@ async function main() {
     const sections = desiredSections(published, resolution.rows);
     const validation = await mealBuilderService.validatePayload({ sections });
     assert.equal(validation.ready, true, JSON.stringify(validation));
+    // From this point, the service may mutate draft/configuration documents.
+    // Never restore all configs from a stale backup on failure.
+    draftMutationStarted = true;
     await mealBuilderService.resetDraftToPublished({ actor: {} });
     await mealBuilderService.updateDraft({
       sections,
@@ -432,9 +438,15 @@ async function main() {
     }, null, 2));
   } catch (error) {
     if (backup && !publishedByThisRun) {
-      await restoreBeforePublish(backup, createdOptionIds, createdRelationIds).catch((rollbackError) => {
-        console.error(`Pre-publication rollback failed: ${rollbackError.stack || rollbackError}`);
-      });
+      if (draftMutationStarted) {
+        console.error(`SAFE_RECOVERY_REQUIRED: Draft/publication may have changed. No automatic database-wide restore. Inspect backup ${backupPath} and current published revision before manual recovery.`);
+      } else {
+        await rollbackPrepublishMutations(mongoose.connection.db, journal, originalPublished).then((report) => {
+          console.error(`Safe pre-publish rollback: ${JSON.stringify(report)}. Backup: ${backupPath}`);
+        }).catch((rollbackError) => {
+          console.error(`SAFE_RECOVERY_REQUIRED: Automatic targeted rollback declined or incomplete; backup ${backupPath}: ${rollbackError.stack || rollbackError}`);
+        });
+      }
     }
     throw error;
   } finally {
