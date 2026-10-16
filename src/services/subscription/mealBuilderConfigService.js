@@ -125,6 +125,18 @@ function plainObject(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function sectionOptionName(option = {}, section = {}) {
+  const optionNames = plainObject(section?.metadata?.optionNameOverrides);
+  const override = plainObject(
+    optionNames[String(option._id || "")] || optionNames[String(option.key || "")]
+  );
+  const source = plainObject(option.name);
+  return {
+    ar: String(override.ar || source.ar || source.en || "").trim(),
+    en: String(override.en || source.en || source.ar || "").trim(),
+  };
+}
+
 function normalizeBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
   return Boolean(value);
@@ -884,13 +896,14 @@ function serializeHydratedOption({
   else if (!relStatus.linked) state = "not_linked";
   else if (eligible) state = "eligible";
 
+  const displayName = sectionOptionName(option, section);
   return {
     id: String(option._id),
     optionId: String(option._id),
     type: "option",
     key: option.key || "",
-    name: option.name || { ar: "", en: "" },
-    label: pickLang(option.name || {}, section?.lang || "en"),
+    name: displayName,
+    label: pickLang(displayName, section?.lang || "en"),
     familyKey,
     premiumKey: option.premiumKey || "",
     displayCategoryKey: option.displayCategoryKey || "",
@@ -3041,7 +3054,9 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
     return null;
   }
 
-  const selected = new Set((section.selectedOptionIds || []).map(String));
+  const selectedOptionIds = (section.selectedOptionIds || []).map(String);
+  const selected = new Set(selectedOptionIds);
+  const selectedOrder = new Map(selectedOptionIds.map((optionId, index) => [optionId, index]));
   const visualFamilySection = isVisualProteinFamilySection(section, docs);
   const relationByOption = new Map(docs.optionRelations
     .filter((relation) => String(relation.productId) === String(product._id) && String(relation.groupId) === String(group._id))
@@ -3054,7 +3069,13 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
     .filter(Boolean)
     .filter((option) => !selected.size || selected.has(String(option._id)))
     .filter((option) => includeUnavailable || (customerReady(option, docs.catalogItemsById) && (visualFamilySection || relationReady(relationByOption.get(String(option._id))))))
-    .sort((a, b) => Number(relationByOption.get(String(a._id))?.sortOrder ?? a.sortOrder ?? 0) - Number(relationByOption.get(String(b._id))?.sortOrder ?? b.sortOrder ?? 0));
+    .sort((a, b) => {
+      if (selected.size) {
+        return Number(selectedOrder.get(String(a._id))) - Number(selectedOrder.get(String(b._id)));
+      }
+      return Number(relationByOption.get(String(a._id))?.sortOrder ?? a.sortOrder ?? 0)
+        - Number(relationByOption.get(String(b._id))?.sortOrder ?? b.sortOrder ?? 0);
+    });
 
   let filteredOptions = options;
   if (section.selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL) {
@@ -3075,7 +3096,7 @@ function buildOptionGroupSection(section, docs, lang, includeUnavailable, member
   const items = filteredOptions.map((option) => {
     const relation = relationByOption.get(String(option._id));
     addMembership(membership, section.selectionType, product._id, group._id, option._id);
-    return buildOptionItem({ option, relation, group, product, selectionType: section.selectionType, lang, rules: section.rules, premiumConfigState });
+    return buildOptionItem({ option, relation, group, product, selectionType: section.selectionType, lang, rules: section.rules, section, premiumConfigState });
   });
   addMembership(membership, section.selectionType, product._id, group._id);
 
@@ -3166,7 +3187,7 @@ function buildProductSection(section, docs, lang, includeUnavailable, membership
   };
 }
 
-function buildOptionItem({ option, relation, group, product, selectionType, lang, rules, premiumConfigState = null }) {
+function buildOptionItem({ option, relation, group, product, selectionType, lang, rules, section = null, premiumConfigState = null }) {
   const premiumKey = option.premiumKey || option.key || null;
   const activeConfig = premiumConfigState?.getActiveConfig ? premiumConfigState.getActiveConfig(premiumKey) : null;
   const isPremium = selectionType === MEAL_SELECTION_TYPES.PREMIUM_MEAL && Boolean(activeConfig);
@@ -3175,6 +3196,7 @@ function buildOptionItem({ option, relation, group, product, selectionType, lang
   const priceHalala = isPremium
     ? premiumFee
     : Number(relation?.extraPriceHalala ?? option.extraPriceHalala ?? 0);
+  const displayName = sectionOptionName(option, section || {});
   return {
     id: String(option._id),
     key: option.key || "",
@@ -3183,8 +3205,8 @@ function buildOptionItem({ option, relation, group, product, selectionType, lang
     groupKey: group.key || "",
     productId: String(product._id),
     productKey: product.key || "",
-    name: pickLang(option.name, lang),
-    nameI18n: option.name || {},
+    name: pickLang(displayName, lang),
+    nameI18n: displayName,
     imageUrl: option.imageUrl || "",
     selectionType,
     isPremium,
