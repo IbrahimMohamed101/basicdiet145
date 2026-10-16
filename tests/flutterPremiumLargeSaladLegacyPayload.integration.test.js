@@ -25,6 +25,7 @@ const ProductOptionGroup = require("../src/models/ProductOptionGroup");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
+const { getTodayKSADate, addDaysToKSADateString } = require("../src/utils/date");
 
 function tokenFor(userId) {
   return jwt.sign(
@@ -184,13 +185,17 @@ async function run() {
       phone: "+966500000091",
       password: "password",
     });
+    const today = getTodayKSADate();
+    const startDate = addDaysToKSADateString(today, 1);
+    const endDate = addDaysToKSADateString(today, 30);
+    const selectedDate = addDaysToKSADateString(today, 7);
     const subscription = await Subscription.create({
       userId: user._id,
       status: "active",
       planId: new mongoose.Types.ObjectId(),
-      startDate: "2026-10-01",
-      endDate: "2026-10-30",
-      validityEndDate: "2026-10-30",
+      startDate,
+      endDate,
+      validityEndDate: endDate,
       totalMeals: 30,
       remainingMeals: 30,
       selectedMealsPerDay: 1,
@@ -200,7 +205,7 @@ async function run() {
 
     const api = request(createApp());
     const auth = { Authorization: `Bearer ${tokenFor(user._id)}` };
-    const date = "2026-10-10";
+    const date = selectedDate;
     const validateUrl = `/api/subscriptions/${subscription._id}/days/${date}/selection/validate`;
     const saveUrl = `/api/subscriptions/${subscription._id}/days/${date}/selection`;
     const payload = flutterPayload(fixture);
