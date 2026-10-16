@@ -36,8 +36,8 @@ jobs:
           npm uninstall --package-lock-only --ignore-scripts --no-audit --no-fund firebase-admin
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund multer@2.4.0 nodemailer@10.1.2
           npm audit fix --package-lock-only --ignore-scripts --no-fund || true
-          npm run test:fcm-disabled-safety
           npm ci --no-audit --no-fund
+          npm run test:fcm-disabled-safety
           npm audit --omit=dev --json > /tmp/security-audit.json
           node <<'NODE'
           const report = require('/tmp/security-audit.json');
