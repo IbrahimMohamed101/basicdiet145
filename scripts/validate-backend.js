@@ -36,6 +36,12 @@ const steps = [
     requiredScript: "test:one-time-full-flow",
   },
   {
+    title: "Weekly subscription menu rollback isolation",
+    command: "npm",
+    args: ["run", "test:weekly-menu-rollback-safety"],
+    requiredScript: "test:weekly-menu-rollback-safety",
+  },
+  {
     title: "Mobile API response contracts",
     command: "npm",
     args: ["run", "test:mobile-contracts"],
