@@ -1,21 +1,14 @@
-const admin = require("firebase-admin");
+"use strict";
 
+// Firebase Admin was used exclusively by the legacy FCM push path.
+// Production has no FIREBASE_CLIENT_EMAIL configured, so that sender has
+// already been unable to initialize. Keep the API explicit and fail closed
+// instead of making scheduler/notification imports crash at startup.
+// Restoring FCM requires a separately reviewed messaging integration.
 function getFirebaseAdmin() {
-  if (admin.apps.length) return admin;
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error("Missing Firebase credentials");
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId,
-      clientEmail,
-      privateKey: privateKey.replace(/\\n/g, "\n"),
-    }),
-  });
-  return admin;
+  const error = new Error("FCM push delivery is disabled; Firebase Admin is not configured.");
+  error.code = "FIREBASE_MESSAGING_DISABLED";
+  throw error;
 }
 
 module.exports = { getFirebaseAdmin };
