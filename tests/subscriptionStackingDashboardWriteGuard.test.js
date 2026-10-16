@@ -66,12 +66,10 @@ async function run() {
         }),
       }
     );
-    assert.strictEqual(result.nextCalls, 0);
-    assert.strictEqual(result.res.statusCode, 503);
-    assert.strictEqual(
-      result.res.payload.error.code,
-      STACKING_DASHBOARD_MUTATION_CODE
-    );
+    // Creation uses the additive, stacking-aware adapter, including active owners.
+    assert.strictEqual(result.nextCalls, 1);
+    assert.strictEqual(result.nextError, null);
+    assert.strictEqual(result.res.payload, null);
   }
 
   {
@@ -94,12 +92,10 @@ async function run() {
         }),
       }
     );
-    assert.strictEqual(result.nextCalls, 0);
-    assert.strictEqual(result.res.statusCode, 503);
-    assert.strictEqual(
-      result.res.payload.error.code,
-      STACKING_DASHBOARD_MUTATION_CODE
-    );
+    // Disabling legacy rollout flags must not re-enable the obsolete guard.
+    assert.strictEqual(result.nextCalls, 1);
+    assert.strictEqual(result.nextError, null);
+    assert.strictEqual(result.res.payload, null);
   }
 
   {
@@ -130,23 +126,37 @@ async function run() {
         `/api/dashboard/subscriptions/${subscriptionId}/manual-deduction`,
       body: {},
     };
-    const batchOwner = async () => ({
-      containerSubscriptionId: subscriptionId,
-      userId: rolloutUserId,
-    });
     for (const globallyEnabled of [true, false]) {
       const result = await invoke(request, {
         globallyEnabled: () => globallyEnabled,
         writeEnabledForUser: () => false,
-        findBatchOwner: batchOwner,
+        findBatchOwner: async () => {
+          throw new Error("integrated manual deduction must bypass the legacy write guard");
+        },
       });
-      assert.strictEqual(result.nextCalls, 0);
-      assert.strictEqual(result.res.statusCode, 503);
-      assert.strictEqual(
-        result.res.payload.error.code,
-        STACKING_DASHBOARD_MUTATION_CODE
-      );
+      assert.strictEqual(result.nextCalls, 1);
+      assert.strictEqual(result.nextError, null);
+      assert.strictEqual(result.res.payload, null);
     }
+  }
+
+  {
+    // Legacy, unsupported mutations must remain blocked for stacked subscriptions.
+    const result = await invoke({
+      method: "PATCH",
+      originalUrl: `/api/dashboard/subscriptions/${subscriptionId}`,
+      body: { status: "canceled" },
+    }, {
+      globallyEnabled: () => false,
+      writeEnabledForUser: () => false,
+      findBatchOwner: async () => ({
+        containerSubscriptionId: subscriptionId,
+        userId: rolloutUserId,
+      }),
+    });
+    assert.strictEqual(result.nextCalls, 0);
+    assert.strictEqual(result.res.statusCode, 503);
+    assert.strictEqual(result.res.payload.error.code, STACKING_DASHBOARD_MUTATION_CODE);
   }
 
   {
