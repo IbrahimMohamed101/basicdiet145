@@ -1,4 +1,4 @@
-name: Temporary read-only dependency remediation plan
+name: Temporary verified dependency remediation
 
 on:
   pull_request:
@@ -7,47 +7,61 @@ on:
       - ".github/workflows/security-fix-plan.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  generate-lock:
+  remediate-branch-only:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/subscription-weekly-menu-20261016'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out only the approved PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - name: Check Firebase references and available patched versions
+      - name: Make locked security updates and verify compatibility
         shell: bash
         run: |
           set -euo pipefail
-          echo "FIREBASE_IMPORT_REFERENCES_BEGIN"
-          git grep -n -E 'getFirebaseAdmin|firebase-admin|utils/firebase|firebase\.js' -- src scripts tests || true
-          echo "FIREBASE_IMPORT_REFERENCES_END"
-          for name in multer nodemailer firebase-admin proxy-addr @fastify/busboy @grpc/grpc-js; do
-            echo "NPM_VERSION_LOOKUP_START $name"
-            npm view "$name" version engines --json || true
-            echo "NPM_VERSION_LOOKUP_END $name"
-          done
-      - name: Plan Node 20 dependency updates in an isolated checkout
-        shell: bash
-        run: |
-          set -euo pipefail
+          [ "$(git branch --show-current)" = "codex/subscription-weekly-menu-20261016" ]
+          if git grep -n -E 'getFirebaseAdmin|firebase-admin|utils/firebase|firebase\.js' -- src scripts tests | grep -v '^src/utils/firebase.js:'; then
+            echo "ERROR: Active Firebase reference found; refuse removal"
+            exit 1
+          fi
           npm uninstall --package-lock-only --ignore-scripts --no-audit --no-fund firebase-admin
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund multer@latest nodemailer@latest
-          set +e
-          npm audit fix --package-lock-only --ignore-scripts --no-fund
-          code=$?
-          set -e
-          echo "AUDIT_FIX_EXIT_CODE=$code"
-          npm ci --ignore-scripts --no-audit --no-fund
-          set +e
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund multer@2.4.0 nodemailer@10.1.2
+          npm audit fix --package-lock-only --ignore-scripts --no-fund || true
+          git rm src/utils/firebase.js
+          npm ci --no-audit --no-fund
           npm audit --omit=dev --json > /tmp/security-audit.json
-          audit_code=$?
-          set -e
-          echo "PRODUCTION_AUDIT_EXIT_CODE=$audit_code"
-          node -e 'const a=require("/tmp/security-audit.json");console.log("AUDIT_RESULT="+JSON.stringify({severity:a.metadata?.vulnerabilities,blocked:Object.entries(a.vulnerabilities||{}).filter(([,v])=>["high","critical"].includes(v.severity)).map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))}));'
-          node -e 'const p=require("./package.json");console.log("UPDATED_DIRECT_DEPS="+JSON.stringify({firebaseAdmin:p.dependencies["firebase-admin"],multer:p.dependencies.multer,nodemailer:p.dependencies.nodemailer}));'
+          node <<'NODE'
+          const report = require('/tmp/security-audit.json');
+          const issues = Object.entries(report.vulnerabilities || {}).filter(([,value])=>['high','critical'].includes(value.severity));
+          const total = report.metadata?.vulnerabilities?.total || 0;
+          console.log('PRODUCTION_DEPENDENCY_AUDIT='+JSON.stringify(report.metadata?.vulnerabilities));
+          if(issues.length || total) throw new Error('Production dependency audit not clean');
+          const p=require('./package.json');
+          if(p.dependencies['firebase-admin']) throw new Error('Firebase dependency still present');
+          if(p.dependencies.multer !== '^2.4.0' || p.dependencies.nodemailer !== '^10.1.2') throw new Error('Unexpected pinned update');
+          NODE
+          node -e 'require("multer"); require("nodemailer"); require("./src/app"); console.log("BOOTSTRAP_MODULES_OK")'
+          NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/emailOtpAuth.test.js
+          npm run test:security
+          echo "SECURITY_SMOKE_TESTS_PASSED"
+      - name: Commit only validated dependency changes to this PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(git branch --show-current)" = "codex/subscription-weekly-menu-20261016" ]
+          git add package.json package-lock.json
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "security: remove unused Firebase Admin and patch production dependencies"
+          git push origin HEAD:refs/heads/codex/subscription-weekly-menu-20261016
+          echo "DEPENDENCY_REMEDIATION_PUSHED"
