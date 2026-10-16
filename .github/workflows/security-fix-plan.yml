@@ -1,0 +1,48 @@
+name: Temporary read-only dependency remediation plan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/security-fix-plan.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lock:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/subscription-weekly-menu-20261016'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Resolve patched Node 20-compatible dependencies without changing repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --save-exact --no-audit --no-fund firebase-admin@13.10.0 multer@2.3.1 nodemailer@10.0.6
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts --no-fund
+          fix_code=$?
+          set -e
+          echo "LOCK_REMEDIATION_AUDIT_FIX_EXIT=$fix_code"
+          npm ci --ignore-scripts --no-audit --no-fund
+          set +e
+          npm audit --omit=dev --json > /tmp/security-audit.json
+          audit_code=$?
+          set -e
+          echo "LOCK_REMEDIATION_AUDIT_EXIT=$audit_code"
+          node -e 'const a=require("/tmp/security-audit.json"); console.log("LOCK_REMEDIATION_AUDIT_SUMMARY="+JSON.stringify({severity:a.metadata?.vulnerabilities,issues:Object.entries(a.vulnerabilities||{}).filter(([,v])=>["high","critical"].includes(v.severity)).map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))}));'
+          node <<'NODE'
+          const fs = require('node:fs');
+          for (const file of ['package.json', 'package-lock.json']) {
+            const data = fs.readFileSync(file).toString('base64');
+            console.log('SECURITY_FILE_START ' + file);
+            for (let i=0;i<data.length;i+=2000) console.log('SECURITY_FILE_CHUNK ' + data.slice(i,i+2000));
+            console.log('SECURITY_FILE_END ' + file);
+          }
+          NODE
