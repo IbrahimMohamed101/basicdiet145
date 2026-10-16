@@ -14,6 +14,7 @@ require("../src/app");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const User = require("../src/models/User");
+const { getTodayKSADate, addDaysToKSADateString } = require("../src/utils/date");
 const entitlementService = require("../src/services/subscription/subscriptionMealEntitlementService");
 const premiumPaymentService = require("../src/services/subscription/premiumExtraDayPaymentService");
 const {
@@ -107,13 +108,19 @@ async function run() {
       phone: "+966500009907",
       password: "password",
     });
+    const today = getTodayKSADate();
+    const startDate = addDaysToKSADateString(today, 1);
+    const endDate = addDaysToKSADateString(today, 31);
+    const dayOne = addDaysToKSADateString(today, 7);
+    const dayTwo = addDaysToKSADateString(today, 8);
+    const premiumDate = addDaysToKSADateString(today, 9);
     const subscription = await Subscription.create({
       userId: user._id,
       status: "active",
       planId: new mongoose.Types.ObjectId(),
-      startDate: "2026-10-01",
-      endDate: "2026-10-31",
-      validityEndDate: "2026-10-31",
+      startDate,
+      endDate,
+      validityEndDate: endDate,
       totalMeals: 7,
       remainingMeals: 7,
       reservedMeals: 0,
@@ -126,9 +133,9 @@ async function run() {
       premiumBalance: [],
     });
 
-    const regularDayOne = await createCompleteDay(subscription._id, "2026-10-10");
-    const regularDayTwo = await createCompleteDay(subscription._id, "2026-10-11");
-    const premiumDay = await createCompleteDay(subscription._id, "2026-10-12", {
+    const regularDayOne = await createCompleteDay(subscription._id, dayOne);
+    const regularDayTwo = await createCompleteDay(subscription._id, dayTwo);
+    const premiumDay = await createCompleteDay(subscription._id, premiumDate, {
       selectionType: "premium_large_salad",
       premiumSource: "paid_extra",
       premiumKey: "premium_large_salad",
