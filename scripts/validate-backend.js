@@ -48,6 +48,12 @@ const steps = [
     requiredScript: "test:weekly-menu-commercial-safety",
   },
   {
+    title: "Legacy FCM deactivation safety",
+    command: "npm",
+    args: ["run", "test:fcm-disabled-safety"],
+    requiredScript: "test:fcm-disabled-safety",
+  },
+  {
     title: "Mobile API response contracts",
     command: "npm",
     args: ["run", "test:mobile-contracts"],
