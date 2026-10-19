@@ -1,6 +1,7 @@
 "use strict";
 const LandingAnalyticsEvent = require("../models/LandingAnalyticsEvent");
 const LandingLead = require("../models/LandingLead");
+const { summarizeSources } = require("./landingAttribution");
 const { resolveRange } = require("./dashboard/marketingAnalyticsService");
 
 const EVENTS = new Set([
@@ -68,7 +69,7 @@ async function recordEvent(body) {
   }
 }
 function flattenGroups(rows) {
-  return rows.map(row => ({ key: row._id || "direct", count: row.count })).slice(0, 15);
+  return rows.map(row => ({ key: row._id || "unspecified", count: row.count })).slice(0, 15);
 }
 async function groupByField(base, event, field) {
   return LandingAnalyticsEvent.aggregate([
@@ -80,7 +81,7 @@ async function groupByField(base, event, field) {
 async function buildLandingAnalyticsReport({ from, to }) {
   const period = resolveRange(from, to);
   const base = { createdAt: { $gte: period.start, $lte: period.end } };
-  const [totals, daily, uniques, sources, campaigns, devices, ctas, sections, stores, reels, referrers, plans, uniqueLeads] =
+  const [totals, daily, uniques, sourcePairs, campaigns, devices, ctas, sections, stores, reels, referrers, plans, uniqueLeads, leadSourcePairs, leadStatusRows] =
     await Promise.all([
       LandingAnalyticsEvent.aggregate([
         { $match: base }, { $group: { _id: "$event", count: { $sum: 1 } } },
@@ -94,7 +95,10 @@ async function buildLandingAnalyticsReport({ from, to }) {
         { $match: { ...base, event: "lp_view" } },
         { $group: { _id: "$sessionId" } }, { $count: "count" },
       ]),
-      groupByField(base, "lp_view", "source"),
+      LandingAnalyticsEvent.aggregate([
+        { $match: { ...base, event: "lp_view" } },
+        { $group: { _id: { source: "$source", referrerHost: "$referrerHost" }, count: { $sum: 1 } } },
+      ]),
       groupByField(base, "lp_view", "campaign"),
       groupByField(base, "lp_view", "device"),
       groupByField(base, "lp_cta_click", "location"),
@@ -104,7 +108,18 @@ async function buildLandingAnalyticsReport({ from, to }) {
       groupByField(base, "lp_view", "referrerHost"),
       groupByField(base, "lp_cta_click", "planDays"),
       LandingLead.countDocuments({ createdAt: base.createdAt }),
+      LandingLead.aggregate([
+        { $match: { createdAt: base.createdAt } },
+        { $group: { _id: { source: "$source", referrerHost: "$referrerHost" }, count: { $sum: 1 } } },
+      ]),
+      LandingLead.aggregate([
+        { $match: { createdAt: base.createdAt } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+        { $sort: { count: -1, _id: 1 } },
+      ]),
     ]);
+  const sourceSummary = summarizeSources(sourcePairs);
+  const leadSourceSummary = summarizeSources(leadSourcePairs);
   const countMap = Object.fromEntries(totals.map(r => [r._id, r.count]));
   const days = new Map();
   for (const row of daily) {
@@ -131,12 +146,17 @@ async function buildLandingAnalyticsReport({ from, to }) {
       storeClickRate: (countMap.lp_view || 0) ? Number((100 * (countMap.lp_store_click || 0) / countMap.lp_view).toFixed(1)) : 0,
     },
     daily: [...days.values()],
-    sources: flattenGroups(sources), campaigns: flattenGroups(campaigns),
+    sources: sourceSummary.rows,
+    attribution: sourceSummary.attribution,
+    leadSources: leadSourceSummary.rows,
+    leadAttribution: leadSourceSummary.attribution,
+    leadStatuses: flattenGroups(leadStatusRows),
+    campaigns: flattenGroups(campaigns),
     devices: flattenGroups(devices), ctas: flattenGroups(ctas),
     sections: flattenGroups(sections), stores: flattenGroups(stores),
     reels: flattenGroups(reels), referrers: flattenGroups(referrers),
     plans: flattenGroups(plans),
-    note: "Sessions are browser-tab session identifiers, not unique people. Store clicks are intent, not installs or paid subscriptions.",
+    note: "Sources are either tagged with UTM, inferred from referrer, or unattributed. Missing referrers do not prove direct traffic. Sessions are tab identifiers, not people. Lead statuses are staff labels, not verified paid subscriptions.",
     generatedAt: new Date().toISOString(),
   };
 }

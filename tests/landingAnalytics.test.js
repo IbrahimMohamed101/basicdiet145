@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const crypto = require("crypto");
 const { parseEvent, recordEvent } = require("../src/services/landingAnalyticsService");
 const EventModel = require("../src/models/LandingAnalyticsEvent");
+const { classifySource, summarizeSources } = require("../src/services/landingAttribution");
 const { hasValidIngestSecret } = require("../src/routes/landingAnalytics");
 
 const base = () => ({
@@ -11,6 +12,22 @@ const base = () => ({
   device: "android", referrerHost: "www.instagram.com",
 });
 async function run() {
+  assert.deepEqual(classifySource("ig", ""), { key: "instagram", method: "utm" });
+  assert.deepEqual(classifySource("snapchat", "www.google.com"), { key: "snapchat", method: "utm" });
+  assert.deepEqual(classifySource("", "l.instagram.com"), { key: "instagram", method: "referrer" });
+  assert.deepEqual(classifySource("", "www.google.com"), { key: "google", method: "referrer" });
+  assert.deepEqual(classifySource("", "www.google.com.evil.example"), { key: "other_referral", method: "referrer" });
+  assert.deepEqual(classifySource("", "basicdietksa.com"), { key: "unattributed", method: "unattributed" });
+  assert.deepEqual(classifySource("", ""), { key: "unattributed", method: "unattributed" });
+  const summary = summarizeSources([
+    { _id: { source: "ig", referrerHost: "" }, count: 49 },
+    { _id: { source: "", referrerHost: "www.google.com" }, count: 15 },
+    { _id: { source: "", referrerHost: "" }, count: 134 },
+  ]);
+  assert.equal(summary.rows.find(row => row.key === "instagram").count, 49);
+  assert.equal(summary.rows.find(row => row.key === "google").count, 15);
+  assert.equal(summary.rows.find(row => row.key === "unattributed").count, 134);
+  assert.deepEqual(summary.attribution, { utm: 49, referrer: 15, unattributed: 134, total: 198, knownRate: 32.3 });
   const row = parseEvent(base());
   assert.equal(row.event, "lp_view");
   assert.equal(row.campaign, "وجبات_جدة");
