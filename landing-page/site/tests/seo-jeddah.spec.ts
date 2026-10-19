@@ -48,3 +48,22 @@ test("search page remains usable at mobile width", async ({ page }) => {
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(391);
 });
+
+test("homepage links contextually to the Jeddah subscriptions guide", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const guide = page.getByRole("link", { name: /قارن باقات بيسك دايت/ });
+  await expect(guide).toHaveAttribute("href", "/jeddah/healthy-meals");
+});
+
+test("Jeddah page has useful local links, a real meal image and correct breadcrumb JSON-LD", async ({ page }) => {
+  await page.goto("/jeddah/healthy-meals", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: /وجبات دايت في جدة تختارها حسب باقتك/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /موقع المطعم والتواصل/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /دجاج بالزبدة من أمثلة وجبات بيسك دايت/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /موقع Basic Diet على Google Maps/ })).toHaveAttribute("href", /maps.app.goo.gl/);
+  const breadcrumbScript = page.locator('script[type="application/ld+json"]').filter({ hasText: '"BreadcrumbList"' });
+  await expect(breadcrumbScript).toHaveCount(1);
+  const schema = JSON.parse(await breadcrumbScript.textContent() || "{}");
+  expect(schema.itemListElement).toHaveLength(2);
+  expect(schema.itemListElement[1].item).toMatch(/\/jeddah\/healthy-meals$/);
+});

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { AppCta } from "@/components/AppCta";
@@ -16,7 +17,7 @@ const canonical = (() => {
 
 export const metadata: Metadata = {
   title: "اشتراك وجبات صحية في جدة | بيسك دايت Basic Diet",
-  description: "تبحث عن اشتراك وجبات صحية في جدة؟ اختر من باقات Basic Diet لمدة 7 أو 26 أو 30 يومًا، وحدد حجم الوجبة وعدد وجباتك اليومية. اطلب تواصلًا أو حمّل التطبيق.",
+  description: "اشتراكات وجبات صحية ودايت في جدة من بيسك دايت Basic Diet. قارن بين باقات 7 و26 و30 يومًا، واختر 100 أو 150 أو 200 جرام وعدد وجباتك اليومية، مع التوصيل أو الاستلام حسب المتاح.",
   alternates: { canonical },
   openGraph: {
     title: "اشتراكات وجبات صحية في جدة | بيسك دايت Basic Diet",
@@ -25,12 +26,23 @@ export const metadata: Metadata = {
   },
 };
 
+const breadcrumbStructuredData = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "بيسك دايت", item: canonical.replace("/jeddah/healthy-meals", "/") },
+    { "@type": "ListItem", position: 2, name: "اشتراكات وجبات صحية في جدة", item: canonical },
+  ],
+};
+
 const faqs = [
   { q: "كيف أختار اشتراك وجبات صحية مناسبًا في جدة؟", a: "ابدأ بتحديد عدد الأيام والوجبات التي تحتاجها يوميًا، ثم اختر حجم الوجبة وطريقة الاستلام. راجع تفاصيل الباقة والسعر النهائي داخل تطبيق Basic Diet قبل الدفع." },
   { q: "هل توجد اشتراكات وجبات صحية أسبوعية وشهرية؟", a: "توجد خيارات اشتراك لمدة 7 أيام و26 يومًا و30 يومًا. توافر خيارات كل باقة يعتمد على الإعدادات الحالية." },
   { q: "هل أقدر أطلب وجبة واحدة يوميًا؟", a: "تقدر تختار عدد الوجبات من الخيارات المتاحة في الباقة، بما فيها وجبة واحدة عندما تكون مفعّلة." },
   { q: "هل يتم توصيل الاشتراكات لكل أحياء جدة؟", a: "تُراجع تغطية منطقة عنوانك أثناء الطلب؛ لا يمكن تأكيد توصيل كل الأحياء قبل التحقق من موقع العميل." },
   { q: "هل إرسال الطلب من الموقع يُنشئ اشتراكًا مدفوعًا؟", a: "لا. إرسال رقم جوالك من الموقع هو طلب للتواصل معك بشأن الباقة، وليس عملية دفع أو اشتراكًا مؤكدًا." },
+  { q: "ما الفرق بين اشتراك 7 أيام و26 يومًا و30 يومًا؟", a: "الفرق الأساسي هو مدة الباقة؛ اختَر مدة قصيرة للتجربة أو فترة أطول لتخطيط وجباتك. راجع عدد الوجبات والجرامات وخيارات التوصيل والأسعار النهائية لكل باقة داخل التطبيق." },
+  { q: "هل أقدر أختار 100 أو 150 أو 200 جرام؟", a: "هذه أحجام الوجبات المعروضة في بيسك دايت. توافر كل حجم وعدد الوجبات يختلف حسب خيارات الباقة المفعّلة، وتظهر التفاصيل النهائية عند الاختيار." },
 ];
 const plans = [
   { days: 7, title: "اشتراك أسبوعي", copy: "خيار لتجربة تنظيم وجباتك لمدة أقصر." },
@@ -41,6 +53,7 @@ const plans = [
 export default function JeddahHealthyMealsPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbStructuredData) }} />
       <AnalyticsTracker />
       <LeadDialog />
       <Header />
@@ -65,6 +78,10 @@ export default function JeddahHealthyMealsPage() {
               </Link>
             </div>
             <p className="mt-3 text-xs" style={{ color: "#63756d" }}>طلب التواصل مش عملية دفع. الأسعار النهائية بتظهر بعد تحديد خياراتك في التطبيق.</p>
+            <div className="mt-5 flex flex-wrap gap-3 text-sm">
+              <a href="#jeddah-plans-heading" className="font-bold underline underline-offset-4" style={{ color: "#108055" }}>قارن مدد الاشتراكات</a>
+              <a href="#jeddah-faq-heading" className="font-bold underline underline-offset-4" style={{ color: "#108055" }}>أسئلة مهمة قبل الاشتراك</a>
+            </div>
           </div>
 
           <section className="mt-16 md:mt-20" aria-labelledby="jeddah-plans-heading">
@@ -81,6 +98,40 @@ export default function JeddahHealthyMealsPage() {
                   <AppCta location="plans" planDays={plan.days} className="button">استفسر عن الباقة ←</AppCta>
                 </article>
               ))}
+            </div>
+          </section>
+
+          <section className="mt-16 grid gap-7 md:mt-20 md:grid-cols-2 md:items-center" aria-labelledby="jeddah-meals-heading">
+            <div className="overflow-hidden rounded-3xl bg-white" style={{ border: "1px solid #dbe8db" }}>
+              <Image
+                src="/meals/butter-chicken.png"
+                alt="وجبة دجاج بالزبدة من أمثلة وجبات بيسك دايت في جدة"
+                width={920}
+                height={690}
+                sizes="(max-width: 767px) 100vw, 50vw"
+                className="h-auto w-full object-cover"
+                loading="lazy"
+              />
+              <p className="px-4 py-3 text-xs leading-6" style={{ color: "#526c5d" }}>
+                صورة من وجبات بيسك دايت؛ الأصناف المتاحة تتغير حسب المنيو والاشتراك.
+              </p>
+            </div>
+            <div>
+              <h2 id="jeddah-meals-heading" className="text-2xl font-bold leading-snug md:text-3xl">
+                وجبات دايت في جدة تختارها حسب باقتك
+              </h2>
+              <p className="mt-4 leading-8">
+                الاشتراك مش مجرد عدد أيام؛ بعد اختيار المدة تقدر تحدد حجم الوجبة من الخيارات المتاحة،
+                وعدد الوجبات اليومية، ثم تختار أصنافك من قائمة التطبيق.
+                تشوف خيارات الدجاج واللحوم والبحريات حسب المنيو الحالي بدل الاعتماد على قائمة ثابتة.
+              </p>
+              <p className="mt-3 leading-8">
+                قبل إتمام الدفع، راجع تفاصيل التوصيل أو الاستلام ومناطق التغطية في جدة،
+                والإضافات والسعر النهائي للباقة اللي اخترتها.
+              </p>
+              <Link href="/#meals" className="mt-4 inline-flex font-bold underline underline-offset-4" style={{ color: "#108055" }}>
+                شاهد أمثلة من وجبات بيسك دايت
+              </Link>
             </div>
           </section>
 
@@ -103,6 +154,19 @@ export default function JeddahHealthyMealsPage() {
               </p>
               <p className="mt-4 text-sm" style={{ color: "#526c5d" }}>التوصيل والاستلام حسب الخيارات المتاحة ومناطق التغطية في جدة.</p>
               <AppCta location="final" className="button mt-5">ساعدني أختار الاشتراك ←</AppCta>
+            </div>
+          </section>
+
+          <section className="mt-16 rounded-3xl border bg-white p-6 md:mt-20 md:p-8" style={{ borderColor: "#dbe8db" }} aria-labelledby="jeddah-location-heading">
+            <h2 id="jeddah-location-heading" className="text-xl font-bold md:text-2xl">بيسك دايت في جدة — موقع المطعم والتواصل</h2>
+            <p className="mt-3 leading-8">
+              موقع مطعم بيسك دايت في حي السلامة، جدة. قبل الزيارة أو طلب التوصيل،
+              تأكد من أوقات العمل وتغطية عنوانك مع فريق المطعم.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-4 text-sm font-bold">
+              <a href="https://maps.app.goo.gl/CGEn7oQWiKEXJzgG7" target="_blank" rel="noopener noreferrer"
+                 className="underline underline-offset-4" style={{ color: "#108055" }}>موقع Basic Diet على Google Maps ↗</a>
+              <a href="tel:+966535332639" className="underline underline-offset-4" style={{ color: "#108055" }} dir="ltr">+966 53 533 2639</a>
             </div>
           </section>
 
