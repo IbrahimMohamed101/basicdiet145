@@ -22,6 +22,12 @@ export function Plans() {
         </div>
         <div className="plans-shared-options"><strong>في كل الباقات</strong><span dir="ltr">100g / 150g / 200g</span><span>1–5 وجبات يوميًا</span><span>توصيل أو استلام</span></div>
         <p className="plans-note">تختار باقتك داخل التطبيق. السعر النهائي يظهر بعد تخصيص الكمية وعدد الوجبات والإضافات.</p>
+        <p className="mt-4 text-center text-sm leading-7">
+          تدور على اشتراك وجبات صحية في جدة؟
+          {" "}<a href="/jeddah/healthy-meals" className="font-bold underline underline-offset-4" style={{ color: "#108055" }}>
+            قارن باقات بيسك دايت 7 و26 و30 يومًا وتعرّف على خيارات التوصيل والاستلام
+          </a>
+        </p>
       </div>
     </section>
   );
