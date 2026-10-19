@@ -61,9 +61,11 @@ test("Jeddah page has useful local links, a real meal image and correct breadcru
   await expect(page.getByRole("heading", { name: /موقع المطعم والتواصل/ })).toBeVisible();
   await expect(page.getByRole("img", { name: /دجاج بالزبدة من أمثلة وجبات بيسك دايت/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /موقع Basic Diet على Google Maps/ })).toHaveAttribute("href", /maps.app.goo.gl/);
-  const breadcrumbScript = page.locator('script[type="application/ld+json"]').filter({ hasText: '"BreadcrumbList"' });
-  await expect(breadcrumbScript).toHaveCount(1);
-  const schema = JSON.parse(await breadcrumbScript.textContent() || "{}");
+  const rawSchemas = await page.locator('script[type="application/ld+json"]').allTextContents();
+  const schemas = rawSchemas.map(raw => JSON.parse(raw));
+  const breadcrumbSchemas = schemas.filter(schema => schema["@type"] === "BreadcrumbList");
+  expect(breadcrumbSchemas).toHaveLength(1);
+  const schema = breadcrumbSchemas[0];
   expect(schema.itemListElement).toHaveLength(2);
   expect(schema.itemListElement[1].item).toMatch(/\/jeddah\/healthy-meals$/);
 });
