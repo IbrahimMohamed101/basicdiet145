@@ -55,8 +55,9 @@ async function main() {
     const userId = new mongoose.Types.ObjectId();
     const planId = new mongoose.Types.ObjectId();
     const actorId = new mongoose.Types.ObjectId();
-    const startDate = new Date("2026-08-01T00:00:00+03:00");
-    const endDate = new Date("2026-09-30T23:59:59+03:00");
+    const year = new Date().getUTCFullYear();
+    const startDate = new Date(`${year}-01-01T00:00:00+03:00`);
+    const endDate = new Date(`${year + 1}-12-31T23:59:59+03:00`);
 
     await Subscription.create({
       _id: subscriptionId,

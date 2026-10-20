@@ -9,6 +9,7 @@ const quickDayDeductionService = require("../../services/dashboard/subscriptionQ
 const quickDayDeductionLegacyService = require("../../services/dashboard/subscriptionQuickDayDeductionLegacyService");
 const quickDayDeductionSearchService = require("../../services/dashboard/subscriptionQuickDayDeductionSearchService");
 const quickDayDeductionPickupPolicy = require("../../services/dashboard/subscriptionQuickDayDeductionPickupPolicy");
+const { splitQuickDayOptions } = require("../../services/dashboard/subscriptionQuickDayDeductionOptionPresentation");
 
 function handleError(res, error) {
   if (
@@ -40,18 +41,19 @@ async function listOptions(req, res) {
       subscriptionId: req.params.subscriptionId,
       role,
     });
-    data.batches = await quickDayDeductionPickupPolicy.filterPickupOptions(
+    const pickupBatches = await quickDayDeductionPickupPolicy.filterPickupOptions(
       req.params.subscriptionId,
       data.batches
     );
-    if (data.batches.length === 0) {
+    const options = splitQuickDayOptions(data, pickupBatches);
+    if (options.batches.length === 0 && options.manualOnlyBatches.length === 0) {
       const legacyOption = await quickDayDeductionLegacyService.listOption({
         subscriptionId: req.params.subscriptionId,
         role,
       });
-      if (legacyOption) data.batches = [legacyOption];
+      if (legacyOption) options.batches = [legacyOption];
     }
-    return res.status(200).json({ status: true, data });
+    return res.status(200).json({ status: true, data: options });
   } catch (error) {
     return handleError(res, error);
   }
