@@ -1,5 +1,7 @@
 "use strict";
 
+const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
+
 const CHEF_CHOICE_LABEL = { ar: "اختيار الشيف", en: "Chef Choice" };
 const CHEF_CHOICE_NOTICE_AR = "العميل لم يحدد الوجبات، سيتم تجهيز وجبات اختيار الشيف";
 
@@ -17,8 +19,8 @@ function hasExplicitKitchenMeals(day = {}) {
   return false;
 }
 
-function isHomeDeliverySubscription(subscription = {}) {
-  return subscription && subscription.deliveryMode !== "pickup";
+function isHomeDeliverySubscription(subscription = {}, day = {}) {
+  return resolveEffectiveFulfillmentMode({ subscription, day, date: day && day.date }) === "delivery";
 }
 
 function resolveDeliveryWindow(day = {}, subscription = {}) {
@@ -51,7 +53,7 @@ function resolveHomeDeliveryEntitlementCount(day = {}, subscription = {}) {
 }
 
 function isValidHomeDeliveryChefChoiceDay(day = {}, subscription = {}) {
-  if (!isHomeDeliverySubscription(subscription)) return false;
+  if (!isHomeDeliverySubscription(subscription, day)) return false;
   if (!day || !day.date) return false;
   if (!resolveDeliveryWindow(day, subscription)) return false;
   if (!resolveDeliveryAddress(day, subscription)) return false;
