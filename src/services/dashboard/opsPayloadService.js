@@ -659,7 +659,7 @@ function buildKitchenDetailsPayload(day = {}, subscription = {}, lang = "en", ca
     const missingCount = Math.max(0, requiredCount - mealSlots.length);
     if (
       missingCount > 0
-      && isHomeDeliverySubscription(subscription)
+      && isHomeDeliverySubscription(subscription, day)
       && resolveDeliveryWindow(day, subscription)
       && resolveDeliveryAddress(day, subscription)
     ) {
