@@ -231,6 +231,9 @@ function createQuickDayDeductionService(runtimeOverrides = null) {
           planId: String(batch.planId || ""),
           planName: plan && plan.name ? plan.name : null,
           status: batch.status,
+          fulfillmentMethod: ["pickup", "delivery"].includes(String(batch.deliverySnapshot && batch.deliverySnapshot.mode || ""))
+            ? String(batch.deliverySnapshot.mode)
+            : "unspecified",
           mealsPerDay: Number(batch.mealsPerDay || 0),
           proteinGrams: Number(batch.proteinGrams || 0),
           totalMeals: Number(batch.totalMeals || 0),
