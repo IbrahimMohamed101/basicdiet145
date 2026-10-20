@@ -7,6 +7,7 @@ const SubscriptionPickupRequest = require("../../models/SubscriptionPickupReques
 const Subscription = require("../../models/Subscription");
 const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
 const { validateSubscriptionDayOperationalGate } = require("../../services/dashboard/subscriptionDayOperationalGateService");
+const { resolveEffectiveFulfillmentMode } = require("../../services/subscription/subscriptionFulfillmentPolicyService");
 const {
   resolveBusinessDate,
   canRecoverHistoricalDeliveryFulfillment,
@@ -125,8 +126,7 @@ async function handleAction(req, res) {
       const sub = await Subscription.findById(doc.subscriptionId)
         .select("deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
         .lean();
-      const mode = sub && sub.deliveryMode === "pickup" ? "pickup" : "delivery";
-      const effectiveMode = doc.fulfillmentModeOverride || mode;
+      const effectiveMode = resolveEffectiveFulfillmentMode({ subscription: sub, day: doc, date: doc.date });
       const targetBusinessDate = resolveBusinessDate(doc);
       const historicalDeliveryRecovery = canRecoverHistoricalDeliveryFulfillment({
         entityType,
@@ -253,8 +253,8 @@ async function readyForDelivery(req, res) {
       .select("deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress")
       .lean();
 
-    if (!sub || sub.deliveryMode !== "delivery") {
-      return errorResponse(res, 400, "DELIVERY_MODE_REQUIRED", "Only applies to delivery subscriptions");
+    if (!sub || resolveEffectiveFulfillmentMode({ subscription: sub, day: doc, date: doc.date }) !== "delivery") {
+      return errorResponse(res, 400, "DELIVERY_MODE_REQUIRED", "Only applies to delivery subscription days");
     }
 
     if (doc.status === "ready_for_delivery") {
