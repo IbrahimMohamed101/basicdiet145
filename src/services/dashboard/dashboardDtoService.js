@@ -15,6 +15,8 @@ const {
 } = require("./opsPayloadService");
 const { buildKitchenProjection } = require("./kitchenProjectionService");
 const { DEFAULT_PICKUP_LOCATION } = require("../../constants/defaultPickupLocation");
+const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
+const { validateSubscriptionDayOperationalGate } = require("./subscriptionDayOperationalGateService");
 
 /**
  * Service to map internal models to the UnifiedOperationalDTO.
@@ -62,7 +64,7 @@ function resolveUiMetadata(status, lang) {
 function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, catalogMaps = {}, pickupRequest = null) {
   const status = day.status;
   const baseMode = subscription && subscription.deliveryMode === "pickup" ? "pickup" : "delivery";
-  const mode = day && day.fulfillmentModeOverride ? day.fulfillmentModeOverride : baseMode;
+  const mode = resolveEffectiveFulfillmentMode({ subscription, day, date: day && day.date });
   const ui = resolveUiMetadata(status, lang);
   const fulfillmentState = buildSubscriptionDayFulfillmentState({
     subscription,
@@ -85,6 +87,12 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, 
       (action) => !["prepare", "ready_for_pickup", "fulfill"].includes(action.id)
     );
   }
+
+  // Do not offer an action that the backend will immediately reject.
+  // Especially important for quantity-only stacked home-delivery days.
+  allowedActions = allowedActions.filter((action) => (
+    validateSubscriptionDayOperationalGate(day, action.id, { subscription }).allowed
+  ));
 
   const plan = buildPlanPayload(subscription, lang);
   const kitchenDetails = buildKitchenDetailsPayload(day, subscription, lang, catalogMaps);
