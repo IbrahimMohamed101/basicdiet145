@@ -62,17 +62,18 @@ function normalizeRootFulfillmentMode(subscription = {}) {
 function resolveEffectiveFulfillmentMode({ subscription, day, date } = {}) {
   const normalizedMode = normalizeRootFulfillmentMode(subscription);
   const overrideMode = String(day && day.fulfillmentModeOverride || "").trim();
-  const effectiveDate = String(date || (day && day.date) || "").trim();
-  const isFirstDay = isFirstSubscriptionDay({ subscription, date: effectiveDate });
-
-  if (["pickup", "delivery"].includes(overrideMode) && (isFirstDay || !subscription || !subscription.startDate)) {
+  // Persisted SubscriptionDay overrides are also written for every day of a
+  // stacked package whose fulfillment mode differs from its parent container.
+  // They are not restricted to the original subscription's first day.
+  if (["pickup", "delivery"].includes(overrideMode)) {
     return overrideMode;
   }
   return normalizedMode;
 }
 
 function hasFirstDayPickupOverride({ subscription, day, date } = {}) {
-  return resolveEffectiveFulfillmentMode({ subscription, day, date }) === "pickup"
+  return isFirstSubscriptionDay({ subscription, date: date || (day && day.date) })
+    && resolveEffectiveFulfillmentMode({ subscription, day, date }) === "pickup"
     && normalizeRootFulfillmentMode(subscription) === "delivery";
 }
 
@@ -81,9 +82,9 @@ function buildFulfillmentPolicy({ subscription, day, date } = {}) {
   const effectiveDate = String(date || (day && day.date) || "").trim();
   const isFirstDay = isFirstSubscriptionDay({ subscription, date: effectiveDate });
   const effectiveFulfillmentMode = resolveEffectiveFulfillmentMode({ subscription, day, date: effectiveDate });
-  const allowedMethods = normalizedMode === "pickup"
-    ? ["pickup"]
-    : (effectiveFulfillmentMode === "pickup" && isFirstDay ? ["pickup"] : ["delivery"]);
+  // Use the effective day method for both the original first-day override
+  // and later stacked packages (pickup -> delivery or delivery -> pickup).
+  const allowedMethods = [effectiveFulfillmentMode];
 
   return {
     subscriptionMode: normalizedMode,
