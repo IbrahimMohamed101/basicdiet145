@@ -128,7 +128,9 @@ function mapDay(day, latestAction, zoneMap, lang, role, delivery = null, catalog
     mode,
     role,
     lang,
-  });
+  }).filter((action) => (
+    validateSubscriptionDayOperationalGate(day, action.id, { subscription }).allowed
+  ));
 
   const deliveryPayload = buildDeliveryPayload(delivery, {
     date: day.date,
