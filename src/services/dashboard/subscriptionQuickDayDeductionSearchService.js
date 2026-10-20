@@ -96,6 +96,9 @@ async function search({ q, role, limit = 10 } = {}) {
     $or: [
       { deliveryMode: "pickup" },
       { _id: { $in: explicitPickupContainerIds } },
+      // Delivery renewals may be stacked into pickup containers and vice versa.
+      // Search all active service modes, but keep pickup-only mutation guards.
+      { deliveryMode: "delivery" },
     ],
   }).select("_id userId status deliveryMode remainingMeals selectedMealsPerDay createdAt")
     .sort({ createdAt: -1 })
