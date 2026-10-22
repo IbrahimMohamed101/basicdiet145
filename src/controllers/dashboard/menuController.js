@@ -144,6 +144,7 @@ const listOptionsEndpoint = wrap(async (req, res) => send(res, await service.lis
 const createOption = wrap(async (req, res) => send(res, await service.createOption(req.body, actorFromRequest(req)), 201));
 const getOption = wrap(async (req, res) => send(res, await service.getOption(req.params.id, listOptions(req))));
 const updateOption = wrap(async (req, res) => send(res, await service.updateOption(req.params.id, req.body, actorFromRequest(req))));
+const approveOptionNutrition = wrap(async (req, res) => send(res, await service.approveOptionNutrition(req.params.id, req.body, actorFromRequest(req))));
 const updateOptionVisibility = wrap(async (req, res) => send(res, await service.updateOptionVisibility(req.params.id, req.body, actorFromRequest(req))));
 const updateOptionAvailability = wrap(async (req, res) => send(res, await service.updateOptionAvailability(req.params.id, req.body, actorFromRequest(req))));
 const deleteOption = wrap(async (req, res) => send(res, await service.deleteOption(req.params.id, actorFromRequest(req))));
@@ -265,6 +266,7 @@ module.exports = {
   createOption,
   getOption,
   updateOption,
+  approveOptionNutrition,
   updateOptionVisibility,
   updateOptionAvailability,
   deleteOption,
