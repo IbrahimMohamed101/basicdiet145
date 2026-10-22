@@ -184,6 +184,12 @@ function createMenuCatalogAdminService(deps) {
       availableFor: payload.availableFor || ["one_time", "subscription"],
       availableForSubscription: payload.availableForSubscription !== undefined ? payload.availableForSubscription : true,
       nutrition: payload.nutrition || { calories: 0, proteinGrams: 0, carbGrams: 0, fatGrams: 0 },
+      nutritionDataStatus: payload.nutritionDataStatus || "unknown",
+      nutritionSource: payload.nutritionSource || "",
+      nutritionBasis: payload.nutritionBasis || null,
+      nutritionServingSizeGrams: payload.nutritionServingSizeGrams ?? null,
+      nutritionVerifiedAt: payload.nutritionVerifiedAt || null,
+      nutritionVerifiedBy: payload.nutritionVerifiedBy || null,
       proteinFamilyKey: payload.proteinFamilyKey || "",
       displayCategoryKey: payload.displayCategoryKey || "",
       resolvedFamilyKey: familyResolution.familyKey || "",
@@ -894,6 +900,25 @@ function createMenuCatalogAdminService(deps) {
     return payload;
   }
 
+  function normalizeOptionNutritionInput(value) {
+    if (!isPlainObject(value)) {
+      throw new MenuValidationError("nutrition must be a complete object", "NUTRITION_FIELDS_REQUIRED", 422);
+    }
+    const parsed = {};
+    for (const field of ["calories", "proteinGrams", "carbGrams", "fatGrams"]) {
+      const input = field === "carbGrams" ? (value.carbGrams ?? value.carbsGrams) : value[field];
+      if (input === undefined || input === null || input === "") {
+        throw new MenuValidationError(`nutrition.${field} is required`, "NUTRITION_FIELDS_REQUIRED", 422);
+      }
+      const number = Number(input);
+      if (!Number.isFinite(number) || number < 0) {
+        throw new MenuValidationError(`nutrition.${field} must be non-negative`, "NUTRITION_INVALID", 422);
+      }
+      parsed[field] = number;
+    }
+    return parsed;
+  }
+
   function normalizeOptionPayload(body = {}, existing = null) {
     if (!isPlainObject(body)) throw new MenuValidationError("Request body must be an object");
     assertImmutableKey(body, existing, "key");
@@ -976,6 +1001,22 @@ function createMenuCatalogAdminService(deps) {
     if (!existing || hasOwn(body, "isVisible")) payload.isVisible = normalizeBoolean(body.isVisible, "isVisible", true);
     if (!existing || hasOwn(body, "isAvailable")) payload.isAvailable = normalizeBoolean(body.isAvailable, "isAvailable", true);
     if (!existing || hasOwn(body, "sortOrder")) payload.sortOrder = normalizeNonNegativeInteger(body.sortOrder, "sortOrder", 0);
+    if (hasOwn(body, "nutrition")) {
+      if (payload.catalogItemId || existing?.catalogItemId) {
+        throw new MenuValidationError(
+          "Linked options must update nutrition via their CatalogItem",
+          "NUTRITION_CANONICAL_SOURCE_REQUIRED",
+          422
+        );
+      }
+      payload.nutrition = normalizeOptionNutritionInput(body.nutrition);
+      payload.nutritionDataStatus = "unknown";
+      payload.nutritionSource = "";
+      payload.nutritionBasis = null;
+      payload.nutritionServingSizeGrams = null;
+      payload.nutritionVerifiedAt = null;
+      payload.nutritionVerifiedBy = null;
+    }
     return payload;
   }
 
@@ -1595,6 +1636,58 @@ function createMenuCatalogAdminService(deps) {
     if (Object.prototype.hasOwnProperty.call(payload, "imageUrl")) {
       await mirrorCompatibilityImage(BuilderProtein, id, payload.imageUrl);
     }
+    return serializeDashboardOption(option);
+  }
+
+  async function approveOptionNutrition(id, body = {}, actor = {}) {
+    assertObjectId(id, "optionId");
+    if (!["admin", "superadmin"].includes(String(actor.role || ""))) {
+      throw new MenuValidationError("Nutrition approval requires admin review", "NUTRITION_APPROVAL_FORBIDDEN", 403);
+    }
+    if (!mongoose.Types.ObjectId.isValid(String(actor.userId || ""))) {
+      throw new MenuValidationError("Authenticated nutrition reviewer is required", "NUTRITION_REVIEWER_REQUIRED", 422);
+    }
+    const nutrition = normalizeOptionNutritionInput(body.nutrition);
+    const nutritionSource = typeof body.nutritionSource === "string" ? body.nutritionSource.trim() : "";
+    const nutritionBasis = String(body.nutritionBasis || "");
+    const nutritionServingSizeGrams = Number(body.nutritionServingSizeGrams);
+    if (nutritionSource.length < 5 || nutritionSource.length > 500) {
+      throw new MenuValidationError("Documented nutritionSource is required", "NUTRITION_SOURCE_REQUIRED", 422);
+    }
+    if (!["per_serving", "per_100g"].includes(nutritionBasis)
+      || !Number.isFinite(nutritionServingSizeGrams) || nutritionServingSizeGrams <= 0
+      || (nutritionBasis === "per_100g" && nutritionServingSizeGrams !== 100)) {
+      throw new MenuValidationError("Valid serving basis and size are required", "NUTRITION_SERVING_REQUIRED", 422);
+    }
+    const option = await MenuOption.findById(id);
+    if (!option) throw new MenuNotFoundError("Option not found");
+    await assertOptionNotInQuarantinedGroup(option);
+    if (option.catalogItemId) {
+      throw new MenuValidationError(
+        "Linked options must be approved via their CatalogItem",
+        "NUTRITION_CANONICAL_SOURCE_REQUIRED",
+        422
+      );
+    }
+    const before = option.toObject();
+    option.set({
+      nutrition,
+      nutritionDataStatus: "verified",
+      nutritionSource,
+      nutritionBasis,
+      nutritionServingSizeGrams,
+      nutritionVerifiedBy: actor.userId,
+      nutritionVerifiedAt: new Date(),
+    });
+    await option.save();
+    await writeMenuAudit({
+      entityType: "menu_option",
+      entityId: option._id,
+      action: "nutrition_verified",
+      before,
+      after: option.toObject(),
+      actor,
+    });
     return serializeDashboardOption(option);
   }
 
@@ -2758,6 +2851,7 @@ function createMenuCatalogAdminService(deps) {
     updateProduct,
     updateOptionGroup,
     updateOption,
+    approveOptionNutrition,
     ensureOptionProteinFamilyForCard,
     updateCategoryVisibility,
     updateCategoryAvailability,
