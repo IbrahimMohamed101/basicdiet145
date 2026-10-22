@@ -1624,6 +1624,15 @@ function createMenuCatalogAdminService(deps) {
     if (!existing) throw new MenuNotFoundError();
     await assertOptionNotInQuarantinedGroup(existing);
     const payload = normalizeOptionPayload(body, existing);
+    if (hasOwn(body, "nutrition") && existing.isActive !== false
+      && existing.isVisible !== false && existing.isAvailable !== false
+      && existing.publishedAt) {
+      throw new MenuValidationError(
+        "Published option nutrition must be changed through the reviewed approval endpoint",
+        "PUBLISHED_NUTRITION_REQUIRES_APPROVAL",
+        409
+      );
+    }
     const ownerGroup = await MenuOptionGroup.findById(existing.groupId).lean();
     if (!ownerGroup) throw new MenuValidationError("groupId does not reference an option group", "GROUP_NOT_FOUND", 404);
     if (hasOwn(body, "proteinFamilyKey") || hasOwn(body, "displayCategoryKey")) {
