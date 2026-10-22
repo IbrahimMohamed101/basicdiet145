@@ -25,6 +25,7 @@ router.use(dashboardMutationRoleMiddleware(["admin", "superadmin", "restaurant"]
 router.use(dashboardMenuUiNullCompatibility);
 
 router.get("/preview", asyncHandler(controller.getPreview));
+router.get("/nutrition-audit", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.getNutritionAudit));
 
 router.get("/categories", asyncHandler(controller.listCategories));
 router.post("/categories", asyncHandler(controller.createCategory));
