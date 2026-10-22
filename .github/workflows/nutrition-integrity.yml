@@ -17,6 +17,7 @@ on:
       - "src/routes/dashboardCatalogItems.js"
       - "src/routes/dashboardMenu.js"
       - "tests/nutritionIntegrityContract.test.js"
+      - "tests/nutritionApprovalIsolatedDb.integration.test.js"
       - "tests/menuOptionNutritionVerificationDefault.test.js"
       - ".github/workflows/nutrition-integrity.yml"
   workflow_dispatch:
@@ -30,6 +31,7 @@ jobs:
     timeout-minutes: 15
     env:
       NODE_ENV: test
+      MONGOMS_VERSION: 7.0.14
       JWT_SECRET: nutrition-contract-test-secret
       DASHBOARD_JWT_SECRET: nutrition-dashboard-contract-test-secret
     steps:
@@ -58,3 +60,5 @@ jobs:
           node tests/menuOptionNutritionVerificationDefault.test.js
           node tests/menuNutritionPresentation.test.js
           node tests/nutritionIntegrityContract.test.js
+      - name: Isolated Mongo review and live-edit protection
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/nutritionApprovalIsolatedDb.integration.test.js
