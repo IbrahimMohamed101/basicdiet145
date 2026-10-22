@@ -18,5 +18,6 @@ router.get("/", asyncHandler(controller.listCatalogItems));
 router.post("/", asyncHandler(controller.createCatalogItem));
 router.get("/:id", asyncHandler(controller.getCatalogItem));
 router.patch("/:id", asyncHandler(controller.updateCatalogItem));
+router.post("/:id/nutrition/approve", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.approveCatalogItemNutrition));
 
 module.exports = router;
