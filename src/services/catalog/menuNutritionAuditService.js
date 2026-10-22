@@ -92,10 +92,13 @@ function buildReport({ products = [], options = [], catalogItems = [] } = {}) {
   };
 }
 
-async function getNutritionAudit() {
+async function getNutritionAudit({ includeDrafts = false } = {}) {
+  const query = includeDrafts
+    ? { isActive: true, isVisible: { $ne: false }, isAvailable: { $ne: false } }
+    : LIVE_QUERY;
   const [products, options] = await Promise.all([
-    MenuProduct.find(LIVE_QUERY).select("_id key catalogItemId pricingModel").lean(),
-    MenuOption.find(LIVE_QUERY).select("_id key catalogItemId nutrition nutritionDataStatus nutritionSource nutritionVerifiedAt nutritionVerifiedBy").lean(),
+    MenuProduct.find(query).select("_id key catalogItemId pricingModel").lean(),
+    MenuOption.find(query).select("_id key catalogItemId nutrition nutritionDataStatus nutritionSource nutritionVerifiedAt nutritionVerifiedBy").lean(),
   ]);
   const catalogIds = [...new Set([...products, ...options].filter((r) => r.catalogItemId).map((r) => String(r.catalogItemId)))];
   const catalogItems = catalogIds.length
