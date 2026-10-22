@@ -52,8 +52,9 @@ async function main() {
     assert.strictEqual((await CatalogItem.findById(item._id)).nutritionDataStatus, "verified");
 
     // A published product cannot receive an unreviewed ordinary nutritional edit.
-    await MenuProduct.create({
+    const product = await MenuProduct.create({
       categoryId: new mongoose.Types.ObjectId(),
+      isCustomizable: true,
       catalogItemId: item._id,
       key: "approved_dish",
       name: { en: "Approved Dish" },
@@ -74,6 +75,14 @@ async function main() {
       publishedAt: new Date(),
     });
     assert.strictEqual(sauce.nutritionDataStatus, "unknown");
+    await require("../src/models/ProductOptionGroup").create({
+      productId: product._id, groupId: group._id,
+      isActive: true, isVisible: true, isAvailable: true,
+    });
+    await require("../src/models/ProductGroupOption").create({
+      productId: product._id, groupId: group._id, optionId: sauce._id,
+      isActive: true, isVisible: true, isAvailable: true,
+    });
     process.env.MENU_NUTRITION_APPROVAL_GATE = "true";
     await assert.rejects(
       () => menuService.publishMenu({ actor: reviewer }),
