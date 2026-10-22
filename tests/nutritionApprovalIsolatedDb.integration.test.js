@@ -74,6 +74,12 @@ async function main() {
       publishedAt: new Date(),
     });
     assert.strictEqual(sauce.nutritionDataStatus, "unknown");
+    process.env.MENU_NUTRITION_APPROVAL_GATE = "true";
+    await assert.rejects(
+      () => menuService.publishMenu({ actor: reviewer }),
+      (e) => e.code === "MENU_NUTRITION_APPROVAL_REQUIRED"
+    );
+    assert.strictEqual(await require("../src/models/MenuVersion").countDocuments({}), 0);
     await assert.rejects(
       () => menuService.updateOption(String(sauce._id), { nutrition: optionNutrition }, reviewer),
       (e) => e.code === "PUBLISHED_NUTRITION_REQUIRES_APPROVAL"
@@ -87,8 +93,12 @@ async function main() {
     assert.strictEqual(sauceApproved.nutritionDataStatus, "verified");
     assert.strictEqual(sauceApproved.nutrition.calories, 25);
     assert(await MenuAuditLog.exists({ entityType: "menu_option", entityId: sauce._id, action: "nutrition_verified" }));
+    const release = await menuService.publishMenu({ actor: reviewer });
+    assert.strictEqual(release.status, "published");
+    assert.strictEqual(await require("../src/models/MenuVersion").countDocuments({ status: "published" }), 1);
     console.log("nutritionApprovalIsolatedDb: passed");
   } finally {
+    delete process.env.MENU_NUTRITION_APPROVAL_GATE;
     await mongoose.disconnect();
     await db.stop();
   }
