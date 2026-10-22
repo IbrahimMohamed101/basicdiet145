@@ -36,10 +36,12 @@ const listCatalogItems = wrap(async (req, res) => send(res, await service.listCa
 const getCatalogItem = wrap(async (req, res) => send(res, await service.getCatalogItem(req.params.id)));
 const createCatalogItem = wrap(async (req, res) => send(res, await service.createCatalogItem(req.body), 201));
 const updateCatalogItem = wrap(async (req, res) => send(res, await service.updateCatalogItem(req.params.id, req.body)));
+const approveCatalogItemNutrition = wrap(async (req, res) => send(res, await service.approveCatalogItemNutrition(req.params.id, req.body, { userId: req.dashboardUserId, role: req.dashboardUserRole })));
 
 module.exports = {
   listCatalogItems,
   getCatalogItem,
   createCatalogItem,
   updateCatalogItem,
+  approveCatalogItemNutrition,
 };
