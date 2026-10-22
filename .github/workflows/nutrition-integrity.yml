@@ -11,6 +11,7 @@ on:
       - "src/services/orders/menuCatalogAdminService.js"
       - "src/services/orders/menuCatalogPresenter.js"
       - "src/services/orders/menuCatalogService.js"
+      - "src/services/orders/menuReleaseService.js"
       - "src/services/orders/orderMenuService.js"
       - "src/controllers/dashboard/catalogItemController.js"
       - "src/controllers/dashboard/menuController.js"
@@ -50,6 +51,7 @@ jobs:
           node --check src/services/orders/menuCatalogAdminService.js
           node --check src/services/orders/menuCatalogPresenter.js
           node --check src/services/orders/menuCatalogService.js
+          node --check src/services/orders/menuReleaseService.js
           node --check src/services/orders/orderMenuService.js
           node --check src/controllers/dashboard/catalogItemController.js
           node --check src/controllers/dashboard/menuController.js
