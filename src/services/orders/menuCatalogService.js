@@ -769,6 +769,7 @@ module.exports = {
   updateProduct: (id, body, actor) => menuCatalogAdminService.updateProduct(id, body, actor),
   updateOptionGroup: (id, body, actor) => menuCatalogAdminService.updateOptionGroup(id, body, actor),
   updateOption: (id, body, actor) => menuCatalogAdminService.updateOption(id, body, actor),
+  approveOptionNutrition: (id, body, actor) => menuCatalogAdminService.approveOptionNutrition(id, body, actor),
   updateCategoryVisibility: (id, body, actor) => menuCatalogAdminService.updateCategoryVisibility(id, body, actor),
   updateCategoryAvailability: (id, body, actor) => menuCatalogAdminService.updateCategoryAvailability(id, body, actor),
   updateProductVisibility: (id, body, actor) => menuCatalogAdminService.updateProductVisibility(id, body, actor),
