@@ -46,7 +46,9 @@ const MenuOptionSchema = new mongoose.Schema(
     nutritionDataStatus: {
       type: String,
       enum: ["unknown", "verified"],
-      default: "verified",
+      // Newly created options are not approved until nutrition has been reviewed.
+      // Existing documents and explicit approvals remain untouched.
+      default: "unknown",
       index: true,
     },
     proteinFamilyKey: { type: String, default: "", trim: true },
