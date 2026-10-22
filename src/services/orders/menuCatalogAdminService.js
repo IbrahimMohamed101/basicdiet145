@@ -1512,7 +1512,9 @@ function createMenuCatalogAdminService(deps) {
     // Domain rule: publishedAt is the customer-visibility gate (see truthy() and activeIssue()).
     // isActive=true on dashboard creation means the admin intends this to be immediately
     // customer-visible. Setting publishedAt here is intentional and domain-correct.
-    if (payload.isActive) {
+    // In strict mode, new sellable records stay draft until nutrition is
+    // reviewed and the complete menu passes the explicit publish preflight.
+    if (payload.isActive && process.env.MENU_NUTRITION_APPROVAL_GATE !== "true") {
       payload.publishedAt = new Date();
     }
     const category = await MenuCategory.findOne({ _id: payload.categoryId, isActive: true }).lean();
@@ -1559,7 +1561,9 @@ function createMenuCatalogAdminService(deps) {
     // Domain rule: publishedAt is the customer-visibility gate (see truthy() and activeIssue()).
     // isActive=true on dashboard creation means the admin intends this to be immediately
     // customer-visible. Setting publishedAt here is intentional and domain-correct.
-    if (payload.isActive) {
+    // In strict mode, new sellable records stay draft until nutrition is
+    // reviewed and the complete menu passes the explicit publish preflight.
+    if (payload.isActive && process.env.MENU_NUTRITION_APPROVAL_GATE !== "true") {
       payload.publishedAt = new Date();
     }
     if (payload.catalogItemId) await assertCatalogItemLinkable(payload.catalogItemId);
