@@ -4,6 +4,7 @@ const CatalogItem = require("../../models/CatalogItem");
 const MenuCategory = require("../../models/MenuCategory");
 const MenuOption = require("../../models/MenuOption");
 const MenuProduct = require("../../models/MenuProduct");
+const MenuAuditLog = require("../../models/MenuAuditLog");
 const ProductGroupOption = require("../../models/ProductGroupOption");
 const { generateUniqueKey } = require("./catalogKeyUiHelpers");
 
@@ -241,6 +242,28 @@ async function updateCatalogItem(id, body = {}) {
   assertObjectId(id);
   const row = await CatalogItem.findById(id);
   if (!row) throw new CatalogItemError("CatalogItem not found", "CATALOG_ITEM_NOT_FOUND", 404);
+  // Never let an ordinary dashboard edit silently replace already-public nutrition.
+  // The approval endpoint replaces values and evidence in one reviewed operation.
+  if (Object.prototype.hasOwnProperty.call(body, "nutrition")) {
+    const liveQuery = {
+      catalogItemId: row._id,
+      isActive: true,
+      isVisible: { $ne: false },
+      isAvailable: { $ne: false },
+      publishedAt: { $ne: null },
+    };
+    const [liveProduct, liveOption] = await Promise.all([
+      MenuProduct.exists(liveQuery),
+      MenuOption.exists(liveQuery),
+    ]);
+    if (liveProduct || liveOption) {
+      throw new CatalogItemError(
+        "Published nutrition must be changed through the reviewed nutrition approval endpoint",
+        "PUBLISHED_NUTRITION_REQUIRES_APPROVAL",
+        409
+      );
+    }
+  }
   const beforeKind = row.itemKind;
   const payload = normalizePayload(body, row.toObject());
   if (body.itemKind !== undefined && payload.itemKind !== beforeKind) {
@@ -313,6 +336,7 @@ async function approveCatalogItemNutrition(id, body = {}, actor = {}) {
   }
   const row = await CatalogItem.findById(id);
   if (!row) throw new CatalogItemError("CatalogItem not found", "CATALOG_ITEM_NOT_FOUND", 404);
+  const before = row.toObject();
   row.set({
     nutrition: normalized,
     nutritionDataStatus: "verified",
@@ -323,6 +347,16 @@ async function approveCatalogItemNutrition(id, body = {}, actor = {}) {
     nutritionVerifiedAt: new Date(),
   });
   await row.save();
+  await MenuAuditLog.create({
+    entityType: "catalog_item",
+    entityId: row._id,
+    action: "nutrition_verified",
+    before,
+    after: row.toObject(),
+    actorId: actor.userId,
+    actorRole: actor.role,
+    meta: { nutritionSource: source, nutritionBasis: basis, nutritionServingSizeGrams: serving },
+  });
   const counts = await countUsageForIds([row._id]);
   return serialize(row, counts.get(String(row._id)));
 }
