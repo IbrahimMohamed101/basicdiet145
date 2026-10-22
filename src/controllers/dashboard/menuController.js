@@ -1,4 +1,5 @@
 const service = require("../../services/orders/menuCatalogService");
+const nutritionAuditService = require("../../services/catalog/menuNutritionAuditService");
 const errorResponse = require("../../utils/errorResponse");
 
 function actorFromRequest(req) {
@@ -101,6 +102,7 @@ const bulkAssignProductsToCategory = wrap(async (req, res) => send(res, await se
   actorFromRequest(req)
 )));
 const getPreview = wrap(async (req, res) => send(res, await service.getDashboardMenuPreview(listOptions(req))));
+const getNutritionAudit = wrap(async (req, res) => send(res, await nutritionAuditService.getNutritionAudit()));
 
 const listProducts = wrap(async (req, res) => send(res, await service.listProducts(listOptions(req))));
 const createProduct = wrap(async (req, res) => send(res, await service.createProduct(req.body, actorFromRequest(req)), 201));
@@ -230,6 +232,7 @@ module.exports = {
   reorderCategories,
   bulkAssignProductsToCategory,
   getPreview,
+  getNutritionAudit,
   listProducts,
   createProduct,
   getProduct,
