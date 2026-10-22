@@ -49,6 +49,18 @@ const CatalogItemSchema = new mongoose.Schema(
       index: true,
     },
     nutrition: { type: NutritionSchema, default: () => ({}) },
+    // No nutritional values are automatically approved by default.
+    nutritionDataStatus: {
+      type: String,
+      enum: ["unknown", "verified"],
+      default: "unknown",
+      index: true,
+    },
+    nutritionSource: { type: String, trim: true, default: "" },
+    nutritionBasis: { type: String, enum: ["per_serving", "per_100g", null], default: null },
+    nutritionServingSizeGrams: { type: Number, default: null, min: 0 },
+    nutritionVerifiedAt: { type: Date, default: null },
+    nutritionVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
     isActive: { type: Boolean, default: true, index: true },
     isAvailable: { type: Boolean, default: true, index: true },
   },
