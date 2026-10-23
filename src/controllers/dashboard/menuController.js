@@ -1,4 +1,5 @@
 const service = require("../../services/orders/menuCatalogService");
+const nutritionAuditService = require("../../services/catalog/menuNutritionAuditService");
 const errorResponse = require("../../utils/errorResponse");
 
 function actorFromRequest(req) {
@@ -101,6 +102,7 @@ const bulkAssignProductsToCategory = wrap(async (req, res) => send(res, await se
   actorFromRequest(req)
 )));
 const getPreview = wrap(async (req, res) => send(res, await service.getDashboardMenuPreview(listOptions(req))));
+const getNutritionAudit = wrap(async (req, res) => send(res, await nutritionAuditService.getNutritionAudit()));
 
 const listProducts = wrap(async (req, res) => send(res, await service.listProducts(listOptions(req))));
 const createProduct = wrap(async (req, res) => send(res, await service.createProduct(req.body, actorFromRequest(req)), 201));
@@ -142,6 +144,7 @@ const listOptionsEndpoint = wrap(async (req, res) => send(res, await service.lis
 const createOption = wrap(async (req, res) => send(res, await service.createOption(req.body, actorFromRequest(req)), 201));
 const getOption = wrap(async (req, res) => send(res, await service.getOption(req.params.id, listOptions(req))));
 const updateOption = wrap(async (req, res) => send(res, await service.updateOption(req.params.id, req.body, actorFromRequest(req))));
+const approveOptionNutrition = wrap(async (req, res) => send(res, await service.approveOptionNutrition(req.params.id, req.body, actorFromRequest(req))));
 const updateOptionVisibility = wrap(async (req, res) => send(res, await service.updateOptionVisibility(req.params.id, req.body, actorFromRequest(req))));
 const updateOptionAvailability = wrap(async (req, res) => send(res, await service.updateOptionAvailability(req.params.id, req.body, actorFromRequest(req))));
 const deleteOption = wrap(async (req, res) => send(res, await service.deleteOption(req.params.id, actorFromRequest(req))));
@@ -230,6 +233,7 @@ module.exports = {
   reorderCategories,
   bulkAssignProductsToCategory,
   getPreview,
+  getNutritionAudit,
   listProducts,
   createProduct,
   getProduct,
@@ -262,6 +266,7 @@ module.exports = {
   createOption,
   getOption,
   updateOption,
+  approveOptionNutrition,
   updateOptionVisibility,
   updateOptionAvailability,
   deleteOption,

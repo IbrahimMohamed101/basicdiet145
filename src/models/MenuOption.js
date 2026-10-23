@@ -46,9 +46,16 @@ const MenuOptionSchema = new mongoose.Schema(
     nutritionDataStatus: {
       type: String,
       enum: ["unknown", "verified"],
-      default: "verified",
+      // Newly created options are not approved until nutrition has been reviewed.
+      // Existing documents and explicit approvals remain untouched.
+      default: "unknown",
       index: true,
     },
+    nutritionSource: { type: String, default: "", trim: true },
+    nutritionBasis: { type: String, enum: ["per_serving", "per_100g", null], default: null },
+    nutritionServingSizeGrams: { type: Number, default: null, min: 0 },
+    nutritionVerifiedAt: { type: Date, default: null },
+    nutritionVerifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", default: null },
     proteinFamilyKey: { type: String, default: "", trim: true },
     displayCategoryKey: { type: String, default: "", trim: true },
     premiumKey: { type: String, default: "", trim: true },

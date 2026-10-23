@@ -7,6 +7,7 @@ const MenuProduct = require("../../models/MenuProduct");
 const MenuVersion = require("../../models/MenuVersion");
 const ProductGroupOption = require("../../models/ProductGroupOption");
 const ProductOptionGroup = require("../../models/ProductOptionGroup");
+const { getNutritionAudit } = require("../catalog/menuNutritionAuditService");
 
 function createMenuReleaseService({
   getPublishedMenu,
@@ -39,6 +40,23 @@ function createMenuReleaseService({
   }
 
   async function publishMenu({ actor = {}, notes = "" } = {}) {
+    // Opt-in strict rollout after baseline approval. Prevent partial writes by
+    // running the entire read-only data-quality check before any publication.
+    if (process.env.MENU_NUTRITION_APPROVAL_GATE === "true") {
+      const audit = await getNutritionAudit({ includeDrafts: true });
+      if (audit.totals.needingReview > 0) {
+        throw new MenuValidationError(
+          "Menu nutrition review is incomplete",
+          "MENU_NUTRITION_APPROVAL_REQUIRED",
+          409,
+          {
+            needingReview: audit.totals.needingReview,
+            issueCounts: audit.issueCounts,
+            sample: audit.items.filter((item) => item.issues.length).slice(0, 20),
+          }
+        );
+      }
+    }
     const publishedAt = new Date();
     await Promise.all([
       MenuCategory.updateMany({ isActive: true }, { $set: { publishedAt } }),
