@@ -151,6 +151,15 @@ async function run() {
     assert.strictEqual(createOption.body.data.selectionType, "standard_meal");
     assert.deepStrictEqual(createOption.body.data.ruleTags, ["primary_protein"]);
 
+    // Published nutritional values cannot be silently updated from ordinary
+    // metadata forms. The explicit approval API records a recipe source,
+    // portion basis, reviewer and timestamp atomically.
+    const unsafeUpdate = await request(app)
+      .patch(`/api/dashboard/menu/options/${proteinOptionId}`)
+      .set(auth.headers)
+      .send({ nutrition: { calories: 170 } });
+    expectStatus(unsafeUpdate, 422, "reject incomplete nutrition update");
+
     const updateOption = await request(app)
       .patch(`/api/dashboard/menu/options/${proteinOptionId}`)
       .set(auth.headers)
@@ -158,12 +167,25 @@ async function run() {
         selectionType: "premium_meal",
         premiumKey: "closure_premium_chicken",
         ruleTags: ["premium", "meal_planner"],
-        nutrition: { calories: 170 },
       });
     expectStatus(updateOption, 200, "update option metadata");
     assert.strictEqual(updateOption.body.data.selectionType, "premium_meal");
     assert.strictEqual(updateOption.body.data.nutrition.proteinGrams, 31);
-    assert.strictEqual(updateOption.body.data.nutrition.calories, 170);
+    assert.strictEqual(updateOption.body.data.nutrition.calories, 165);
+
+    const approvedNutrition = await request(app)
+      .post(`/api/dashboard/menu/options/${proteinOptionId}/nutrition/approve`)
+      .set(auth.headers)
+      .send({
+        nutrition: { calories: 170, proteinGrams: 31, carbGrams: 0, fatGrams: 3.6 },
+        nutritionSource: "Kitchen recipe test fixture verified for 100g portion",
+        nutritionBasis: "per_serving",
+        nutritionServingSizeGrams: 100,
+      });
+    expectStatus(approvedNutrition, 200, "explicitly approve published option nutrition");
+    assert.strictEqual(approvedNutrition.body.data.nutrition.calories, 170);
+    assert.strictEqual(approvedNutrition.body.data.nutrition.proteinGrams, 31);
+    assert.strictEqual(approvedNutrition.body.data.nutritionDataStatus, "verified");
 
     const proteinOption = await MenuOption.findById(proteinOptionId).lean();
     const carbOption = await MenuOption.create({
