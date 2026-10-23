@@ -267,7 +267,7 @@ async function main() {
     });
     const storedOrder = await Order.findById(persistedOrder._id).lean();
     const storedSelection = storedOrder.items[0].selections.selectedOptions[0];
-    assert.strictEqual(storedSelection.name.ar, "رز أبيض");
+    assert.strictEqual(storedSelection.name.ar, "رز أبيض جاوي");
     assert.strictEqual(storedSelection.extraWeightGrams, 150);
     assert.strictEqual(storedSelection.extraWeightUnitGrams, 50);
 
@@ -276,7 +276,7 @@ async function main() {
     });
     const operationsSelection =
       operationsDetail.items[0].selections.selectedOptions[0];
-    assert.strictEqual(operationsSelection.name.ar, "رز أبيض");
+    assert.strictEqual(operationsSelection.name.ar, "رز أبيض جاوي");
     assert.strictEqual(operationsSelection.extraWeightGrams, 150);
 
     const paidQuote = await menuPricingService.priceMenuCart({
