@@ -47,8 +47,8 @@ async function seedBuilder() {
         isAvailable: true,
       },
       {
-        key: "white_rice",
-        nameI18n: { ar: "رز أبيض", en: "White Rice" },
+        key: "javanese_white_rice",
+        nameI18n: { ar: "رز أبيض جاوي", en: "Javanese White Rice" },
         itemKind: "carb",
         isActive: true,
         isAvailable: true,
@@ -111,8 +111,8 @@ async function seedBuilder() {
     {
       groupId: group._id,
       catalogItemId: includedCarbCatalogItem._id,
-      key: "white_rice",
-      name: { ar: "رز أبيض", en: "White Rice" },
+      key: "javanese_white_rice",
+      name: { ar: "رز أبيض جاوي", en: "Javanese White Rice" },
       displayCategoryKey: "standard_carbs",
       extraPriceHalala: 0,
       extraWeightUnitGrams: 0,
