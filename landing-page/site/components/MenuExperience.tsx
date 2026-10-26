@@ -136,6 +136,7 @@ export function MenuExperience() {
 
   return (
     <main className="menu-page" id="menu-main">
+      <span id="top" aria-hidden="true" />
       <section className="menu-hero" id="menu-top" aria-labelledby="menu-hero-title">
         <div className="page-shell menu-hero-grid">
           <div className="menu-hero-copy">
