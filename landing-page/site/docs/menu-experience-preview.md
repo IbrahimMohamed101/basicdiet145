@@ -6,7 +6,7 @@ Implementation branch: `codex/menu-experience-preview-20261026`. This is not the
 
 ## Preview-only safeguards
 - Route metadata sets `noindex, nofollow`? Current value is `index:false, follow:false`.
-- No checkout, payment, API mutation, cart persistence, or lead submission.
+- The menu explorers have no checkout, payment, cart persistence, or mutation endpoint. The existing shared header's contact CTA still opens the existing `LeadDialog` and can submit a lead if the visitor explicitly chooses to; this is not a menu order.
 - Subscription prices are **bootstrap demo values**, not production-authorized prices.
 - Menu preview shows a limited sample of cashier candidates with original POS identifiers and prices; official sign-off on images, nutrition, descriptions, availability and item mapping is still needed.
 - Steak is intentionally excluded; no guessed nutrition values or allergen statements.
