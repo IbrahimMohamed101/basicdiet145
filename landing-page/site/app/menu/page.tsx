@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MenuExperience } from "@/components/MenuExperience";
+import { LeadDialog } from "@/components/LeadDialog";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import "./menu.css";
 
 export const metadata: Metadata = {
@@ -16,6 +18,8 @@ export default function MenuPage() {
   return (
     <>
       <a className="skip-link" href="#menu-main">انتقل لمنيو بيسك دايت</a>
+      <AnalyticsTracker />
+      <LeadDialog />
       <Header />
       <MenuExperience />
       <Footer />
