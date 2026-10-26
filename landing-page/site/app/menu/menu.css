@@ -113,7 +113,7 @@
   border-radius: 30px; background:
     radial-gradient(circle at 82% 82%, rgb(84 159 101 / 23%), transparent 42%),
     linear-gradient(150deg, #164b36, #0b2d20 70%); color: white;
-  min-height: 490px; padding: clamp(24px,3vw,46px);
+  position: relative; min-height: 490px; padding: clamp(24px,3vw,46px);
   display: flex; flex-direction: column; align-items: stretch; overflow: hidden; isolation: isolate;
 }
 .menu-plan-result::after { content: ""; width: 260px; height: 260px; border-radius: 50%; border: 1px solid rgb(255 255 255 / 10%); position: absolute; pointer-events: none; }
