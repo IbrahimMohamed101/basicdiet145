@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { StoreLinks } from "@/components/StoreLinks";
+import { MenuLeadCapture, MenuContactButton, MenuMobileConversionBar } from "@/components/MenuLeadCapture";
 
 const foodImage = "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH";
 const secondImage = "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b";
@@ -142,17 +143,13 @@ export function MenuExperience() {
         <div className="page-shell menu-hero-grid">
           <div className="menu-hero-copy">
             <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / MENU EXPERIENCE</span>
-            <h1 id="menu-hero-title">أكلك الصحي.<br /><em>على مزاجك.</em></h1>
-            <p>وجبات تحبها، سلطة تختار تفاصيلها، وباقات اشتراك تناسب روتينك. استكشف كل الخيارات في مكان واحد.</p>
+            <h1 id="menu-hero-title">وجبات على مزاجك.<br /><em>واشتراك يناسب يومك.</em></h1>
+            <p>تصفّح المنيو والباقات براحتك. ولو محتار، سيب اسمك ورقمك وفريق بيسك دايت يتواصل معك ويساعدك تختار.</p>
             <div className="menu-hero-actions">
-              <a className="menu-primary-link" href="#menu-plans">استكشف الاشتراكات <span aria-hidden="true">↙</span></a>
-              <a className="menu-ghost-link" href="#menu-products">شوف المنيو <span aria-hidden="true">←</span></a>
+              <a className="menu-primary-link" href="#menu-quick-contact">سيب رقمك ونتواصل معك <span aria-hidden="true">←</span></a>
+              <a className="menu-ghost-link" href="#menu-products">تصفّح المنيو <span aria-hidden="true">↙</span></a>
             </div>
-            <div className="menu-hero-metrics" aria-label="أنواع التجربة">
-              <div><b>03</b><span>مدد اشتراك</span></div>
-              <div><b>02</b><span>تجارب تخصيص</span></div>
-              <div><b>108</b><span>أصناف قيد المراجعة</span></div>
-            </div>
+            <MenuLeadCapture />
           </div>
           <div className="menu-hero-art" aria-label="صور أطباق من معرض بيسك دايت">
             <div className="menu-hero-halo" aria-hidden="true" />
@@ -175,6 +172,7 @@ export function MenuExperience() {
 
       <nav className="menu-jump-nav" aria-label="أقسام المنيو">
         <div className="page-shell menu-jump-list">
+          <a href="#menu-quick-contact">طلب تواصل</a>
           <a href="#menu-plans">الاشتراكات</a>
           <a href="#menu-custom">اصنع بنفسك</a>
           <a href="#menu-products">المنيو الكامل</a>
@@ -225,7 +223,8 @@ export function MenuExperience() {
                 <div><strong>{grams}g</strong><span>حجم البروتين</span></div>
               </div>
               <p className="menu-plan-caution">سعر توضيحي من بيانات bootstrap وليس السعر المعتمد للبيع. لا يشمل رسوم التوصيل والإضافات أو أي خصم.</p>
-              <a href="#menu-download" className="menu-result-link">شوف طريقة الاشتراك <span aria-hidden="true">←</span></a>
+              <MenuContactButton location="plans" intent="plan_selected" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">تبغى نكلمك عن هذي الباقة؟ <span aria-hidden="true">←</span></MenuContactButton>
+              <a className="menu-result-subtle" href="#menu-download">أو حمّل التطبيق وابدأ بنفسك</a>
             </aside>
           </div>
         </div>
@@ -300,7 +299,8 @@ export function MenuExperience() {
                 </div>
               )}
               <p className="menu-summary-disclaimer">استعراض تفاعلي فقط. لا نكوّن طلبًا، ولا نحسب سعرًا أو سعرات غير مؤكدة.</p>
-              <a className="menu-summary-cta" href="#menu-download">تابع التجربة من التطبيق <span aria-hidden="true">←</span></a>
+              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "meal_builder" : "salad_builder"} className="menu-summary-cta">عندك سؤال؟ خلّينا نتواصل معك <span aria-hidden="true">←</span></MenuContactButton>
+              <a className="menu-result-subtle menu-builder-app-cta" href="#menu-download">أو حمّل التطبيق وكمّل اختياراتك</a>
             </aside>
           </div>
         </div>
@@ -339,10 +339,12 @@ export function MenuExperience() {
 
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> YOUR NEXT STEP</p><h2 id="menu-download-title">عجبك الاختيار؟<br /><em>كمّلها مع بيسك دايت.</em></h2><p>تابع العروض والباقات الفعلية وتوافر الأصناف من التطبيق، أو تواصل مع المطعم للاستفسار.</p><StoreLinks location="final" /></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> YOUR NEXT STEP</p><h2 id="menu-download-title">اختار اللي يناسبك.<br /><em>وإحنا نساعدك تبدأ.</em></h2><p>سيب اسمك ورقمك عشان نكلمك ونشرح الباقات، أو حمّل التطبيق واختار بنفسك.</p><MenuContactButton location="final" intent="bottom_cta" className="menu-download-contact">اطلب تواصل من Basic Diet <span aria-hidden="true">←</span></MenuContactButton><div className="menu-download-store-label">أو حمّل التطبيق</div><StoreLinks location="final" /></div>
           <div className="menu-download-decoration" aria-hidden="true"><span>Basic</span><strong>Diet.</strong><small>EAT WELL. LIVE WELL.</small></div>
         </div>
       </section>
+
+      <MenuMobileConversionBar />
 
       {selectedProduct && (
         <div className="menu-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedProduct(null); }}>
@@ -354,7 +356,8 @@ export function MenuExperience() {
               <h2 id="menu-detail-title">{selectedProduct.name}</h2>
               <p>هذا الصنف من قائمة مرشحي الموقع. نعرض سعر الكاشير للمراجعة؛ وصف المكونات والسعرات والصورة تحتاج اعتمادًا قبل النشر.</p>
               <strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س <small>سعر مرجعي</small></strong>
-              <a href="#menu-download" onClick={() => setSelectedProduct(null)}>انتقل لتطبيق Basic Diet ←</a>
+              <MenuContactButton location="final" intent={"product_" + selectedProduct.id} className="menu-detail-contact">تبغى نكلمك عن المنيو؟ ←</MenuContactButton>
+              <a href="#menu-download" onClick={() => setSelectedProduct(null)}>أو حمّل تطبيق Basic Diet ←</a>
             </div>
           </section>
         </div>
