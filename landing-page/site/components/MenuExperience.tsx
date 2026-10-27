@@ -40,6 +40,16 @@ const menuCategories = [
   "الحلويات", "المشروبات", "الزبادي", "الآيس كريم",
 ];
 const categoryOrder = menuCategories.filter((x) => x !== "الكل");
+// Curated visual order: authentic, distinct food photos first — not duplicate gram variants.
+const featuredItemIds = ["186", "183", "77", "78", "173", "211", "26", "204", "185", "195"];
+const sizeVariantFamilies = [
+  { key: "shrimp", title: "جمبري", sizes: [{ id: "77", grams: 100 }, { id: "83", grams: 150 }, { id: "84", grams: 200 }] },
+  { key: "salmon", title: "سالمون", sizes: [{ id: "78", grams: 100 }, { id: "88", grams: 150 }, { id: "89", grams: 200 }] },
+  { key: "fillet", title: "سمك فيليه", sizes: [{ id: "85", grams: 100 }, { id: "86", grams: 150 }, { id: "87", grams: 200 }] },
+] as const;
+const menuItemById = new Map(menuPreviewItems.map(item => [item.id, item]));
+const variantFamilyById = new Map(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
+
 
 const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "سالمون", "جمبري"];
 const mealCarbs = ["رز أبيض", "رز بالكركم", "رز برياني", "كينوا", "بطاطس مشوي", "بطاطا حلوة", "باستا ألفريدو"];
@@ -98,7 +108,8 @@ export function MenuExperience() {
   const [saladChoices, setSaladChoices] = useState<Record<string, string[]>>({});
   const [category, setCategory] = useState("الكل");
   const [search, setSearch] = useState("");
-  const [visibleCount, setVisibleCount] = useState(9);
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
 
   const price = draftPlanPrices[days][grams][meals - 1];
@@ -108,8 +119,26 @@ export function MenuExperience() {
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
     return (category === "الكل" || item.category === category) &&
       (search.trim() === "" || item.name.includes(search.trim()) || item.id.includes(search.trim()));
-  }).sort((a, b) => categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
-    || Number(Boolean(b.image)) - Number(Boolean(a.image))), [category, search]);
+  }).sort((a, b) => {
+    if (category === "الكل" && !search.trim()) {
+      const indexA = featuredItemIds.indexOf(a.id);
+      const indexB = featuredItemIds.indexOf(b.id);
+      if (indexA !== -1 || indexB !== -1) return (indexA < 0 ? 999 : indexA) - (indexB < 0 ? 999 : indexB);
+    }
+    return categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
+      || Number(Boolean(b.image)) - Number(Boolean(a.image));
+  }), [category, search]);
+
+  const displayItems = useMemo(() => {
+    const seenFamilies = new Set<string>();
+    return filteredItems.filter(item => {
+      const family = variantFamilyById.get(item.id);
+      if (!family) return true;
+      if (seenFamilies.has(family.key)) return false;
+      seenFamilies.add(family.key);
+      return true;
+    });
+  }, [filteredItems]);
 
   const activeSaladGroup = saladGroups.find((group) => group.key === saladTab) || saladGroups[0];
   const saladGroupStatus = saladGroups.map((group) => {
@@ -151,7 +180,7 @@ export function MenuExperience() {
         <div className="page-shell menu-hero-grid">
           <div className="menu-hero-copy">
             <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / OUR MENU</span>
-            <h1 id="menu-hero-title">منيو بيسك دايت.<br /><em>الطعم اللي تحبّه.</em></h1>
+            <h1 id="menu-hero-title">منيو بيسك دايت.<br /><em>وجبات تحبّها.</em></h1>
             <p>وجبات دجاج ولحم وسمك، سلطات، فطور وساندويتشات. تصفّح الصور والأسعار واختار اللي يعجبك.</p>
             <div className="menu-hero-actions">
               <a className="menu-primary-link" href="#menu-products">استكشف الأطباق <span aria-hidden="true">↙</span></a>
@@ -169,23 +198,14 @@ export function MenuExperience() {
               <Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 35vw, 190px" />
             </div>
             <div className="menu-hero-plate menu-hero-plate--third"><Image src={thirdImage} alt="طبق سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 22vw, 150px" /></div>
-            <div className="menu-float menu-float--one"><span className="menu-float-indicator" /> <strong>منيو مليان اختيارات</strong><small>Basic Diet</small></div>
-            <span className="menu-hero-spark" aria-hidden="true">✳</span>
+
+
           </div>
         </div>
         <div className="page-shell menu-preview-ribbon" role="note">
-          <DemoLabel /> <span>دي معاينة واجهة. بعض أسعار الباقات تجريبية، وأصناف الكاشير وصورها لم تُعتمد للنشر بعد.</span>
+          <span>معاينة تجريبية: أسعار الباقات غير نهائية، وصور الأصناف والبيانات في انتظار الاعتماد.</span>
         </div>
       </section>
-
-      <nav className="menu-jump-nav" aria-label="أقسام المنيو">
-        <div className="page-shell menu-jump-list">
-          <a href="#menu-products">الأطباق والأسعار</a>
-          <a href="#menu-plans">الاشتراكات</a>
-          <a href="#menu-custom">اصنع وجبتك أو سلطتك</a>
-          <a href="#menu-download">تواصل معنا / التطبيق</a>
-        </div>
-      </nav>
 
       <section className="menu-featured-categories" aria-labelledby="menu-category-title">
         <div className="page-shell">
@@ -196,7 +216,7 @@ export function MenuExperience() {
           <div className="menu-featured-grid">
             {menuShowcaseCategories.map((group) => (
               <a key={group.label} href="#menu-products" className="menu-featured-card"
-                onClick={() => { setCategory(group.label); setSearch(""); setVisibleCount(9); }}>
+                onClick={() => { setCategory(group.label); setSearch(""); setVisibleCount(12); }}>
                 <Image src={group.image} alt="" fill unoptimized={group.image.startsWith("https://")} sizes="(max-width: 760px) 60vw, 26vw" />
                 <span className="menu-featured-overlay" aria-hidden="true" />
                 <span className="menu-featured-card-content"><small>{group.tag}</small><strong>{group.label}</strong><b aria-hidden="true">←</b></span>
@@ -211,28 +231,39 @@ export function MenuExperience() {
           <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="صور الأطباق، التصنيفات، وأسعار أصناف الكاشير المرشحة. الصور والتفاصيل النهائية ما زالت قيد المراجعة قبل النشر." />
           <div className="menu-catalog-tools">
             <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
-              {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(9); }}>{group}</button>)}
+              {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(12); }}>{group}</button>)}
             </div>
-            <label className="menu-search"><span className="sr-only">ابحث عن صنف</span><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(9); }} placeholder="ابحث عن صنف أو رقم الكاشير" type="search" /></label>
+            <label className="menu-search"><span className="sr-only">ابحث عن صنف</span><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(12); }} placeholder="ابحث عن صنف أو رقم الكاشير" type="search" /></label>
           </div>
-          <div className="menu-catalog-count"><span>نتائج البحث: <b>{filteredItems.length}</b> صنف</span><DemoLabel /></div>
+          <div className="menu-catalog-count"><span>نتائج البحث: <b>{filteredItems.length}</b> صنف <small>· الأحجام المتعددة في كارت واحد</small></span></div>
           <div className="menu-product-grid">
-            {filteredItems.slice(0, visibleCount).map((item) => (
-              <article className="menu-product-card" key={item.id}>
-                <ProductImage item={item} />
-                <div className="menu-product-body">
-                  <span className="menu-product-category">{item.category}</span>
-                  <h3>{item.name}</h3>
-                  <div className="menu-product-bottom">
-                    <div><small>سعر الكاشير للمراجعة</small><strong>{numberFormatter.format(item.priceSar)} <span>ر.س</span></strong></div>
-                    <button type="button" onClick={() => setSelectedProduct(item)} aria-label={"تفاصيل " + item.name}>التفاصيل <span aria-hidden="true">←</span></button>
+            {displayItems.slice(0, visibleCount).map((item) => {
+              const family = variantFamilyById.get(item.id);
+              const activeItem = (family ? menuItemById.get(selectedSizes[family.key] || item.id) : null) || item;
+              return (
+                <article className="menu-product-card" key={family?.key || item.id}>
+                  <ProductImage item={activeItem} />
+                  <div className="menu-product-body">
+                    <span className="menu-product-category">{activeItem.category}</span>
+                    <h3>{family?.title || activeItem.name}</h3>
+                    {family && <div className="menu-product-sizes" role="group" aria-label={"اختر وزن " + family.title}>
+                      {family.sizes.map(size => <button key={size.id} type="button" aria-pressed={activeItem.id === size.id}
+                        className={activeItem.id === size.id ? "is-active" : ""}
+                        onClick={() => setSelectedSizes(previous => ({ ...previous, [family.key]: size.id }))}>
+                        {size.grams} جم
+                      </button>)}
+                    </div>}
+                    <div className="menu-product-bottom">
+                      <div><small>السعر المرجعي</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
+                      <button type="button" onClick={() => setSelectedProduct(activeItem)} aria-label={"تفاصيل " + activeItem.name}>التفاصيل <span aria-hidden="true">←</span></button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
-          {visibleCount < filteredItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 9)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
+          {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
           <p className="menu-catalog-footnote">المنتجات المعروضة مرشحة فقط. الصورة أو الوصف أو السعرات التي لم يوافق عليها المطعم لا تُنشر كحقيقة نهائية.</p>
         </div>
       </section>
