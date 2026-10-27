@@ -650,14 +650,14 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "مسقعة باللحمة المفروم",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": null
+    "image": "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_m6bono"
   },
   {
     "id": "184",
     "name": "مكرونة باشميل باللحم المفروم",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": null
+    "image": "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_gt7zvd"
   },
   {
     "id": "185",
