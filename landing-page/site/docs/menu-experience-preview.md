@@ -26,3 +26,11 @@ Implementation branch: `codex/menu-experience-preview-20261026`. This is not the
 - The builders are interactive illustrations, not orders and have no pricing guarantees.
 
 No Railway configuration was changed and no deployment is requested as part of this PR.
+
+## Image source coverage (27 Oct 2026; preview only)
+- 108 POS-price/name/category checked against cashier Master.
+- 24 preview pictures sourced from exact-name, exact-price, exact-category matching against the app menu export (Cloudinary).
+- 47 preview pictures use cashier-master name-based candidate links through the allowlisted server-side Drive image proxy (33 unique added Drive IDs).
+- 37 remain without any safe one-to-one image mapping. Do not assign generic dish images by similarity.
+- Images and all nutrition text remain unapproved; never deploy to the canonical domain solely due to visual coverage.
+- Missing/broken source photos render the neutral Basic Diet placeholder with onError.
