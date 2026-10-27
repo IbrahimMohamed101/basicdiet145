@@ -16,6 +16,13 @@ const links = [
 export function Header() {
   const pathname = usePathname();
   const isHome = pathname === "/";
+  const isMenu = pathname === "/menu";
+  const currentLinks = isMenu ? [
+    { href: "#menu-products", label: "المنيو" },
+    { href: "#menu-plans", label: "الاشتراكات" },
+    { href: "#menu-custom", label: "اصنع بنفسك" },
+    { href: "#menu-download", label: "تواصل معنا" },
+  ] : links;
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeHref, setActiveHref] = useState("");
@@ -100,7 +107,7 @@ export function Header() {
         });
         const current = visibleSections[visibleSections.length - 1];
         const href = current?.id ? `#${current.id}` : "";
-        setActiveHref(links.some((link) => link.href === href) ? href : "");
+        setActiveHref(currentLinks.some((link) => link.href === href) ? href : "");
       }, { rootMargin: `-${bandStart}px 0px -${height * 0.55}px 0px`, threshold: 0 });
       sections.forEach((section) => observer.observe(section));
     }
@@ -110,7 +117,7 @@ export function Header() {
       observer.disconnect();
       window.removeEventListener("resize", observeSections);
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 981px)");
@@ -122,10 +129,10 @@ export function Header() {
     };
   }, []);
 
-  const navLinks = links.map((link) => (
+  const navLinks = currentLinks.map((link) => (
     <a
       key={link.href}
-      href={isHome ? link.href : "/" + link.href}
+      href={isHome || isMenu ? link.href : "/" + link.href}
       aria-current={activeHref === link.href ? "location" : undefined}
     >
       {link.label}
@@ -137,13 +144,13 @@ export function Header() {
       <div ref={sentinel} className="nav-sentinel" aria-hidden="true" />
       <header className="site-header" data-menu-open={open}>
         <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
-          <a ref={brand} href={isHome ? "#top" : "/"} className="brand" aria-label="بيسك دايت Basic Diet - الرئيسية">
+          <a ref={brand} href={isHome || isMenu ? "#top" : "/"} className="brand" aria-label="بيسك دايت Basic Diet - الرئيسية">
             <Image className="brand-logo" src="/brand/logo-primary.png" alt="" width={52} height={48} sizes="52px" priority quality={78} />
             <span className="brand-name">Basic Diet</span>
           </a>
           <nav className="desktop-nav" aria-label="التنقل الرئيسي">{navLinks}</nav>
           <div className="nav-actions">
-            <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>
+            {isMenu ? <a className="button button--small" href="#menu-plans">شوف الباقات</a> : <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>}
             <button
               ref={toggle}
               type="button"
@@ -180,7 +187,7 @@ export function Header() {
               if ((event.target as Element).closest("a")) closeMenu();
             }}>{navLinks}</nav>
             <div className="nav-sheet-cta" onClickCapture={closeMenu}>
-              <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>
+              {isMenu ? <a href="#menu-plans" className="button">شوف الباقات</a> : <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>}
             </div>
           </div>
         </dialog>
@@ -188,8 +195,8 @@ export function Header() {
         <noscript>
           <style>{`.site-header { position: relative; } .site-header .nav-actions, .site-header .desktop-nav { display: none; }`}</style>
           <nav className="nav-fallback" aria-label="التنقل الرئيسي">
-            {links.map((link) => <a key={link.href} href={link.href}>{link.label}</a>)}
-            <a href="#app" className="button">ابدأ اشتراكك</a>
+            {currentLinks.map((link) => <a key={link.href} href={link.href}>{link.label}</a>)}
+            <a href={isMenu ? "#menu-plans" : "#app"} className="button">شوف الباقات</a>
           </nav>
         </noscript>
 
