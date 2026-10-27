@@ -76,7 +76,7 @@ export function MenuLeadCapture() {
     setError("");
     // The shared LeadDialog loads a real sellable plan and asks for consent
     // before submitting through the same /api/leads -> /api/landing/leads path.
-    openMenuLead({ location: "hero", intent: "hero_form", name: name.trim(), phone });
+    openMenuLead({ location: "final", intent: "footer_form", name: name.trim(), phone });
   }
 
   return (
