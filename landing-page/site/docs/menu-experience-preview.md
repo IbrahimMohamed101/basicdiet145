@@ -29,6 +29,7 @@ No Railway configuration was changed and no deployment is requested as part of t
 
 ## Image source coverage (27 Oct 2026; preview only)
 - 108 POS-price/name/category checked against cashier Master.
+- Additional reviewed orthographic aliases: POS 183 (مسقعة باللحمة المفروم → مسقعة باللحمة المفرومة) and POS 184 (مكرونة باشميل باللحم المفروم → مكرونة بشاميل باللحم المفروم), only when app category and cashier price match.
 - 24 preview pictures sourced from exact-name, exact-price, exact-category matching against the app menu export (Cloudinary).
 - 47 preview pictures use cashier-master name-based candidate links through the allowlisted server-side Drive image proxy (33 unique added Drive IDs).
 - 37 remain without any safe one-to-one image mapping. Do not assign generic dish images by similarity.
