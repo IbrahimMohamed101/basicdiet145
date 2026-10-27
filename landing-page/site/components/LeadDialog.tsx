@@ -56,6 +56,7 @@ export function LeadDialog() {
   const selected = plans.find(p => p.planId === planId);
   const selectedGram = selected?.gramsOptions.find(g => g.grams === grams);
   const days = selected?.daysCount || 26;
+  const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true" && sourceDetail.startsWith("menu_");
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +132,7 @@ export function LeadDialog() {
     }
     const normalized = normalizePhone(phone);
     if (!normalized) { setError("اكتب رقم جوال سعودي صحيح، مثل 05xxxxxxxx."); return; }
+    if (isMenuPreview) { setError("هذه نسخة معاينة للتصميم فقط، إرسال بيانات التواصل فيها غير مفعّل."); return; }
     if (fastContact && name.trim().length < 2) { setError("اكتب اسمك عشان نقدر نتواصل معك."); return; }
     if (!contactConsent) { setError("لازم توافق على التواصل معك بشأن طلبك."); return; }
     setError(""); setSending(true);
@@ -289,8 +291,9 @@ export function LeadDialog() {
                     <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}/>
                     <span>أرغب في تلقي عروض مستقبلية (اختياري).</span>
                   </label>
+                  {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة للمنيو. لحماية بياناتك، طلبات التواصل غير مفعّلة هنا. التسجيل الفعلي متاح عبر الموقع الرسمي أو التطبيق.</p>}
                   {error && <p className="lead-error" role="alert">{error}</p>}
-                  <button className="lead-primary" type="submit" disabled={sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2)}>
+                  <button className="lead-primary" type="submit" disabled={isMenuPreview || sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2)}>
                     {sending ? "جاري إرسال طلبك..." : "اطلب تواصل من Basic Diet"}
                   </button>
                   <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>
