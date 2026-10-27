@@ -399,7 +399,7 @@
 .menu-quick-lead-submit { grid-column: 1/-1; display: flex; align-items: center; justify-content: space-between; min-height: 55px; border-radius: 12px; padding: 12px 18px; background: #ddf2d8; color: #123e2a; font-weight: 700; font-size: 16px; }
 .menu-quick-lead-submit:hover { background: white; }
 .menu-quick-lead-error { padding: 8px; color: #fff1eb; background: #903c2f; margin-top: 10px; border-radius: 8px; font-size: 13px; }
-.menu-download-section .menu-quick-lead-privacy { color: #bcd9c4; font-size: 11px; line-height: 1.7; margin: 12px 0 0; }
+.menu-download-section p.menu-quick-lead-privacy { color: #bcd9c4; font-size: 11px; line-height: 1.7; margin: 12px 0 0; }
 .menu-quick-lead-alternative { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-top: 1px solid rgb(255 255 255 / 20%); padding-top: 13px; margin-top: 14px; font-size: 13px; color: #cce3d0; }
 .menu-quick-lead-alternative a { padding: 8px 12px; border: 1px solid rgb(255 255 255 / 30%); border-radius: 9px; color: #fff; font: 700 12px system-ui,sans-serif; }
 .menu-quick-lead-alternative a:hover { background: rgb(255 255 255 / 12%); }
