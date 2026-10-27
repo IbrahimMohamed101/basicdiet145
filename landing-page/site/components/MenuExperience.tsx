@@ -63,10 +63,11 @@ function DemoLabel() {
 }
 
 function ProductImage({ item, priority = false }: { item: MenuPreviewItem; priority?: boolean }) {
+  const [failed, setFailed] = useState(false);
   return (
     <div className="menu-product-photo">
-      {item.image ? (
-        <Image src={item.image} alt={item.name} fill sizes="(max-width: 600px) 46vw, (max-width: 1000px) 34vw, 300px" quality={78} priority={priority} />
+      {item.image && !failed ? (
+        <Image src={item.image} alt={item.name} fill sizes="(max-width: 600px) 46vw, (max-width: 1000px) 34vw, 300px" quality={78} priority={priority} unoptimized={item.image.startsWith("https://")} onError={() => setFailed(true)} />
       ) : (
         <div className="menu-image-fallback" aria-label="صورة الصنف لم تعتمد بعد">
           <span className="menu-fallback-ring" />
@@ -99,7 +100,7 @@ export function MenuExperience() {
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
     return (category === "الكل" || item.category === category) &&
       (search.trim() === "" || item.name.includes(search.trim()) || item.id.includes(search.trim()));
-  }), [category, search]);
+  }).sort((a, b) => Number(Boolean(b.image)) - Number(Boolean(a.image))), [category, search]);
 
   const activeSaladGroup = saladGroups.find((group) => group.key === saladTab) || saladGroups[0];
   const saladGroupStatus = saladGroups.map((group) => {
