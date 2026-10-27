@@ -39,6 +39,7 @@ const menuCategories = [
   "الكل", "الوجبات", "السلطات", "الفطور", "الساندويتشات",
   "الحلويات", "المشروبات", "الزبادي", "الآيس كريم",
 ];
+const categoryOrder = menuCategories.filter((x) => x !== "الكل");
 
 const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "سالمون", "جمبري"];
 const mealCarbs = ["رز أبيض", "رز بالكركم", "رز برياني", "كينوا", "بطاطس مشوي", "بطاطا حلوة", "باستا ألفريدو"];
@@ -107,7 +108,8 @@ export function MenuExperience() {
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
     return (category === "الكل" || item.category === category) &&
       (search.trim() === "" || item.name.includes(search.trim()) || item.id.includes(search.trim()));
-  }).sort((a, b) => Number(Boolean(b.image)) - Number(Boolean(a.image))), [category, search]);
+  }).sort((a, b) => categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
+    || Number(Boolean(b.image)) - Number(Boolean(a.image))), [category, search]);
 
   const activeSaladGroup = saladGroups.find((group) => group.key === saladTab) || saladGroups[0];
   const saladGroupStatus = saladGroups.map((group) => {
@@ -150,7 +152,7 @@ export function MenuExperience() {
           <div className="menu-hero-copy">
             <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / OUR MENU</span>
             <h1 id="menu-hero-title">منيو بيسك دايت.<br /><em>الطعم اللي تحبّه.</em></h1>
-            <p>من أول وجبة لآخر لقمة. اكتشف أطباقنا وسلطاتنا وفطورنا، واختَر اللي يناسب يومك.</p>
+            <p>وجبات دجاج ولحم وسمك، سلطات، فطور وساندويتشات. تصفّح الصور والأسعار واختار اللي يعجبك.</p>
             <div className="menu-hero-actions">
               <a className="menu-primary-link" href="#menu-products">استكشف الأطباق <span aria-hidden="true">↙</span></a>
               <a className="menu-ghost-link" href="#menu-custom">كوّن وجبتك <span aria-hidden="true">←</span></a>
