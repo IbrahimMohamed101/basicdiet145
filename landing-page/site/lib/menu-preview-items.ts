@@ -538,7 +538,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة بيض مسلوق",
     "category": "الوجبات",
     "priceSar": 19,
-    "image": "/api/meal-image?id=11b9wuwyURXCFABlvQFWtO7dhuJheqcMr"
+    "image": null
   },
   {
     "id": "77",
