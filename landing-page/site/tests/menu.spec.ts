@@ -14,7 +14,7 @@ for (const width of [320, 360, 390, 768, 1440]) {
     await expect.poll(async () => page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);
-    await expect(page.locator("main .menu-product-card")).toHaveCount(9);
+    await expect(page.locator("main .menu-product-card")).toHaveCount(12);
     const missingTargets = await page.locator('a[href^="#"]').evaluateAll((links) => links
       .map((link) => link.getAttribute("href") || "")
       .filter((href) => href.length > 1 && !document.getElementById(href.slice(1))));
@@ -179,4 +179,30 @@ test("builder asks for callback only when explicitly selected", async ({ page })
   await builder.getByRole("button", { name: /عندك سؤال/ }).click();
   await expect(page.locator(".lead-dialog")).toBeVisible();
   await expect(page.locator(".lead-dialog").getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
+});
+
+
+test("menu has one navigational header with local menu links", async ({ page }) => {
+  await page.goto("/menu");
+  await expect(page.locator(".site-header")).toHaveCount(1);
+  await expect(page.locator(".menu-jump-nav")).toHaveCount(0);
+  const nav = page.locator(".site-header .desktop-nav");
+  await expect(nav.locator('a[href="#menu-products"]')).toHaveCount(1);
+  await expect(nav.locator('a[href="#menu-plans"]')).toHaveCount(1);
+  await expect(nav.locator('a[href="#menu-custom"]')).toHaveCount(1);
+  await expect(nav.locator('a[href="#menu-download"]')).toHaveCount(1);
+  await expect(page.locator(".menu-hero .menu-quick-lead")).toHaveCount(0);
+});
+
+test("same food picture is displayed once for shrimp size variants", async ({ page }) => {
+  await page.goto("/menu");
+  const shrimpCard = page.locator(".menu-product-card")
+    .filter({ has: page.getByRole("group", { name: "اختر وزن جمبري" }) });
+  await expect(shrimpCard).toHaveCount(1);
+  await expect(shrimpCard.getByRole("button", { name: "100 جم" })).toHaveAttribute("aria-pressed", "true");
+  await shrimpCard.getByRole("button", { name: "150 جم" }).click();
+  await expect(shrimpCard.getByRole("button", { name: "150 جم" })).toHaveAttribute("aria-pressed", "true");
+  await expect(shrimpCard.locator(".menu-product-bottom strong")).toContainText("٤٩");
+  await shrimpCard.getByRole("button", { name: /تفاصيل جمبري 150 جرام/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("جمبري 150 جرام");
 });
