@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
-import { StoreLinks } from "@/components/StoreLinks";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
