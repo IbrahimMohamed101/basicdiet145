@@ -11,6 +11,10 @@ type OpenEvent = CustomEvent<{
   grams?: number;
   mealsPerDay?: number;
   fulfillmentMethod?: "delivery" | "pickup";
+  fastContact?: boolean;
+  sourceDetail?: string;
+  name?: string;
+  phone?: string;
 }>;
 
 const ATTRIBUTION_KEY = "basicdiet_lp_attribution_v1";
@@ -35,6 +39,8 @@ export function LeadDialog() {
   const [grams, setGrams] = useState(150);
   const [mealsPerDay, setMealsPerDay] = useState(2);
   const [location, setLocation] = useState("hero");
+  const [fastContact, setFastContact] = useState(false);
+  const [sourceDetail, setSourceDetail] = useState("");
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"delivery" | "pickup">("delivery");
   const [selectionNotice, setSelectionNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,7 +62,9 @@ export function LeadDialog() {
     const open = (evt: Event) => {
       const details = (evt as OpenEvent).detail || {};
       const currentLoad = ++loadId.current;
-      setStep(1); setError(""); setPhone(""); setName(""); setSelectionNotice("");
+      setStep(1); setError(""); setPhone(details.phone?.slice(0, 32) || ""); setName(details.name?.slice(0, 70) || ""); setSelectionNotice("");
+      setFastContact(details.fastContact === true);
+      setSourceDetail((details.sourceDetail || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40));
       setContactConsent(false); setMarketingConsent(false); setWebsite("");
       setLocation(details.location || "hero"); setLoading(true); setPlans([]);
       setFulfillmentMethod(details.fulfillmentMethod === "pickup" ? "pickup" : "delivery");
@@ -84,6 +92,7 @@ export function LeadDialog() {
             || (details.mealsPerDay && details.mealsPerDay !== chosenMeals))) {
             setSelectionNotice("بعض اختياراتك غير متاحة في الباقة الحالية، فعدّلناها لأقرب خيار متاح.");
           }
+          if (details.fastContact === true && desired && choice) setStep(2);
           setLoading(false);
         })
         .catch(() => { if (!cancelled && currentLoad === loadId.current) { setError("تعذر تحميل الباقات الآن. تقدر تبدأ مباشرة من التطبيق."); setLoading(false); } });
@@ -122,6 +131,7 @@ export function LeadDialog() {
     }
     const normalized = normalizePhone(phone);
     if (!normalized) { setError("اكتب رقم جوال سعودي صحيح، مثل 05xxxxxxxx."); return; }
+    if (fastContact && name.trim().length < 2) { setError("اكتب اسمك عشان نقدر نتواصل معك."); return; }
     if (!contactConsent) { setError("لازم توافق على التواصل معك بشأن طلبك."); return; }
     setError(""); setSending(true);
     let attribution: Record<string, string> = {};
@@ -145,7 +155,9 @@ export function LeadDialog() {
           source: attribution.source || "",
           medium: attribution.medium || "",
           campaign: attribution.campaign || "",
-          content: attribution.content || "",
+          content: sourceDetail
+            ? [attribution.content?.slice(0, 55) || "", sourceDetail].filter(Boolean).join("|").slice(0, 100)
+            : attribution.content || "",
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -257,8 +269,8 @@ export function LeadDialog() {
                     <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا · {fulfillmentMethod === "delivery" ? "توصيل" : "استلام"}</strong>
                   </div>
                   <label className="lead-field">
-                    <span>اسمك <em>(اختياري)</em></span>
-                    <input value={name} maxLength={70} onChange={e => setName(e.target.value)} placeholder="الاسم" autoComplete="name"/>
+                    <span>اسمك {fastContact ? <em>(مطلوب)</em> : <em>(اختياري)</em>}</span>
+                    <input required={fastContact} minLength={fastContact ? 2 : undefined} value={name} maxLength={70} onChange={e => setName(e.target.value)} placeholder="الاسم" autoComplete="name"/>
                   </label>
                   <label className="lead-field">
                     <span>رقم الجوال</span>
@@ -271,20 +283,20 @@ export function LeadDialog() {
                   </label>
                   <label className="lead-check">
                     <input type="checkbox" checked={contactConsent} onChange={e => setContactConsent(e.target.checked)} required />
-                    <span>أوافق على التواصل معي بخصوص طلب الاشتراك فقط. <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer">سياسة الخصوصية</a></span>
+                    <span>أوافق على التواصل معي بخصوص المنيو وطلب الاشتراك فقط. <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer">سياسة الخصوصية</a></span>
                   </label>
                   <label className="lead-check lead-check--muted">
                     <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}/>
                     <span>أرغب في تلقي عروض مستقبلية (اختياري).</span>
                   </label>
                   {error && <p className="lead-error" role="alert">{error}</p>}
-                  <button className="lead-primary" type="submit" disabled={sending || !contactConsent || !normalizePhone(phone)}>
+                  <button className="lead-primary" type="submit" disabled={sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2)}>
                     {sending ? "جاري إرسال طلبك..." : "اطلب تواصل من Basic Diet"}
                   </button>
                   <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>
                 </form>
               )}
-              <div className="lead-direct">تفضل تبدأ بنفسك؟ <button type="button" onClick={() => { close(); document.getElementById("app")?.scrollIntoView({ behavior: "smooth" }); }}>روابط تحميل التطبيق</button></div>
+              <div className="lead-direct">تفضل تبدأ بنفسك؟ <button type="button" onClick={() => { close(); (document.getElementById("menu-download") || document.getElementById("app"))?.scrollIntoView({ behavior: "smooth" }); }}>روابط تحميل التطبيق</button></div>
             </>
           ) : (
             <div className="lead-success">
