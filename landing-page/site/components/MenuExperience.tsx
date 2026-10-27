@@ -4,10 +4,17 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { StoreLinks } from "@/components/StoreLinks";
-import { MenuLeadCapture, MenuContactButton, MenuMobileConversionBar } from "@/components/MenuLeadCapture";
+import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
 
-const foodImage = "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH";
-const secondImage = "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b";
+const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
+const secondImage = "/api/meal-image?id=1IxuZvbSI85kxn9pwF97kGCeScVpz0fdv";
+const thirdImage = "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH";
+const menuShowcaseCategories = [
+  { label: "الوجبات", tag: "MAIN DISHES", image: foodImage },
+  { label: "السلطات", tag: "FRESH SALADS", image: secondImage },
+  { label: "الفطور", tag: "BREAKFAST", image: "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_pwtdt4" },
+  { label: "الساندويتشات", tag: "SANDWICHES", image: "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC" },
+] as const;
 
 // These prices are INITIAL BOOTSTRAP EXAMPLES, not authorized production prices.
 // Do not expose as an approved catalog or remove the draft warnings.
@@ -142,26 +149,26 @@ export function MenuExperience() {
       <section className="menu-hero" id="menu-top" aria-labelledby="menu-hero-title">
         <div className="page-shell menu-hero-grid">
           <div className="menu-hero-copy">
-            <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / MENU EXPERIENCE</span>
-            <h1 id="menu-hero-title">وجبات على مزاجك.<br /><em>واشتراك يناسب يومك.</em></h1>
-            <p>تصفّح المنيو والباقات براحتك. ولو محتار، سيب اسمك ورقمك وفريق بيسك دايت يتواصل معك ويساعدك تختار.</p>
+            <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / OUR MENU</span>
+            <h1 id="menu-hero-title">منيو بيسك دايت.<br /><em>الطعم اللي تحبّه.</em></h1>
+            <p>من أول وجبة لآخر لقمة. اكتشف أطباقنا وسلطاتنا وفطورنا، واختَر اللي يناسب يومك.</p>
             <div className="menu-hero-actions">
-              <a className="menu-primary-link" href="#menu-quick-contact">سيب رقمك ونتواصل معك <span aria-hidden="true">←</span></a>
-              <a className="menu-ghost-link" href="#menu-products">تصفّح المنيو <span aria-hidden="true">↙</span></a>
+              <a className="menu-primary-link" href="#menu-products">استكشف الأطباق <span aria-hidden="true">↙</span></a>
+              <a className="menu-ghost-link" href="#menu-custom">كوّن وجبتك <span aria-hidden="true">←</span></a>
             </div>
-            <MenuLeadCapture />
+            <div className="menu-hero-mini-tagline" aria-label="أقسام المنيو">وجبات <span>•</span> سلطات <span>•</span> فطور <span>•</span> ساندويتشات</div>
           </div>
           <div className="menu-hero-art" aria-label="صور أطباق من معرض بيسك دايت">
             <div className="menu-hero-halo" aria-hidden="true" />
             <div className="menu-hero-orbit" aria-hidden="true" />
             <div className="menu-hero-plate menu-hero-plate--main">
-              <Image src={foodImage} alt="وجبة سالمون من معرض بيسك دايت" fill priority sizes="(max-width: 700px) 72vw, 430px" />
+              <Image src={foodImage} alt="باستا وايت صوص بالدجاج من منيو بيسك دايت" fill priority unoptimized sizes="(max-width: 700px) 72vw, 430px" />
             </div>
             <div className="menu-hero-plate menu-hero-plate--mini">
-              <Image src={secondImage} alt="وجبة جمبري من معرض بيسك دايت" fill sizes="(max-width: 700px) 35vw, 190px" />
+              <Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 35vw, 190px" />
             </div>
-            <div className="menu-float menu-float--one"><span className="menu-float-indicator" /> <strong>وجبتك.. اختيارك</strong><small>بروتين + كارب</small></div>
-            <div className="menu-float menu-float--two"><b>7 / 26 / 30</b><small>يوم من المرونة</small></div>
+            <div className="menu-hero-plate menu-hero-plate--third"><Image src={thirdImage} alt="طبق سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 22vw, 150px" /></div>
+            <div className="menu-float menu-float--one"><span className="menu-float-indicator" /> <strong>منيو مليان اختيارات</strong><small>Basic Diet</small></div>
             <span className="menu-hero-spark" aria-hidden="true">✳</span>
           </div>
         </div>
@@ -172,13 +179,62 @@ export function MenuExperience() {
 
       <nav className="menu-jump-nav" aria-label="أقسام المنيو">
         <div className="page-shell menu-jump-list">
-          <a href="#menu-quick-contact">طلب تواصل</a>
+          <a href="#menu-products">الأطباق والأسعار</a>
           <a href="#menu-plans">الاشتراكات</a>
-          <a href="#menu-custom">اصنع بنفسك</a>
-          <a href="#menu-products">المنيو الكامل</a>
-          <a href="#menu-download">التطبيق</a>
+          <a href="#menu-custom">اصنع وجبتك أو سلطتك</a>
+          <a href="#menu-download">تواصل معنا / التطبيق</a>
         </div>
       </nav>
+
+      <section className="menu-featured-categories" aria-labelledby="menu-category-title">
+        <div className="page-shell">
+          <div className="menu-featured-intro">
+            <div><p className="menu-kicker"><span aria-hidden="true" /> EXPLORE THE MENU</p><h2 id="menu-category-title">ابدأ باللي تشتهيه.</h2></div>
+            <a href="#menu-products">شوف المنيو بالكامل <span aria-hidden="true">←</span></a>
+          </div>
+          <div className="menu-featured-grid">
+            {menuShowcaseCategories.map((group) => (
+              <a key={group.label} href="#menu-products" className="menu-featured-card"
+                onClick={() => { setCategory(group.label); setSearch(""); setVisibleCount(9); }}>
+                <Image src={group.image} alt="" fill unoptimized={group.image.startsWith("https://")} sizes="(max-width: 760px) 60vw, 26vw" />
+                <span className="menu-featured-overlay" aria-hidden="true" />
+                <span className="menu-featured-card-content"><small>{group.tag}</small><strong>{group.label}</strong><b aria-hidden="true">←</b></span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
+        <div className="page-shell">
+          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="صور الأطباق، التصنيفات، وأسعار أصناف الكاشير المرشحة. الصور والتفاصيل النهائية ما زالت قيد المراجعة قبل النشر." />
+          <div className="menu-catalog-tools">
+            <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
+              {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(9); }}>{group}</button>)}
+            </div>
+            <label className="menu-search"><span className="sr-only">ابحث عن صنف</span><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(9); }} placeholder="ابحث عن صنف أو رقم الكاشير" type="search" /></label>
+          </div>
+          <div className="menu-catalog-count"><span>نتائج البحث: <b>{filteredItems.length}</b> صنف</span><DemoLabel /></div>
+          <div className="menu-product-grid">
+            {filteredItems.slice(0, visibleCount).map((item) => (
+              <article className="menu-product-card" key={item.id}>
+                <ProductImage item={item} />
+                <div className="menu-product-body">
+                  <span className="menu-product-category">{item.category}</span>
+                  <h3>{item.name}</h3>
+                  <div className="menu-product-bottom">
+                    <div><small>سعر الكاشير للمراجعة</small><strong>{numberFormatter.format(item.priceSar)} <span>ر.س</span></strong></div>
+                    <button type="button" onClick={() => setSelectedProduct(item)} aria-label={"تفاصيل " + item.name}>التفاصيل <span aria-hidden="true">←</span></button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
+          {visibleCount < filteredItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 9)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
+          <p className="menu-catalog-footnote">المنتجات المعروضة مرشحة فقط. الصورة أو الوصف أو السعرات التي لم يوافق عليها المطعم لا تُنشر كحقيقة نهائية.</p>
+        </div>
+      </section>
 
       <section className="menu-section menu-plans-section" id="menu-plans" aria-labelledby="menu-plans-title">
         <div className="page-shell">
@@ -306,45 +362,15 @@ export function MenuExperience() {
         </div>
       </section>
 
-      <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
-        <div className="page-shell">
-          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="منيو فيه اللي على بالك." copy="تصفح أصناف الكاشير المرشحة حسب التصنيف. الأسعار هنا من ملف مراجعة الكاشير، والصور والتفاصيل ما زالت قيد اعتماد المطعم." />
-          <div className="menu-catalog-tools">
-            <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
-              {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(9); }}>{group}</button>)}
-            </div>
-            <label className="menu-search"><span className="sr-only">ابحث عن صنف</span><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(9); }} placeholder="ابحث عن صنف أو رقم الكاشير" type="search" /></label>
-          </div>
-          <div className="menu-catalog-count"><span>نتائج البحث: <b>{filteredItems.length}</b> صنف</span><DemoLabel /></div>
-          <div className="menu-product-grid">
-            {filteredItems.slice(0, visibleCount).map((item) => (
-              <article className="menu-product-card" key={item.id}>
-                <ProductImage item={item} />
-                <div className="menu-product-body">
-                  <span className="menu-product-category">{item.category} <span>•</span> POS #{item.id}</span>
-                  <h3>{item.name}</h3>
-                  <div className="menu-product-bottom">
-                    <div><small>سعر الكاشير للمراجعة</small><strong>{numberFormatter.format(item.priceSar)} <span>ر.س</span></strong></div>
-                    <button type="button" onClick={() => setSelectedProduct(item)} aria-label={"تفاصيل " + item.name}>التفاصيل <span aria-hidden="true">←</span></button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-          {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
-          {visibleCount < filteredItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 9)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
-          <p className="menu-catalog-footnote">المنتجات المعروضة مرشحة فقط. الصورة أو الوصف أو السعرات التي لم يوافق عليها المطعم لا تُنشر كحقيقة نهائية.</p>
-        </div>
-      </section>
-
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> YOUR NEXT STEP</p><h2 id="menu-download-title">اختار اللي يناسبك.<br /><em>وإحنا نساعدك تبدأ.</em></h2><p>سيب اسمك ورقمك عشان نكلمك ونشرح الباقات، أو حمّل التطبيق واختار بنفسك.</p><MenuContactButton location="final" intent="bottom_cta" className="menu-download-contact">اطلب تواصل من Basic Diet <span aria-hidden="true">←</span></MenuContactButton><div className="menu-download-store-label">أو حمّل التطبيق</div><StoreLinks location="final" /></div>
-          <div className="menu-download-decoration" aria-hidden="true"><span>Basic</span><strong>Diet.</strong><small>EAT WELL. LIVE WELL.</small></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> KEEP IN TOUCH</p><h2 id="menu-download-title">عجبك المنيو؟<br /><em>خلّنا نساعدك تختار.</em></h2><p>اتفرج على الأصناف الأول براحتك. لو لقيت اللي يناسبك، سيب رقمك في الآخر أو حمّل التطبيق وكمّل بنفسك.</p><MenuLeadCapture /></div>
+          <div className="menu-download-food" aria-label="من أطباق بيسك دايت">
+            <div className="menu-download-food-main"><Image src={thirdImage} alt="سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 45vw, 350px" /></div>
+            <div className="menu-download-food-mini"><Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 28vw, 180px" /></div>
+          </div>
         </div>
       </section>
-
-      <MenuMobileConversionBar />
 
       {selectedProduct && (
         <div className="menu-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedProduct(null); }}>
