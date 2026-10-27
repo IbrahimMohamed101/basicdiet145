@@ -48,7 +48,7 @@ const sizeVariantFamilies = [
   { key: "fillet", title: "سمك فيليه", sizes: [{ id: "85", grams: 100 }, { id: "86", grams: 150 }, { id: "87", grams: 200 }] },
 ] as const;
 const menuItemById = new Map(menuPreviewItems.map(item => [item.id, item]));
-const variantFamilyById = new Map(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
+const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
 
 
 const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "سالمون", "جمبري"];
