@@ -46,10 +46,11 @@ jobs:
           exit 1
       - name: Menu conversion and responsive tests
         run: npx playwright test tests/menu.spec.ts --reporter=line
-      - name: Save failure screenshots
-        if: failure()
+      - name: Save visual review screenshots and failures
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: menu-preview-qa-failures
+          name: menu-preview-visual-review
           path: landing-page/site/test-results/
           retention-days: 7
+          if-no-files-found: ignore
