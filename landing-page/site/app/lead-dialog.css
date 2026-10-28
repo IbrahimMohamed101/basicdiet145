@@ -161,3 +161,6 @@
   .lead-sheet-top { margin-bottom: 3px; }
   .lead-step-head--offer p { margin-bottom: 5px; }
 }
+
+/* Legacy plan selection also remains reachable on short screens. */
+.lead-sheet > .lead-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }

@@ -204,7 +204,7 @@ test("builder asks for callback only when explicitly selected", async ({ page })
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await builder.getByRole("button", { name: /خلّينا نتواصل معك/ }).click();
   await expect(page.locator(".lead-dialog")).toBeVisible();
-  await expect(page.locator(".lead-dialog").getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
+  await expect(page.locator(".lead-dialog").getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
 });
 
 
@@ -234,14 +234,16 @@ test("menu hides weight variants on cards but shows 48px choices in product deta
   await expect(detail).toContainText("مسببات الحساسية");
 });
 
-test("calculator fails closed without live prices", async ({ page }) => {
+test("calculator never invents a price and preserves no-plan registration during an outage", async ({ page }) => {
   await page.route("**/api/plan-catalog", route => route.fulfill({
     status: 503, contentType: "application/json", body: '{"status":false,"data":[]}',
   }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await expect(plans.locator(".bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
-  await expect(plans.getByRole("button", { name: /سجّل لخصم 15%/ })).toBeDisabled();
+  await expect(plans.locator(".bd-calculator-offer")).toHaveCount(0);
+  await plans.getByRole("button", { name: /سجّل لخصم 15%/ }).click();
+  await expect(page.locator(".lead-selection-summary")).toContainText("لم تحدد باقة");
 });
 
 test("meal-builder shows photos only for supported matched dishes", async ({ page }) => {
@@ -506,7 +508,10 @@ test("form submit button remains visible at bottom on short mobile viewport", as
   expect(submitBox).not.toBeNull();
   expect(dialogBox).not.toBeNull();
   expect(submitBox!.y).toBeGreaterThan(dialogBox!.y);
-  expect(submitBox!.y + submitBox!.height).toBeLessThanOrEqual(520);
+  await expect.poll(async () => {
+    const settled = await button.boundingBox();
+    return settled ? settled.y + settled.height : Infinity;
+  }).toBeLessThanOrEqual(520);
   const scroll = await dialog.locator(".lead-form-scroll").evaluate(e => ({
     client: e.clientHeight, scroll: e.scrollHeight, overflow: getComputedStyle(e).overflowY,
   }));

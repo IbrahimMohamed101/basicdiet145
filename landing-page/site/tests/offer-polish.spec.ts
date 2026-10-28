@@ -70,7 +70,7 @@ test('homepage food gallery and final offer use the canonical menu and registrat
 });
 
 for (const [width, height] of [[320, 520], [390, 640], [1440, 900]]) {
-  test(`registration fields remain reachable and submit stays visible at ${width}x${height}`, async ({ page }) => {
+  test(`registration fields remain reachable and submit stays visible at ${width}x${height}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const dialog = await openForm(page);
@@ -80,9 +80,24 @@ for (const [width, height] of [[320, 520], [390, 640], [1440, 900]]) {
       const box = await button.boundingBox();
       return box ? box.y + box.height : Infinity;
     }).toBeLessThanOrEqual(height);
+    await testInfo.attach(`registration-${width}x${height}`, { body: await page.screenshot(), contentType: 'image/png' });
     await dialog.getByRole('textbox', { name: 'رقم الجوال' }).fill('0500000000');
     await dialog.getByRole('checkbox', { name: /أوافق على التواصل/ }).check();
     await expect(button).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+
+test('legacy plan selection can scroll to continue on a short viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 520 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.route('**/api/lead-options', route => route.fulfill({ json: { data: [
+    { planId: '507f1f77bcf86cd799439026', daysCount: 26, gramsOptions: [{ grams: 150, mealsPerDay: [2] }] }
+  ] } }));
+  await page.goto('/jeddah/healthy-meals');
+  await page.locator('.nav-actions').getByRole('button', { name: 'ابدأ اشتراكك' }).click();
+  const dialog = page.locator('.lead-dialog');
+  await dialog.getByRole('button', { name: /متابعة/ }).click();
+  await expect(dialog.getByRole('textbox', { name: 'رقم الجوال' })).toBeVisible();
+});
