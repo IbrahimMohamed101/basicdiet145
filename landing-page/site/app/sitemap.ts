@@ -18,5 +18,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: origin + "/", changeFrequency: "weekly", priority: 1 },
     { url: origin + "/jeddah/healthy-meals", changeFrequency: "monthly", priority: 0.9 },
+    ...(process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true" ? [] : [{ url: origin + "/menu", changeFrequency: "weekly" as const, priority: 0.9 }]),
   ];
 }
