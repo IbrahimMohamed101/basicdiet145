@@ -12,6 +12,9 @@ export async function POST(request: NextRequest) {
   if (!(request.headers.get("content-type") ?? "").startsWith("application/json")) {
     return NextResponse.json({ status: false, code: "UNSUPPORTED_MEDIA_TYPE" }, { status: 415 });
   }
+  if (process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true") {
+    return NextResponse.json({ status: false, code: "PREVIEW_ONLY" }, { status: 403 });
+  }
   const backend = process.env.LANDING_ANALYTICS_BACKEND_URL?.replace(/\/+$/, "");
   const secret = process.env.LANDING_ANALYTICS_INGEST_SECRET;
   if (!backend || !/^https:\/\//.test(backend) || !secret) {

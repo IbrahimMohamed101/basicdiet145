@@ -38,3 +38,9 @@ Added:
 
 Reason:
 Marketing strategy and execution should continue across new chats/agents without depending on conversation memory.
+
+
+## 2026-10-28
+- Document website 15% callback offer and explicit no-plan inquiry contract.
+- Track form opens/accepted completions separately from unique saved leads and paid subscriptions.
+- Improve preview registration reliability, menu consistency and conversion copy; retain production boundary.

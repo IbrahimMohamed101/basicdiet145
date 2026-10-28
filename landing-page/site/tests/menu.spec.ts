@@ -106,7 +106,7 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   const form = page.locator("#menu-quick-contact form");
   await form.getByRole("textbox", { name: "الاسم" }).fill("عميل تجربة");
   await form.getByRole("textbox", { name: "رقم الجوال السعودي" }).fill("0501234567");
-  await form.getByRole("button", { name: /سجّل وخلّنا نساعدك توفّر/ }).click();
+  await form.getByRole("button", { name: /سجّل لخصم 15%/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
@@ -140,7 +140,7 @@ test("plan contact CTA passes calculator dimensions to existing lead flow", asyn
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await plans.locator("fieldset").nth(1).getByRole("button", { name: /200/ }).click();
-  await plans.getByRole("button", { name: /سجّل للاستفادة من خصم 15%/ }).click();
+  await plans.getByRole("button", { name: /سجّل لخصم 15%/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
   await expect(dialog.locator(".lead-selection-summary")).toContainText("200 جرام");
@@ -241,7 +241,7 @@ test("calculator fails closed without live prices", async ({ page }) => {
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await expect(plans.locator(".bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
-  await expect(plans.getByRole("button", { name: /سجّل للاستفادة من خصم 15%/ })).toBeDisabled();
+  await expect(plans.getByRole("button", { name: /سجّل لخصم 15%/ })).toBeDisabled();
 });
 
 test("meal-builder shows photos only for supported matched dishes", async ({ page }) => {

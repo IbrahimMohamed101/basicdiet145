@@ -114,3 +114,10 @@ Source:
 ## Next execution phase
 
 **Live visual review + final launch QA**
+
+
+## 2026-10-28 — Website conversion polish
+
+Preview-only improvements unify the 15% registration CTA, preserve instant no-plan intake, prevent stale requests from changing reopened dialogs, accept Arabic phone digits, keep registration reachable during catalog outages, and use canonical menu photos/prices on the homepage. Next.js updated from vulnerable 16.4.0 to 16.4.3 after the official October advisory.
+
+Build passed. Responsive and isolated persistence CI checks are pending. Preview submissions remain blocked server-side; backend #174 and dashboard #61 are paired prerequisites for actual CRM intake. No production changes or measured marketing uplift.

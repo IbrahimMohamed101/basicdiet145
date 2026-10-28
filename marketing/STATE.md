@@ -179,3 +179,8 @@ For "ننزل إيه النهارده؟":
 5. adapt it to the strongest available asset,
 6. define one primary KPI,
 7. document the result after publishing.
+
+
+## Website conversion update — 2026-10-28
+
+The active website preview is food-first with a 15% registration offer, no coupon entry and no required plan selection. Current task improves form reliability, consistent offer wording, canonical menu content, backend optional-plan support and dashboard funnel visibility. Backend #174 and dashboard #61 must ship together before live intake is enabled. Preview does not accept actual customer submissions. Production launch and live conversion lift are not claimed. See experiments log for hypothesis and QA limits.

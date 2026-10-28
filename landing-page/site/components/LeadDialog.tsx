@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { StoreLinks } from "./StoreLinks";
 
+import { normalizeSaudiPhone as normalizePhone } from "@/lib/saudi-phone";
+import { SITE_OFFER_CTA, SITE_OFFER_TERMS } from "@/lib/site-offer";
+
 type GramOption = { grams: number; mealsPerDay: number[] };
 type PlanOption = { planId: string; daysCount: number; gramsOptions: GramOption[] };
 type OpenEvent = CustomEvent<{
@@ -23,13 +26,6 @@ const ATTRIBUTION_KEY = "basicdiet_lp_attribution_v1";
 const SESSION_KEY = "basicdiet_lp_session_v1";
 const PRIVACY_URL = "/privacy";
 
-function normalizePhone(value: string) {
-  let s = value.replace(/[\s()-]/g, "");
-  if (s.startsWith("+966")) s = s.slice(4);
-  else if (s.startsWith("966")) s = s.slice(3);
-  else if (s.startsWith("0")) s = s.slice(1);
-  return /^5\d{8}$/.test(s) ? "+966" + s : "";
-}
 
 export function LeadDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -68,13 +64,13 @@ export function LeadDialog() {
     const open = (evt: Event) => {
       const details = (evt as OpenEvent).detail || {};
       const currentLoad = ++loadId.current;
-      setStep(1); setError(""); setPhone(details.phone?.slice(0, 32) || ""); setName(details.name?.slice(0, 70) || ""); setSelectionNotice("");
+      setSending(false); setStep(1); setError(""); setPhone(details.phone?.slice(0, 32) || ""); setName(details.name?.slice(0, 70) || ""); setSelectionNotice("");
       setFastContact(details.fastContact === true);
       setPromoMode(details.promoIntent === "BASIC15" || (details.sourceDetail || "").includes("basic15"));
-      setNeedsPlanAssistance(details.planOptional === true || (!details.planDays && details.fastContact === true));
+      setNeedsPlanAssistance(!details.planDays && (details.planOptional === true || details.fastContact === true));
       setSourceDetail((details.sourceDetail || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40));
       setContactConsent(false); setMarketingConsent(false); setWebsite("");
-      const noPlan = details.planOptional === true && !details.planDays;
+      const noPlan = !details.planDays && (details.planOptional === true || details.fastContact === true);
       setLocation(details.location || "hero"); setLoading(!noPlan); setPlans([]);
       submitting.current = false;
       setFulfillmentMethod(details.fulfillmentMethod === "pickup" ? "pickup" : "delivery");
@@ -83,7 +79,7 @@ export function LeadDialog() {
       setActive(true);
       window.dispatchEvent(new CustomEvent("basicdiet:lead_opened", {
         detail: { location: details.location || "hero", offer: details.promoIntent === "BASIC15" || (details.sourceDetail || "").includes("basic15"),
-          noPlan, placement: (details.sourceDetail || "").slice(0, 40) },
+          noPlan, planDays: noPlan ? null : details.planDays, placement: (details.sourceDetail || "").slice(0, 40) },
       }));
       if (noPlan) { setPlanId(""); setStep(2); return; }
       if (details.fastContact === true) setStep(2);
@@ -153,6 +149,7 @@ export function LeadDialog() {
     if (fastContact && name.trim().length < 2) { setError("اكتب اسمك عشان نقدر نتواصل معك."); return; }
     if (!contactConsent) { setError("لازم توافق على التواصل معك بشأن طلبك."); return; }
     submitting.current = true;
+    const submissionLoad = loadId.current;
     setError(""); setSending(true);
     let attribution: Record<string, string> = {};
     let sessionId = "";
@@ -182,6 +179,7 @@ export function LeadDialog() {
         }),
       });
       const data = await response.json().catch(() => ({}));
+      if (submissionLoad !== loadId.current) return;
       if (response.status !== 202) {
         if (data.code === "PLAN_UNAVAILABLE" || data.code === "OPTION_UNAVAILABLE") {
           setError("الباقة اتغيرت. اقفل النافذة وافتحها تاني لاختيار الباقة المتاحة.");
@@ -199,10 +197,13 @@ export function LeadDialog() {
         detail: { location, planDays: needsPlanAssistance ? null : selected?.daysCount, planSelected: !needsPlanAssistance, offer: promoMode, placement: sourceDetail },
       }));
     } catch {
+      if (submissionLoad !== loadId.current) return;
       setError("تعذر إرسال الطلب بسبب الاتصال. جرب تاني.");
     } finally {
-      submitting.current = false;
-      setSending(false);
+      if (submissionLoad === loadId.current) {
+        submitting.current = false;
+        setSending(false);
+      }
     }
   }
 
@@ -213,6 +214,7 @@ export function LeadDialog() {
       dir="rtl"
       aria-labelledby="lead-dialog-heading"
       onClick={event => { if (event.target === event.currentTarget) close(); }}
+      onCancel={event => { event.preventDefault(); close(); }}
       onClose={() => setActive(false)}
     >
       {active && (
@@ -313,15 +315,16 @@ export function LeadDialog() {
                     <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}/>
                     <span>أرغب في تلقي عروض مستقبلية (اختياري).</span>
                   </label>}
-                  {promoMode && <p className="lead-offer-disclaimer">خصم 15% على باقات الاشتراك المشمولة بالعرض فقط، وليس الوجبات الفردية؛ لا يشمل التوصيل أو الإضافات. التسجيل لا يفعّل اشتراكًا أو خصمًا تلقائيًا. يؤكد الفريق انطباق العرض وقت إتمام الاشتراك.</p>}
+                  {promoMode && <p className="lead-offer-disclaimer">{SITE_OFFER_TERMS}</p>}
                   {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة فقط؛ إرسال بيانات التواصل غير مفعّل هنا. التسجيل الفعلي متاح عبر الموقع الرسمي.</p>}
                   {error && <p className="lead-error" role="alert">{error}</p>}
+                  {!loading && !selected && !needsPlanAssistance && <button className="lead-back" type="button" onClick={() => { setNeedsPlanAssistance(true); setPlanId(""); setError(""); }}>متابعة بدون تحديد باقة</button>}
                   </div>
                   <div className="lead-form-actions">
                   <button className="lead-primary" type="submit" disabled={isMenuPreview || sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2) || (!needsPlanAssistance && !selected)}>
-                    {sending ? "جاري إرسال طلبك..." : promoMode ? "سجّل لخصم 15%" : "اطلب تواصل من Basic Diet"}
+                    {sending ? "جاري إرسال طلبك..." : promoMode ? SITE_OFFER_CTA : "اطلب تواصل من Basic Diet"}
                   </button>
-                  {!needsPlanAssistance && <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>}
+                  {!needsPlanAssistance && <button className="lead-back" type="button" onClick={() => { setSending(false); setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>}
                   </div>
                 </form>
               )}
@@ -331,7 +334,7 @@ export function LeadDialog() {
             <div className="lead-success">
               <div className="lead-success-mark" aria-hidden="true">✓</div>
               <h2 id="lead-dialog-heading">وصلنا طلبك!</h2>
-              <p>تم استلام طلب التواصل. فريق Basic Diet يتواصل معك لمراجعة اشتراكك وشروط الاستفادة من عرض 15%. التسجيل لا يُفعّل الاشتراك تلقائيًا.</p>
+              <p>{promoMode ? "وصلتنا بياناتك وطلب الاستفادة من خصم 15%. فريقنا يتواصل معك لاختيار الباقة وتأكيد العرض قبل إتمام الاشتراك." : "وصلنا طلب التواصل. فريقنا يتواصل معك لمراجعة باقتك وإكمال التفاصيل."}</p>
               <div className="lead-success-stores"><StoreLinks location="app" /></div>
               <button type="button" className="lead-back" onClick={close}>رجوع للموقع</button>
             </div>
