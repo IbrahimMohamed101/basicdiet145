@@ -37,9 +37,8 @@ export function Hero() {
           </p>
 
           <div className="hero-cinema-actions">
-            <AppCta location="hero" className="button button--hero button--hero-cinema">
-              ابدأ اشتراكك
-            </AppCta>
+            <a className="button button--hero button--hero-cinema" href="#plans">احسب باقتك</a>
+            <a className="button button--hero-outline" href="/menu#menu-products">تصفّح المنيو</a>
           </div>
         </div>
       </div>
