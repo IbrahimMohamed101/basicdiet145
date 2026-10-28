@@ -29,19 +29,43 @@ if (posIds.length !== verifiedIds.length + Object.keys(editorial).length) fail("
 for (const [id, row] of Object.entries(nutrition)) {
   if (!posIds.includes(id) || typeof row.calories !== "number" || !Number.isFinite(row.calories) || row.calories < 0) fail("Invalid nutrition record: " + id);
 }
-// Meal builder: every visible protein/carb option should resolve to a photo,
-// not a generic generated icon. All number formatters must use Latin digits.
-const builder = read("components/MenuExperience.tsx");
-const photoByOption = new Map([
-  ["بيض مسلوق", "/menu-images/pos_39.webp"],
-  ["رز برياني", "/menu-images/builder_biryani_rice.webp"],
-  ["كينوا", "/menu-images/builder_quinoa.webp"],
-  ["بطاطا حلوة", "/menu-images/builder_sweet_potato.webp"],
-]);
-for (const [name, image] of photoByOption) {
-  if (!builder.includes(JSON.stringify(name) + ": " + JSON.stringify(image))) fail("Builder photo mapping missing for " + name);
-  if (!existsSync(resolve(root, "public", image.slice(1)))) fail("Missing builder photo file: " + image);
+// Customer-requested custom-meal preview: 16 proteins, 9 sides, never silent omissions.
+const builderOptionsSource = read("lib/meal-builder-options.ts");
+const parseBuilderArray = name => {
+  const match = builderOptionsSource.match(new RegExp("export const " + name + " = (\\[[\\s\\S]*?\\]) as const;"));
+  if (!match) fail("Builder options not parseable: " + name);
+  return JSON.parse(match[1]);
+};
+const mealProteins = parseBuilderArray("mealProteinChoices");
+const mealSides = parseBuilderArray("mealSideChoices");
+const proteinGroups = parseBuilderArray("mealProteinGroups");
+if (mealProteins.length !== 16 || mealSides.length !== 9 || proteinGroups.length !== 4)
+  fail("Expected 16 proteins / 9 sides / 4 protein filter tabs");
+const counts = mealProteins.reduce((count, item) => ({ ...count, [item.group]: (count[item.group] || 0) + 1 }), {});
+if (counts.chicken !== 11 || counts.beef !== 3 || counts.fish !== 2)
+  fail("Unexpected distribution of chicken, meat or fish choices");
+const allNames = [...mealProteins, ...mealSides].map(item => item.name);
+if (new Set(allNames).size !== 25) fail("Duplicate custom-meal choice");
+const requiredNames = ["دجاج مشوي","دجاج كريمة","دجاج مشروم","دجاج مكسيكي","دجاج باربكيو","دجاج استربس","دجاج ملوخية","دجاج هاني مسترد","دجاج سبايسي","دجاج بالروزماري","دجاج شيش","لحم مشروم","لحم كفتة كباب","لحم مفروم","سمك مشوي","سمك كريمي","بطاطس مشوي","بطاطس مهروسة","بطاطا حلوة","خضار مشكل مشوي","رز مصري بالشعيرية","رز أبيض","رز صيني معجن","باستا بالكريمة","باستا بالصلصة الحمراء"];
+if (allNames.some(x => !requiredNames.includes(x)) || requiredNames.some(x => !allNames.includes(x)))
+  fail("Builder option is missing or was unexpectedly renamed");
+const imageAllowlist = read("app/api/meal-image/route.ts");
+for (const item of [...mealProteins, ...mealSides]) {
+  if (item.image === null) continue; // explicit, labeled illustration fallback
+  if (typeof item.image !== "string" || !item.image.startsWith("/"))
+    fail("Unsafe builder photo source for " + item.name);
+  if (item.image.startsWith("/menu-images/") && !existsSync(resolve(root,"public",item.image.slice(1))))
+    fail("Builder photo file missing: " + item.name);
+  if (item.image.startsWith("/api/meal-image?id=")) {
+    const driveId = item.image.split("=")[1];
+    if (!imageAllowlist.includes(JSON.stringify(driveId))) fail("Builder Drive image ID not allowlisted: " + item.name);
+  }
 }
+const builderUI = read("components/MenuExperience.tsx");
+if (!builderUI.includes("filteredProteinChoices.map") || !builderUI.includes("mealSideChoices.map"))
+  fail("Builder UI does not render all configured choices");
+if (!builderUI.includes("صورة توضيحية") || !builderUI.includes("proteinGroup"))
+  fail("Illustrative-media disclosure or category filter missing");
 for (const file of ["components/MenuExperience.tsx", "components/MenuCalories.tsx", "components/MealGallery.tsx", "components/PlanCalculator.tsx"]) {
   const source = read(file);
   if (source.includes('Intl.NumberFormat("ar-SA"') || /[٠-٩۰-۹]/.test(source)) fail("Arabic-digit formatter or literal in " + file);
