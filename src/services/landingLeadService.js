@@ -28,11 +28,15 @@ function isValidRequest(body) {
     && UUID.test(body.requestId || "")
     && body.contactConsent === true
     && normalizeSaudiPhone(body.phone)
-    && /^[0-9a-f]{24}$/i.test(body.planId || "")
-    && DURATIONS.has(body.daysCount)
-    && Number.isInteger(body.grams) && body.grams > 0 && body.grams <= 1000
-    && Number.isInteger(body.mealsPerDay) && body.mealsPerDay > 0 && body.mealsPerDay <= 10
-    && (body.fulfillmentMethod === undefined || ["delivery", "pickup"].includes(body.fulfillmentMethod));
+    && (body.planUnselected === true
+      ? body.planId == null && body.daysCount == null && body.grams == null && body.mealsPerDay == null
+        && (body.fulfillmentMethod == null || body.fulfillmentMethod === "unspecified")
+      : body.planUnselected == null
+        && /^[0-9a-f]{24}$/i.test(body.planId || "")
+        && DURATIONS.has(body.daysCount)
+        && Number.isInteger(body.grams) && body.grams > 0 && body.grams <= 1000
+        && Number.isInteger(body.mealsPerDay) && body.mealsPerDay > 0 && body.mealsPerDay <= 10
+        && (body.fulfillmentMethod === undefined || ["delivery", "pickup"].includes(body.fulfillmentMethod)));
 }
 async function getAvailableOptions() {
   const plans = await Plan.find(Plan.getSellableQuery())
@@ -50,13 +54,17 @@ async function submitLead(body) {
   if (!isValidRequest(body)) return { ok: false, status: 400, code: "INVALID_REQUEST" };
   // Honeypot: silently accept bot submissions without persisting PII.
   if (typeof body.website === "string" && body.website.trim()) return { ok: true, created: false };
-  const plan = await Plan.findOne({ ...Plan.getSellableQuery(), _id: body.planId }).lean();
-  if (!plan || !Plan.isViable(plan) || plan.daysCount !== body.daysCount || !DURATIONS.has(plan.daysCount)) {
-    return { ok: false, status: 400, code: "PLAN_UNAVAILABLE" };
-  }
-  const gram = (plan.gramsOptions || []).find(g => g.isActive !== false && g.grams === body.grams);
-  if (!gram || !(gram.mealsOptions || []).some(m => m.isActive !== false && m.mealsPerDay === body.mealsPerDay)) {
-    return { ok: false, status: 400, code: "OPTION_UNAVAILABLE" };
+  const planUnselected = body.planUnselected === true;
+  let plan = null;
+  if (!planUnselected) {
+    plan = await Plan.findOne({ ...Plan.getSellableQuery(), _id: body.planId }).lean();
+    if (!plan || !Plan.isViable(plan) || plan.daysCount !== body.daysCount || !DURATIONS.has(plan.daysCount)) {
+      return { ok: false, status: 400, code: "PLAN_UNAVAILABLE" };
+    }
+    const gram = (plan.gramsOptions || []).find(g => g.isActive !== false && g.grams === body.grams);
+    if (!gram || !(gram.mealsOptions || []).some(m => m.isActive !== false && m.mealsPerDay === body.mealsPerDay)) {
+      return { ok: false, status: 400, code: "OPTION_UNAVAILABLE" };
+    }
   }
   const phone = normalizeSaudiPhone(body.phone);
   const secret = process.env.LANDING_ANALYTICS_INGEST_SECRET;
@@ -68,9 +76,12 @@ async function submitLead(body) {
       requestId: body.requestId.toLowerCase(),
       name: clean(body.name, 70),
       phone, phoneHash, dayBucket: now.toISOString().slice(0, 10),
-      planId: plan._id, daysCount: plan.daysCount, grams: body.grams,
-      mealsPerDay: body.mealsPerDay,
-      fulfillmentMethod: body.fulfillmentMethod || "unspecified", contactConsent: true,
+      planSelectionStatus: planUnselected ? "unselected" : "selected",
+      planId: planUnselected ? null : plan._id,
+      daysCount: planUnselected ? null : plan.daysCount,
+      grams: planUnselected ? null : body.grams,
+      mealsPerDay: planUnselected ? null : body.mealsPerDay,
+      fulfillmentMethod: planUnselected ? "unspecified" : (body.fulfillmentMethod || "unspecified"), contactConsent: true,
       marketingConsent: body.marketingConsent === true, consentAt: now,
       source: clean(body.source), medium: clean(body.medium),
       campaign: clean(body.campaign, 100), content: clean(body.content, 100),
