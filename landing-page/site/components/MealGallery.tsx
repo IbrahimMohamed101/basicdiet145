@@ -8,7 +8,7 @@ export const homepageFeaturedMenuIds = ["186", "78", "77", "176", "195", "211"] 
 const meals = homepageFeaturedMenuIds
   .map((id) => menuPreviewItems.find((item) => item.id === id))
   .filter((item): item is (typeof menuPreviewItems)[number] => Boolean(item?.image));
-const currency = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 });
+const currency = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 export function MealGallery() {
   return (
