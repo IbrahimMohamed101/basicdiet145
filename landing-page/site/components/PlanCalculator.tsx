@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
+import { PROMO_PERCENT } from "@/components/PromoExperience";
 
 type MealPrice = { mealsPerDay: number; priceSar: number };
 type GramOption = { grams: number; mealsOptions: MealPrice[] };
@@ -70,6 +71,12 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
   const selectedMeal = selectedGram?.mealsOptions.find(item => item.mealsPerDay === choice.meals);
   const matched = Boolean(selectedPlan?.daysCount === choice.days && selectedGram && selectedMeal);
   const price = matched ? selectedMeal?.priceSar : null;
+  // All math is on the package price only; convert to integer halalas to avoid float drift.
+  const baseHalalas = price != null ? Math.round(price * 100) : null;
+  const savingHalalas = baseHalalas != null ? Math.round(baseHalalas * PROMO_PERCENT / 100) : null;
+  const offerHalalas = baseHalalas != null && savingHalalas != null ? baseHalalas - savingHalalas : null;
+  const offerPrice = offerHalalas == null ? null : number.format(offerHalalas / 100) + " ر.س";
+  const savingPrice = savingHalalas == null ? null : number.format(savingHalalas / 100) + " ر.س";
   const availableGrams = selectedPlan?.gramsOptions.map(item => item.grams) || [];
   const availableMeals = selectedGram?.mealsOptions.map(item => item.mealsPerDay) || [];
   const allDays = [...new Set(plans.map(plan => plan.daysCount))];
@@ -96,6 +103,7 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
       mealsPerDay: choice.meals, fulfillmentMethod: choice.fulfillment,
       sourceDetail: context === "menu" ? "menu_plan_selected" : "home_plan_selected",
       fastContact: true,
+      promoIntent: "BASIC15",
     };
     window.dispatchEvent(new CustomEvent("basicdiet:cta", { detail: { location: "plans", planDays: choice.days, context } }));
     window.dispatchEvent(new CustomEvent("basicdiet:open-lead", { detail }));
@@ -163,13 +171,20 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
             <div className="bd-calculator-price" aria-live="polite" aria-atomic="true">
               {status === "loading" ? "جارٍ تحميل الأسعار…" : status === "error" ? "تعذّر تحميل الأسعار" : summary}
             </div>
+            {status === "ready" && matched && offerPrice && savingPrice && (
+              <div className="bd-calculator-offer" aria-label="السعر المتوقع بعد عرض التسجيل">
+                <span className="bd-calculator-offer-tag">عرض التسجيل من الموقع · وفر 15%</span>
+                <div className="bd-calculator-offer-price"><small>بعد خصم العرض</small><strong>{offerPrice}</strong></div>
+                <div className="bd-calculator-offer-savings">توفيرك المتوقع <b>{savingPrice}</b></div>
+              </div>
+            )}
             <div className="bd-calculator-specs"><span>{choice.days * choice.meals} وجبة خلال الباقة</span><span>{choice.fulfillment === "delivery" ? "توصيل" : "استلام"}</span></div>
             <p className="bd-calculator-disclaimer">
-              السعر المعروض للباقة الأساسية فقط؛ لا يشمل رسوم التوصيل أو الإضافات أو الخصومات. التأكيد النهائي عند إتمام الاشتراك.
+              العرض تقديري على سعر الباقة فقط ولا يشمل التوصيل أو الإضافات. يراجع الفريق أهلية الخصم ويؤكد السعر النهائي عند الاشتراك. تسجيل البيانات لا يُفعّل الاشتراك تلقائيًا.
               {status === "ready" && !matched && " هذا الاختيار غير متاح حاليًا، جرّب اختيارًا آخر."}
             </p>
             <button type="button" className="bd-calculator-primary" disabled={!matched || !price} onClick={contact}>
-              خلّنا نساعدك بالاشتراك <span aria-hidden="true">←</span>
+              سجّل للاستفادة من خصم 15% <span aria-hidden="true">←</span>
             </button>
             <div className="bd-calculator-secondary">
               <a href={IOS_APP_URL}>App Store</a>
@@ -181,8 +196,8 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
       </div>
       {bottomBar && status === "ready" && matched && price != null && (
         <div className="bd-calculator-mobile-summary" role="region" aria-label="ملخص باقتك أثناء التخصيص">
-          <div><small>باقتك · {choice.days} يوم</small><strong>{summary}</strong></div>
-          <button type="button" onClick={contact}>طلب تواصل ←</button>
+          <div><small>باقتك بعد عرض التسجيل · {choice.days} يوم</small><strong>{offerPrice || summary}</strong></div>
+          <button type="button" onClick={contact}>سجّل لخصم 15% ←</button>
         </div>
       )}
     </section>
