@@ -24,6 +24,7 @@ test("a successful registration emits the accepted requestId and keeps Instagram
   await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
   expect(accepted).toMatchObject({
     source: "instagram", medium: "paid_social", campaign: "jeddah_test",
+    adsTrackingConsent: false,
   });
   expect(String(accepted?.content)).toContain("ad_123");
   const emitted = await page.evaluate(() => (window as Window & { __acceptedLead?: Record<string, unknown> }).__acceptedLead);
