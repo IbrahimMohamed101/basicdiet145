@@ -108,13 +108,13 @@
   top: -75px;
 }
 .menu-page .menu-plan-result-kicker {
-  font: 700 13px/1.5 inherit;
+  font-size: 13px; line-height: 1.5; font-weight: 700;
   letter-spacing: 0;
   color: #cee8d4;
 }
 .menu-page .menu-plan-result-top { margin-top: 15px; gap: 8px; }
 .menu-page .menu-plan-result-top span { font-size: clamp(21px,2vw,27px); }
-.menu-page .menu-plan-result-top b { font: 700 12px/1.2 inherit; padding: 8px 12px; }
+.menu-page .menu-plan-result-top b { font-size: 12px; line-height: 1.2; font-weight: 700; padding: 8px 12px; }
 .menu-page .menu-plan-result > p:not(.menu-plan-caution) { margin: 14px 0 0; font-size: 13px; color: #c9dfcf; }
 .menu-page .menu-price-pop {
   justify-content: flex-end;
@@ -245,7 +245,7 @@
   position: sticky;
   top: 97px;
 }
-.menu-page .menu-summary-eyebrow { font: 700 13px/1.6 inherit; letter-spacing: 0; }
+.menu-page .menu-summary-eyebrow { font-size: 13px; line-height: 1.6; font-weight: 700; letter-spacing: 0; }
 .menu-page .menu-summary-visual { margin: 15px 0 10px; display: flex; gap: 16px; align-items: center; }
 .menu-page .menu-summary-visual-photo {
   position: relative;
