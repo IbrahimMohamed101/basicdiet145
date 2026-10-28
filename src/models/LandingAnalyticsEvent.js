@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 
 const EVENTS = [
   "lp_view", "lp_section_view", "lp_cta_click", "lp_store_click",
-  "lp_nav_click", "lp_faq_open", "lp_reel_click", "lp_lead_submitted",
+  "lp_nav_click", "lp_faq_open", "lp_reel_click", "lp_lead_opened", "lp_lead_submitted",
 ];
 
 const schema = new mongoose.Schema({
@@ -24,6 +24,7 @@ const schema = new mongoose.Schema({
   platform: { type: String, default: "" },
   store: { type: String, default: "" },
   action: { type: String, default: "" },
+  placement: { type: String, default: "" },
   reel: { type: String, default: "" },
   planDays: { type: Number, default: null },
   createdAt: { type: Date, default: Date.now, immutable: true },
