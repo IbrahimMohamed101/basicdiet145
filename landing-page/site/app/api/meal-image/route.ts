@@ -45,6 +45,9 @@ const ALLOWED_MEAL_IMAGE_IDS = new Set([
   "1zmxsFVYROw1_3cTpaXKV2GDxX-lHzofQ", // دجاج باربكيو
   "1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_", // لحم استرغانوف
   "1EQDqVq3zMgYFPR__zwIla8hUGutkmiL_", // دجاج بالليمون
+
+  "1sWQhsJSvuiu016TMwfx-QMwBjpGVHGxs", // دجاج كريمة
+  "1Xn_zM9vUEmYx_BNcJOIyRLpGhbyaKz7i", // دجاج بالملوخية
   "1O54P_hDBopu9POcVVB6XEOYeNdLiYFR5", // باستا صوص أحمر
 ]);
 
