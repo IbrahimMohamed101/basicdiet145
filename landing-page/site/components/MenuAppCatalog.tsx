@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { MenuContactButton } from "./MenuLeadCapture";
 import { StoreLinks } from "./StoreLinks";
+import { menuArtUrl } from "@/lib/menu-art";
 
 type AppMenuItem = {
   id: string; key: string; name: string; image: string;
@@ -43,6 +44,23 @@ function photoFor(item: AppMenuItem) {
   const key = item.name.replace(/[\u064B-\u065F]/g, "").replace(/[أإآ]/g,"ا").trim().replace(/\s+/g," ");
   const id = drivePhotoByName[key];
   return id ? "/api/meal-image?id=" + id : "";
+}
+
+function AppMenuPhoto({ item, sectionTitle }: { item: AppMenuItem; sectionTitle: string }) {
+  const photo = photoFor(item);
+  const [failed, setFailed] = useState(false);
+  const illustrative = !photo || failed;
+  const src = illustrative ? menuArtUrl(item.name, sectionTitle) : photo;
+  return (
+    <div className="menu-app-photo">
+      <Image key={src} src={src}
+        alt={illustrative ? "صورة توضيحية: " + item.name : item.name}
+        fill sizes="(max-width:600px) 44vw,190px"
+        unoptimized={src.startsWith("https://") || src.startsWith("/api/menu-art")}
+        onError={() => setFailed(true)} />
+      {illustrative && <span className="menu-photo-disclosure">صورة توضيحية</span>}
+    </div>
+  );
 }
 
 export function MenuAppCatalog() {
@@ -106,12 +124,8 @@ export function MenuAppCatalog() {
             </div>
             <div className="menu-app-grid">
               {items.slice(0, visibleCount).map((item,index) => {
-                const photo = photoFor(item);
                 return <article className="menu-app-card" key={item.id || item.key + "-" + index}>
-                  <div className="menu-app-photo">
-                    {photo ? <Image src={photo} alt={item.name} fill sizes="(max-width:600px) 44vw,190px" unoptimized={photo.startsWith("https://")} /> :
-                      <span className="menu-app-placeholder" aria-label="الصورة غير متاحة"><strong>Basic Diet.</strong></span>}
-                  </div>
+                  <AppMenuPhoto item={item} sectionTitle={activeSection.title} />
                   <div className="menu-app-card-copy">
                     <h3>{item.name}</h3>
                     {item.extraPriceHalala > 0
@@ -124,7 +138,7 @@ export function MenuAppCatalog() {
             </div>
             {visibleCount < items.length &&
               <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount(v => v + 12)}>عرض مزيد من الخيارات <span aria-hidden="true">↓</span></button></div>}
-            <p className="menu-app-note">الصور من كتالوج التطبيق أو معرض المطعم، والأسعار الإضافية تظهر فقط إذا أرجعها النظام. التوافر وقواعد الاختيار النهائية داخل التطبيق.</p>
+            <p className="menu-app-note">الصور من كتالوج التطبيق أو معرض المطعم، وحين لا توجد صورة مؤكدة نستخدم رسماً توضيحياً مميزاً بوضوح. الأسعار الإضافية تظهر فقط إذا أرجعها النظام.</p>
             <div className="menu-app-cta">
               <MenuContactButton location="final" intent="app_catalog" className="menu-app-contact">
                 محتاج مساعدة تختار اشتراكك؟ سيب رقمك <span aria-hidden="true">←</span>
