@@ -321,3 +321,29 @@ test("meal and salad summary show real visual, selections and working reset", as
   await builder.getByRole("button", { name: "ابدأ من جديد" }).click();
   await expect(builder.locator(".menu-summary-chips")).not.toContainText("خس");
 });
+
+
+test("visual review snapshots for both screen sizes of redesigned lower menu", async ({ page }) => {
+  await page.route("**/api/menu-plans", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      status: true, source: "live_app_catalog",
+      data: [{ daysCount: 26, gramsOptions: [{ grams: 150, mealsOptions: [
+        { mealsPerDay: 2, priceHalala: 118600 }
+      ] }] }]
+    })
+  }));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/menu");
+  await expect(page.locator("#menu-plans .menu-price-pop strong")).toHaveText("١٬١٨٦");
+  await page.locator("#menu-plans").screenshot({ path: "test-results/plans-mobile-390.png", animations: "disabled" });
+  await page.locator("#menu-custom").screenshot({ path: "test-results/builder-meal-mobile-390.png", animations: "disabled" });
+  await page.locator("#menu-custom").getByRole("group", { name: "نوع تجربة التخصيص" })
+    .getByRole("button", { name: /اصنع سلطتك/ }).click();
+  await page.locator("#menu-custom").screenshot({ path: "test-results/builder-salad-mobile-390.png", animations: "disabled" });
+  await page.locator("#menu-download").screenshot({ path: "test-results/footer-mobile-390.png", animations: "disabled" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator("#menu-plans").screenshot({ path: "test-results/plans-desktop-1440.png", animations: "disabled" });
+  await page.locator("#menu-custom").screenshot({ path: "test-results/builder-salad-desktop-1440.png", animations: "disabled" });
+});
