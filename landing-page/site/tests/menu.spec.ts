@@ -39,15 +39,15 @@ test("shared calculator reads public plan prices and preserves chosen dimensions
   }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
-  await expect(plans.locator(".bd-calculator-price")).toContainText("١٬١٨٦");
+  await expect(plans.locator(".bd-calculator-price")).toContainText("1,186");
   await plans.locator("fieldset").nth(0).getByRole("button", { name: /7/ }).click();
-  await expect(plans.locator(".bd-calculator-price")).toContainText("٣٤٨");
+  await expect(plans.locator(".bd-calculator-price")).toContainText("348");
   await plans.locator("fieldset").nth(1).getByRole("button", { name: /200/ }).click();
-  await expect(plans.locator(".bd-calculator-price")).toContainText("٤٢٠");
+  await expect(plans.locator(".bd-calculator-price")).toContainText("420");
   await plans.locator("fieldset").nth(2).getByRole("button", { name: "3" }).click();
-  await expect(plans.locator(".bd-calculator-price")).toContainText("٦٣٠");
+  await expect(plans.locator(".bd-calculator-price")).toContainText("630");
   await page.goto("/");
-  await expect(page.locator("#plans .bd-calculator-price")).toContainText("٦٣٠");
+  await expect(page.locator("#plans .bd-calculator-price")).toContainText("630");
   await expect(page.locator("#plans")).toContainText("وزن حصة البروتين");
 });
 
@@ -230,7 +230,7 @@ test("menu hides weight variants on cards but shows 48px choices in product deta
   await expect(detail).toBeVisible();
   await detail.getByRole("button", { name: "150 جم" }).click();
   await expect(detail.getByRole("button", { name: "150 جم" })).toHaveAttribute("aria-pressed", "true");
-  await expect(detail.locator(".menu-detail-purchase-row strong")).toContainText("٤٩");
+  await expect(detail.locator(".menu-detail-purchase-row strong")).toContainText("49");
   await expect(detail).toContainText("مسببات الحساسية");
 });
 
@@ -249,8 +249,8 @@ test("calculator never invents a price and preserves no-plan registration during
 test("meal-builder shows photos only for supported matched dishes", async ({ page }) => {
   await page.goto("/menu");
   const builder = page.locator("#menu-custom");
-  const shrimp = builder.getByRole("button", { name: /جمبري/ });
-  await expect(shrimp.locator("img")).toHaveCount(1);
+  const chicken = builder.getByRole("button", { name: /دجاج كريمة/ });
+  await expect(chicken.locator("img")).toHaveCount(1);
   const rice = builder.getByRole("button", { name: /رز أبيض/ });
   await expect(rice.locator("img")).toHaveCount(1);
   await rice.click();
@@ -345,7 +345,7 @@ test("visual review snapshots of shared calculator and builder", async ({ page }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/menu");
-  await expect(page.locator("#menu-plans .bd-calculator-price")).toContainText("١٬١٨٦");
+  await expect(page.locator("#menu-plans .bd-calculator-price")).toContainText("1,186");
   await page.locator("#menu-plans").screenshot({ path: "test-results/plans-mobile-390.png", animations: "disabled" });
   await page.locator("#menu-custom").screenshot({ path: "test-results/builder-meal-mobile-390.png", animations: "disabled" });
   await page.locator("#menu-custom").getByRole("group", { name: "نوع تجربة التخصيص" })
@@ -420,7 +420,7 @@ test("the 15% savings are displayed without exposing a customer-facing coupon co
   }));
   await page.goto("/menu");
   const calculator = page.locator("#menu-plans");
-  const money = new Intl.NumberFormat("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   await expect(calculator.locator(".bd-calculator-offer-price strong")).toContainText(money.format(1008.1));
   await expect(calculator.locator(".bd-calculator-offer-savings b")).toContainText(money.format(177.9));
   await expect(page.locator("body")).not.toContainText("BASIC15");
