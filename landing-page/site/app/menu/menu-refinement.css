@@ -398,3 +398,92 @@
   .menu-page .menu-duration, .menu-page .menu-builder-switch button,
   .menu-page .menu-option-grid button { transition: none; }
 }
+
+
+/* Visual QA fixes observed in browser screenshots (390px / 1440px):
+   prevent clipped salad controls and remove stretched blank card space. */
+html:has(.menu-page) { scroll-padding-top: 106px; }
+body:has(.menu-page) a.skip-link:not(:focus-visible) {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+body:has(.menu-page) a.skip-link:focus-visible {
+  position: fixed; z-index: 9999; top: 8px; inset-inline-end: 8px;
+}
+.menu-page .menu-plan-layout { align-items: start; }
+.menu-page .menu-builder-stage,
+.menu-page .menu-builder-editor,
+.menu-page .menu-builder-summary,
+.menu-page .menu-option-block,
+.menu-page .menu-option-grid,
+.menu-page .menu-salad-tabs { min-width: 0; max-width: 100%; }
+.menu-page .menu-option-grid button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.menu-page .menu-option-grid:not(:has(.menu-option-photo-button)) {
+  grid-template-columns: repeat(2,minmax(0,1fr));
+}
+.menu-page .menu-salad-tabs {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  overflow: visible;
+  gap: 8px;
+  padding: 0;
+  scrollbar-width: auto;
+}
+.menu-page .menu-salad-tabs button {
+  min-width: 0;
+  width: 100%;
+  white-space: normal;
+  justify-content: space-between;
+  gap: 5px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.menu-page .menu-salad-tabs button small { flex: none; }
+.menu-page .menu-builder-editor { overflow: hidden; }
+.menu-page .menu-quick-lead-alternative {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+.menu-page .menu-quick-lead-alternative > span {
+  grid-column: 1/-1;
+  text-align: center;
+}
+.menu-page .menu-quick-lead-alternative a {
+  display: inline-flex; align-items: center; justify-content: center;
+  text-align: center; min-height: 39px; padding: 7px 10px; min-width: 0;
+}
+@media(max-width:760px) {
+  html:has(.menu-page) { scroll-padding-top: 85px; }
+  .menu-page .menu-plan-layout,
+  .menu-page .menu-builder-stage,
+  .menu-page .menu-download-grid { grid-template-columns: minmax(0,1fr); }
+  .menu-page .menu-builder-summary { max-width: 100%; }
+  .menu-page .menu-salad-tabs {
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .menu-page .menu-salad-tabs button {
+    min-height: 47px;
+    padding: 7px 7px;
+    font-size: 11px;
+  }
+  .menu-page .menu-option-grid:not(:has(.menu-option-photo-button)) {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 8px;
+  }
+  .menu-page .menu-option-grid:not(:has(.menu-option-photo-button)) button {
+    min-height: 49px;
+    padding: 9px;
+    font-size: 12px;
+  }
+}
+@media(max-width:350px) {
+  .menu-page .menu-salad-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
