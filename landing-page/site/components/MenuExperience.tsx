@@ -247,6 +247,23 @@ export function MenuExperience() {
         </div>
       </section>
 
+      <section className="menu-offer-section" aria-labelledby="menu-offer-title">
+        <div className="page-shell">
+          <div className="menu-offer-card">
+            <div className="menu-offer-number" aria-label="خصم 15 بالمئة"><b>15<span>%</span></b><small>خصم على الاشتراك</small></div>
+            <div className="menu-offer-copy">
+              <span className="menu-offer-eyebrow">عرض خاص بطلب التواصل</span>
+              <h2 id="menu-offer-title">سجّل بياناتك، وخلي اشتراكك أوفر.</h2>
+              <p>سيب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك لمساعدتك تختار الباقة وتستفيد من خصم 15% عند إتمام الاشتراك.</p>
+              <small>الخصم على قيمة الباقة فقط، ولا يشمل التوصيل أو الإضافات. إرسال البيانات لا يفعّل الخصم أو الاشتراك تلقائيًا.</small>
+            </div>
+            <MenuContactButton location="final" intent="discount15_menu" className="menu-offer-cta">
+              سجّل بياناتك للعرض <span aria-hidden="true">←</span>
+            </MenuContactButton>
+          </div>
+        </div>
+      </section>
+
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
           <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="تصفح أطباق بيسك دايت بالصور والأسعار واختار القسم اللي يناسبك." />
@@ -333,7 +350,11 @@ export function MenuExperience() {
                 <div><strong>{grams}</strong><span>جرام بروتين</span></div>
               </div>
               <p className="menu-plan-caution">{price === null ? "الأسعار غير متاحة مؤقتًا. يمكن لفريق المطعم تأكيد تكلفة الباقة، أو الاطلاع عليها من التطبيق." : "السعر الأساسي مباشرة من كتالوج التطبيق، قبل رسوم التوصيل والإضافات وأي خصومات. السعر النهائي يحدده التطبيق عند الاشتراك."}</p>
-              <MenuContactButton location="plans" intent="plan_selected" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">اطلب تواصل بخصوص الباقة <span aria-hidden="true">←</span></MenuContactButton>
+              <div className="menu-plan-offer">
+                <strong>وفر 15% على اشتراكك</strong>
+                <span>سيب بياناتك عشان نكلمك عن الباقة والعرض.</span>
+              </div>
+              <MenuContactButton location="plans" intent="discount15_plan" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">سجّل بياناتك للخصم <span aria-hidden="true">←</span></MenuContactButton>
               <div className="menu-plan-store"><span>أو اشترك بنفسك من التطبيق</span><StoreLinks location="app" /></div>
             </aside>
           </div>
@@ -432,7 +453,8 @@ export function MenuExperience() {
                 </div>
               )}
               <p className="menu-summary-disclaimer">استعراض فقط. لا يتم إنشاء طلب أو احتساب سعر أو سعرات من هذه الاختيارات.</p>
-              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "meal_builder" : "salad_builder"} className="menu-summary-cta">خلّينا نتواصل معك <span aria-hidden="true">←</span></MenuContactButton>
+              <p className="menu-builder-offer">عاجبك اختيارك؟ سجّل بياناتك واسألنا عن خصم 15% على الاشتراك.</p>
+              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "discount15_meal_builder" : "discount15_salad_builder"} className="menu-summary-cta">سجّل بياناتك وخلّينا نكلمك <span aria-hidden="true">←</span></MenuContactButton>
               <div className="menu-builder-store"><span>أو حمّل التطبيق وكمّل بنفسك</span><StoreLinks location="app" /></div>
             </aside>
           </div>
@@ -441,7 +463,7 @@ export function MenuExperience() {
 
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اخترت اللي تحبه؟<br /><em>نساعدك تبدأ.</em></h2><p>اكتب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك لمساعدتك. أو حمّل التطبيق واشترك بنفسك.</p><MenuLeadCapture /></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">جاهز تبدأ؟<br /><em>خصم 15% على اشتراكك.</em></h2><p>سجّل اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك ويشرح لك العرض المناسب. أو حمّل التطبيق واشترك بنفسك.</p><MenuLeadCapture /></div>
           <div className="menu-download-food" aria-label="من أطباق بيسك دايت">
             <div className="menu-download-food-main"><Image src={thirdImage} alt="سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 45vw, 350px" /></div>
             <div className="menu-download-food-mini"><Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 28vw, 180px" /></div>
