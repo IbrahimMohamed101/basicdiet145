@@ -30,6 +30,9 @@ jobs:
           npm run typecheck
       - name: Build menu
         run: npm run build
+      - name: Verify live public catalog (read only)
+        run: node scripts/verify-live-catalog.mjs
+        continue-on-error: true
       - name: Install browser
         run: npx playwright install --with-deps chromium
       - name: Start preview server
