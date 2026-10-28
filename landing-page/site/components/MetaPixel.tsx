@@ -25,6 +25,7 @@ declare global {
 const sentLeads = new Set<string>();
 
 function privacySignal() {
+  if (typeof navigator === "undefined") return false;
   const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
   return navigator.doNotTrack === "1" || nav.globalPrivacyControl === true;
 }
