@@ -21,8 +21,8 @@ Development-only implementation on branch fix/meta-landing-tracking-20261029 (ba
 
 ## Known limitations and release prerequisites
 1. Confirm Meta Business access and verify the correct Dataset/Pixel ID.
-2. Browser Pixel integration is not Conversions API. Backend CAPI, user consent proof, server event persistence, retries and browser/server deduplication must be built and tested before claiming complete tracking.
-3. HTTP 202 may intentionally cover duplicate and honeypot submissions. Browser Lead represents an accepted form response, not proof of new database insertion. Future CAPI must send only after a new, durably created lead, not duplicates/honeypots.
+2. Companion backend PR #179 now proposes a disabled-by-default consent-only CAPI outbox and retry worker. It is NOT merged or deployed, and real Pixel/CAPI deduplication remains untested pending Meta Business access.
+3. HTTP 202 may intentionally cover duplicate and honeypot submissions. Browser Lead represents an accepted form response, not proof of new database insertion. Backend PR #179 queues CAPI only after a new durably persisted lead; browser-only duplicate conversion cases need QA and reporting semantics review.
 4. Existing running ads have no UTM parameters; nothing in this branch can backfill them. New advertisements need tagged destinations after separate Meta approval.
 5. Obtain privacy/legal approval for optional advertising measurement and third-party data transmission under applicable Saudi requirements.
 
