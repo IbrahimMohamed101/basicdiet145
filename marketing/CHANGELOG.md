@@ -38,3 +38,10 @@ Added:
 
 Reason:
 Marketing strategy and execution should continue across new chats/agents without depending on conversation memory.
+
+
+## 2026-10-28 — Website registration offer published to production
+
+Published backend #174, dashboard client_dashbourd#61 and website #175 in a coordinated production rollout after explicit user approval. All three Railway releases reached SUCCESS. Verified the public home/menu/catalog, the direct 15% registration dialog, real package savings, and trusted no-plan intake without storing synthetic customer data. See STATE.md for deployment IDs and verification limits.
+
+Begin measuring saved unique inquiries and their verified paid-subscription outcomes; no marketing lift or paid-ad launch is claimed.

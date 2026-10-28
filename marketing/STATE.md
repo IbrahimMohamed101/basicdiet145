@@ -1,7 +1,7 @@
 # Basic Diet Marketing State
 
 **State version:** v2  
-**Last updated:** 2026-10-07  
+**Last updated:** 2026-10-28  
 **Status:** Core data foundation complete enough for daily organic content execution. Live commercial baseline remains the main measurement gap.
 
 ## North Star
@@ -179,3 +179,18 @@ For "ننزل إيه النهارده؟":
 5. adapt it to the strongest available asset,
 6. define one primary KPI,
 7. document the result after publishing.
+
+
+## Website production release — 2026-10-28
+
+The food-first home/menu and 15% website callback offer are now LIVE on https://basicdietksa.com/ and /menu. The user explicitly authorized production publication. Registration requires name, Saudi mobile and contact consent; choosing a package is optional. No coupon entry or payment is required. The offer applies only to the package subtotal; staff confirms eligibility and final price.
+
+Release evidence:
+- Backend PR #174: merge fa5c3e4e74bc571ee53ab7fd0fd2a5ce0cea1285, Railway 89fdceeb-64a9-4168-a955-1624cd0046b1 SUCCESS; health/database up.
+- Dashboard IbrahimMohamed101/client_dashbourd#61: merge 1de7b3ff9fb4240ef9382625f9f4c346c111b656, Railway 5e911ae5-7d5e-4cd4-8df9-70795b57cdd0 SUCCESS.
+- Website PR #175: merge 1ea3e206695c804993e28873f5c0d137a87985b0, Railway c16b8818-7195-43e8-94d2-95efac1006cd SUCCESS.
+- Release browser suites passed (56 menu/offer/integration checks; 15 lead/SEO/origin checks, with some overlap). Production lead/SEO/origin build workflow 40694877782 also passed. Backend real HTTP-to-ephemeral-Mongo-to-dashboard-read integration and dashboard five targeted tests passed.
+- Production HTTP home/menu/catalog are 200; catalog provides three plan durations. Browser verified the direct registration dialog, live calculator savings and canonical menu navigation.
+- Same-origin production intake rejects empty JSON with 400 and accepts an explicit no-plan smoke request with 202. The smoke request populated the honeypot so it did NOT persist a fake contact or send any message. Production authenticated dashboard display/new-customer persistence was not simulated.
+
+Measurement remains a hypothesis until live results exist: count unique saved inquiries separately from browser completion signals and verified paid subscriptions. No conversion lift, ad campaign, new subscriber or revenue result is claimed. Preview remains isolated with real intake disabled. The historical full visual suite still includes older pre-calculator layout expectations; its results must not be represented as the maintained release suite.
