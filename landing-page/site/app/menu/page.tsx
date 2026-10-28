@@ -13,7 +13,7 @@ const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true";
 
 export const metadata: Metadata = {
   title: "منيو بيسك دايت | الوجبات والاشتراكات واصنع بنفسك",
-  description: "تصفح منيو بيسك دايت في جدة: وجبات صحية، سلطات، فطور وساندويتشات بالصور والأسعار، واختار باقة اشتراكك أو حمّل التطبيق.",
+  description: "تصفح منيو بيسك دايت في جدة بالصور والأسعار والسعرات الحرارية التقريبية حسب الحصة: وجبات صحية، سلطات، فطور وساندويتشات، واختار باقة اشتراكك.",
   alternates: { canonical: "/menu" },
   // Staging stays outside search; only the customer-facing production build is indexable.
   robots: isMenuPreview ? { index: false, follow: false } : { index: true, follow: true },

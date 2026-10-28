@@ -627,6 +627,9 @@
 .menu-detail-size-group button { min-height: 48px; min-width: 88px; padding: 10px 14px; border-radius: 11px; background: #f0f5ec; color: #24513a; border: 1px solid #d4e7d4; font-weight: 800; }
 .menu-detail-size-group button[aria-pressed="true"] { background: #0e774e; color: white; border-color: #0e774e; }
 .menu-detail-nutrition { border-block: 1px solid #e0e9df; padding-block: 15px; margin-bottom: 16px; }
+.menu-detail-nutrition .menu-calories { padding: 12px 14px; border-radius: 12px; background: #eef5e9; margin-bottom: 10px; }
+.menu-detail-nutrition .menu-calories b { font-size: 25px; }
+.menu-detail-copy .menu-detail-nutrition .menu-allergen-note { margin-top: 8px; }
 .menu-detail-copy .menu-detail-nutrition p { margin: 0; font-size: 13px; line-height: 1.7; color: #66806d; }
 .menu-detail-purchase-row { display: flex; align-items: center; justify-content: space-between; gap: 13px; margin-top: auto; }
 .menu-detail-purchase-row > div { display: grid; gap: 4px; }

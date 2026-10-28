@@ -183,7 +183,11 @@ For "ننزل إيه النهارده؟":
 
 ## Website conversion update — 2026-10-28
 
-The active website preview is food-first with a 15% registration offer, no coupon entry and no required plan selection. Current task improves form reliability, consistent offer wording, canonical menu content, backend optional-plan support and dashboard funnel visibility. Backend #174 and dashboard #61 must ship together before live intake is enabled. Preview does not accept actual customer submissions. Production launch and live conversion lift are not claimed. See experiments log for hypothesis and QA limits.
+The food-first website with a 15% callback offer is live in production following backend #174, dashboard #61 and website #175. Preview does not accept actual customer submissions. No live conversion lift is claimed. See experiments log for hypothesis and QA limits.
+
+## Website calories — 2026-10-28
+
+The user requested the previously unified channel calorie values on the website. The implementation maps 82/108 POS items to the effective N-column values in the 25 October unified workbook. Home cards, menu cards and detail views share one explicit POS mapping and display portion labels and approximate status. 26 missing/ambiguous portions remain unavailable; no per-weight scaling or builder totals are invented. Live application nutrition was read only and still differs for some zero/missing fields. See `landing-page/docs/NUTRITION-SOURCE.md` for source hashes, mapping decisions and exclusions; release status is recorded in the associated PR.
 
 
 Website verification: 49 frontend checks and real isolated persistence/read/report integration passed; dashboard build and five targeted tests passed. The updated preview is deployed and actual preview intake is blocked server-side. Production-compatible release branches are prepared together (#175/#174/dashboard #61). Next step is coordinated production release, followed by real approved intake verification and measurement before paid scaling.
