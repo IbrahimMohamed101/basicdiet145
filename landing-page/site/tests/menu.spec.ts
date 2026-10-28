@@ -80,7 +80,7 @@ test("menu robots and sitemap switch correctly between preview and customer buil
   if (preview) expect(xml).not.toContain("https://basicdietksa.com/menu</loc>");
   else expect(xml).toContain("https://basicdietksa.com/menu</loc>");
   await page.goto("/");
-  await expect(page.locator('.site-header a[href="/menu"]')).toHaveCount(1);
+  await expect(page.locator('.site-header .desktop-nav a[href="/menu"]')).toHaveCount(1);
 });
 
 
