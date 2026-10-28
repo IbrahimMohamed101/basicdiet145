@@ -6,7 +6,7 @@ const { resolveRange } = require("./dashboard/marketingAnalyticsService");
 
 const EVENTS = new Set([
   "lp_view", "lp_section_view", "lp_cta_click", "lp_store_click",
-  "lp_nav_click", "lp_faq_open", "lp_reel_click", "lp_lead_submitted",
+  "lp_nav_click", "lp_faq_open", "lp_reel_click", "lp_lead_opened", "lp_lead_submitted",
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED = {
@@ -48,6 +48,7 @@ function parseEvent(body) {
     platform: enumValue("platform", body.platform),
     store: enumValue("store", body.store),
     action: enumValue("action", body.action),
+    placement: typeof body.placement === "string" && /^[a-z0-9_-]{1,40}$/i.test(body.placement) ? body.placement : "",
     reel: /^[a-zA-Z0-9_-]{5,24}$/.test(body.reel || "") ? body.reel : "",
     planDays: [7, 26, 30].includes(body.planDays) ? body.planDays : null,
     expiresAt: new Date(Date.now() + 180 * 86400000),
@@ -143,6 +144,10 @@ async function buildLandingAnalyticsReport({ from, to }) {
       navClicks: countMap.lp_nav_click || 0,
       faqOpens: countMap.lp_faq_open || 0,
       reelClicks: countMap.lp_reel_click || 0,
+      leadFormOpens: countMap.lp_lead_opened || 0,
+      leadFormCompleted: countMap.lp_lead_submitted || 0,
+      leadFormCompletionRate: (countMap.lp_lead_opened || 0)
+        ? Number((100 * (countMap.lp_lead_submitted || 0) / countMap.lp_lead_opened).toFixed(1)) : 0,
       storeClickRate: (countMap.lp_view || 0) ? Number((100 * (countMap.lp_store_click || 0) / countMap.lp_view).toFixed(1)) : 0,
     },
     daily: [...days.values()],
