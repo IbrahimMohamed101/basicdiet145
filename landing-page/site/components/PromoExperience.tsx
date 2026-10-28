@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 export const PROMO_PERCENT = 15;
-export const PROMO_CODE = "BASIC15";
+// The offer identifier is internal attribution only; never display a coupon code.
 
 export function openPromoLead(placement: string, plan?: { days: number; grams: number; meals: number; fulfillment: "pickup" | "delivery" }) {
   const isMenu = window.location.pathname === "/menu";
@@ -24,11 +24,15 @@ export function PromoOfferText({ location = "hero" }: { location?: "hero" | "men
   return (
     <div className={"bd-offer-copy bd-offer-copy--" + location}>
       <span className="bd-offer-percent" aria-hidden="true">15%</span>
-      <div><strong>سجّل بياناتك واستفد من خصم 15% على اشتراكك</strong>
-        <small>على قيمة الباقة فقط، عند استيفاء شروط العرض وتطبيق الكود BASIC15.</small>
+      <div><strong>سجّل من الموقع ووفّر 15% على اشتراكك</strong>
+        <small>عرض تسجيل الموقع · فريقنا يساعدك تبدأ ويؤكد أهلية الخصم. على الباقة فقط.</small>
       </div>
     </div>
   );
+}
+
+export function PromoOfferButton({ placement, className = "", children }: { placement: string; className?: string; children: React.ReactNode }) {
+  return <button type="button" className={className} onClick={() => openPromoLead(placement)}>{children}</button>;
 }
 
 export function PromoHeaderButton({ className = "" }: { className?: string }) {
@@ -38,8 +42,14 @@ export function PromoHeaderButton({ className = "" }: { className?: string }) {
 export function PromoMobileBar() {
   const path = usePathname();
   const [visible, setVisible] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   useEffect(() => {
     if (path !== "/" && path !== "/menu") return;
+    const dialog = document.querySelector<HTMLDialogElement>(".lead-dialog");
+    const syncDialog = () => setDialogOpen(Boolean(dialog?.open));
+    const observer = dialog ? new MutationObserver(syncDialog) : null;
+    if (dialog && observer) observer.observe(dialog, { attributes: true, attributeFilter: ["open"] });
+    syncDialog();
     const update = () => {
       const form = document.getElementById("menu-quick-contact");
       const calculator = document.querySelector(".bd-calculator-section");
@@ -53,9 +63,9 @@ export function PromoMobileBar() {
     update();
     window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
-    return () => { window.removeEventListener("scroll", update); window.removeEventListener("resize", update); };
+    return () => { window.removeEventListener("scroll", update); window.removeEventListener("resize", update); observer?.disconnect(); };
   }, [path]);
-  if (!visible || (path !== "/" && path !== "/menu")) return null;
+  if (!visible || dialogOpen || (path !== "/" && path !== "/menu")) return null;
   return <div className="bd-offer-mobile-bar" role="region" aria-label="عرض اشتراك بيسك دايت">
     <span><b>15% خصم</b><small>على قيمة الباقة فقط</small></span>
     <button type="button" onClick={() => openPromoLead("mobile")}>سجّل لخصم 15% ←</button>
