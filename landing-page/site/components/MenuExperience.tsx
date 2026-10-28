@@ -168,7 +168,6 @@ export function MenuExperience() {
     const count = (saladChoices[group.key] || []).length;
     return { key: group.key, complete: group.min > 0 ? count >= group.min && count <= group.max : count > 0, count };
   });
-  const saladComplete = saladGroups.every(group => group.min === 0 || (saladChoices[group.key] || []).length >= group.min);
   const saladTotal = Object.values(saladChoices).reduce((sum, chosen) => sum + chosen.length, 0);
   const selectedSaladLabels = saladGroups.flatMap(group => saladChoices[group.key] || []);
   const mealSelections = 1 + carbs.length;
