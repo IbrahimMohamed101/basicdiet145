@@ -72,7 +72,10 @@ export async function GET(request: Request) {
         headers: {
           "user-agent": "Mozilla/5.0 BasicDiet-Landing/1.0",
         },
-        next: { revalidate: 60 * 60 * 24 * 7 },
+        // Drive originals can exceed Next.js's 2 MB Data Cache entry limit.
+        // Avoid futile cache writes; /_next/image and the response HTTP headers
+        // cache the optimized, much smaller client-facing images instead.
+        cache: "no-store",
       });
 
       const contentType = response.headers.get("content-type") ?? "";
