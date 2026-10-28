@@ -45,15 +45,15 @@ const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "س�
 const mealCarbs = ["رز أبيض", "رز بالكركم", "رز برياني", "كينوا", "بطاطس مشوي", "بطاطا حلوة", "باستا ألفريدو"];
 const mealProteinPhotos: Record<string, string> = {
   "دجاج مشوي": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
-  "بيض مسلوق": "/api/menu-art?kind=eggs&tone=cream",
+  "بيض مسلوق": "/menu-images/pos_39.webp",
   "تونا": "/api/meal-image?id=1niUYE8DPHKnOuXEA-8DO9DYDJs3xv82U",
   "سالمون": "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
   "جمبري": "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b",
 };
 const mealCarbPhotos: Record<string, string> = {
-  "رز برياني": "/api/menu-art?kind=rice&tone=orange",
-  "كينوا": "/api/menu-art?kind=rice&tone=green",
-  "بطاطا حلوة": "/api/menu-art?kind=potato&tone=orange",
+  "رز برياني": "/menu-images/builder_biryani_rice.webp",
+  "كينوا": "/menu-images/builder_quinoa.webp",
+  "بطاطا حلوة": "/menu-images/builder_sweet_potato.webp",
   "رز أبيض": "/api/meal-image?id=1J0uWPLXV7sTiQEfZzAf0W0WK_HrYpt5O",
   "رز بالكركم": "/api/meal-image?id=1QKGfdTGcXJKk_dk9gpg4dJlb27ibEbcD",
   "بطاطس مشوي": "/api/meal-image?id=1Yee9VzPNT76BYe8BwTWrxjsq1Y6qZoBl",
@@ -109,7 +109,7 @@ export function MenuExperience() {
   const [visibleCount, setVisibleCount] = useState(12);
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
 
-  const numberFormatter = new Intl.NumberFormat("ar-SA");
+  const numberFormatter = new Intl.NumberFormat("en-US");
 
 
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
@@ -310,7 +310,7 @@ export function MenuExperience() {
                       </button>)}
                     </div>
                   </div>
-                  <p className="menu-editor-note">معاينة للتخصيص فقط. يمكن اختيار بروتين ونوعين كارب هنا؛ الاختيارات النهائية والتوفر حسب التطبيق.</p>
+                  <p className="menu-editor-note">الصور توضيحية وليست توثيقًا لشكل الحصة الفعلية. هذه تجربة تخصيص فقط؛ الخيارات النهائية والتوفر حسب التطبيق.</p>
                 </div>
               ) : (
                 <div key="salad">
@@ -362,7 +362,7 @@ export function MenuExperience() {
               ) : (
                 <div className="menu-summary-data">
                   <div><span>المكونات المختارة</span><b>{saladTotal}</b></div>
-                  <div><span>مجموعات اخترت منها</span><b>{numberFormatter.format(saladGroupStatus.filter((s) => s.count > 0).length)} من ٦</b></div>
+                  <div><span>مجموعات اخترت منها</span><b>{numberFormatter.format(saladGroupStatus.filter((s) => s.count > 0).length)} من 6</b></div>
                   <div><span>المجموعات المطلوبة</span><b>{numberFormatter.format(saladMandatoryComplete)} من {numberFormatter.format(saladGroups.filter(g => g.min > 0).length)}</b></div>
                 </div>
               )}
