@@ -80,10 +80,6 @@ function Heading({ tag, title, copy, id }: { tag: string; title: string; copy: s
   );
 }
 
-function DemoLabel() {
-  return <span className="menu-demo-mark">معاينة غير معتمدة للنشر</span>;
-}
-
 function ProductImage({ item, priority = false }: { item: MenuPreviewItem; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
   const src = failed || !item.image ? menuArtUrl(item.name, item.category) : item.image;
@@ -228,7 +224,7 @@ export function MenuExperience() {
           </div>
         </div>
         <div className="page-shell menu-preview-ribbon" role="note">
-          <span>معاينة قبل الاعتماد: أسعار الأصناف من الكاشير، وأسعار الباقات تُحمّل من التطبيق. الصور والتوفر في انتظار المراجعة.</span>
+          <span>الصور المعلّمة «صورة توضيحية» للعرض فقط. الأسعار حسب قائمة المطعم، ويُرجى تأكيد توفر الأصناف عند التواصل.</span>
         </div>
       </section>
 
@@ -253,12 +249,12 @@ export function MenuExperience() {
 
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
-          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="صور الأطباق، التصنيفات، وأسعار أصناف الكاشير المرشحة. الصور والتفاصيل النهائية ما زالت قيد المراجعة قبل النشر." />
+          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="تصفح أصناف بيسك دايت وصورها وأسعارها، واختار القسم اللي تحبه." />
           <div className="menu-catalog-tools">
             <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
               {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(12); }}>{group}</button>)}
             </div>
-            <label className="menu-search"><span className="sr-only">ابحث عن صنف</span><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(12); }} placeholder="ابحث عن صنف أو رقم الكاشير" type="search" /></label>
+            <label className="menu-search"><span className="sr-only">ابحث عن صنف</span><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(12); }} placeholder="ابحث عن وجبتك المفضلة" type="search" /></label>
           </div>
           <div className="menu-catalog-count"><span>نتائج البحث: <b>{filteredItems.length}</b> صنف <small>· الأحجام المتعددة في كارت واحد</small></span></div>
           <div className="menu-product-grid">
@@ -279,7 +275,7 @@ export function MenuExperience() {
                       </button>)}
                     </div>}
                     <div className="menu-product-bottom">
-                      <div><small>السعر المرجعي</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
+                      <div><small>السعر</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
                       <button type="button" onClick={() => setSelectedProduct(activeItem)} aria-label={"تفاصيل " + activeItem.name}>التفاصيل <span aria-hidden="true">←</span></button>
                     </div>
                   </div>
@@ -289,7 +285,7 @@ export function MenuExperience() {
           </div>
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
           {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
-          <p className="menu-catalog-footnote">المنتجات المعروضة مرشحة فقط. الصورة أو الوصف أو السعرات التي لم يوافق عليها المطعم لا تُنشر كحقيقة نهائية.</p>
+          <p className="menu-catalog-footnote">الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
         </div>
       </section>
 
@@ -323,7 +319,7 @@ export function MenuExperience() {
                 ))}
               </div>
             </div>
-            <aside className="menu-plan-result" aria-label="معاينة سعر الباقة">
+            <aside className="menu-plan-result" aria-label="سعر الباقة">
               <span className="menu-plan-result-kicker">ملخص اشتراكك</span>
               <div className="menu-plan-result-top"><span>{days} يوم</span><b>{grams} جرام بروتين</b></div>
               <p>السعر الأساسي للباقة</p>
@@ -459,10 +455,10 @@ export function MenuExperience() {
             <button type="button" className="menu-dialog-close" autoFocus aria-label="إغلاق التفاصيل" onClick={() => setSelectedProduct(null)}>×</button>
             <ProductImage item={selectedProduct} />
             <div className="menu-detail-copy">
-              <span className="menu-product-category">{selectedProduct.category} / POS #{selectedProduct.id}</span>
+              <span className="menu-product-category">{selectedProduct.category}</span>
               <h2 id="menu-detail-title">{selectedProduct.name}</h2>
-              <p>هذا الصنف من قائمة مرشحي الموقع. نعرض سعر الكاشير للمراجعة؛ وصف المكونات والسعرات والصورة تحتاج اعتمادًا قبل النشر.</p>
-              <strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س <small>سعر مرجعي</small></strong>
+              <p>من أصناف بيسك دايت. لمعرفة التوفر والتفاصيل الدقيقة، تواصل معنا أو تصفح التطبيق. قد تختلف الصور التوضيحية عن المنتج النهائي.</p>
+              <strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س <small>قبل أي رسوم أو إضافات</small></strong>
               <MenuContactButton location="final" intent={"product_" + selectedProduct.id} className="menu-detail-contact">تبغى نكلمك عن المنيو؟ ←</MenuContactButton>
               <a href="#menu-download" onClick={() => setSelectedProduct(null)}>أو حمّل تطبيق Basic Diet ←</a>
             </div>
