@@ -5,6 +5,7 @@ import { MenuExperience } from "@/components/MenuExperience";
 import { LeadDialog } from "@/components/LeadDialog";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import "./menu.css";
+import "./menu-refinement.css";
 
 export const metadata: Metadata = {
   title: "منيو بيسك دايت | الوجبات والاشتراكات واصنع بنفسك",
