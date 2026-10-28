@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppCta } from "./AppCta";
+import { PromoHeaderButton } from "./PromoExperience";
 import { usePathname } from "next/navigation";
 
 const links = [
@@ -151,7 +152,7 @@ export function Header() {
           </a>
           <nav className="desktop-nav" aria-label="التنقل الرئيسي">{navLinks}</nav>
           <div className="nav-actions">
-            {isMenu ? <a className="button button--small" href="#menu-plans">احسب باقتك</a> : isHome ? <a className="button button--small" href="#plans">احسب باقتك</a> : <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>}
+            {isHome || isMenu ? <PromoHeaderButton className="button button--small" /> : <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>}
             <button
               ref={toggle}
               type="button"
@@ -188,7 +189,7 @@ export function Header() {
               if ((event.target as Element).closest("a")) closeMenu();
             }}>{navLinks}</nav>
             <div className="nav-sheet-cta" onClickCapture={closeMenu}>
-              {isMenu ? <a href="#menu-plans" className="button">احسب باقتك</a> : isHome ? <a href="#plans" className="button">احسب باقتك</a> : <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>}
+              {isHome || isMenu ? <PromoHeaderButton className="button" /> : <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>}
             </div>
           </div>
         </dialog>
