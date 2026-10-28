@@ -35,6 +35,7 @@ export function LeadDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
   const requestId = useRef("");
   const loadId = useRef(0);
+  const submitting = useRef(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [planId, setPlanId] = useState("");
@@ -73,11 +74,19 @@ export function LeadDialog() {
       setNeedsPlanAssistance(details.planOptional === true || (!details.planDays && details.fastContact === true));
       setSourceDetail((details.sourceDetail || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40));
       setContactConsent(false); setMarketingConsent(false); setWebsite("");
-      setLocation(details.location || "hero"); setLoading(true); setPlans([]);
+      const noPlan = details.planOptional === true && !details.planDays;
+      setLocation(details.location || "hero"); setLoading(!noPlan); setPlans([]);
+      submitting.current = false;
       setFulfillmentMethod(details.fulfillmentMethod === "pickup" ? "pickup" : "delivery");
       requestId.current = crypto.randomUUID();
       if (!dialog.current?.open) dialog.current?.showModal();
       setActive(true);
+      window.dispatchEvent(new CustomEvent("basicdiet:lead_opened", {
+        detail: { location: details.location || "hero", offer: details.promoIntent === "BASIC15" || (details.sourceDetail || "").includes("basic15"),
+          noPlan, placement: (details.sourceDetail || "").slice(0, 40) },
+      }));
+      if (noPlan) { setPlanId(""); setStep(2); return; }
+      if (details.fastContact === true) setStep(2);
       void fetch("/api/lead-options", { cache: "no-store" })
         .then(res => { if (!res.ok) throw new Error("catalog"); return res.json(); })
         .then((result: { data?: PlanOption[] }) => {
@@ -99,7 +108,7 @@ export function LeadDialog() {
             || (details.mealsPerDay && details.mealsPerDay !== chosenMeals))) {
             setSelectionNotice("بعض اختياراتك غير متاحة في الباقة الحالية، فعدّلناها لأقرب خيار متاح.");
           }
-          if (details.fastContact === true && desired && choice) setStep(2);
+          if (details.fastContact !== true && desired && choice) setStep(1);
           setLoading(false);
         })
         .catch(() => { if (!cancelled && currentLoad === loadId.current) { setError("تعذر تحميل الباقات الآن. تقدر تبدأ مباشرة من التطبيق."); setLoading(false); } });
@@ -111,6 +120,7 @@ export function LeadDialog() {
   const close = () => {
     loadId.current += 1;
     dialog.current?.close();
+    submitting.current = false;
     setActive(false);
   };
 
@@ -133,7 +143,8 @@ export function LeadDialog() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected || !selectedGram || !selectedGram.mealsPerDay.includes(mealsPerDay)) {
+    if (submitting.current || sending || step === 3) return;
+    if (!needsPlanAssistance && (!selected || !selectedGram || !selectedGram.mealsPerDay.includes(mealsPerDay))) {
       setError("اختر باقة متاحة أولًا."); return;
     }
     const normalized = normalizePhone(phone);
@@ -141,6 +152,7 @@ export function LeadDialog() {
     if (isMenuPreview) { setError("هذه نسخة معاينة للتصميم فقط، إرسال بيانات التواصل فيها غير مفعّل."); return; }
     if (fastContact && name.trim().length < 2) { setError("اكتب اسمك عشان نقدر نتواصل معك."); return; }
     if (!contactConsent) { setError("لازم توافق على التواصل معك بشأن طلبك."); return; }
+    submitting.current = true;
     setError(""); setSending(true);
     let attribution: Record<string, string> = {};
     let sessionId = "";
@@ -156,8 +168,10 @@ export function LeadDialog() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           requestId: requestId.current,
-          planId: selected.planId, daysCount: selected.daysCount, grams, mealsPerDay,
-          fulfillmentMethod,
+          ...(needsPlanAssistance ? { planUnselected: true } : {
+            planId: selected?.planId, daysCount: selected?.daysCount, grams, mealsPerDay,
+            fulfillmentMethod,
+          }),
           phone: normalized, name: name.trim().slice(0, 70),
           contactConsent, marketingConsent, location, sessionId, referrerHost, website,
           source: attribution.source || "",
@@ -182,11 +196,12 @@ export function LeadDialog() {
       }
       setStep(3);
       window.dispatchEvent(new CustomEvent("basicdiet:lead_submitted", {
-        detail: { location, planDays: selected.daysCount },
+        detail: { location, planDays: needsPlanAssistance ? null : selected?.daysCount, planSelected: !needsPlanAssistance, offer: promoMode, placement: sourceDetail },
       }));
     } catch {
       setError("تعذر إرسال الطلب بسبب الاتصال. جرب تاني.");
     } finally {
+      submitting.current = false;
       setSending(false);
     }
   }
@@ -208,12 +223,12 @@ export function LeadDialog() {
           </div>
           {step < 3 ? (
             <>
-              <div className="lead-step-head">
-                <span className="lead-step-count">{promoMode && step === 2 ? "خطوة واحدة بس" : `${step} / 2`}</span>
+              <div className={"lead-step-head" + (promoMode ? " lead-step-head--offer" : "")}>
+                <span className="lead-step-count">{promoMode && step === 2 ? "تسجيل سريع · بدون دفع الآن" : `${step} / 2`}</span>
                 <h2 id="lead-dialog-heading">{promoMode ? "خصم 15% على اشتراكك" : step === 1 ? "خلّنا نضبط اشتراكك" : "باقي خطوة ونساعدك تبدأ"}</h2>
-                <p>{promoMode ? "سجّل اسمك ورقم جوالك، وفريقنا يتواصل معك لإكمال الاشتراك ومراجعة استفادتك من عرض الموقع." : step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
+                <p>{promoMode ? "اسمك وجوالك فقط. فريقنا يتواصل معك ويشرح الباقات وخصم الموقع." : step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
               </div>
-              <div className="lead-step-line"><span style={{ width: step === 1 ? "50%" : "100%" }} /></div>
+              {!promoMode && <div className="lead-step-line"><span style={{ width: step === 1 ? "50%" : "100%" }} /></div>}
               {step === 1 ? (
                 <div className="lead-fields">
                   {loading ? <p className="lead-state-message" role="status">جاري تحميل الباقات المتاحة...</p> : (
@@ -270,10 +285,11 @@ export function LeadDialog() {
                   )}
                 </div>
               ) : (
-                <form className="lead-fields" onSubmit={submit}>
+                <form className="lead-form" onSubmit={submit}>
+                  <div className="lead-form-scroll lead-fields">
                   <div className="lead-selection-summary">
                     <span>{needsPlanAssistance ? "اختيار الباقة" : "باقتك المختارة"}</span>
-                    {needsPlanAssistance ? <><strong>لسه محتار؟ فريقنا يساعدك تختار الباقة المناسبة بعد التسجيل.</strong><small>لا توجد باقة نهائية مختارة؛ سيؤكد الفريق التفاصيل معك.</small></> :
+                    {needsPlanAssistance ? <strong>لم تحدد باقة · نساعدك تختار بعد التسجيل.</strong> :
                       <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا · {fulfillmentMethod === "delivery" ? "توصيل" : "استلام"}</strong>}
                   </div>
                   <label className="lead-field">
@@ -293,20 +309,23 @@ export function LeadDialog() {
                     <input type="checkbox" checked={contactConsent} onChange={e => setContactConsent(e.target.checked)} required />
                     <span>أوافق على التواصل معي بخصوص المنيو وطلب الاشتراك فقط. <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer">سياسة الخصوصية</a></span>
                   </label>
-                  <label className="lead-check lead-check--muted">
+                  {!promoMode && <label className="lead-check lead-check--muted">
                     <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}/>
                     <span>أرغب في تلقي عروض مستقبلية (اختياري).</span>
-                  </label>
-                  {promoMode && <p className="lead-offer-disclaimer">الخصم على قيمة الباقة فقط، ولا يشمل التوصيل أو الإضافات. التسجيل طلب تواصل، لا يفعّل الاشتراك أو الخصم تلقائيًا. يوضح الفريق أهلية العرض عند إكمال الاشتراك.</p>}
+                  </label>}
+                  {promoMode && <p className="lead-offer-disclaimer">خصم 15% على باقات الاشتراك المشمولة بالعرض فقط، وليس الوجبات الفردية؛ لا يشمل التوصيل أو الإضافات. التسجيل لا يفعّل اشتراكًا أو خصمًا تلقائيًا. يؤكد الفريق انطباق العرض وقت إتمام الاشتراك.</p>}
                   {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة فقط؛ إرسال بيانات التواصل غير مفعّل هنا. التسجيل الفعلي متاح عبر الموقع الرسمي.</p>}
                   {error && <p className="lead-error" role="alert">{error}</p>}
-                  <button className="lead-primary" type="submit" disabled={isMenuPreview || sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2)}>
-                    {sending ? "جاري إرسال طلبك..." : promoMode ? "سجّل بياناتي واستفيد من العرض" : "اطلب تواصل من Basic Diet"}
+                  </div>
+                  <div className="lead-form-actions">
+                  <button className="lead-primary" type="submit" disabled={isMenuPreview || sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2) || (!needsPlanAssistance && !selected)}>
+                    {sending ? "جاري إرسال طلبك..." : promoMode ? "سجّل لخصم 15%" : "اطلب تواصل من Basic Diet"}
                   </button>
                   {!needsPlanAssistance && <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>}
+                  </div>
                 </form>
               )}
-              <div className="lead-direct">تفضل تبدأ بنفسك؟ <button type="button" onClick={() => { close(); (document.getElementById("menu-download") || document.getElementById("app"))?.scrollIntoView({ behavior: "smooth" }); }}>روابط تحميل التطبيق</button></div>
+              {!promoMode && <div className="lead-direct">تفضل تبدأ بنفسك؟ <button type="button" onClick={() => { close(); (document.getElementById("menu-download") || document.getElementById("app"))?.scrollIntoView({ behavior: "smooth" }); }}>روابط تحميل التطبيق</button></div>}
             </>
           ) : (
             <div className="lead-success">
