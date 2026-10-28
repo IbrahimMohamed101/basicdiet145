@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const Plan = require("../models/Plan");
 const LandingLead = require("../models/LandingLead");
+const { queueConsentedMetaLead } = require("./metaLandingConversionsService");
 const { attachVerifiedSubscriptionsToLeads } = require("./landingLeadConversionReadService");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -92,6 +93,9 @@ async function submitLead(body) {
       sessionId: UUID.test(body.sessionId || "") ? body.sessionId.toLowerCase() : "",
       expiresAt: new Date(now.getTime() + 180 * 86400000),
     });
+    // Optional Meta outbox runs only after a brand-new lead is durably saved.
+    // Never block customer registration on third-party tracking failures.
+    try { await queueConsentedMetaLead(body); } catch { /* fail open for customer */ }
     return { ok: true, created: true };
   } catch (error) {
     if (error.code === 11000) return { ok: true, created: false };
