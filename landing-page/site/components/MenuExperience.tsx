@@ -250,7 +250,7 @@ export function MenuExperience() {
               );
             })}
           </div>
-          <aside className="menu-offer-inline" aria-label="ميزة تسجيل الموقع">
+          {displayItems.length > 0 && <aside className="menu-offer-inline" aria-label="ميزة تسجيل الموقع">
             <span className="menu-offer-inline-amount">15%</span>
             <div className="menu-offer-inline-copy"><strong>عجبك الأكل؟ خلي اشتراكك أوفر.</strong>
               <p>سجّل اسمك وجوالك من الموقع. فريقنا يساعدك تختار الاشتراك المناسب ويراجع معك الاستفادة من خصم 15% على الباقة.</p>
@@ -260,7 +260,7 @@ export function MenuExperience() {
               <PromoOfferButton placement="catalog" className="menu-offer-inline-primary">سجّل واستفد من العرض ←</PromoOfferButton>
               <a href="#menu-plans">احسب التوفير أولًا</a>
             </div>
-          </aside>
+          </aside>}
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
           {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
           <p className="menu-catalog-footnote">الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
