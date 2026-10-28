@@ -551,3 +551,41 @@
   .menu-product-sizes { gap: 3px; }
   .menu-product-sizes button { padding-inline: 4px; }
 }
+
+
+/* Visual meal-builder image choices from the verified Drive asset collection. */
+.menu-option-grid:has(.menu-option-photo-button) { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.menu-option-grid button.menu-option-photo-button {
+  display: flex; position: relative; flex-direction: column; align-items: stretch; justify-content: flex-start;
+  text-align: right; min-width: 0; gap: 8px; border-radius: 15px;
+  background: #fbfcf8; padding: 8px; min-height: 134px;
+}
+.menu-option-grid button.menu-option-photo-button.is-active { background: #ebf7eb; }
+.menu-option-grid button.menu-option-photo-button .menu-option-thumb {
+  display: block; position: relative; border: 0; border-radius: 10px;
+  width: 100%; height: auto; aspect-ratio: 1.38; overflow: hidden; background: #e5eee5;
+}
+.menu-option-grid button.menu-option-photo-button .menu-option-thumb img { object-fit: cover; }
+.menu-option-grid button.menu-option-photo-button .menu-option-thumb strong {
+  display: grid; place-items: center; height: 100%; color: #2d6c51; font: 800 25px system-ui,sans-serif;
+}
+.menu-option-grid button.menu-option-photo-button .menu-option-name {
+  display: block; width: 100%; height: auto; border: 0; border-radius: 0;
+  line-height: 1.45; font-size: 13px; color: #154831; font-weight: 700;
+}
+.menu-option-grid button.menu-option-photo-button .menu-option-check {
+  position: absolute; top: 14px; inset-inline-end: 14px; display: grid; place-items: center;
+  width: 26px; height: 26px; border: 1px solid #d9e8dd; border-radius: 50%;
+  background: rgb(255 255 255 / 95%); color: #0c5a3c; font-size: 16px;
+}
+.menu-option-grid button.menu-option-photo-button.is-active .menu-option-check { background: #0a8150; border-color: #0a8150; color: #fff; }
+.menu-price-pop .menu-price-unavailable { font-size: clamp(20px,2vw,27px); line-height: 1.6; }
+@media (max-width: 520px) {
+  .menu-option-grid:has(.menu-option-photo-button) { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  .menu-option-grid button.menu-option-photo-button { min-height: 120px; }
+  .menu-option-grid button.menu-option-photo-button .menu-option-name { font-size: 12px; }
+}
+@media (max-width: 365px) {
+  .menu-option-grid button.menu-option-photo-button { padding: 6px; }
+  .menu-option-grid button.menu-option-photo-button .menu-option-check { top: 10px; inset-inline-end: 10px; width: 22px; height: 22px; }
+}
