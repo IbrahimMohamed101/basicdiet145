@@ -1,0 +1,56 @@
+name: Menu Preview QA
+
+on:
+  pull_request:
+    paths:
+      - "landing-page/site/**"
+      - ".github/workflows/menu-preview-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  menu-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: landing-page/site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing-page/site/package.json
+      - name: Install and typecheck
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+      - name: Build menu
+        run: npm run build
+      - name: Verify live public catalog (read only)
+        run: node scripts/verify-live-catalog.mjs
+        continue-on-error: true
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Start preview server
+        run: |
+          npm start -- --hostname 127.0.0.1 --port 3000 > /tmp/menu-qa.log 2>&1 &
+          for i in {1..45}; do
+            if curl -fsS http://127.0.0.1:3000/menu > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/menu-qa.log
+          exit 1
+      - name: Menu conversion and responsive tests
+        run: npx playwright test tests/menu.spec.ts --reporter=line
+      - name: Save visual review screenshots and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: menu-preview-visual-review
+          path: landing-page/site/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

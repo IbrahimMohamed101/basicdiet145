@@ -35,7 +35,13 @@ export function AppCta({
       }),
     );
 
-    window.dispatchEvent(new CustomEvent("basicdiet:open-lead", { detail: { location, planDays } }));
+    const inMenu = window.location.pathname === "/menu";
+    window.dispatchEvent(new CustomEvent("basicdiet:open-lead", {
+      detail: {
+        location, planDays,
+        ...(inMenu ? { fastContact: true, sourceDetail: "menu_header" } : {}),
+      },
+    }));
   };
 
   return (
