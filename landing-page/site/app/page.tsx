@@ -2,10 +2,9 @@ import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { AppReveal } from "@/components/AppReveal";
 import { MealGallery } from "@/components/MealGallery";
-import { Benefits } from "@/components/Benefits";
+import { PlanCalculator } from "@/components/PlanCalculator";
 import { HowItWorks } from "@/components/HowItWorks";
 import { InstagramReels } from "@/components/InstagramReels";
-import { Plans } from "@/components/Plans";
 import { FAQ } from "@/components/FAQ";
 import { FinalCTA } from "@/components/FinalCTA";
 import { Footer } from "@/components/Footer";
@@ -26,12 +25,11 @@ export default function Home() {
       <main id="main">
         <div id="top" />
         <Hero />
-        <AppReveal />
         <MealGallery />
-        <Benefits />
+        <PlanCalculator sectionId="plans" context="home" />
         <HowItWorks />
+        <AppReveal />
         <InstagramReels />
-        <Plans />
         <FAQ />
         <FinalCTA />
       </main>
