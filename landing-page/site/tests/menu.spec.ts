@@ -40,7 +40,7 @@ test("plan selector uses current public app catalog pricing and responds to all 
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("١٬١٨٦");
   await plans.getByRole("group", { name: "مدة الاشتراك" }).getByRole("button", { name: /7/ }).click();
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("٣٤٨");
-  await plans.getByRole("group", { name: "حجم الوجبة" }).getByRole("button", { name: /200/ }).click();
+  await plans.getByRole("group", { name: "حجم البروتين" }).getByRole("button", { name: /200/ }).click();
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("٤٢٠");
   await plans.getByRole("group", { name: "عدد الوجبات" }).getByRole("button", { name: "3" }).click();
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("٦٣٠");
@@ -126,7 +126,7 @@ test("plan call request carries the selected plan dimensions", async ({ page }) 
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await plans.getByRole("group", { name: "حجم الوجبة" }).getByRole("button", { name: /200/ }).click();
-  await plans.getByRole("button", { name: /تبغى نكلمك عن هذي الباقة/ }).click();
+  await plans.getByRole("button", { name: /اطلب تواصل بخصوص الباقة/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
   await expect(dialog.locator(".lead-selection-summary")).toContainText("200 جرام");
@@ -188,7 +188,7 @@ test("builder asks for callback only when explicitly selected", async ({ page })
   await builder.getByRole("group", { name: "نوع تجربة التخصيص" })
     .getByRole("button", { name: /اصنع سلطتك/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await builder.getByRole("button", { name: /عندك سؤال/ }).click();
+  await builder.getByRole("button", { name: /خلّينا نتواصل معك/ }).click();
   await expect(page.locator(".lead-dialog")).toBeVisible();
   await expect(page.locator(".lead-dialog").getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
 });
@@ -244,32 +244,6 @@ test("meal-builder shows photos only for supported matched dishes", async ({ pag
 });
 
 
-test("published app menu options are browsable with real Drive photo mapping and no invented item price", async ({ page }) => {
-  await page.route("**/api/menu-app-catalog", route => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ status: true, source: "published_subscription_meal_builder", data: [
-      { id: "chicken", key: "protein", title: "الدجاج", selectionType: "standard_meal", items: [
-        { id: "a", key: "tikka", name: "دجاج تكا", image: "", extraPriceHalala: 0, isPremium: false, type: "option" },
-        { id: "b", key: "barbecue", name: "دجاج باربكيو", image: "", extraPriceHalala: 450, isPremium: false, type: "option" },
-      ]},
-      { id: "carbs", key: "carbs", title: "الكارب", selectionType: "standard_meal", items: [
-        { id: "c", key: "rice", name: "رز أبيض", image: "", extraPriceHalala: 0, isPremium: false, type: "option" },
-      ]},
-    ] }),
-  }));
-  await page.goto("/menu");
-  const catalog = page.locator("#menu-app-catalog");
-  await expect(catalog).toContainText("3 اختيار");
-  await expect(catalog.locator(".menu-app-card")).toHaveCount(2);
-  await expect(catalog.locator(".menu-app-card").first().locator("img")).toHaveCount(1);
-  await expect(catalog.locator(".menu-app-card").first()).toContainText("اختيار داخل الاشتراك");
-  await expect(catalog.locator(".menu-app-card").nth(1)).toContainText("٤٫٥");
-  await catalog.getByRole("button", { name: /الكارب/ }).click();
-  await expect(catalog.locator(".menu-app-card")).toHaveCount(1);
-  await expect(catalog.locator(".menu-app-card")).toContainText("رز أبيض");
-});
-
-
 test("all 108 cashier items have a picture reference and illustrative exceptions are flagged", async ({ page }) => {
   const { menuPreviewItems } = await import("../lib/menu-preview-items");
   expect(menuPreviewItems).toHaveLength(108);
@@ -287,20 +261,63 @@ test("all 108 cashier items have a picture reference and illustrative exceptions
   await expect(page.locator(".menu-product-card .menu-image-fallback")).toHaveCount(0);
 });
 
-test("unpictured app choice receives a real generated illustration asset with an honest badge", async ({ page }) => {
-  await page.route("**/api/menu-app-catalog", route => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ status: true, source: "published_subscription_meal_builder", data: [
-      { id: "ice", key: "sweets", title: "الحلى", selectionType: "standard_meal", items: [
-        { id: "missing", key: "dessert", name: "كيك شوكولاتة", image: "", extraPriceHalala: 0, isPremium: false, type: "option" }
-      ] }
-    ] }),
-  }));
+
+
+test("redundant app catalog is removed entirely and only one priced menu is visible", async ({ page }) => {
+  let duplicateRequests = 0;
+  await page.route("**/api/menu-app-catalog", route => { duplicateRequests += 1; return route.abort(); });
   await page.goto("/menu");
-  const card = page.locator("#menu-app-catalog .menu-app-card");
-  await expect(card).toHaveCount(1);
-  await expect(card.locator("img")).toHaveCount(1);
-  await expect(card.locator(".menu-photo-disclosure")).toHaveText("صورة توضيحية");
-  await expect(card.locator("img")).toHaveAttribute("src", /\/api\/menu-art\?kind=cake/);
-  await expect(page.locator("#menu-app-catalog .menu-app-placeholder")).toHaveCount(0);
+  await expect(page.locator("#menu-app-catalog")).toHaveCount(0);
+  await expect(page.locator(".menu-app-catalog-section")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "اختيارات الوجبات من التطبيق." })).toHaveCount(0);
+  await expect(page.locator("#menu-products")).toBeVisible();
+  await expect(page.locator("#menu-plans")).toBeVisible();
+  expect(duplicateRequests).toBe(0);
+});
+
+test("below the menu, subscription and builder cards have compact mobile spacing", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/menu");
+  const measurements = await page.evaluate(() => {
+    const bounds = (selector: string) => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      return { width: rect?.width ?? 0, height: rect?.height ?? 0, left: rect?.left ?? -1, right: rect?.right ?? -1 };
+    };
+    return {
+      picker: bounds(".menu-plan-picker"),
+      price: bounds(".menu-plan-result"),
+      editor: bounds(".menu-builder-editor"),
+      summary: bounds(".menu-builder-summary"),
+      form: bounds(".menu-quick-lead"),
+      viewport: document.documentElement.clientWidth,
+    };
+  });
+  for (const [key, bounds] of Object.entries(measurements)) {
+    if (key === "viewport") continue;
+    expect(bounds.width).toBeGreaterThan(250);
+    expect(bounds.height).toBeGreaterThan(80);
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(measurements.viewport + 1);
+  }
+  expect(measurements.price.height).toBeLessThan(700);
+  await expect(page.locator(".menu-plan-store a")).toHaveCount(2);
+  await expect(page.locator(".menu-builder-store a")).toHaveCount(2);
+});
+
+test("meal and salad summary show real visual, selections and working reset", async ({ page }) => {
+  await page.goto("/menu");
+  const builder = page.locator("#menu-custom");
+  await expect(builder.locator(".menu-summary-disc")).toHaveCount(0);
+  await expect(builder.locator(".menu-summary-visual-photo img")).toHaveCount(1);
+  await builder.getByRole("button", { name: /رز أبيض/ }).click();
+  await expect(builder.locator(".menu-summary-chips")).toContainText("رز أبيض");
+  await builder.getByRole("button", { name: "ابدأ من جديد" }).click();
+  await expect(builder.locator(".menu-summary-chips")).not.toContainText("رز أبيض");
+  await builder.getByRole("group", { name: "نوع تجربة التخصيص" })
+    .getByRole("button", { name: /اصنع سلطتك/ }).click();
+  await expect(builder.locator(".menu-summary-chips")).toContainText("ابدأ باختيار مكوناتك");
+  await builder.getByRole("button", { name: "خس" }).click();
+  await expect(builder.locator(".menu-summary-chips")).toContainText("خس");
+  await builder.getByRole("button", { name: "ابدأ من جديد" }).click();
+  await expect(builder.locator(".menu-summary-chips")).not.toContainText("خس");
 });
