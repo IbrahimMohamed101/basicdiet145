@@ -9,7 +9,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "آيس كريم فانيليا 100 جرام",
     "category": "الآيس كريم",
     "priceSar": 13,
-    "image": "/api/menu-art?kind=icecream&tone=cream",
+    "image": "/menu-images/pos_2.webp",
     "illustrativeImage": true
   },
   {
@@ -17,7 +17,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "آيس كريم شوكولاته 100 جرام",
     "category": "الآيس كريم",
     "priceSar": 13,
-    "image": "/api/menu-art?kind=icecream&tone=berry",
+    "image": "/menu-images/pos_3.webp",
     "illustrativeImage": true
   },
   {
@@ -81,7 +81,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كيك شوكلاته بروتين",
     "category": "الحلويات",
     "priceSar": 17,
-    "image": "/api/menu-art?kind=cake&tone=berry",
+    "image": "/menu-images/pos_15.webp",
     "illustrativeImage": true
   },
   {
@@ -96,7 +96,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "بسبوسه",
     "category": "الحلويات",
     "priceSar": 11,
-    "image": "/api/menu-art?kind=sweets&tone=orange",
+    "image": "/menu-images/pos_51.webp",
     "illustrativeImage": true
   },
   {
@@ -104,7 +104,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كرات الحلى",
     "category": "الحلويات",
     "priceSar": 15,
-    "image": "/api/menu-art?kind=sweets&tone=berry",
+    "image": "/menu-images/pos_222.webp",
     "illustrativeImage": true
   },
   {
@@ -182,7 +182,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "دجاج مكسيكي",
     "category": "الساندويتشات",
     "priceSar": 13,
-    "image": "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC",
+    "image": "/menu-images/pos_27.webp",
     "illustrativeImage": true
   },
   {
@@ -190,7 +190,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "دجاج فاهيتا",
     "category": "الساندويتشات",
     "priceSar": 13,
-    "image": "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC",
+    "image": "/menu-images/pos_28.webp",
     "illustrativeImage": true
   },
   {
@@ -198,7 +198,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "ساور دو بيض",
     "category": "الساندويتشات",
     "priceSar": 22,
-    "image": "/api/menu-art?kind=sandwich&tone=cream",
+    "image": "/menu-images/pos_49.webp",
     "illustrativeImage": true
   },
   {
@@ -206,7 +206,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "برجر لحم",
     "category": "الساندويتشات",
     "priceSar": 23,
-    "image": "/api/meal-image?id=1x7vUZBAaWcLR8z8N7feuntgrN5w9d4b2",
+    "image": "/menu-images/pos_76.webp",
     "illustrativeImage": true
   },
   {
@@ -214,7 +214,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "لحم",
     "category": "الساندويتشات",
     "priceSar": 17,
-    "image": "/api/menu-art?kind=sandwich&tone=natural",
+    "image": "/menu-images/pos_199.webp",
     "illustrativeImage": true
   },
   {
@@ -222,7 +222,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "سندوتش على مزاجك",
     "category": "الساندويتشات",
     "priceSar": 21,
-    "image": "/api/menu-art?kind=sandwich&tone=green",
+    "image": "/menu-images/pos_201.webp",
     "illustrativeImage": true
   },
   {
@@ -342,7 +342,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "سلطة الجرجير مع الشمندر صغير",
     "category": "السلطات",
     "priceSar": 15,
-    "image": "/api/meal-image?id=1ZBMwQc-yIT1QjphDRNRZLTeXCbUFVRCU",
+    "image": "/menu-images/pos_175.webp",
     "illustrativeImage": true
   },
   {
@@ -350,7 +350,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "سلطة الجرجير مع الشمندر كبير",
     "category": "السلطات",
     "priceSar": 25,
-    "image": "/api/meal-image?id=1ZBMwQc-yIT1QjphDRNRZLTeXCbUFVRCU",
+    "image": "/menu-images/pos_182.webp",
     "illustrativeImage": true
   },
   {
@@ -463,7 +463,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "مياه عاديه",
     "category": "المشروبات",
     "priceSar": 2,
-    "image": "/api/menu-art?kind=water&tone=cream",
+    "image": "/menu-images/pos_5.webp",
     "illustrativeImage": true
   },
   {
@@ -471,7 +471,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "صودا دايت",
     "category": "المشروبات",
     "priceSar": 3,
-    "image": "/api/menu-art?kind=soda&tone=green",
+    "image": "/menu-images/pos_6.webp",
     "illustrativeImage": true
   },
   {
@@ -479,7 +479,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "آيس تي دايت",
     "category": "المشروبات",
     "priceSar": 4,
-    "image": "/api/menu-art?kind=juice&tone=cream",
+    "image": "/menu-images/pos_7.webp",
     "illustrativeImage": true
   },
   {
@@ -487,7 +487,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "مشروب بروتين",
     "category": "المشروبات",
     "priceSar": 19,
-    "image": "/api/menu-art?kind=shake&tone=cream",
+    "image": "/menu-images/pos_8.webp",
     "illustrativeImage": true
   },
   {
@@ -495,7 +495,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "عصير بطيخ بالنعناع",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": "/api/menu-art?kind=juice&tone=pink",
+    "image": "/menu-images/pos_9.webp",
     "illustrativeImage": true
   },
   {
@@ -503,7 +503,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "عصير برتقال وجزر",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": "/api/menu-art?kind=juice&tone=orange",
+    "image": "/menu-images/pos_10.webp",
     "illustrativeImage": true
   },
   {
@@ -511,7 +511,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "عصير بينت بنش",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": "/api/menu-art?kind=juice&tone=pink",
+    "image": "/menu-images/pos_11.webp",
     "illustrativeImage": true
   },
   {
@@ -519,7 +519,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "عصير كلاسيك جرين",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": "/api/menu-art?kind=juice&tone=green",
+    "image": "/menu-images/pos_12.webp",
     "illustrativeImage": true
   },
   {
@@ -527,7 +527,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "عصير بيري بروت",
     "category": "المشروبات",
     "priceSar": 13,
-    "image": "/api/menu-art?kind=juice&tone=berry",
+    "image": "/menu-images/pos_13.webp",
     "illustrativeImage": true
   },
   {
@@ -535,7 +535,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "عصير بيري بلاست",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": "/api/menu-art?kind=juice&tone=berry",
+    "image": "/menu-images/pos_14.webp",
     "illustrativeImage": true
   },
   {
@@ -543,7 +543,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "مياه صغير",
     "category": "المشروبات",
     "priceSar": 1,
-    "image": "/api/menu-art?kind=water&tone=cream",
+    "image": "/menu-images/pos_52.webp",
     "illustrativeImage": true
   },
   {
@@ -551,7 +551,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "صودا دايت صغير",
     "category": "المشروبات",
     "priceSar": 2.5,
-    "image": "/api/menu-art?kind=soda&tone=green",
+    "image": "/menu-images/pos_53.webp",
     "illustrativeImage": true
   },
   {
@@ -566,7 +566,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة بيض مسلوق",
     "category": "الوجبات",
     "priceSar": 19,
-    "image": "/api/menu-art?kind=eggs&tone=cream",
+    "image": "/menu-images/pos_39.webp",
     "illustrativeImage": true
   },
   {
@@ -637,7 +637,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة دجاج 100 جرام",
     "category": "الوجبات",
     "priceSar": 20,
-    "image": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+    "image": "/menu-images/pos_42.webp",
     "illustrativeImage": true
   },
   {
@@ -645,7 +645,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة دجاج 150 جرام",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+    "image": "/menu-images/pos_43.webp",
     "illustrativeImage": true
   },
   {
@@ -653,7 +653,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة دجاج 200 جرام",
     "category": "الوجبات",
     "priceSar": 30,
-    "image": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+    "image": "/menu-images/pos_44.webp",
     "illustrativeImage": true
   },
   {
@@ -661,7 +661,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة لحم 150جرام",
     "category": "الوجبات",
     "priceSar": 28,
-    "image": "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
+    "image": "/menu-images/pos_79.webp",
     "illustrativeImage": true
   },
   {
@@ -669,7 +669,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة لحم 200جرام",
     "category": "الوجبات",
     "priceSar": 34,
-    "image": "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
+    "image": "/menu-images/pos_80.webp",
     "illustrativeImage": true
   },
   {
@@ -677,7 +677,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة لحم 100 جم",
     "category": "الوجبات",
     "priceSar": 22,
-    "image": "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
+    "image": "/menu-images/pos_129.webp",
     "illustrativeImage": true
   },
   {
@@ -727,7 +727,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كبسة لحم",
     "category": "الوجبات",
     "priceSar": 35,
-    "image": "/api/menu-art?kind=rice&tone=orange",
+    "image": "/menu-images/pos_189.webp",
     "illustrativeImage": true
   },
   {
@@ -735,7 +735,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كفتة داوود باشا",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": "/api/menu-art?kind=beef&tone=natural",
+    "image": "/menu-images/pos_190.webp",
     "illustrativeImage": true
   },
   {
@@ -785,7 +785,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كبسة دجاج",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": "/api/menu-art?kind=chicken&tone=orange",
+    "image": "/menu-images/pos_197.webp",
     "illustrativeImage": true
   },
   {
@@ -793,7 +793,7 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "بطاطس باللحمة",
     "category": "الوجبات",
     "priceSar": 35,
-    "image": "/api/menu-art?kind=beef&tone=natural",
+    "image": "/menu-images/pos_198.webp",
     "illustrativeImage": true
   }
 ];
