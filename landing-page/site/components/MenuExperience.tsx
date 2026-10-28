@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
 import { MenuAppCatalog } from "@/components/MenuAppCatalog";
+import { menuArtUrl } from "@/lib/menu-art";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
 const secondImage = "/api/meal-image?id=1IxuZvbSI85kxn9pwF97kGCeScVpz0fdv";
@@ -41,11 +42,16 @@ const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(
 const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "سالمون", "جمبري"];
 const mealCarbs = ["رز أبيض", "رز بالكركم", "رز برياني", "كينوا", "بطاطس مشوي", "بطاطا حلوة", "باستا ألفريدو"];
 const mealProteinPhotos: Record<string, string> = {
+  "دجاج مشوي": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+  "بيض مسلوق": "/api/menu-art?kind=eggs&tone=cream",
   "تونا": "/api/meal-image?id=1niUYE8DPHKnOuXEA-8DO9DYDJs3xv82U",
   "سالمون": "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
   "جمبري": "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b",
 };
 const mealCarbPhotos: Record<string, string> = {
+  "رز برياني": "/api/menu-art?kind=rice&tone=orange",
+  "كينوا": "/api/menu-art?kind=rice&tone=green",
+  "بطاطا حلوة": "/api/menu-art?kind=potato&tone=orange",
   "رز أبيض": "/api/meal-image?id=1J0uWPLXV7sTiQEfZzAf0W0WK_HrYpt5O",
   "رز بالكركم": "/api/meal-image?id=1QKGfdTGcXJKk_dk9gpg4dJlb27ibEbcD",
   "بطاطس مشوي": "/api/meal-image?id=1Yee9VzPNT76BYe8BwTWrxjsq1Y6qZoBl",
@@ -80,17 +86,16 @@ function DemoLabel() {
 
 function ProductImage({ item, priority = false }: { item: MenuPreviewItem; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const src = failed || !item.image ? menuArtUrl(item.name, item.category) : item.image;
+  const illustrative = item.illustrativeImage === true || !item.image || failed;
   return (
     <div className="menu-product-photo">
-      {item.image && !failed ? (
-        <Image src={item.image} alt={item.name} fill sizes="(max-width: 600px) 46vw, (max-width: 1000px) 34vw, 300px" quality={78} priority={priority} unoptimized={item.image.startsWith("https://")} onError={() => setFailed(true)} />
-      ) : (
-        <div className="menu-image-fallback" aria-label="صورة الصنف لم تعتمد بعد">
-          <span className="menu-fallback-ring" />
-          <strong>Basic<br />Diet.</strong>
-          <small>الصورة قيد الاعتماد</small>
-        </div>
-      )}
+      <Image key={src} src={src}
+        alt={illustrative ? "رسم أو صورة توضيحية للصنف: " + item.name : item.name}
+        fill sizes="(max-width: 600px) 46vw, (max-width: 1000px) 34vw, 300px"
+        quality={78} priority={priority} unoptimized={src.startsWith("https://") || src.startsWith("/api/menu-art")}
+        onError={() => setFailed(true)} />
+      {illustrative && <span className="menu-photo-disclosure">صورة توضيحية</span>}
     </div>
   );
 }
@@ -260,7 +265,7 @@ export function MenuExperience() {
               const activeItem = (family ? menuItemById.get(selectedSizes[family.key] || item.id) : null) || item;
               return (
                 <article className="menu-product-card" key={family?.key || item.id}>
-                  <ProductImage item={activeItem} />
+                  <ProductImage key={activeItem.id} item={activeItem} />
                   <div className="menu-product-body">
                     <span className="menu-product-category">{activeItem.category}</span>
                     <h3>{family?.title || activeItem.name}</h3>
@@ -360,7 +365,7 @@ export function MenuExperience() {
                     <div className="menu-option-title"><strong>اختر البروتين</strong><span>اختيار واحد</span></div>
                     <div className="menu-option-grid">
                       {mealProteins.map((option) => <button type="button" key={option} aria-pressed={protein === option} className={"menu-option-photo-button" + (protein === option ? " is-active" : "")} onClick={() => setProtein(option)}>
-                        <span className="menu-option-thumb">{mealProteinPhotos[option] ? <Image src={mealProteinPhotos[option]} alt="" fill sizes="88px" /> : <strong aria-hidden="true">BD.</strong>}</span>
+                        <span className="menu-option-thumb"><Image src={mealProteinPhotos[option] || menuArtUrl(option)} alt="" fill sizes="88px" unoptimized={(mealProteinPhotos[option] || "").startsWith("/api/menu-art")} /></span>
                         <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{protein === option ? "✓" : "+"}</span>
                       </button>)}
                     </div>
@@ -369,7 +374,7 @@ export function MenuExperience() {
                     <div className="menu-option-title"><strong>اختر الكارب</strong><span>{carbs.length} / 2</span></div>
                     <div className="menu-option-grid">
                       {mealCarbs.map((option) => <button type="button" key={option} aria-pressed={carbs.includes(option)} disabled={carbs.length >= 2 && !carbs.includes(option)} className={"menu-option-photo-button" + (carbs.includes(option) ? " is-active" : "")} onClick={() => toggleCarb(option)}>
-                        <span className="menu-option-thumb">{mealCarbPhotos[option] ? <Image src={mealCarbPhotos[option]} alt="" fill sizes="88px" /> : <strong aria-hidden="true">BD.</strong>}</span>
+                        <span className="menu-option-thumb"><Image src={mealCarbPhotos[option] || menuArtUrl(option)} alt="" fill sizes="88px" unoptimized={(mealCarbPhotos[option] || "").startsWith("/api/menu-art")} /></span>
                         <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{carbs.includes(option) ? "✓" : "+"}</span>
                       </button>)}
                     </div>
