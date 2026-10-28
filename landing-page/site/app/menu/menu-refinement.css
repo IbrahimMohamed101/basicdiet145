@@ -530,3 +530,103 @@ body:has(.menu-page) a.skip-link:focus-visible {
   .menu-page .menu-meal-protein-tabs { gap: 6px; }
   .menu-page .menu-meal-protein-tabs button { min-height: 35px; padding: 7px 12px; font-size: 12px; }
 }
+
+/* 2026-10-28: compact live meal-selection feedback for narrow phones. */
+.menu-page .menu-mobile-selection-status { display: none; }
+@media (max-width: 760px) {
+  /* The previous overflow hidden prevents any sticky child from following scroll. */
+  .menu-page .menu-builder-editor { overflow: visible; }
+  .menu-page .menu-custom-section { padding-bottom: calc(105px + env(safe-area-inset-bottom, 0px)); }
+  .menu-page #menu-builder-summary { scroll-margin-top: 94px; }
+  .menu-page .menu-mobile-selection-status {
+    position: sticky;
+    top: 79px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 9px;
+    width: 100%;
+    min-width: 0;
+    margin: 6px 0 16px;
+    padding: 10px 12px;
+    color: #f7fff3;
+    background: rgb(10 74 49 / 96%);
+    border: 1px solid #23694a;
+    border-radius: 13px;
+    box-shadow: 0 7px 18px rgb(0 39 21 / 15%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .menu-page .menu-mobile-selection-current {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .menu-page .menu-mobile-selection-current small {
+    font-size: 10px;
+    color: #bee5cd;
+    font-weight: 600;
+  }
+  .menu-page .menu-mobile-selection-current strong {
+    font-size: 14px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    font-weight: 800;
+  }
+  .menu-page .menu-mobile-selection-current > span {
+    font-size: 11px;
+    line-height: 1.45;
+    color: #d6f0de;
+    overflow-wrap: anywhere;
+  }
+  .menu-page .menu-mobile-selection-status > a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    background: #eff9e8;
+    color: #10563a;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .menu-page .menu-option-grid button.menu-option-photo-button {
+    min-height: 150px;
+    gap: 5px;
+    padding: 8px;
+  }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb {
+    background: #f6f4eb;
+    aspect-ratio: 1.38;
+  }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb img { object-fit: contain; }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-name {
+    font-size: 13px;
+    line-height: 1.35;
+    min-height: 32px;
+  }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-builder-photo-note { font-size: 10px; }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-check {
+    top: 13px;
+    inset-inline-end: 13px;
+    width: 28px;
+    height: 28px;
+  }
+  .menu-page .menu-meal-protein-tabs button {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
+@media (max-width: 365px) {
+  .menu-page .menu-mobile-selection-status { padding: 9px; }
+  .menu-page .menu-mobile-selection-current strong { font-size: 13px; }
+  .menu-page .menu-mobile-selection-status > a { padding-inline: 8px; }
+  .menu-page .menu-option-grid button.menu-option-photo-button { min-height: 138px; padding: 6px; }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-name { font-size: 12px; }
+}
