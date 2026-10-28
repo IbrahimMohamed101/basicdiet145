@@ -33,7 +33,7 @@ export function Footer() {
       <div className="page-shell">
         <div className="footer-grid">
           <div className="footer-brand-block">
-            <a className="footer-brand" href="#top" aria-label="Basic Diet - الرئيسية">
+            <a className="footer-brand" href="/" aria-label="Basic Diet - الرئيسية">
               <Image src="/brand/logo-white.png" alt="Basic Diet" width={138} height={52} sizes="138px" loading="lazy" />
             </a>
             <p>وجبات تحبها، على مقاس يومك.</p>
@@ -66,6 +66,7 @@ export function Footer() {
         <div className="footer-linkbar">
           <nav className="footer-nav" aria-label="روابط أسفل الصفحة">
             <a href="/#meals">الوجبات</a>
+            <a href="/menu">المنيو الكامل</a>
             <a href="/#plans">الباقات</a>
             <a href="/jeddah/healthy-meals">اشتراكات وجبات صحية جدة</a>
             <a href="/#faq">الأسئلة</a>
