@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
 import { PlanCalculator } from "@/components/PlanCalculator";
-import { PromoOfferText } from "@/components/PromoExperience";
+import { PromoOfferText, PromoOfferButton } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
@@ -250,6 +250,17 @@ export function MenuExperience() {
               );
             })}
           </div>
+          <aside className="menu-offer-inline" aria-label="ميزة تسجيل الموقع">
+            <span className="menu-offer-inline-amount">15%</span>
+            <div className="menu-offer-inline-copy"><strong>عجبك الأكل؟ خلي اشتراكك أوفر.</strong>
+              <p>سجّل اسمك وجوالك من الموقع. فريقنا يساعدك تختار الاشتراك المناسب ويراجع معك الاستفادة من خصم 15% على الباقة.</p>
+              <small>بدون دفع أو التزام بالاشتراك عند التسجيل.</small>
+            </div>
+            <div className="menu-offer-inline-actions">
+              <PromoOfferButton placement="catalog" className="menu-offer-inline-primary">سجّل واستفد من العرض ←</PromoOfferButton>
+              <a href="#menu-plans">احسب التوفير أولًا</a>
+            </div>
+          </aside>
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
           {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
           <p className="menu-catalog-footnote">الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
