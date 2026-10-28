@@ -3,7 +3,7 @@ export type MenuArtKind = "water" | "soda" | "juice" | "shake" | "icecream" | "c
 export function menuArtKind(name: string, category = ""): MenuArtKind {
   const x = (name + " " + category).replace(/[أإآ]/g, "ا").replace(/[َُِّْ]/g, "").toLowerCase();
   if (/مياه|ماء/.test(x)) return "water";
-  if (/صودا|(^|\\s)كولا(\\s|$)/.test(x)) return "soda";
+  if (/صودا|(^| )كولا( |$)/.test(x)) return "soda";
   if (/مشروب بروتين|بروتين شيك/.test(x)) return "shake";
   if (/عصير|ايس تي|بنش|بيري|كلاسيك جرين/.test(x)) return "juice";
   if (/ايس كريم|آيس كريم/.test(x)) return "icecream";
