@@ -250,7 +250,7 @@ export function MenuExperience() {
               );
             })}
           </div>
-          {displayItems.length > 0 && <aside className="menu-offer-inline" aria-label="ميزة تسجيل الموقع">
+          {category === "الكل" && !search.trim() && displayItems.length >= 12 && <aside className="menu-offer-inline" aria-label="ميزة تسجيل الموقع">
             <span className="menu-offer-inline-amount">15%</span>
             <div className="menu-offer-inline-copy"><strong>عجبك الأكل؟ خلي اشتراكك أوفر.</strong>
               <p>سجّل اسمك وجوالك من الموقع. فريقنا يساعدك تختار الاشتراك المناسب ويراجع معك الاستفادة من خصم 15% على الباقة.</p>
