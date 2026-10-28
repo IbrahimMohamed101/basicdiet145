@@ -43,6 +43,13 @@ async function run() {
   assert.equal(parseEvent({ ...base(), eventId: "not-a-uuid" }), null);
   assert.equal(parseEvent({ ...base(), sessionId: "not-a-uuid" }), null);
   assert.equal(parseEvent({ ...base(), event: "lp_store_click" }), null);
+  const opened = parseEvent({ ...base(), event: "lp_lead_opened", path: "/menu",
+    location: "header", placement: "menu_basic15_header", phone: "+966501234567" });
+  assert.equal(opened.event, "lp_lead_opened");
+  assert.equal(opened.placement, "menu_basic15_header");
+  assert.equal("phone" in opened, false);
+  assert.equal(parseEvent({ ...base(), event: "lp_lead_submitted",
+    placement: "menu_basic15_header" }).placement, "menu_basic15_header");
   assert.equal(parseEvent({ ...base(), event: "lp_cta_click", location: "invalid" }), null);
   assert.equal(parseEvent({ ...base(), event: "lp_section_view", section: "other" }), null);
 
