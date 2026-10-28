@@ -106,7 +106,7 @@ export function MenuLeadCapture() {
       <div className="menu-quick-lead-alternative">
         <span>تفضل تسجّل بنفسك؟</span>
         <a href={IOS_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "app_store", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من App Store">App Store</a>
-        <a href={ANDROID_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "google_play", entry: "menu_hero" } }))} aria-label="تحميل Basic Diet من Google Play">Google Play</a>
+        <a href={ANDROID_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "google_play", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من Google Play">Google Play</a>
       </div>
     </div>
   );
