@@ -146,7 +146,7 @@ export function Header() {
       <div ref={sentinel} className="nav-sentinel" aria-hidden="true" />
       <header className="site-header" data-menu-open={open}>
         <div className={`nav-shell ${scrolled ? "nav-shell--scrolled" : ""}`}>
-          <a ref={brand} href={isHome || isMenu ? "#top" : "/"} className="brand" aria-label="بيسك دايت Basic Diet - الرئيسية">
+          <a ref={brand} href={isHome ? "#top" : "/"} className="brand" aria-label="بيسك دايت Basic Diet - الرئيسية">
             <Image className="brand-logo" src="/brand/logo-primary.png" alt="" width={52} height={48} sizes="52px" priority quality={78} />
             <span className="brand-name">Basic Diet</span>
           </a>

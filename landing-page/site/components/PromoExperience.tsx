@@ -3,7 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
-export const PROMO_PERCENT = 15;
+import { SITE_OFFER_CTA, SITE_OFFER_PERCENT } from "@/lib/site-offer";
+export const PROMO_PERCENT = SITE_OFFER_PERCENT;
 // The offer identifier is internal attribution only; never display a coupon code.
 
 export function openPromoLead(placement: string, plan?: { days: number; grams: number; meals: number; fulfillment: "pickup" | "delivery" }) {
@@ -26,8 +27,8 @@ export function PromoOfferText({ location = "hero" }: { location?: "hero" | "men
       <span className="bd-offer-percent" aria-hidden="true">15%</span>
       <div className="bd-offer-body">
         <strong>سجّل من الموقع ووفّر 15% على اشتراكك</strong>
-        <small>سيب اسمك وجوالك بس، ونساعدك تختار. بدون دفع الآن.</small>
-        <PromoOfferButton className="bd-offer-register-link" placement={location === "menu" ? "menu_hero" : "hero"}>سجّل واستفسر عن العرض <span aria-hidden="true">←</span></PromoOfferButton>
+        <small>سجّل اسمك وجوالك، ونساعدك تختار باقتك. بدون دفع الآن.</small>
+        <PromoOfferButton className="bd-offer-register-link" placement={location === "menu" ? "menu_hero" : "hero"}>{SITE_OFFER_CTA} <span aria-hidden="true">←</span></PromoOfferButton>
       </div>
     </div>
   );
@@ -38,7 +39,7 @@ export function PromoOfferButton({ placement, className = "", children }: { plac
 }
 
 export function PromoHeaderButton({ className = "" }: { className?: string }) {
-  return <button type="button" className={className} onClick={() => openPromoLead("header")}>سجّل لخصم 15%</button>;
+  return <button type="button" className={className} onClick={() => openPromoLead("header")}>{SITE_OFFER_CTA}</button>;
 }
 
 export function PromoMobileBar() {
@@ -48,9 +49,9 @@ export function PromoMobileBar() {
   useEffect(() => {
     if (path !== "/" && path !== "/menu") return;
     const dialog = document.querySelector<HTMLDialogElement>(".lead-dialog");
-    const syncDialog = () => setDialogOpen(Boolean(dialog?.open));
-    const observer = dialog ? new MutationObserver(syncDialog) : null;
-    if (dialog && observer) observer.observe(dialog, { attributes: true, attributeFilter: ["open"] });
+    const syncDialog = () => setDialogOpen(Boolean(dialog?.open || document.querySelector(".menu-dialog-backdrop")));
+    const observer = new MutationObserver(syncDialog);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["open"], childList: true, subtree: true });
     syncDialog();
     const update = () => {
       const form = document.getElementById("menu-quick-contact");
@@ -70,6 +71,6 @@ export function PromoMobileBar() {
   if (!visible || dialogOpen || (path !== "/" && path !== "/menu")) return null;
   return <div className="bd-offer-mobile-bar" role="region" aria-label="عرض اشتراك بيسك دايت">
     <span><b>15% خصم</b><small>على قيمة الباقة فقط</small></span>
-    <button type="button" onClick={() => openPromoLead("mobile")}>سجّل لخصم 15% ←</button>
+    <button type="button" onClick={() => openPromoLead("mobile")}>{SITE_OFFER_CTA} ←</button>
   </div>;
 }

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
-import { PROMO_PERCENT } from "@/components/PromoExperience";
+import { SITE_OFFER_PERCENT as PROMO_PERCENT, SITE_OFFER_CTA, SITE_OFFER_TERMS } from "@/lib/site-offer";
+import { openPromoLead } from "./PromoExperience";
 
 type MealPrice = { mealsPerDay: number; priceSar: number };
 type GramOption = { grams: number; mealsOptions: MealPrice[] };
@@ -98,7 +99,7 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
     setChoice(prev => ({ ...prev, grams, meals }));
   }
   function contact() {
-    if (!matched || !price) return;
+    if (!matched || !price) { openPromoLead("calculator_unavailable"); return; }
     const detail = {
       location: "plans", planDays: choice.days, grams: choice.grams,
       mealsPerDay: choice.meals, fulfillmentMethod: choice.fulfillment,
@@ -123,7 +124,7 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
             <p className="bd-calculator-eyebrow">باقات بيسك دايت / SUBSCRIPTIONS</p>
             <h2 id={sectionId + "-heading"}>احسب باقتك.<br /><span>واختار اللي يناسب يومك.</span></h2>
           </div>
-          <p>اختَر المدة ووزن حصة البروتين وعدد الوجبات. هنوضح لك سعر الباقة الأساسي من الأسعار المتاحة، قبل أي إضافات أو خصومات.</p>
+          <p>اختر المدة وحصة البروتين وعدد وجباتك، وشوف سعر الباقة وتوفيرك المتوقع مع خصم التسجيل.</p>
         </div>
         <div className="bd-calculator-layout">
           <div className="bd-calculator-controls">
@@ -181,11 +182,11 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
             )}
             <div className="bd-calculator-specs"><span>{choice.days * choice.meals} وجبة خلال الباقة</span><span>{choice.fulfillment === "delivery" ? "توصيل" : "استلام"}</span></div>
             <p className="bd-calculator-disclaimer">
-              العرض تقديري على سعر الباقة فقط ولا يشمل التوصيل أو الإضافات. يراجع الفريق أهلية الخصم ويؤكد السعر النهائي عند الاشتراك. تسجيل البيانات لا يُفعّل الاشتراك تلقائيًا.
+              السعر بعد الخصم تقديري. {SITE_OFFER_TERMS}
               {status === "ready" && !matched && " هذا الاختيار غير متاح حاليًا، جرّب اختيارًا آخر."}
             </p>
-            <button type="button" className="bd-calculator-primary" disabled={!matched || !price} onClick={contact}>
-              سجّل للاستفادة من خصم 15% <span aria-hidden="true">←</span>
+            <button type="button" className="bd-calculator-primary" onClick={contact}>
+              {SITE_OFFER_CTA} <span aria-hidden="true">←</span>
             </button>
             <div className="bd-calculator-secondary">
               <a href={IOS_APP_URL}>App Store</a>
@@ -198,7 +199,7 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
       {bottomBar && status === "ready" && matched && price != null && (
         <div className="bd-calculator-mobile-summary" role="region" aria-label="ملخص باقتك أثناء التخصيص">
           <div><small>باقتك بعد عرض التسجيل · {choice.days} يوم</small><strong>{offerPrice || summary}</strong></div>
-          <button type="button" onClick={contact}>سجّل لخصم 15% ←</button>
+          <button type="button" onClick={contact}>{SITE_OFFER_CTA} ←</button>
         </div>
       )}
     </section>

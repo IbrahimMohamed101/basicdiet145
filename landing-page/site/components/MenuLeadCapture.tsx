@@ -3,6 +3,9 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
 
+import { normalizeSaudiPhone } from "@/lib/saudi-phone";
+import { SITE_OFFER_CTA, SITE_OFFER_TERMS } from "@/lib/site-offer";
+
 type LeadLocation = "hero" | "plans" | "final";
 
 type OpenMenuLead = {
@@ -15,13 +18,6 @@ type OpenMenuLead = {
   phone?: string;
 };
 
-function normalizeSaudiPhone(raw: string) {
-  let value = raw.replace(/[\s()-]/g, "");
-  if (value.startsWith("+966")) value = value.slice(4);
-  else if (value.startsWith("966")) value = value.slice(3);
-  else if (value.startsWith("0")) value = value.slice(1);
-  return /^5\d{8}$/.test(value);
-}
 
 export function openMenuLead(details: OpenMenuLead) {
   // No personally identifying data is sent in tracking events.
@@ -76,7 +72,7 @@ export function MenuLeadCapture() {
       return;
     }
     setError("");
-    // The shared LeadDialog loads a real sellable plan and asks for consent
+    // The shared dialog keeps these values and asks for contact consent
     // before submitting through the same /api/leads -> /api/landing/leads path.
     openMenuLead({ location: "final", intent: "footer_form", name: name.trim(), phone });
   }
@@ -100,13 +96,13 @@ export function MenuLeadCapture() {
           <input required autoComplete="tel-national" type="tel" inputMode="tel" dir="ltr" maxLength={32} value={phone} onChange={e => setPhone(e.target.value)} placeholder="05xxxxxxxx" />
         </label>
         <button className="menu-quick-lead-submit" type="submit">
-          سجّل وخلّنا نساعدك توفّر <span aria-hidden="true">←</span>
+          {SITE_OFFER_CTA} <span aria-hidden="true">←</span>
         </button>
       </form>
       {error && <p className="menu-quick-lead-error" role="alert">{error}</p>}
-      <p className="menu-quick-lead-privacy">بدون دفع الآن. الخصم على قيمة الباقة فقط ولا يشمل التوصيل أو الإضافات. التسجيل طلب تواصل وليس اشتراكًا تلقائيًا، وتأكيد العرض يتم مع الفريق.</p>
+      <p className="menu-quick-lead-privacy">{SITE_OFFER_TERMS}</p>
       <div className="menu-quick-lead-alternative">
-        <span>تفضل تسجّل بنفسك؟</span>
+        <span>تفضل الاشتراك من التطبيق؟</span>
         <a href={IOS_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "app_store", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من App Store">App Store</a>
         <a href={ANDROID_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "google_play", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من Google Play">Google Play</a>
       </div>

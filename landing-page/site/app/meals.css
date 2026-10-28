@@ -69,3 +69,12 @@
   .food-footer > p { font-size: 14px; }
 }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) { .meal-card:hover img { transform: scale(1.035); } }
+
+/* Canonical menu preview on the homepage. */
+.meal-card-price { display:inline-flex; width:fit-content; margin-top:5px; padding:5px 12px; color:#fff; background:#0f5436; border:1px solid #ffffff50; border-radius:999px; font-size:14px; font-weight:800; }
+.food-link--menu { min-height:48px; justify-content:center; padding:12px 21px; border-radius:13px; background:var(--brand-green); color:#fff; }
+.food-link--menu span { color:#e4f7e4; }
+.final-register { margin-top:20px; min-height:52px; background:#e4f7e4; color:#124a35; }
+.final-register:hover { background:#fff; color:#124a35; }
+.final-cta-copy .final-register-note { font-size:13px; margin-top:9px; }
+@media(max-width:640px) { .meal-card-price { font-size:12px; padding:3px 8px; } .food-link--menu,.final-register { width:100%; } }

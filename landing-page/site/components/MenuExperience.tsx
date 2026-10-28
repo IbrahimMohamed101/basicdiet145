@@ -257,7 +257,7 @@ export function MenuExperience() {
               <small>بدون دفع أو التزام بالاشتراك عند التسجيل.</small>
             </div>
             <div className="menu-offer-inline-actions">
-              <PromoOfferButton placement="catalog" className="menu-offer-inline-primary">سجّل واستفد من العرض ←</PromoOfferButton>
+              <PromoOfferButton placement="catalog" className="menu-offer-inline-primary">سجّل لخصم 15% ←</PromoOfferButton>
               <a href="#menu-plans">احسب التوفير أولًا</a>
             </div>
           </aside>}

@@ -45,7 +45,7 @@ jobs:
           cat /tmp/menu-qa.log
           exit 1
       - name: Menu conversion and responsive tests
-        run: npx playwright test tests/menu.spec.ts --reporter=line
+        run: npx playwright test tests/menu.spec.ts tests/offer-polish.spec.ts tests/lead-origin.spec.ts tests/analytics-origin.spec.ts --reporter=line
       - name: Save visual review screenshots and failures
         if: always()
         uses: actions/upload-artifact@v4

@@ -3,3 +3,7 @@ node_modules/
 .env
 .env.local
 .vercel/
+
+tsconfig.tsbuildinfo
+test-results/
+playwright-report/
