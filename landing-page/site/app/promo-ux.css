@@ -38,3 +38,27 @@
   .bd-offer-mobile-bar > span b { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) { .bd-offer-copy, .bd-calculator-offer { animation: none; } }
+
+
+/* Persuasion lives after real food browsing, not as an intrusive popup. */
+.menu-offer-inline { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 18px; margin: 25px 0 14px; padding: clamp(18px,2.6vw,26px); border-radius: 19px; background: linear-gradient(115deg,#0b573b,#063521); color: #fff; }
+.menu-offer-inline-amount { display: grid; place-items: center; width: 82px; height: 82px; border-radius: 20px; background: #d9f5d4; color: #0a7049; font: 800 29px system-ui,sans-serif; direction: ltr; }
+.menu-offer-inline-copy { display: grid; gap: 4px; }
+.menu-offer-inline-copy strong { font-size: clamp(17px,1.9vw,24px); }
+.menu-offer-inline-copy p { font-size: 14px; line-height: 1.6; color: #ddf0df; margin: 0; }
+.menu-offer-inline-copy small { color: #c0e3c6; font-size: 12px; }
+.menu-offer-inline-actions { display: grid; justify-items: center; gap: 11px; }
+.menu-offer-inline-primary { min-height: 49px; padding: 10px 18px; border-radius: 11px; background: #e3f6dc; color: #0e5838; font-weight: 800; font-size: 14px; white-space: nowrap; }
+.menu-offer-inline-actions a { font-size: 13px; color: #e3f4dc; text-decoration: underline; text-underline-offset: 4px; }
+@media (max-width: 950px) {
+  .menu-offer-inline { grid-template-columns: auto minmax(0,1fr); }
+  .menu-offer-inline-actions { grid-column: 1/-1; display: flex; flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (max-width: 520px) {
+  .menu-offer-inline { gap: 12px; grid-template-columns: 58px minmax(0,1fr); border-radius: 15px; padding: 14px; }
+  .menu-offer-inline-amount { width: 58px; height: 58px; font-size: 20px; border-radius: 11px; }
+  .menu-offer-inline-copy strong { font-size: 17px; }
+  .menu-offer-inline-copy p { font-size: 12px; }
+  .menu-offer-inline-actions { gap: 10px; align-items: center; }
+  .menu-offer-inline-primary { white-space: normal; min-height: 47px; font-size: 13px; }
+}
