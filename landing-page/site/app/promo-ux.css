@@ -1,0 +1,40 @@
+/* Registration-first campaign UI. All claims are transparent; never show coupon codes. */
+.bd-offer-copy { width: min(100%,540px); margin-block: 19px 16px; display: flex; gap: 13px; align-items: center; padding: 14px 16px; border: 1px solid rgb(233 255 225 / 28%); border-radius: 17px; background: linear-gradient(125deg,rgb(236 255 228 / 13%),rgb(8 54 35 / 27%)); color: #fafff4; backdrop-filter: blur(8px); }
+.bd-offer-percent { flex: 0 0 auto; display: grid; place-items: center; min-width: 72px; min-height: 67px; border-radius: 13px; background: #ddf5d6; color: #0d6240; font: 800 26px/1.2 system-ui,sans-serif; direction: ltr; }
+.bd-offer-body { min-width: 0; display: grid; gap: 3px; }
+.bd-offer-body strong { font-size: clamp(15px,1.45vw,18px); line-height: 1.4; color: #fff; }
+.bd-offer-body small { font-size: 12px; line-height: 1.5; color: #d8f1da; }
+.bd-offer-register-link { display: inline-flex; gap: 5px; align-items: center; justify-self: start; min-height: 34px; margin-top: 3px; padding: 0; color: #f2ffdf; font-size: 13px; font-weight: 800; border-bottom: 1px solid rgb(225 251 215 / 75%); }
+.bd-offer-register-link:hover { color: #fff; }
+.menu-hero-copy .bd-offer-copy { margin-top: 22px; max-width: 530px; }
+.menu-hero-copy .bd-offer-body strong { color: #fff; }
+.bd-calculator-offer { display: grid; gap: 10px; padding: 17px; margin: 16px 0 15px; border: 1px solid rgb(213 247 211 / 28%); border-radius: 15px; background: rgb(228 252 220 / 11%); }
+.bd-calculator-offer-tag { justify-self: start; padding: 6px 10px; border-radius: 8px; background: #dff5d8; color: #145c39; font-size: 12px; font-weight: 800; }
+.bd-calculator-offer-price { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.bd-calculator-offer-price small { color: #d4f1d1; font-size: 13px; }
+.bd-calculator-offer-price strong { font: 800 clamp(26px,3.4vw,40px)/1.2 system-ui,sans-serif; direction: ltr; color: #fff; font-variant-numeric: tabular-nums; }
+.bd-calculator-offer-savings { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e3ffe0; }
+.bd-calculator-offer-savings b { color: #d4fba7; font: 800 16px system-ui,sans-serif; }
+.lead-offer-disclaimer { margin-top: 8px; padding: 12px; border-radius: 10px; background: #f0f7ed; color: #305d41; font-size: 12px; line-height: 1.65; }
+.lead-selection-summary small { display: block; margin-top: 5px; font-size: 12px; color: #607767; }
+.bd-offer-mobile-bar { display: none; }
+@media (max-width: 760px) {
+  .bd-offer-copy { margin-top: 12px; margin-bottom: 12px; padding: 11px 12px; gap: 9px; border-radius: 13px; }
+  .bd-offer-percent { min-width: 58px; min-height: 64px; font-size: 23px; border-radius: 10px; }
+  .bd-offer-body strong { font-size: 14px; }
+  .bd-offer-body small { font-size: 11px; }
+  .bd-offer-register-link { font-size: 12px; }
+  .bd-calculator-offer-price strong { font-size: 30px; }
+  .bd-calculator-offer { margin-block: 12px; padding: 14px; }
+  .bd-offer-mobile-bar { position: fixed; z-index: 95; display: flex; align-items: center; justify-content: space-between; gap: 12px; bottom: 0; inset-inline: 0; min-height: 69px; padding: 9px 14px max(10px,env(safe-area-inset-bottom)); background: rgb(251 253 247 / 97%); box-shadow: 0 -12px 30px rgb(0 30 10 / 14%); border-top: 1px solid #d8e6d8; backdrop-filter: blur(15px); }
+  .bd-offer-mobile-bar > span { display: grid; gap: 1px; color: #0f5132; }
+  .bd-offer-mobile-bar > span b { font: 800 17px system-ui,sans-serif; }
+  .bd-offer-mobile-bar > span small { font-size: 10px; color: #658168; }
+  .bd-offer-mobile-bar button { display: inline-flex; align-items: center; justify-content: center; min-height: 47px; min-width: 165px; border-radius: 11px; padding: 10px 13px; background: #097a4c; color: #fff; font-size: 13px; font-weight: 800; }
+}
+@media (max-width: 360px) {
+  .bd-offer-mobile-bar { gap: 6px; padding-inline: 9px; }
+  .bd-offer-mobile-bar button { min-width: 143px; font-size: 12px; }
+  .bd-offer-mobile-bar > span b { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) { .bd-offer-copy, .bd-calculator-offer { animation: none; } }
