@@ -525,7 +525,7 @@ body:has(.menu-page) a.skip-link:focus-visible {
   white-space: nowrap; min-height: 50px; padding: 12px 21px;
   border-radius: 13px; border: 1px solid #155d3f;
   color: #fff; background: #0d6a47;
-  font: 800 14px/1.45 inherit;
+  font-size: 14px; font-weight: 800; line-height: 1.45;
   cursor: pointer;
   transition: background .18s, transform .18s;
 }
