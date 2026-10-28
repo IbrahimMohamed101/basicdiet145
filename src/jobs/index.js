@@ -6,6 +6,7 @@ const {
   processSubscriptionExpiryReminders,
 } = require("../services/notificationSchedulerService");
 const { cleanupAbandonedPromoReservations } = require("../services/promoCodeService");
+const { processMetaLandingOutbox } = require("../services/metaLandingConversionsService");
 const {
   processPaidSubscriptionPaymentRecoveries,
 } = require("../services/subscription/subscriptionPaymentRecoveryService");
@@ -35,6 +36,11 @@ function startJobs() {
       const now = new Date();
       const nowTime = formatInTimeZone(now, KSA_TIMEZONE, "HH:mm");
       const todayKSA = formatInTimeZone(now, KSA_TIMEZONE, "yyyy-MM-dd");
+
+      try {
+        const stats = await processMetaLandingOutbox();
+        if (stats.sent || stats.failed) logger.info("Meta conversion outbox delivery", stats);
+      } catch { logger.warn("Meta conversion outbox processing failed"); }
 
       try {
         await processDueDeliveryArrivingSoon(now);
