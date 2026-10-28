@@ -11,8 +11,8 @@ type Plan = { planId: string; daysCount: number; gramsOptions: GramOption[] };
 type Choice = { days: number; grams: number; meals: number; fulfillment: "delivery" | "pickup" };
 const KEY = "basicdiet_plan_choice_v2";
 const initial: Choice = { days: 26, grams: 150, meals: 2, fulfillment: "delivery" };
-const number = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 });
-const discountedNumber = new Intl.NumberFormat("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const discountedNumber = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function readChoice(): Choice | null {
   try {
