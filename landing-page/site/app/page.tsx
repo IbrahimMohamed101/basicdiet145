@@ -4,6 +4,7 @@ import { AppReveal } from "@/components/AppReveal";
 import { MealGallery } from "@/components/MealGallery";
 import { PlanCalculator } from "@/components/PlanCalculator";
 import { HowItWorks } from "@/components/HowItWorks";
+import { ServiceClarity } from "@/components/ServiceClarity";
 import { InstagramReels } from "@/components/InstagramReels";
 import { FAQ } from "@/components/FAQ";
 import { FinalCTA } from "@/components/FinalCTA";
@@ -28,6 +29,7 @@ export default function Home() {
         <MealGallery />
         <PlanCalculator sectionId="plans" context="home" />
         <HowItWorks />
+        <ServiceClarity />
         <AppReveal />
         <InstagramReels />
         <FAQ />
