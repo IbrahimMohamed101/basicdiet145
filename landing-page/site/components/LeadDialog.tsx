@@ -175,7 +175,7 @@ export function LeadDialog() {
     };
     const fbp = metaCookie("_fbp");
     const fbc = metaCookie("_fbc");
-    const pagePath = location.pathname;
+    const pagePath = window.location.pathname;
     let referrerHost = "";
     try { if (document.referrer) referrerHost = new URL(document.referrer).hostname; } catch { /* no referrer */ }
     try {
