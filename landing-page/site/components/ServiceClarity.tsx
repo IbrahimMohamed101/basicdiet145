@@ -1,5 +1,3 @@
-import { StoreLinks } from "./StoreLinks";
-
 export function ServiceClarity() {
   return (
     <section className="bd-service-clarity" aria-labelledby="bd-service-title">
