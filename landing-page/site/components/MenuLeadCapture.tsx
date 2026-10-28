@@ -31,7 +31,9 @@ export function openMenuLead(details: OpenMenuLead) {
   window.dispatchEvent(new CustomEvent("basicdiet:open-lead", {
     detail: {
       location: details.location,
-      sourceDetail: "menu_" + details.intent,
+      sourceDetail: "menu_basic15_" + details.intent,
+      promoIntent: "BASIC15",
+      planOptional: !details.planDays,
       fastContact: true,
       planDays: details.planDays,
       grams: details.grams,
@@ -84,8 +86,8 @@ export function MenuLeadCapture() {
       <div className="menu-quick-lead-intro">
         <span className="menu-quick-lead-mark" aria-hidden="true">↗</span>
         <div>
-          <strong>تبغى نساعدك تختار اشتراكك؟</strong>
-          <p>سيب اسمك ورقمك، وفريق Basic Diet يتواصل معك بخصوص طلبك.</p>
+          <strong>عرض الموقع: وفر 15% على اشتراكك</strong>
+          <p>اسمك ورقمك بس. نتواصل معك لمساعدتك تختار الاشتراك وتراجع استفادتك من العرض.</p>
         </div>
       </div>
       <form className="menu-quick-lead-form" onSubmit={startLead}>
@@ -98,11 +100,11 @@ export function MenuLeadCapture() {
           <input required autoComplete="tel-national" type="tel" inputMode="tel" dir="ltr" maxLength={32} value={phone} onChange={e => setPhone(e.target.value)} placeholder="05xxxxxxxx" />
         </label>
         <button className="menu-quick-lead-submit" type="submit">
-          كمّل طلب التواصل <span aria-hidden="true">←</span>
+          سجّل وخلّنا نساعدك توفّر <span aria-hidden="true">←</span>
         </button>
       </form>
       {error && <p className="menu-quick-lead-error" role="alert">{error}</p>}
-      <p className="menu-quick-lead-privacy">قبل الإرسال النهائي هتراجع اختيارك وتوافق على التواصل معك. مفيش اشتراك أو دفع بيتعمل من النموذج.</p>
+      <p className="menu-quick-lead-privacy">بدون دفع الآن. الخصم على قيمة الباقة فقط ولا يشمل التوصيل أو الإضافات. التسجيل طلب تواصل وليس اشتراكًا تلقائيًا، وتأكيد العرض يتم مع الفريق.</p>
       <div className="menu-quick-lead-alternative">
         <span>تفضل تسجّل بنفسك؟</span>
         <a href={IOS_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "app_store", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من App Store">App Store</a>
@@ -116,7 +118,7 @@ export function MenuMobileConversionBar() {
   return (
     <div className="menu-mobile-conversion-bar" aria-label="ابدأ مع Basic Diet">
       <MenuContactButton location="final" intent="mobile_fixed" className="menu-mobile-primary">
-        سيب رقمك ونكلمك <span aria-hidden="true">←</span>
+        سجّل لخصم 15% <span aria-hidden="true">←</span>
       </MenuContactButton>
       <a href="#menu-download" className="menu-mobile-secondary">حمّل التطبيق</a>
     </div>
