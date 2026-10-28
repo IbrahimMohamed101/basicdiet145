@@ -36,6 +36,16 @@ const ALLOWED_MEAL_IMAGE_IDS = new Set([
   "1wCFHNOyUeKD87rLuGVvWAWGVLnndI8a5",
   "1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
   "1zI0zretDPXUzYLTlJMQBlqPj0SI35Wmm",
+  "1J0uWPLXV7sTiQEfZzAf0W0WK_HrYpt5O", // رز أبيض
+  "1QKGfdTGcXJKk_dk9gpg4dJlb27ibEbcD", // رز بالكركم
+  "1Yee9VzPNT76BYe8BwTWrxjsq1Y6qZoBl", // بطاطا مشوية
+  "1JR-lQhqRwbwjB9p7nk2n6LNBBiAW1Dne", // باستا الفريدو
+  "1nV7bXQ6gkvuqujifJExqEI54zDRFq5--", // دجاج تكا
+  "16ODUfITCjcKtZXzaKekc6M1ekkbHjNSb", // دجاج آسيوي
+  "1zmxsFVYROw1_3cTpaXKV2GDxX-lHzofQ", // دجاج باربكيو
+  "1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_", // لحم استرغانوف
+  "1EQDqVq3zMgYFPR__zwIla8hUGutkmiL_", // دجاج بالليمون
+  "1O54P_hDBopu9POcVVB6XEOYeNdLiYFR5", // باستا صوص أحمر
 ]);
 
 const DRIVE_SOURCES = (id: string) => [
