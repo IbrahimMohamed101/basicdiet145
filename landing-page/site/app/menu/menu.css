@@ -624,3 +624,20 @@
 @media (max-width: 920px) { .menu-app-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width: 700px) { .menu-app-head { display: block; } .menu-app-live { display: inline-block; margin-top: 10px; } .menu-app-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; } .menu-app-photo { height: 145px; } .menu-app-catalog-section { padding-block: 45px 56px; } }
 @media (max-width: 370px) { .menu-app-photo { height: 122px; } .menu-app-card-copy { padding: 11px; } .menu-app-card-copy h3 { font-size: 14px; } }
+
+
+/* The photograph source is never conflated with an illustrative image. */
+.menu-photo-disclosure {
+  position: absolute; inset-inline-start: 10px; bottom: 10px; z-index: 2;
+  display: inline-flex; align-items: center; min-height: 25px; padding: 3px 9px;
+  border: 1px solid rgb(255 255 255 / 60%); border-radius: 999px;
+  background: rgb(15 52 37 / 90%); color: #f8fff4;
+  font-size: 11px; font-weight: 700; letter-spacing: 0;
+  box-shadow: 0 3px 9px rgb(0 0 0 / 12%);
+  backdrop-filter: blur(5px); pointer-events: none;
+}
+.menu-product-photo:has(img[src*="/api/menu-art"]) img,
+.menu-app-photo:has(img[src*="/api/menu-art"]) img { object-fit: cover; }
+@media (max-width: 520px) {
+  .menu-photo-disclosure { inset-inline-start: 6px; bottom: 7px; padding: 3px 7px; font-size: 10px; min-height: 22px; }
+}
