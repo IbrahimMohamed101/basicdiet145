@@ -9,6 +9,7 @@ import { PromoOfferText, PromoOfferButton } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
+import { editorialMenuDescriptions } from "@/lib/menu-editorial-descriptions";
 import { MenuCalories } from "@/components/MenuCalories";
 import { MENU_CALORIES_NOTE } from "@/lib/menu-nutrition";
 
@@ -389,7 +390,10 @@ export function MenuExperience() {
             <div className="menu-detail-copy">
               <span className="menu-detail-eyebrow">{selectedProduct.category} · BASIC DIET</span>
               <h2 id="menu-detail-title">{variantFamilyById.get(selectedProduct.id)?.title || selectedProduct.name}</h2>
-              <p className="menu-detail-description">{verifiedMenuDetails[selectedProduct.id]?.description || "المكونات والوصف المعتمدان لهذا الصنف قيد التحديث. تقدر تسأل فريقنا قبل الطلب."}</p>
+              <p className="menu-detail-description">{verifiedMenuDetails[selectedProduct.id]?.description || editorialMenuDescriptions[selectedProduct.id] || "الوصف الرسمي لهذا الصنف قيد التحديث."}</p>
+              {!verifiedMenuDetails[selectedProduct.id] && editorialMenuDescriptions[selectedProduct.id] && (
+                <p className="menu-editorial-note">وصف تعريفي عام، وليس بيانًا معتمدًا بالمكونات أو مسببات الحساسية. تحقق من التفاصيل مع المطعم قبل الطلب.</p>
+              )}
               {variantFamilyById.get(selectedProduct.id) && (
                 <div className="menu-detail-size-group" role="group" aria-label="اختر حجم الصنف">
                   <strong>اختر الوزن</strong>
