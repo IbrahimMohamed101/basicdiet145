@@ -22,29 +22,33 @@ for (const width of [320, 360, 390, 768, 1440]) {
   });
 }
 
-test("plan selector uses current public app catalog pricing and responds to all dimensions", async ({ page }) => {
-  await page.route("**/api/menu-plans", route => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ status: true, source: "live_app_catalog", data: [
-      { daysCount: 26, gramsOptions: [
-        { grams: 150, mealsOptions: [{ mealsPerDay: 2, priceHalala: 118600 }] },
-      ] },
-      { daysCount: 7, gramsOptions: [
-        { grams: 150, mealsOptions: [{ mealsPerDay: 2, priceHalala: 34800 }, { mealsPerDay: 3, priceHalala: 52200 }] },
-        { grams: 200, mealsOptions: [{ mealsPerDay: 2, priceHalala: 42000 }, { mealsPerDay: 3, priceHalala: 63000 }] },
-      ] },
-    ] }),
+const priceCatalog = { status: true, data: [
+  { planId: "6a621995f4f8d0974cebc472", daysCount: 26, gramsOptions: [
+    { grams: 150, mealsOptions: [{ mealsPerDay: 2, priceSar: 1186 }] },
+    { grams: 200, mealsOptions: [{ mealsPerDay: 2, priceSar: 1421 }] },
+  ] },
+  { planId: "6a621995f4f8d0974cebc473", daysCount: 7, gramsOptions: [
+    { grams: 150, mealsOptions: [{ mealsPerDay: 2, priceSar: 348 }, { mealsPerDay: 3, priceSar: 522 }] },
+    { grams: 200, mealsOptions: [{ mealsPerDay: 2, priceSar: 420 }, { mealsPerDay: 3, priceSar: 630 }] },
+  ] },
+] };
+
+test("shared calculator reads public plan prices and preserves chosen dimensions", async ({ page }) => {
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify(priceCatalog),
   }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
-  await expect(plans.locator(".menu-price-pop strong")).toHaveText("١٬١٨٦");
-  await plans.getByRole("group", { name: "مدة الاشتراك" }).getByRole("button", { name: /7/ }).click();
-  await expect(plans.locator(".menu-price-pop strong")).toHaveText("٣٤٨");
-  await plans.getByRole("group", { name: "حجم البروتين" }).getByRole("button", { name: /200/ }).click();
-  await expect(plans.locator(".menu-price-pop strong")).toHaveText("٤٢٠");
-  await plans.getByRole("group", { name: "عدد الوجبات" }).getByRole("button", { name: "3" }).click();
-  await expect(plans.locator(".menu-price-pop strong")).toHaveText("٦٣٠");
-  await expect(plans).toContainText("السعر الأساسي مباشرة من كتالوج التطبيق");
+  await expect(plans.locator(".bd-calculator-price")).toContainText("١٬١٨٦");
+  await plans.locator("fieldset").nth(0).getByRole("button", { name: /7/ }).click();
+  await expect(plans.locator(".bd-calculator-price")).toContainText("٣٤٨");
+  await plans.locator("fieldset").nth(1).getByRole("button", { name: /200/ }).click();
+  await expect(plans.locator(".bd-calculator-price")).toContainText("٤٢٠");
+  await plans.locator("fieldset").nth(2).getByRole("button", { name: "3" }).click();
+  await expect(plans.locator(".bd-calculator-price")).toContainText("٦٣٠");
+  await page.goto("/");
+  await expect(page.locator("#plans .bd-calculator-price")).toContainText("٦٣٠");
+  await expect(page.locator("#plans")).toContainText("وزن حصة البروتين");
 });
 
 test("builder and catalog interactions are read-only", async ({ page }) => {
@@ -121,20 +125,19 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   expect(String(sent[0].content)).toContain("menu_footer_form");
 });
 
-test("plan call request carries the selected plan dimensions", async ({ page }) => {
+test("plan contact CTA passes calculator dimensions to existing lead flow", async ({ page }) => {
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify(priceCatalog),
+  }));
   await page.route("**/api/lead-options", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      data: [{ planId: "6a621995f4f8d0974cebc472", daysCount: 26, gramsOptions: [
-        { grams: 100, mealsPerDay: [1, 2] }, { grams: 150, mealsPerDay: [1, 2] }, { grams: 200, mealsPerDay: [2] },
-      ] }],
-    }),
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ data: [{ planId: "6a621995f4f8d0974cebc472", daysCount: 26,
+      gramsOptions: [{ grams: 150, mealsPerDay: [2] }, { grams: 200, mealsPerDay: [2] }] }] }),
   }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
-  await plans.getByRole("group", { name: "حجم البروتين" }).getByRole("button", { name: /200/ }).click();
-  await plans.getByRole("button", { name: /اطلب تواصل بخصوص الباقة/ }).click();
+  await plans.locator("fieldset").nth(1).getByRole("button", { name: /200/ }).click();
+  await plans.getByRole("button", { name: /خلّنا نساعدك بالاشتراك/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
   await expect(dialog.locator(".lead-selection-summary")).toContainText("200 جرام");
@@ -214,29 +217,28 @@ test("menu has one navigational header with local menu links", async ({ page }) 
   await expect(page.locator(".menu-hero .menu-quick-lead")).toHaveCount(0);
 });
 
-test("same food picture is displayed once for shrimp size variants", async ({ page }) => {
+test("menu hides weight variants on cards but shows 48px choices in product details", async ({ page }) => {
   await page.goto("/menu");
-  const shrimpCard = page.locator(".menu-product-card")
-    .filter({ has: page.getByRole("group", { name: "اختر وزن جمبري" }) });
-  await expect(shrimpCard).toHaveCount(1);
-  await expect(shrimpCard.getByRole("button", { name: "100 جم" })).toHaveAttribute("aria-pressed", "true");
-  await shrimpCard.getByRole("button", { name: "150 جم" }).click();
-  await expect(shrimpCard.getByRole("button", { name: "150 جم" })).toHaveAttribute("aria-pressed", "true");
-  await expect(shrimpCard.locator(".menu-product-bottom strong")).toContainText("٤٩");
-  await shrimpCard.getByRole("button", { name: /تفاصيل جمبري 150 جرام/ }).click();
-  await expect(page.getByRole("dialog")).toContainText("جمبري 150 جرام");
+  const shrimp = page.locator(".menu-product-card").filter({ has: page.getByRole("heading", { name: "جمبري" }) });
+  await expect(shrimp).toHaveCount(1);
+  await expect(shrimp.getByRole("button", { name: "150 جم" })).toHaveCount(0);
+  await shrimp.locator(".menu-product-bottom button").click();
+  const detail = page.getByRole("dialog", { name: "جمبري" });
+  await expect(detail).toBeVisible();
+  await detail.getByRole("button", { name: "150 جم" }).click();
+  await expect(detail.getByRole("button", { name: "150 جم" })).toHaveAttribute("aria-pressed", "true");
+  await expect(detail.locator(".menu-detail-purchase-row strong")).toContainText("٤٩");
+  await expect(detail).toContainText("مسببات الحساسية");
 });
 
-
-test("subscription prices fail closed when live app catalog cannot be reached", async ({ page }) => {
-  await page.route("**/api/menu-plans", route => route.fulfill({
-    status: 503, contentType: "application/json",
-    body: JSON.stringify({ status: false, data: [], code: "SOURCE_UNAVAILABLE" }),
+test("calculator fails closed without live prices", async ({ page }) => {
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 503, contentType: "application/json", body: '{"status":false,"data":[]}',
   }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
-  await expect(plans.locator(".menu-price-unavailable")).toHaveText("السعر غير متاح");
-  await expect(plans).not.toContainText("١٬١٨٦");
+  await expect(plans.locator(".bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
+  await expect(plans.getByRole("button", { name: /خلّنا نساعدك/ })).toBeDisabled();
 });
 
 test("meal-builder shows photos only for supported matched dishes", async ({ page }) => {
@@ -292,8 +294,8 @@ test("below the menu, subscription and builder cards have compact mobile spacing
       return { width: rect?.width ?? 0, height: rect?.height ?? 0, left: rect?.left ?? -1, right: rect?.right ?? -1 };
     };
     return {
-      picker: bounds(".menu-plan-picker"),
-      price: bounds(".menu-plan-result"),
+      picker: bounds(".bd-calculator-controls"),
+      price: bounds(".bd-calculator-summary"),
       editor: bounds(".menu-builder-editor"),
       summary: bounds(".menu-builder-summary"),
       form: bounds(".menu-quick-lead"),
@@ -308,7 +310,7 @@ test("below the menu, subscription and builder cards have compact mobile spacing
     expect(bounds.right).toBeLessThanOrEqual(measurements.viewport + 1);
   }
   expect(measurements.price.height).toBeLessThan(700);
-  await expect(page.locator(".menu-plan-store a")).toHaveCount(2);
+  await expect(page.locator(".bd-calculator-secondary a")).toHaveCount(2);
   await expect(page.locator(".menu-builder-store a")).toHaveCount(2);
 });
 
@@ -331,20 +333,14 @@ test("meal and salad summary show real visual, selections and working reset", as
 });
 
 
-test("visual review snapshots for both screen sizes of redesigned lower menu", async ({ page }) => {
-  await page.route("**/api/menu-plans", route => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({
-      status: true, source: "live_app_catalog",
-      data: [{ daysCount: 26, gramsOptions: [{ grams: 150, mealsOptions: [
-        { mealsPerDay: 2, priceHalala: 118600 }
-      ] }] }]
-    })
+test("visual review snapshots of shared calculator and builder", async ({ page }) => {
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify(priceCatalog),
   }));
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/menu");
-  await expect(page.locator("#menu-plans .menu-price-pop strong")).toHaveText("١٬١٨٦");
+  await expect(page.locator("#menu-plans .bd-calculator-price")).toContainText("١٬١٨٦");
   await page.locator("#menu-plans").screenshot({ path: "test-results/plans-mobile-390.png", animations: "disabled" });
   await page.locator("#menu-custom").screenshot({ path: "test-results/builder-meal-mobile-390.png", animations: "disabled" });
   await page.locator("#menu-custom").getByRole("group", { name: "نوع تجربة التخصيص" })
@@ -355,7 +351,6 @@ test("visual review snapshots for both screen sizes of redesigned lower menu", a
   await page.locator("#menu-plans").screenshot({ path: "test-results/plans-desktop-1440.png", animations: "disabled" });
   await page.locator("#menu-custom").screenshot({ path: "test-results/builder-salad-desktop-1440.png", animations: "disabled" });
 });
-
 
 test("mobile salad builder controls do not clip on either edge", async ({ page }) => {
   for (const width of [320, 390]) {
@@ -376,4 +371,39 @@ test("mobile salad builder controls do not clip on either edge", async ({ page }
     expect(clipped).toEqual([]);
     await expect(builder.locator(".menu-salad-tabs button")).toHaveCount(6);
   }
+});
+
+
+test("home leads with food and live calculator before app presentation", async ({ page }) => {
+  await page.goto("/");
+  const order = await page.evaluate(() => ({
+    hero: document.querySelector(".hero")?.getBoundingClientRect().top ?? 0,
+    food: document.querySelector("#meals")?.getBoundingClientRect().top ?? 0,
+    plans: document.querySelector("#plans")?.getBoundingClientRect().top ?? 0,
+    how: document.querySelector("#how-it-works")?.getBoundingClientRect().top ?? 0,
+    app: document.querySelector("#app")?.getBoundingClientRect().top ?? 0,
+  }));
+  expect(order.hero).toBeLessThan(order.food);
+  expect(order.food).toBeLessThan(order.plans);
+  expect(order.plans).toBeLessThan(order.how);
+  expect(order.how).toBeLessThan(order.app);
+  await expect(page.getByRole("link", { name: "احسب باقتك" }).first()).toBeVisible();
+});
+
+test("mobile menu search and categories are swipeable and option targets exceed 44px", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/menu");
+  const controls = page.locator("#menu-products .menu-catalog-tools");
+  await expect(controls.getByRole("searchbox")).toBeVisible();
+  const rail = controls.getByRole("group", { name: "تصنيفات المنيو" });
+  const css = await rail.evaluate(el => ({ nowrap: getComputedStyle(el).flexWrap,
+    overflow: getComputedStyle(el).overflowX }));
+  expect(css.nowrap).toBe("nowrap");
+  expect(["auto", "scroll"]).toContain(css.overflow);
+  await page.locator(".menu-product-card").filter({ has: page.getByRole("heading", { name: "جمبري" }) })
+    .locator(".menu-product-bottom button").click();
+  const heights = await page.getByRole("dialog", { name: "جمبري" }).getByRole("button", { name: /جم/ })
+    .evaluateAll(buttons => buttons.map(b => b.getBoundingClientRect().height));
+  expect(heights.length).toBe(3);
+  expect(heights.every(height => height >= 44)).toBeTruthy();
 });
