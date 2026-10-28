@@ -69,10 +69,18 @@ test("builder and catalog interactions are read-only", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("draft menu is not indexed", async ({ page }) => {
+test("menu robots and sitemap switch correctly between preview and customer build", async ({ page, request }) => {
   await page.goto("/menu");
   const robots = page.locator('meta[name="robots"]');
-  await expect(robots).toHaveAttribute("content", /noindex/);
+  const preview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true";
+  await expect(robots).toHaveAttribute("content", preview ? /noindex/ : /index/);
+  const map = await request.get("/sitemap.xml");
+  expect(map.status()).toBe(200);
+  const xml = await map.text();
+  if (preview) expect(xml).not.toContain("https://basicdietksa.com/menu</loc>");
+  else expect(xml).toContain("https://basicdietksa.com/menu</loc>");
+  await page.goto("/");
+  await expect(page.locator('.site-header a[href="/menu"]')).toHaveCount(1);
 });
 
 
