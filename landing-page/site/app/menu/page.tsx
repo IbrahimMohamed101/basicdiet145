@@ -7,12 +7,14 @@ import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import "./menu.css";
 import "./menu-refinement.css";
 
+const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true";
+
 export const metadata: Metadata = {
   title: "منيو بيسك دايت | الوجبات والاشتراكات واصنع بنفسك",
-  description: "استكشف وجبات بيسك دايت، اشتراكات 7 و26 و30 يومًا، وتجربة تكوين وجبتك أو سلطتك.",
+  description: "تصفح منيو بيسك دايت في جدة: وجبات صحية، سلطات، فطور وساندويتشات بالصور والأسعار، واختار باقة اشتراكك أو حمّل التطبيق.",
   alternates: { canonical: "/menu" },
-  // Pricing and asset approval are incomplete. Keep this preview out of search.
-  robots: { index: false, follow: false },
+  // Staging stays outside search; only the customer-facing production build is indexable.
+  robots: isMenuPreview ? { index: false, follow: false } : { index: true, follow: true },
 };
 
 export default function MenuPage() {
