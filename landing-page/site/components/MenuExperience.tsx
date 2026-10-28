@@ -249,7 +249,7 @@ export function MenuExperience() {
 
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
-          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="تصفح أصناف بيسك دايت وصورها وأسعارها، واختار القسم اللي تحبه." />
+          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="تصفح أطباق بيسك دايت بالصور والأسعار واختار القسم اللي يناسبك." />
           <div className="menu-catalog-tools">
             <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
               {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(12); }}>{group}</button>)}
@@ -441,7 +441,7 @@ export function MenuExperience() {
 
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اختارت اللي تحبه؟<br /><em>نساعدك تبدأ.</em></h2><p>سيب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك بخصوص الاشتراك. أو حمّل التطبيق بنفسك.</p><MenuLeadCapture /></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اخترت اللي تحبه؟<br /><em>نساعدك تبدأ.</em></h2><p>اكتب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك لمساعدتك. أو حمّل التطبيق واشترك بنفسك.</p><MenuLeadCapture /></div>
           <div className="menu-download-food" aria-label="من أطباق بيسك دايت">
             <div className="menu-download-food-main"><Image src={thirdImage} alt="سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 45vw, 350px" /></div>
             <div className="menu-download-food-mini"><Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 28vw, 180px" /></div>
