@@ -151,7 +151,7 @@ export function Header() {
           </a>
           <nav className="desktop-nav" aria-label="التنقل الرئيسي">{navLinks}</nav>
           <div className="nav-actions">
-            {isMenu ? <a className="button button--small" href="#menu-plans">شوف الباقات</a> : <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>}
+            {isMenu ? <a className="button button--small" href="#menu-offer">خصم 15%</a> : <AppCta location="header" className="button button--small">ابدأ اشتراكك</AppCta>}
             <button
               ref={toggle}
               type="button"
@@ -188,7 +188,7 @@ export function Header() {
               if ((event.target as Element).closest("a")) closeMenu();
             }}>{navLinks}</nav>
             <div className="nav-sheet-cta" onClickCapture={closeMenu}>
-              {isMenu ? <a href="#menu-plans" className="button">شوف الباقات</a> : <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>}
+              {isMenu ? <a href="#menu-offer" className="button">خصم 15%</a> : <AppCta location="header" className="button">ابدأ اشتراكك</AppCta>}
             </div>
           </div>
         </dialog>
@@ -197,7 +197,7 @@ export function Header() {
           <style>{`.site-header { position: relative; } .site-header .nav-actions, .site-header .desktop-nav { display: none; }`}</style>
           <nav className="nav-fallback" aria-label="التنقل الرئيسي">
             {currentLinks.map((link) => <a key={link.href} href={link.href}>{link.label}</a>)}
-            <a href={isMenu ? "#menu-plans" : "#app"} className="button">شوف الباقات</a>
+            <a href={isMenu ? "#menu-offer" : "#app"} className="button">{isMenu ? "خصم 15%" : "شوف الباقات"}</a>
           </nav>
         </noscript>
 
