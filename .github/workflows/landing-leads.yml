@@ -12,6 +12,7 @@ on:
       - "src/services/subscription/subscriptionOperationsReadService.js"
       - "src/controllers/adminController.js"
       - "tests/landingLeads.test.js"
+      - "tests/landingLeadPersistence.test.js"
       - "tests/landingLeadConversion.test.js"
       - "package.json"
       - ".github/workflows/landing-leads.yml"
@@ -26,6 +27,7 @@ on:
       - "src/services/subscription/subscriptionOperationsReadService.js"
       - "src/controllers/adminController.js"
       - "tests/landingLeads.test.js"
+      - "tests/landingLeadPersistence.test.js"
       - "tests/landingLeadConversion.test.js"
 jobs:
   test:
@@ -38,3 +40,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run test:landing-leads
+
+      - name: Real lead persistence and dashboard read integration (ephemeral MongoDB)
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/landingLeadPersistence.test.js

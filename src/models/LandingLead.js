@@ -7,12 +7,13 @@ const LandingLeadSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   phoneHash: { type: String, required: true, select: false },
   dayBucket: { type: String, required: true, select: false },
-  // Explicit website inquiry without a chosen plan. Never fill a fake/default choice.
+  // Existing selected leads stay strict; only explicit unselected inquiries may omit a plan.
+  // No backfill is needed: legacy documents keep their selected dimensions.
   planSelectionStatus: { type: String, enum: ["selected", "unselected"], default: "selected" },
-  planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", default: null },
-  daysCount: { type: Number, default: null },
-  grams: { type: Number, default: null },
-  mealsPerDay: { type: Number, default: null },
+  planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: function () { return this.planSelectionStatus !== "unselected"; }, default: null },
+  daysCount: { type: Number, required: function () { return this.planSelectionStatus !== "unselected"; }, default: null },
+  grams: { type: Number, required: function () { return this.planSelectionStatus !== "unselected"; }, default: null },
+  mealsPerDay: { type: Number, required: function () { return this.planSelectionStatus !== "unselected"; }, default: null },
   // Non-binding customer preference, confirmed later by the restaurant.
   fulfillmentMethod: { type: String, enum: ["delivery", "pickup", "unspecified"], default: "unspecified" },
   contactConsent: { type: Boolean, required: true },

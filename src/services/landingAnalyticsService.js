@@ -74,7 +74,7 @@ function flattenGroups(rows) {
 }
 async function groupByField(base, event, field) {
   return LandingAnalyticsEvent.aggregate([
-    { $match: { ...base, event } },
+    { $match: { ...base, event, ...(field === "planDays" ? { planDays: { $in: [7, 26, 30] } } : {}) } },
     { $group: { _id: "$" + field, count: { $sum: 1 } } },
     { $sort: { count: -1, _id: 1 } }, { $limit: 15 },
   ]);
