@@ -39,6 +39,17 @@ const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(
 
 const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "سالمون", "جمبري"];
 const mealCarbs = ["رز أبيض", "رز بالكركم", "رز برياني", "كينوا", "بطاطس مشوي", "بطاطا حلوة", "باستا ألفريدو"];
+const mealProteinPhotos: Record<string, string> = {
+  "تونا": "/api/meal-image?id=1niUYE8DPHKnOuXEA-8DO9DYDJs3xv82U",
+  "سالمون": "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
+  "جمبري": "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b",
+};
+const mealCarbPhotos: Record<string, string> = {
+  "رز أبيض": "/api/meal-image?id=1J0uWPLXV7sTiQEfZzAf0W0WK_HrYpt5O",
+  "رز بالكركم": "/api/meal-image?id=1QKGfdTGcXJKk_dk9gpg4dJlb27ibEbcD",
+  "بطاطس مشوي": "/api/meal-image?id=1Yee9VzPNT76BYe8BwTWrxjsq1Y6qZoBl",
+  "باستا ألفريدو": "/api/meal-image?id=1JR-lQhqRwbwjB9p7nk2n6LNBBiAW1Dne",
+};
 const saladGroups = [
   { key: "leafy", label: "الورقيات", options: ["خس", "جرجير", "ملفوف"], min: 2, max: 2 },
   { key: "vegetables", label: "الخضروات", options: ["خيار", "طماطم", "جزر", "ذرة", "حمص", "بروكلي", "زيتون أخضر"], min: 0, max: 7 },
@@ -345,13 +356,19 @@ export function MenuExperience() {
                   <div className="menu-option-block">
                     <div className="menu-option-title"><strong>اختر البروتين</strong><span>اختيار واحد</span></div>
                     <div className="menu-option-grid">
-                      {mealProteins.map((option) => <button type="button" key={option} aria-pressed={protein === option} className={protein === option ? "is-active" : ""} onClick={() => setProtein(option)}>{option}<span aria-hidden="true">{protein === option ? "✓" : "+"}</span></button>)}
+                      {mealProteins.map((option) => <button type="button" key={option} aria-pressed={protein === option} className={"menu-option-photo-button" + (protein === option ? " is-active" : "")} onClick={() => setProtein(option)}>
+                        <span className="menu-option-thumb">{mealProteinPhotos[option] ? <Image src={mealProteinPhotos[option]} alt="" fill sizes="88px" /> : <strong aria-hidden="true">BD.</strong>}</span>
+                        <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{protein === option ? "✓" : "+"}</span>
+                      </button>)}
                     </div>
                   </div>
                   <div className="menu-option-block">
                     <div className="menu-option-title"><strong>اختر الكارب</strong><span>{carbs.length} / 3</span></div>
                     <div className="menu-option-grid">
-                      {mealCarbs.map((option) => <button type="button" key={option} aria-pressed={carbs.includes(option)} disabled={carbs.length >= 3 && !carbs.includes(option)} className={carbs.includes(option) ? "is-active" : ""} onClick={() => toggleCarb(option)}>{option}<span aria-hidden="true">{carbs.includes(option) ? "✓" : "+"}</span></button>)}
+                      {mealCarbs.map((option) => <button type="button" key={option} aria-pressed={carbs.includes(option)} disabled={carbs.length >= 3 && !carbs.includes(option)} className={"menu-option-photo-button" + (carbs.includes(option) ? " is-active" : "")} onClick={() => toggleCarb(option)}>
+                        <span className="menu-option-thumb">{mealCarbPhotos[option] ? <Image src={mealCarbPhotos[option]} alt="" fill sizes="88px" /> : <strong aria-hidden="true">BD.</strong>}</span>
+                        <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{carbs.includes(option) ? "✓" : "+"}</span>
+                      </button>)}
                     </div>
                   </div>
                   <p className="menu-editor-note">القاعدة التوضيحية هنا: بروتين واحد و3 اختيارات كارب. الأوزان والأسعار النهائية تُجلب من كتالوج التطبيق المعتمد لاحقًا.</p>
