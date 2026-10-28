@@ -27,6 +27,7 @@ function isValidRequest(body) {
   return body && typeof body === "object" && !Array.isArray(body)
     && UUID.test(body.requestId || "")
     && body.contactConsent === true
+    && (body.adsTrackingConsent === undefined || typeof body.adsTrackingConsent === "boolean")
     && normalizeSaudiPhone(body.phone)
     && (body.planUnselected === true
       ? body.planId == null && body.daysCount == null && body.grams == null && body.mealsPerDay == null
@@ -82,7 +83,8 @@ async function submitLead(body) {
       grams: planUnselected ? null : body.grams,
       mealsPerDay: planUnselected ? null : body.mealsPerDay,
       fulfillmentMethod: planUnselected ? "unspecified" : (body.fulfillmentMethod || "unspecified"), contactConsent: true,
-      marketingConsent: body.marketingConsent === true, consentAt: now,
+      marketingConsent: body.marketingConsent === true,
+      adsTrackingConsent: body.adsTrackingConsent === true, consentAt: now,
       source: clean(body.source), medium: clean(body.medium),
       campaign: clean(body.campaign, 100), content: clean(body.content, 100),
       referrerHost: validSourceHost(body.referrerHost),
