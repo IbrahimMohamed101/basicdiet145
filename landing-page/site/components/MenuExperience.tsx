@@ -309,7 +309,7 @@ export function MenuExperience() {
                 ))}
               </div>
               <p className="menu-control-label"><span>02</span> حجم البروتين</p>
-              <div className="menu-select-pills" role="group" aria-label="حجم الوجبة">
+              <div className="menu-select-pills" role="group" aria-label="حجم البروتين">
                 {[100, 150, 200].map((value) => (
                   <button type="button" key={value} className={grams === value ? "is-active" : ""}
                     aria-pressed={grams === value} onClick={() => setGrams(value)}><b>{value}</b> جم</button>
