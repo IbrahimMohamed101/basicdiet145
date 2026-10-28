@@ -551,12 +551,12 @@ body:has(.menu-page) a.skip-link:focus-visible {
 }
 .menu-page .menu-quick-lead-intro strong { font-size: clamp(16px,1.6vw,21px); line-height: 1.45; }
 .menu-page .menu-quick-lead-submit { min-height: 50px; font-size: 15px; }
-.menu-page .lead-discount-notice {
+.lead-dialog .lead-discount-notice {
   display: grid; gap: 5px; padding: 12px 14px; margin: 0 0 13px;
   border: 1px solid #b6dec1; border-radius: 12px; background: #effaf1;
 }
-.menu-page .lead-discount-notice strong { color: #0c603d; font-size: 15px; }
-.menu-page .lead-discount-notice span { color: #3c6650; line-height: 1.6; font-size: 12px; }
+.lead-dialog .lead-discount-notice strong { color: #0c603d; font-size: 15px; }
+.lead-dialog .lead-discount-notice span { color: #3c6650; line-height: 1.6; font-size: 12px; }
 @media(max-width: 950px) {
   .menu-page .menu-offer-card { grid-template-columns: 98px minmax(0,1fr); }
   .menu-page .menu-offer-number { min-height: 100px; }
