@@ -106,7 +106,7 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   const form = page.locator("#menu-quick-contact form");
   await form.getByRole("textbox", { name: "الاسم" }).fill("عميل تجربة");
   await form.getByRole("textbox", { name: "رقم الجوال السعودي" }).fill("0501234567");
-  await form.getByRole("button", { name: /كمّل طلب التواصل/ }).click();
+  await form.getByRole("button", { name: /سجّل وخلّنا نساعدك توفّر/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
