@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { menuPreviewItems } from "@/lib/menu-preview-items";
+import { MenuCalories } from "@/components/MenuCalories";
 
 // A single cashier menu powers both the landing-page preview and /menu.
 // Use only real, menu-listed dishes with existing photos. No coming-soon steak.
@@ -50,6 +51,7 @@ export function MealGallery() {
                 <small>{meal.category}</small>
                 <span>{meal.name}</span>
                 <strong className="meal-card-price">{currency.format(meal.priceSar)} ر.س</strong>
+                <MenuCalories posId={meal.id} />
               </figcaption>
             </figure>
           ))}

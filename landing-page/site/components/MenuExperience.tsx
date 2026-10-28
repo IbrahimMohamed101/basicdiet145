@@ -9,6 +9,8 @@ import { PromoOfferText, PromoOfferButton } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
+import { MenuCalories } from "@/components/MenuCalories";
+import { MENU_CALORIES_NOTE } from "@/lib/menu-nutrition";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
 const secondImage = "/api/meal-image?id=1IxuZvbSI85kxn9pwF97kGCeScVpz0fdv";
@@ -241,6 +243,7 @@ export function MenuExperience() {
                     <span className="menu-product-category">{activeItem.category}</span>
                     <h3>{family?.title || activeItem.name}</h3>
                     {family && <p className="menu-product-weights-hint">متاح 100 / 150 / 200 جم · اختار الحجم من التفاصيل</p>}
+                    <MenuCalories posId={activeItem.id} />
                     <div className="menu-product-bottom">
                       <div><small>{family ? "يبدأ من" : "السعر"}</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
                       <button type="button" onClick={() => setSelectedProduct(activeItem)} aria-label={"تفاصيل " + activeItem.name}>التفاصيل <span aria-hidden="true">←</span></button>
@@ -263,7 +266,7 @@ export function MenuExperience() {
           </aside>}
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
           {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
-          <p className="menu-catalog-footnote">الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
+          <p className="menu-catalog-footnote">{MENU_CALORIES_NOTE} الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
         </div>
       </section>
 
@@ -402,8 +405,10 @@ export function MenuExperience() {
                 </div>
               )}
               <div className="menu-detail-nutrition">
-                <strong>المعلومات الغذائية ومسببات الحساسية</strong>
-                <p>القيم الغذائية ومسببات الحساسية لم تُعتمد للنشر لهذا الصنف. يُرجى تأكيد التفاصيل مع المطعم، خصوصًا إذا عندك حساسية غذائية.</p>
+                <strong>السعرات الحرارية</strong>
+                <div aria-live="polite" aria-atomic="true"><MenuCalories posId={selectedProduct.id} detail /></div>
+                <p>{MENU_CALORIES_NOTE}</p>
+                <p className="menu-allergen-note">عند وجود حساسية غذائية، تأكد من المكونات ومسببات الحساسية مع المطعم قبل الطلب.</p>
               </div>
               <div className="menu-detail-purchase-row">
                 <div><span>سعر الصنف</span><strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س</strong></div>

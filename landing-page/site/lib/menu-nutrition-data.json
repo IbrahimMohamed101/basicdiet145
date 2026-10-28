@@ -1,0 +1,668 @@
+{
+  "source": {
+    "workbook": "Basic_Diet_Calories_Unified_4_Channels(1).xlsx",
+    "sha256": "a8453fc97c7b15390e182b9f1b11da05d73e7d8f8aba4902d7d8ad6f182da90c",
+    "sheet": "01 السعرات الموحدة",
+    "valueColumn": "N",
+    "status": "approximate_channel_unification",
+    "date": "2026-10-25"
+  },
+  "items": {
+    "18": {
+      "name": "براوني داكن",
+      "unifiedId": "W092",
+      "unifiedName": "براونيز داكن",
+      "calories": 360,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 103
+    },
+    "19": {
+      "name": "تشيز كيك بالفروله",
+      "unifiedId": "W091",
+      "unifiedName": "تشيز كيك بالفراولة",
+      "calories": 340,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 102
+    },
+    "20": {
+      "name": "تشيز كيك بالتوت",
+      "unifiedId": "W090",
+      "unifiedName": "تشيز كيك بالتوت",
+      "calories": 350,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 101
+    },
+    "37": {
+      "name": "كيك برتقال",
+      "unifiedId": "W088",
+      "unifiedName": "كيكة البرتقال",
+      "calories": 100,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 25
+    },
+    "219": {
+      "name": "كرانشى شوكلت",
+      "unifiedId": "H124659865",
+      "unifiedName": "كرانشي شوكلت",
+      "calories": 221,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 6
+    },
+    "220": {
+      "name": "شوكو بودينج",
+      "unifiedId": "H124660071",
+      "unifiedName": "شوكو بودينج",
+      "calories": 200,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 9
+    },
+    "221": {
+      "name": "ترامسيو",
+      "unifiedId": "H124660912",
+      "unifiedName": "تراميسيو",
+      "calories": 190,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 10
+    },
+    "15": {
+      "name": "كيك شوكلاته بروتين",
+      "unifiedId": "W095",
+      "unifiedName": "كيك شوكولاتة بروتين",
+      "calories": 320,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 106
+    },
+    "17": {
+      "name": "بروتين بار",
+      "unifiedId": "W093",
+      "unifiedName": "بروتين بار",
+      "calories": 220,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 104
+    },
+    "34": {
+      "name": "زبادي يوناني",
+      "unifiedId": "W087",
+      "unifiedName": "زبادي يوناني - 200 جرام",
+      "calories": 120,
+      "portionLabel": "لعبوة 200 جم",
+      "sourceRow": 12
+    },
+    "26": {
+      "name": "دجاج مشوي",
+      "unifiedId": "W057",
+      "unifiedName": "ساندويش دجاج مشوي",
+      "calories": 350,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 11
+    },
+    "29": {
+      "name": "بيض اسكربل",
+      "unifiedId": "H95545004",
+      "unifiedName": "بيض اسكرامبل",
+      "calories": 180,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 50
+    },
+    "30": {
+      "name": "تونا",
+      "unifiedId": "W054",
+      "unifiedName": "ساندويش تونا",
+      "calories": 310,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 13
+    },
+    "31": {
+      "name": "حلوم كلاسيك",
+      "unifiedId": "W055",
+      "unifiedName": "ساندويش حلومي",
+      "calories": 340,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 15
+    },
+    "32": {
+      "name": "بيض مسلوق",
+      "unifiedId": "W060",
+      "unifiedName": "ساندويش بيض مسلوق",
+      "calories": 365,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 8
+    },
+    "33": {
+      "name": "تركي",
+      "unifiedId": "W056",
+      "unifiedName": "ساندويش تركي",
+      "calories": 310,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 16
+    },
+    "200": {
+      "name": "بيض مسلوق",
+      "unifiedId": "W060",
+      "unifiedName": "ساندويش بيض مسلوق",
+      "calories": 365,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 8
+    },
+    "202": {
+      "name": "كبدة",
+      "unifiedId": "W059",
+      "unifiedName": "ساندويش كبدة",
+      "calories": 350,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 137
+    },
+    "203": {
+      "name": "لبنة بالخضار",
+      "unifiedId": "W061",
+      "unifiedName": "ساندويش لبنه بالخضار",
+      "calories": 230,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 138
+    },
+    "27": {
+      "name": "دجاج مكسيكي",
+      "unifiedId": "H95545512",
+      "unifiedName": "دجاج مكسيكي",
+      "calories": 260,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 52
+    },
+    "28": {
+      "name": "دجاج فاهيتا",
+      "unifiedId": "H95545324",
+      "unifiedName": "دجاج فاهيتا",
+      "calories": 240,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 51
+    },
+    "199": {
+      "name": "لحم",
+      "unifiedId": "W058",
+      "unifiedName": "ساندويش لحم",
+      "calories": 360,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 90
+    },
+    "1": {
+      "name": "سلطه خضراء كبير",
+      "unifiedId": "W078",
+      "unifiedName": "سلطة خضراء",
+      "calories": 60,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 144
+    },
+    "48": {
+      "name": "سلطه خضراء صغير",
+      "unifiedId": "Asmall_green_salad",
+      "unifiedName": "سلطه خضراء صغير",
+      "calories": 30,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 36
+    },
+    "169": {
+      "name": "سلطة سيزر بالدجاج صغير",
+      "unifiedId": "W077",
+      "unifiedName": "سلطة سيزر بالدجاج | حجم صغير",
+      "calories": 210,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 98
+    },
+    "170": {
+      "name": "سلطة الورقيات بالدجاج صغير",
+      "unifiedId": "W073",
+      "unifiedName": "سلطة الورقيات بالدجاج | حجم صغير",
+      "calories": 140,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 96
+    },
+    "171": {
+      "name": "سلطة الجولدن صغير",
+      "unifiedId": "W069",
+      "unifiedName": "سلطة الجولدن | حجم صغير",
+      "calories": 210,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 94
+    },
+    "172": {
+      "name": "سلطة باستا بالدجاج صغير",
+      "unifiedId": "W075",
+      "unifiedName": "سلطة باستا بالدجاج | حجم صغير",
+      "calories": 240,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 97
+    },
+    "173": {
+      "name": "سلطة يونانية",
+      "unifiedId": "W071",
+      "unifiedName": "سلطة يونانية | حجم صغير",
+      "calories": 240,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 95
+    },
+    "174": {
+      "name": "سلطة التونا صغير",
+      "unifiedId": "W067",
+      "unifiedName": "سلطة التونا | حجم صغير",
+      "calories": 200,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 93
+    },
+    "176": {
+      "name": "سلطة سيزر بالدجاج",
+      "unifiedId": "W076",
+      "unifiedName": "سلطة سيزر بالدجاج | حجم كبير",
+      "calories": 415,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 143
+    },
+    "177": {
+      "name": "سلطة الورقيات بالدجاج",
+      "unifiedId": "W063",
+      "unifiedName": "سلطة الورقيات بالدجاج | حجم كبير",
+      "calories": 280,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 139
+    },
+    "178": {
+      "name": "سلطة الجولدن كبير",
+      "unifiedId": "W068",
+      "unifiedName": "سلطة الجولدن | حجم كبير",
+      "calories": 420,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 141
+    },
+    "179": {
+      "name": "سلطة باستا الدجاج كبير",
+      "unifiedId": "W074",
+      "unifiedName": "سلطة باستا بالدجاج | حجم كبير",
+      "calories": 480,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 142
+    },
+    "180": {
+      "name": "سلطة يونانية كبير",
+      "unifiedId": "W070",
+      "unifiedName": "سلطة يونانية | حجم كبير",
+      "calories": 480,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 18
+    },
+    "181": {
+      "name": "سلطة التونا كبير",
+      "unifiedId": "W066",
+      "unifiedName": "سلطة التونا | حجم كبير",
+      "calories": 400,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 140
+    },
+    "175": {
+      "name": "سلطة الجرجير مع الشمندر صغير",
+      "unifiedId": "W065",
+      "unifiedName": "سلطة الجرجير مع الشمندر | حجم صغير",
+      "calories": 220,
+      "portionLabel": "للحجم الصغير",
+      "sourceRow": 92
+    },
+    "182": {
+      "name": "سلطة الجرجير مع الشمندر كبير",
+      "unifiedId": "W064",
+      "unifiedName": "سلطة الجرجير مع الشمندر | حجم كبير",
+      "calories": 440,
+      "portionLabel": "للحجم الكبير",
+      "sourceRow": 91
+    },
+    "204": {
+      "name": "بيض اسكرامبل",
+      "unifiedId": "W003",
+      "unifiedName": "بيض اسكرامبل",
+      "calories": 230,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 62
+    },
+    "205": {
+      "name": "بيض بالطماطم والزعتر",
+      "unifiedId": "W005",
+      "unifiedName": "بيض بالطماطم والزعتر",
+      "calories": 265,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 121
+    },
+    "206": {
+      "name": "بيض تركى",
+      "unifiedId": "W007",
+      "unifiedName": "بيض تركي",
+      "calories": 280,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 123
+    },
+    "207": {
+      "name": "حمص",
+      "unifiedId": "W009",
+      "unifiedName": "حمص",
+      "calories": 320,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 125
+    },
+    "209": {
+      "name": "فرايز صحى",
+      "unifiedId": "W013",
+      "unifiedName": "فرايز صحي",
+      "calories": 205,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 128
+    },
+    "210": {
+      "name": "لبنة بالسماق",
+      "unifiedId": "W015",
+      "unifiedName": "لبنة بالسماق",
+      "calories": 210,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 130
+    },
+    "211": {
+      "name": "شكشوكة",
+      "unifiedId": "W004",
+      "unifiedName": "شكشوكة",
+      "calories": 260,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 120
+    },
+    "212": {
+      "name": "بيض اومليت بالخضار",
+      "unifiedId": "W006",
+      "unifiedName": "بيض اومليت بالخضار",
+      "calories": 230,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 122
+    },
+    "213": {
+      "name": "فول",
+      "unifiedId": "W008",
+      "unifiedName": "فول",
+      "calories": 250,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 124
+    },
+    "214": {
+      "name": "كبدة",
+      "unifiedId": "W010",
+      "unifiedName": "كبدة",
+      "calories": 315,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 126
+    },
+    "215": {
+      "name": "فلافل 6 حبات",
+      "unifiedId": "W012",
+      "unifiedName": "فلافل صحية (6حبات)",
+      "calories": 270,
+      "portionLabel": "لحصة 6 حبات",
+      "sourceRow": 127
+    },
+    "216": {
+      "name": "ماش بوتيتو بالبارميزان والبيضالمسلوق",
+      "unifiedId": "W014",
+      "unifiedName": "ماش بوتيتو بالباميزان وبيض مسلوق",
+      "calories": 375,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 129
+    },
+    "217": {
+      "name": "شوفان مع الحليب",
+      "unifiedId": "W016",
+      "unifiedName": "شوفان مع الحليب",
+      "calories": 195,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 131
+    },
+    "218": {
+      "name": "جرا نولا مع الفواكه والعسل",
+      "unifiedId": "W018",
+      "unifiedName": "جرانولا مع الفواكه والعسل",
+      "calories": 310,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 133
+    },
+    "208": {
+      "name": "تونا",
+      "unifiedId": "W011",
+      "unifiedName": "تونا",
+      "calories": 260,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 63
+    },
+    "5": {
+      "name": "مياه عاديه",
+      "unifiedId": "W108",
+      "unifiedName": "مياه عادية",
+      "calories": 0,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 119
+    },
+    "6": {
+      "name": "صودا دايت",
+      "unifiedId": "W107",
+      "unifiedName": "صودا دايت",
+      "calories": 0,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 118
+    },
+    "7": {
+      "name": "آيس تي دايت",
+      "unifiedId": "W106",
+      "unifiedName": "ايس تى دايت",
+      "calories": 5,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 117
+    },
+    "9": {
+      "name": "عصير بطيخ بالنعناع",
+      "unifiedId": "W104",
+      "unifiedName": "بطيخ بالنعناع",
+      "calories": 100,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 115
+    },
+    "10": {
+      "name": "عصير برتقال وجزر",
+      "unifiedId": "W103",
+      "unifiedName": "برتقال وجزر",
+      "calories": 130,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 114
+    },
+    "11": {
+      "name": "عصير بينت بنش",
+      "unifiedId": "W102",
+      "unifiedName": "بيت بنش",
+      "calories": 140,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 113
+    },
+    "12": {
+      "name": "عصير كلاسيك جرين",
+      "unifiedId": "W101",
+      "unifiedName": "كلاسيك جرين",
+      "calories": 120,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 112
+    },
+    "13": {
+      "name": "عصير بيري بروت",
+      "unifiedId": "W100",
+      "unifiedName": "بيري بروت",
+      "calories": 200,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 111
+    },
+    "14": {
+      "name": "عصير بيري بلاست",
+      "unifiedId": "W099",
+      "unifiedName": "بيري بلاست",
+      "calories": 150,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 110
+    },
+    "38": {
+      "name": "وجبة تونا 100 جرام",
+      "unifiedId": "W050",
+      "unifiedName": "وجبة تونا 100 جرام",
+      "calories": 58,
+      "portionLabel": "لحصة 100 جم",
+      "sourceRow": 19
+    },
+    "77": {
+      "name": "جمبرى 100 جرام",
+      "unifiedId": "W047",
+      "unifiedName": "وجبة جمبري 100 جرام",
+      "calories": 380,
+      "portionLabel": "لحصة 100 جم",
+      "sourceRow": 87
+    },
+    "78": {
+      "name": "سالمون 100 جرام",
+      "unifiedId": "W049",
+      "unifiedName": "وجبة سالمون 100 جرام",
+      "calories": 210,
+      "portionLabel": "لحصة 100 جم",
+      "sourceRow": 89
+    },
+    "85": {
+      "name": "سمك فيليه 100 جرام",
+      "unifiedId": "W048",
+      "unifiedName": "وجبة سمك فيليه 100 جرام",
+      "calories": 130,
+      "portionLabel": "لحصة 100 جم",
+      "sourceRow": 88
+    },
+    "183": {
+      "name": "مسقعة باللحمة المفروم",
+      "unifiedId": "W022",
+      "unifiedName": "مسقعة باللحمة المفروم",
+      "calories": 210,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 65
+    },
+    "184": {
+      "name": "مكرونة باشميل باللحم المفروم",
+      "unifiedId": "W024",
+      "unifiedName": "مكرونة باشميل باللحم المفروم",
+      "calories": 290,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 67
+    },
+    "185": {
+      "name": "كفتة بالطحينة مع ارز ابيض",
+      "unifiedId": "W026",
+      "unifiedName": "كفتة بالطحينة مع ارز ابيض",
+      "calories": 360,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 69
+    },
+    "186": {
+      "name": "باستا وايت صوص بالدجاج",
+      "unifiedId": "W019",
+      "unifiedName": "باستا وايت صوص بالدجاج",
+      "calories": 410,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 64
+    },
+    "187": {
+      "name": "باستا بنك صوص دجاج",
+      "unifiedId": "W030",
+      "unifiedName": "باستا بنك صوص دجاج",
+      "calories": 420,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 72
+    },
+    "188": {
+      "name": "سليق",
+      "unifiedId": "W031",
+      "unifiedName": "سليق",
+      "calories": 420,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 73
+    },
+    "189": {
+      "name": "كبسة لحم",
+      "unifiedId": "W033",
+      "unifiedName": "كبسة لحم",
+      "calories": 430,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 75
+    },
+    "190": {
+      "name": "كفتة داوود باشا",
+      "unifiedId": "W035",
+      "unifiedName": "كفتة داوود باشا",
+      "calories": 410,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 77
+    },
+    "191": {
+      "name": "لازانيا باللحم المفروم",
+      "unifiedId": "W023",
+      "unifiedName": "لازانيا باللحم المفروم",
+      "calories": 290,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 66
+    },
+    "192": {
+      "name": "محشى كوسا باللحم المفروم",
+      "unifiedId": "W025",
+      "unifiedName": "محشي كوسا باللحم المفروم",
+      "calories": 220,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 68
+    },
+    "193": {
+      "name": "فوتوتشينى بالدجاج",
+      "unifiedId": "W027",
+      "unifiedName": "فوتوتشيني بالدجاج",
+      "calories": 410,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 70
+    },
+    "194": {
+      "name": "باستا رد صوص دجاج",
+      "unifiedId": "W029",
+      "unifiedName": "باستا رد صوص دجاج",
+      "calories": 390,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 71
+    },
+    "195": {
+      "name": "برجر لحم صحى",
+      "unifiedId": "W051",
+      "unifiedName": "برجر لحم صحي",
+      "calories": 420,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 21
+    },
+    "196": {
+      "name": "كباب هندى",
+      "unifiedId": "W032",
+      "unifiedName": "كباب هندي",
+      "calories": 430,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 74
+    },
+    "197": {
+      "name": "كبسة دجاج",
+      "unifiedId": "W034",
+      "unifiedName": "كبسة دجاج",
+      "calories": 380,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 76
+    },
+    "198": {
+      "name": "بطاطس باللحمة",
+      "unifiedId": "W036",
+      "unifiedName": "بطاطس باللحمة",
+      "calories": 410,
+      "portionLabel": "للحصة المعروضة",
+      "sourceRow": 78
+    }
+  }
+}

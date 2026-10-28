@@ -44,3 +44,10 @@ Marketing strategy and execution should continue across new chats/agents without
 - Document website 15% callback offer and explicit no-plan inquiry contract.
 - Track form opens/accepted completions separately from unique saved leads and paid subscriptions.
 - Improve preview registration reliability, menu consistency and conversion copy; retain production boundary.
+
+## 2026-10-28 — Website calorie display
+
+- Add the existing unified working calories to 82 explicitly matched POS items across home, menu and details.
+- Label values approximate and portion-specific, preserve true zero, and clear values for unmapped weight variants.
+- Document source workbook hashes, distinct sandwich/breakfast/size joins, and 26 unavailable items/portions.
+- Record that website/backend/dashboard release #174/#61/#175 is now live; application nutrition was not changed by this calorie-display work.

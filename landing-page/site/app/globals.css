@@ -26,3 +26,12 @@
   --color-border: var(--border);
   --font-sans: var(--font-tajawal), system-ui, sans-serif;
 }
+/* Shared calorie presentation for the home gallery and full menu. */
+.menu-calories { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 9px; margin: 0 0 12px; color: #226548; font-size: 12px; line-height: 1.6; }
+.menu-calories b { font: 800 16px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.menu-calories small { color: #607765; font-size: 11px; }
+.menu-calories-missing { margin: 0 0 12px; color: #64776a; font-size: 11px; line-height: 1.6; }
+.meal-card figcaption .menu-calories { margin: 7px 0 0; gap: 1px 8px; color: #fff; }
+.meal-card figcaption .menu-calories small { color: #e0ecdf; font-size: 11px; }
+.meal-card figcaption .menu-calories span { font-size: 12px; line-height: 1.6; }
+.meal-card figcaption .menu-calories b { font-size: 15px; }
