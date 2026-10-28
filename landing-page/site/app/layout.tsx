@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Tajawal } from "next/font/google";
 import { MotionRuntime } from "@/components/MotionRuntime";
+import { MetaPixel } from "@/components/MetaPixel";
 import { HERO_POSTER_URL } from "@/lib/app-links";
 import "./globals.css";
 
@@ -49,6 +50,7 @@ export default function RootLayout({
       </head>
       <body>
         <MotionRuntime />
+        <MetaPixel />
         {children}
       </body>
     </html>

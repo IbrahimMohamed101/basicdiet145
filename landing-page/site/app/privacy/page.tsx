@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { MetaTrackingSettings } from "@/components/MetaPixel";
 
 export const metadata: Metadata = {
   title: "خصوصية طلب التواصل | Basic Diet",
@@ -50,6 +51,11 @@ export default function LandingPrivacyPage() {
               {" "}<a className="font-bold underline" style={{ color: "#108055" }} href="tel:+966535332639" dir="ltr">+966 53 533 2639</a>
               {" "}للاستفسار عن بيانات طلبك أو طلب تصحيحها أو حذفها أو سحب موافقتك التسويقية.
               قد نحتاج للتحقق من ملكية رقم الجوال قبل تنفيذ الطلب.</p>
+          </section>
+          <section>
+            <h2 className="mb-2 text-xl font-bold">قياس الإعلانات واختيارك</h2>
+            <p>إذا وافقت بشكل منفصل، قد نستخدم Meta Pixel لقياس زيارات الموقع وطلبات التواصل المرتبطة بإعلاناتنا. رفض التتبع الإعلاني لا يمنع استخدام المنيو أو تسجيل طلب التواصل. ويمكنك تغيير هذا الاختيار لاحقًا.</p>
+            <div className="mt-3"><MetaTrackingSettings /></div>
           </section>
           <section className="rounded-xl p-4" style={{ background: "#f0f7f2" }}>
             <h2 className="mb-2 text-lg font-bold">سياسة خصوصية التطبيق</h2>

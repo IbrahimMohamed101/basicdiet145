@@ -157,6 +157,25 @@ export function LeadDialog() {
       attribution = JSON.parse(sessionStorage.getItem(ATTRIBUTION_KEY) || "{}");
       sessionId = sessionStorage.getItem(SESSION_KEY) || "";
     } catch { /* disabled storage */ }
+    let adsTrackingConsent = false;
+    try {
+      const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
+      adsTrackingConsent = process.env.NEXT_PUBLIC_META_PIXEL_ENABLED === "true"
+        && /^\d{8,20}$/.test(process.env.NEXT_PUBLIC_META_PIXEL_ID || "")
+        && navigator.doNotTrack !== "1"
+        && privacy.globalPrivacyControl !== true
+        && localStorage.getItem("basicdiet_meta_tracking_consent_v1") === "granted";
+    } catch { /* advertising tracking is opt-in and defaults off */ }
+    const metaCookie = (name: string) => {
+      if (!adsTrackingConsent) return "";
+      const item = document.cookie.split("; ").find(part => part.startsWith(name + "="));
+      if (!item) return "";
+      try { return decodeURIComponent(item.slice(name.length + 1)).slice(0, 220); }
+      catch { return ""; }
+    };
+    const fbp = metaCookie("_fbp");
+    const fbc = metaCookie("_fbc");
+    const pagePath = window.location.pathname;
     let referrerHost = "";
     try { if (document.referrer) referrerHost = new URL(document.referrer).hostname; } catch { /* no referrer */ }
     try {
@@ -170,7 +189,8 @@ export function LeadDialog() {
             fulfillmentMethod,
           }),
           phone: normalized, name: name.trim().slice(0, 70),
-          contactConsent, marketingConsent, location, sessionId, referrerHost, website,
+          contactConsent, marketingConsent, adsTrackingConsent, location, sessionId, referrerHost, website,
+          ...(adsTrackingConsent ? { fbp, fbc, pagePath } : {}),
           source: attribution.source || "",
           medium: attribution.medium || "",
           campaign: attribution.campaign || "",
@@ -194,7 +214,7 @@ export function LeadDialog() {
       }
       setStep(3);
       window.dispatchEvent(new CustomEvent("basicdiet:lead_submitted", {
-        detail: { location, planDays: needsPlanAssistance ? null : selected?.daysCount, planSelected: !needsPlanAssistance, offer: promoMode, placement: sourceDetail },
+        detail: { requestId: requestId.current, location, planDays: needsPlanAssistance ? null : selected?.daysCount, planSelected: !needsPlanAssistance, offer: promoMode, placement: sourceDetail },
       }));
     } catch {
       if (submissionLoad !== loadId.current) return;
