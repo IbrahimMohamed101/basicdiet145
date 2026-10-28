@@ -1,4 +1,4 @@
-export type MenuArtKind = "water" | "soda" | "juice" | "shake" | "icecream" | "cake" | "sweets" | "sandwich" | "burger" | "salad" | "eggs" | "chicken" | "beef" | "rice" | "pasta";
+export type MenuArtKind = "water" | "soda" | "juice" | "shake" | "icecream" | "cake" | "sweets" | "sandwich" | "burger" | "salad" | "eggs" | "chicken" | "beef" | "rice" | "pasta" | "fish" | "rice-side" | "mash" | "vegetables" | "potato";
 
 export function menuArtKind(name: string, category = ""): MenuArtKind {
   const x = (name + " " + category).replace(/[أإآ]/g, "ا").replace(/[َُِّْ]/g, "").toLowerCase();
@@ -14,6 +14,11 @@ export function menuArtKind(name: string, category = ""): MenuArtKind {
   if (/سلط|شمندر|جرجير/.test(x)) return "salad";
   if (/بيض/.test(x)) return "eggs";
   if (/بطاطس باللحمة|كبسة|كفتة داوود/.test(x)) return "rice";
+  if (/بطاطس مهروس/.test(x)) return "mash";
+  if (/خضار مشكل|خضروات مشوي/.test(x)) return "vegetables";
+  if (/بطاطس|بطاطا/.test(x)) return "potato";
+  if (/رز|ارز/.test(x)) return "rice-side";
+  if (/سمك|فيليه/.test(x)) return "fish";
   if (/مكرونة|باستا/.test(x)) return "pasta";
   if (/لحم/.test(x)) return "beef";
   if (/دجاج/.test(x)) return "chicken";
