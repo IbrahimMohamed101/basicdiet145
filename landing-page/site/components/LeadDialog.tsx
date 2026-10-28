@@ -13,6 +13,8 @@ type OpenEvent = CustomEvent<{
   fulfillmentMethod?: "delivery" | "pickup";
   fastContact?: boolean;
   sourceDetail?: string;
+  promoIntent?: string;
+  planOptional?: boolean;
   name?: string;
   phone?: string;
 }>;
@@ -40,6 +42,8 @@ export function LeadDialog() {
   const [mealsPerDay, setMealsPerDay] = useState(2);
   const [location, setLocation] = useState("hero");
   const [fastContact, setFastContact] = useState(false);
+  const [promoMode, setPromoMode] = useState(false);
+  const [needsPlanAssistance, setNeedsPlanAssistance] = useState(false);
   const [sourceDetail, setSourceDetail] = useState("");
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"delivery" | "pickup">("delivery");
   const [selectionNotice, setSelectionNotice] = useState("");
@@ -56,7 +60,7 @@ export function LeadDialog() {
   const selected = plans.find(p => p.planId === planId);
   const selectedGram = selected?.gramsOptions.find(g => g.grams === grams);
   const days = selected?.daysCount || 26;
-  const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true" && sourceDetail.startsWith("menu_");
+  const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true";
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +69,8 @@ export function LeadDialog() {
       const currentLoad = ++loadId.current;
       setStep(1); setError(""); setPhone(details.phone?.slice(0, 32) || ""); setName(details.name?.slice(0, 70) || ""); setSelectionNotice("");
       setFastContact(details.fastContact === true);
+      setPromoMode(details.promoIntent === "BASIC15" || (details.sourceDetail || "").includes("basic15"));
+      setNeedsPlanAssistance(details.planOptional === true || (!details.planDays && details.fastContact === true));
       setSourceDetail((details.sourceDetail || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40));
       setContactConsent(false); setMarketingConsent(false); setWebsite("");
       setLocation(details.location || "hero"); setLoading(true); setPlans([]);
@@ -157,9 +163,8 @@ export function LeadDialog() {
           source: attribution.source || "",
           medium: attribution.medium || "",
           campaign: attribution.campaign || "",
-          content: sourceDetail
-            ? [attribution.content?.slice(0, 55) || "", sourceDetail].filter(Boolean).join("|").slice(0, 100)
-            : attribution.content || "",
+          content: [attribution.content?.slice(0, 40) || "", sourceDetail, promoMode ? "offer15" : "",
+            needsPlanAssistance ? "plan_to_confirm" : ""].filter(Boolean).join("|").slice(0, 100),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -198,15 +203,15 @@ export function LeadDialog() {
       {active && (
         <div className="lead-sheet">
           <div className="lead-sheet-top">
-            <span className="lead-sheet-kicker">Basic Diet <span aria-hidden="true">•</span> اختيارك يبدأ هنا</span>
+            <span className="lead-sheet-kicker">Basic Diet <span aria-hidden="true">•</span> {promoMode ? "ميزة التسجيل من الموقع" : "اختيارك يبدأ هنا"}</span>
             <button type="button" className="lead-close" onClick={close} aria-label="إغلاق النافذة">×</button>
           </div>
           {step < 3 ? (
             <>
               <div className="lead-step-head">
                 <span className="lead-step-count">{step} / 2</span>
-                <h2 id="lead-dialog-heading">{step === 1 ? "خلّنا نضبط اشتراكك" : "باقي خطوة ونساعدك تبدأ"}</h2>
-                <p>{step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
+                <h2 id="lead-dialog-heading">{promoMode ? "خصم 15% على اشتراكك" : step === 1 ? "خلّنا نضبط اشتراكك" : "باقي خطوة ونساعدك تبدأ"}</h2>
+                <p>{promoMode ? "سجّل اسمك ورقم جوالك، وفريقنا يتواصل معك لإكمال الاشتراك ومراجعة استفادتك من عرض الموقع." : step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
               </div>
               <div className="lead-step-line"><span style={{ width: step === 1 ? "50%" : "100%" }} /></div>
               {step === 1 ? (
@@ -267,8 +272,9 @@ export function LeadDialog() {
               ) : (
                 <form className="lead-fields" onSubmit={submit}>
                   <div className="lead-selection-summary">
-                    <span>اختيارك</span>
-                    <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا · {fulfillmentMethod === "delivery" ? "توصيل" : "استلام"}</strong>
+                    <span>{needsPlanAssistance ? "اختيار الباقة" : "باقتك المختارة"}</span>
+                    {needsPlanAssistance ? <><strong>لسه محتار؟ فريقنا يساعدك تختار الباقة المناسبة بعد التسجيل.</strong><small>لا توجد باقة نهائية مختارة؛ سيؤكد الفريق التفاصيل معك.</small></> :
+                      <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا · {fulfillmentMethod === "delivery" ? "توصيل" : "استلام"}</strong>}
                   </div>
                   <label className="lead-field">
                     <span>اسمك {fastContact ? <em>(مطلوب)</em> : <em>(اختياري)</em>}</span>
@@ -291,12 +297,13 @@ export function LeadDialog() {
                     <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}/>
                     <span>أرغب في تلقي عروض مستقبلية (اختياري).</span>
                   </label>
-                  {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة للمنيو. لحماية بياناتك، طلبات التواصل غير مفعّلة هنا. التسجيل الفعلي متاح عبر الموقع الرسمي أو التطبيق.</p>}
+                  {promoMode && <p className="lead-offer-disclaimer">الخصم على قيمة الباقة فقط، ولا يشمل التوصيل أو الإضافات. التسجيل طلب تواصل، لا يفعّل الاشتراك أو الخصم تلقائيًا. يوضح الفريق أهلية العرض عند إكمال الاشتراك.</p>}
+                  {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة فقط؛ إرسال بيانات التواصل غير مفعّل هنا. التسجيل الفعلي متاح عبر الموقع الرسمي.</p>}
                   {error && <p className="lead-error" role="alert">{error}</p>}
                   <button className="lead-primary" type="submit" disabled={isMenuPreview || sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2)}>
-                    {sending ? "جاري إرسال طلبك..." : "اطلب تواصل من Basic Diet"}
+                    {sending ? "جاري إرسال طلبك..." : promoMode ? "سجّل بياناتي واستفيد من العرض" : "اطلب تواصل من Basic Diet"}
                   </button>
-                  <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>
+                  {!needsPlanAssistance && <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>}
                 </form>
               )}
               <div className="lead-direct">تفضل تبدأ بنفسك؟ <button type="button" onClick={() => { close(); (document.getElementById("menu-download") || document.getElementById("app"))?.scrollIntoView({ behavior: "smooth" }); }}>روابط تحميل التطبيق</button></div>
@@ -305,7 +312,7 @@ export function LeadDialog() {
             <div className="lead-success">
               <div className="lead-success-mark" aria-hidden="true">✓</div>
               <h2 id="lead-dialog-heading">وصلنا طلبك!</h2>
-              <p>فريق Basic Diet يقدر يتواصل معك بخصوص اشتراكك. وتقدر تبدأ بنفسك من التطبيق في أي وقت.</p>
+              <p>تم استلام طلب التواصل. فريق Basic Diet يتواصل معك لمراجعة اشتراكك وشروط الاستفادة من عرض 15%. التسجيل لا يُفعّل الاشتراك تلقائيًا.</p>
               <div className="lead-success-stores"><StoreLinks location="app" /></div>
               <button type="button" className="lead-back" onClick={close}>رجوع للموقع</button>
             </div>
