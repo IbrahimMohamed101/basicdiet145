@@ -22,7 +22,19 @@ for (const width of [320, 360, 390, 768, 1440]) {
   });
 }
 
-test("plan selector is explicitly draft and responds to all dimensions", async ({ page }) => {
+test("plan selector uses current public app catalog pricing and responds to all dimensions", async ({ page }) => {
+  await page.route("**/api/menu-plans", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ status: true, source: "live_app_catalog", data: [
+      { daysCount: 26, gramsOptions: [
+        { grams: 150, mealsOptions: [{ mealsPerDay: 2, priceHalala: 118600 }] },
+      ] },
+      { daysCount: 7, gramsOptions: [
+        { grams: 150, mealsOptions: [{ mealsPerDay: 2, priceHalala: 34800 }, { mealsPerDay: 3, priceHalala: 52200 }] },
+        { grams: 200, mealsOptions: [{ mealsPerDay: 2, priceHalala: 42000 }, { mealsPerDay: 3, priceHalala: 63000 }] },
+      ] },
+    ] }),
+  }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("١٬١٨٦");
@@ -32,7 +44,7 @@ test("plan selector is explicitly draft and responds to all dimensions", async (
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("٤٢٠");
   await plans.getByRole("group", { name: "عدد الوجبات" }).getByRole("button", { name: "3" }).click();
   await expect(plans.locator(".menu-price-pop strong")).toHaveText("٦٣٠");
-  await expect(plans).toContainText("سعر توضيحي");
+  await expect(plans).toContainText("السعر الأساسي مباشرة من كتالوج التطبيق");
 });
 
 test("builder and catalog interactions are read-only", async ({ page }) => {
@@ -205,4 +217,28 @@ test("same food picture is displayed once for shrimp size variants", async ({ pa
   await expect(shrimpCard.locator(".menu-product-bottom strong")).toContainText("٤٩");
   await shrimpCard.getByRole("button", { name: /تفاصيل جمبري 150 جرام/ }).click();
   await expect(page.getByRole("dialog")).toContainText("جمبري 150 جرام");
+});
+
+
+test("subscription prices fail closed when live app catalog cannot be reached", async ({ page }) => {
+  await page.route("**/api/menu-plans", route => route.fulfill({
+    status: 503, contentType: "application/json",
+    body: JSON.stringify({ status: false, data: [], code: "SOURCE_UNAVAILABLE" }),
+  }));
+  await page.goto("/menu");
+  const plans = page.locator("#menu-plans");
+  await expect(plans.locator(".menu-price-unavailable")).toHaveText("السعر غير متاح");
+  await expect(plans).not.toContainText("١٬١٨٦");
+});
+
+test("meal-builder shows photos only for supported matched dishes", async ({ page }) => {
+  await page.goto("/menu");
+  const builder = page.locator("#menu-custom");
+  const shrimp = builder.getByRole("button", { name: /جمبري/ });
+  await expect(shrimp.locator("img")).toHaveCount(1);
+  const rice = builder.getByRole("button", { name: /رز أبيض/ });
+  await expect(rice.locator("img")).toHaveCount(1);
+  await rice.click();
+  await expect(rice).toHaveAttribute("aria-pressed","true");
+  await expect(builder.locator(".menu-summary-data")).toContainText("رز أبيض");
 });
