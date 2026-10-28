@@ -242,3 +242,29 @@ test("meal-builder shows photos only for supported matched dishes", async ({ pag
   await expect(rice).toHaveAttribute("aria-pressed","true");
   await expect(builder.locator(".menu-summary-data")).toContainText("رز أبيض");
 });
+
+
+test("published app menu options are browsable with real Drive photo mapping and no invented item price", async ({ page }) => {
+  await page.route("**/api/menu-app-catalog", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ status: true, source: "published_subscription_meal_builder", data: [
+      { id: "chicken", key: "protein", title: "الدجاج", selectionType: "standard_meal", items: [
+        { id: "a", key: "tikka", name: "دجاج تكا", image: "", extraPriceHalala: 0, isPremium: false, type: "option" },
+        { id: "b", key: "barbecue", name: "دجاج باربكيو", image: "", extraPriceHalala: 450, isPremium: false, type: "option" },
+      ]},
+      { id: "carbs", key: "carbs", title: "الكارب", selectionType: "standard_meal", items: [
+        { id: "c", key: "rice", name: "رز أبيض", image: "", extraPriceHalala: 0, isPremium: false, type: "option" },
+      ]},
+    ] }),
+  }));
+  await page.goto("/menu");
+  const catalog = page.locator("#menu-app-catalog");
+  await expect(catalog).toContainText("3 اختيار");
+  await expect(catalog.locator(".menu-app-card")).toHaveCount(2);
+  await expect(catalog.locator(".menu-app-card").first().locator("img")).toHaveCount(1);
+  await expect(catalog.locator(".menu-app-card").first()).toContainText("اختيار داخل الاشتراك");
+  await expect(catalog.locator(".menu-app-card").nth(1)).toContainText("٤٫٥");
+  await catalog.getByRole("button", { name: /الكارب/ }).click();
+  await expect(catalog.locator(".menu-app-card")).toHaveCount(1);
+  await expect(catalog.locator(".menu-app-card")).toContainText("رز أبيض");
+});
