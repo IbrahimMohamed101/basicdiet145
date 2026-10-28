@@ -1,19 +1,24 @@
-/** Preview candidates from the 2026-10-26 cashier master; NOT approved for publication. */
-export type MenuPreviewItem = { id: string; name: string; category: string; priceSar: number; image: string | null };
+/** Cashier preview candidates, POS ID and price preserved from official source.
+ * Original matching photos are not yet visually approved.
+ * illustrativeImage=true explicitly marks an illustrative or representative visual, NOT a confirmed POS dish photo.
+ */
+export type MenuPreviewItem = { id: string; name: string; category: string; priceSar: number; image: string | null; illustrativeImage?: boolean };
 export const menuPreviewItems: MenuPreviewItem[] = [
   {
     "id": "2",
     "name": "آيس كريم فانيليا 100 جرام",
     "category": "الآيس كريم",
     "priceSar": 13,
-    "image": null
+    "image": "/api/menu-art?kind=icecream&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "3",
     "name": "آيس كريم شوكولاته 100 جرام",
     "category": "الآيس كريم",
     "priceSar": 13,
-    "image": null
+    "image": "/api/menu-art?kind=icecream&tone=berry",
+    "illustrativeImage": true
   },
   {
     "id": "16",
@@ -76,7 +81,8 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كيك شوكلاته بروتين",
     "category": "الحلويات",
     "priceSar": 17,
-    "image": null
+    "image": "/api/menu-art?kind=cake&tone=berry",
+    "illustrativeImage": true
   },
   {
     "id": "17",
@@ -90,14 +96,16 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "بسبوسه",
     "category": "الحلويات",
     "priceSar": 11,
-    "image": null
+    "image": "/api/menu-art?kind=sweets&tone=orange",
+    "illustrativeImage": true
   },
   {
     "id": "222",
     "name": "كرات الحلى",
     "category": "الحلويات",
     "priceSar": 15,
-    "image": null
+    "image": "/api/menu-art?kind=sweets&tone=berry",
+    "illustrativeImage": true
   },
   {
     "id": "34",
@@ -174,42 +182,48 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "دجاج مكسيكي",
     "category": "الساندويتشات",
     "priceSar": 13,
-    "image": null
+    "image": "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC",
+    "illustrativeImage": true
   },
   {
     "id": "28",
     "name": "دجاج فاهيتا",
     "category": "الساندويتشات",
     "priceSar": 13,
-    "image": null
+    "image": "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC",
+    "illustrativeImage": true
   },
   {
     "id": "49",
     "name": "ساور دو بيض",
     "category": "الساندويتشات",
     "priceSar": 22,
-    "image": null
+    "image": "/api/menu-art?kind=sandwich&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "76",
     "name": "برجر لحم",
     "category": "الساندويتشات",
     "priceSar": 23,
-    "image": null
+    "image": "/api/meal-image?id=1x7vUZBAaWcLR8z8N7feuntgrN5w9d4b2",
+    "illustrativeImage": true
   },
   {
     "id": "199",
     "name": "لحم",
     "category": "الساندويتشات",
     "priceSar": 17,
-    "image": null
+    "image": "/api/menu-art?kind=sandwich&tone=natural",
+    "illustrativeImage": true
   },
   {
     "id": "201",
     "name": "سندوتش على مزاجك",
     "category": "الساندويتشات",
     "priceSar": 21,
-    "image": null
+    "image": "/api/menu-art?kind=sandwich&tone=green",
+    "illustrativeImage": true
   },
   {
     "id": "1",
@@ -328,14 +342,16 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "سلطة الجرجير مع الشمندر صغير",
     "category": "السلطات",
     "priceSar": 15,
-    "image": null
+    "image": "/api/meal-image?id=1ZBMwQc-yIT1QjphDRNRZLTeXCbUFVRCU",
+    "illustrativeImage": true
   },
   {
     "id": "182",
     "name": "سلطة الجرجير مع الشمندر كبير",
     "category": "السلطات",
     "priceSar": 25,
-    "image": null
+    "image": "/api/meal-image?id=1ZBMwQc-yIT1QjphDRNRZLTeXCbUFVRCU",
+    "illustrativeImage": true
   },
   {
     "id": "204",
@@ -447,84 +463,96 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "مياه عاديه",
     "category": "المشروبات",
     "priceSar": 2,
-    "image": null
+    "image": "/api/menu-art?kind=water&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "6",
     "name": "صودا دايت",
     "category": "المشروبات",
     "priceSar": 3,
-    "image": null
+    "image": "/api/menu-art?kind=soda&tone=green",
+    "illustrativeImage": true
   },
   {
     "id": "7",
     "name": "آيس تي دايت",
     "category": "المشروبات",
     "priceSar": 4,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "8",
     "name": "مشروب بروتين",
     "category": "المشروبات",
     "priceSar": 19,
-    "image": null
+    "image": "/api/menu-art?kind=shake&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "9",
     "name": "عصير بطيخ بالنعناع",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=pink",
+    "illustrativeImage": true
   },
   {
     "id": "10",
     "name": "عصير برتقال وجزر",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=orange",
+    "illustrativeImage": true
   },
   {
     "id": "11",
     "name": "عصير بينت بنش",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=pink",
+    "illustrativeImage": true
   },
   {
     "id": "12",
     "name": "عصير كلاسيك جرين",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=green",
+    "illustrativeImage": true
   },
   {
     "id": "13",
     "name": "عصير بيري بروت",
     "category": "المشروبات",
     "priceSar": 13,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=berry",
+    "illustrativeImage": true
   },
   {
     "id": "14",
     "name": "عصير بيري بلاست",
     "category": "المشروبات",
     "priceSar": 11,
-    "image": null
+    "image": "/api/menu-art?kind=juice&tone=berry",
+    "illustrativeImage": true
   },
   {
     "id": "52",
     "name": "مياه صغير",
     "category": "المشروبات",
     "priceSar": 1,
-    "image": null
+    "image": "/api/menu-art?kind=water&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "53",
     "name": "صودا دايت صغير",
     "category": "المشروبات",
     "priceSar": 2.5,
-    "image": null
+    "image": "/api/menu-art?kind=soda&tone=green",
+    "illustrativeImage": true
   },
   {
     "id": "38",
@@ -538,7 +566,8 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة بيض مسلوق",
     "category": "الوجبات",
     "priceSar": 19,
-    "image": null
+    "image": "/api/menu-art?kind=eggs&tone=cream",
+    "illustrativeImage": true
   },
   {
     "id": "77",
@@ -608,42 +637,48 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "وجبة دجاج 100 جرام",
     "category": "الوجبات",
     "priceSar": 20,
-    "image": null
+    "image": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+    "illustrativeImage": true
   },
   {
     "id": "43",
     "name": "وجبة دجاج 150 جرام",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": null
+    "image": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+    "illustrativeImage": true
   },
   {
     "id": "44",
     "name": "وجبة دجاج 200 جرام",
     "category": "الوجبات",
     "priceSar": 30,
-    "image": null
+    "image": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
+    "illustrativeImage": true
   },
   {
     "id": "79",
     "name": "وجبة لحم 150جرام",
     "category": "الوجبات",
     "priceSar": 28,
-    "image": null
+    "image": "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
+    "illustrativeImage": true
   },
   {
     "id": "80",
     "name": "وجبة لحم 200جرام",
     "category": "الوجبات",
     "priceSar": 34,
-    "image": null
+    "image": "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
+    "illustrativeImage": true
   },
   {
     "id": "129",
     "name": "وجبة لحم 100 جم",
     "category": "الوجبات",
     "priceSar": 22,
-    "image": null
+    "image": "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
+    "illustrativeImage": true
   },
   {
     "id": "183",
@@ -692,14 +727,16 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كبسة لحم",
     "category": "الوجبات",
     "priceSar": 35,
-    "image": null
+    "image": "/api/menu-art?kind=rice&tone=orange",
+    "illustrativeImage": true
   },
   {
     "id": "190",
     "name": "كفتة داوود باشا",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": null
+    "image": "/api/menu-art?kind=beef&tone=natural",
+    "illustrativeImage": true
   },
   {
     "id": "191",
@@ -748,13 +785,15 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "name": "كبسة دجاج",
     "category": "الوجبات",
     "priceSar": 25,
-    "image": null
+    "image": "/api/menu-art?kind=chicken&tone=orange",
+    "illustrativeImage": true
   },
   {
     "id": "198",
     "name": "بطاطس باللحمة",
     "category": "الوجبات",
     "priceSar": 35,
-    "image": null
+    "image": "/api/menu-art?kind=beef&tone=natural",
+    "illustrativeImage": true
   }
 ];
