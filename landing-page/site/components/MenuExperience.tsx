@@ -15,25 +15,11 @@ const menuShowcaseCategories = [
   { label: "الساندويتشات", tag: "SANDWICHES", image: "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC" },
 ] as const;
 
-// These prices are INITIAL BOOTSTRAP EXAMPLES, not authorized production prices.
-// Do not expose as an approved catalog or remove the draft warnings.
-const draftPlanPrices: Record<number, Record<number, number[]>> = {
-  7: {
-    100: [138, 276, 414, 552, 690],
-    150: [174, 348, 522, 696, 870],
-    200: [210, 420, 630, 840, 1050],
-  },
-  26: {
-    100: [516, 935, 1355, 1806, 2257],
-    150: [659, 1186, 1732, 2309, 2886],
-    200: [750, 1421, 2012, 2683, 3354],
-  },
-  30: {
-    100: [587, 1079, 1511, 2014, 2518],
-    150: [720, 1331, 1943, 2590, 3238],
-    200: [828, 1619, 2279, 3038, 3798],
-  },
+type LivePlan = {
+  daysCount: number;
+  gramsOptions: { grams: number; mealsOptions: { mealsPerDay: number; priceHalala: number }[] }[];
 };
+
 
 const menuCategories = [
   "الكل", "الوجبات", "السلطات", "الفطور", "الساندويتشات",
@@ -99,6 +85,8 @@ function ProductImage({ item, priority = false }: { item: MenuPreviewItem; prior
 
 export function MenuExperience() {
   const [days, setDays] = useState(26);
+  const [livePlans, setLivePlans] = useState<LivePlan[]>([]);
+  const [planPriceState, setPlanPriceState] = useState<"loading" | "live" | "unavailable">("loading");
   const [grams, setGrams] = useState(150);
   const [meals, setMeals] = useState(2);
   const [activeBuilder, setActiveBuilder] = useState<"meal" | "salad">("meal");
@@ -112,9 +100,27 @@ export function MenuExperience() {
   const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
 
-  const price = draftPlanPrices[days][grams][meals - 1];
+  const livePlan = livePlans.find(item => item.daysCount === days);
+  const liveGrams = livePlan?.gramsOptions.find(item => item.grams === grams);
+  const livePriceHalala = liveGrams?.mealsOptions.find(item => item.mealsPerDay === meals)?.priceHalala;
+  const price = Number.isSafeInteger(livePriceHalala) && (livePriceHalala ?? 0) > 0 ? (livePriceHalala ?? 0) / 100 : null;
   const totalMeals = days * meals;
   const numberFormatter = new Intl.NumberFormat("ar-SA");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/menu-plans", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("LIVE_PRICES_UNAVAILABLE");
+        const result = await response.json() as { data?: LivePlan[]; status?: boolean; source?: string };
+        if (result.status !== true || result.source !== "live_app_catalog" || !Array.isArray(result.data) || result.data.length === 0) {
+          throw new Error("LIVE_PRICES_INVALID");
+        }
+        if (!cancelled) { setLivePlans(result.data); setPlanPriceState("live"); }
+      })
+      .catch(() => { if (!cancelled) setPlanPriceState("unavailable"); });
+    return () => { cancelled = true; };
+  }, []);
 
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
     return (category === "الكل" || item.category === category) &&
@@ -203,7 +209,7 @@ export function MenuExperience() {
           </div>
         </div>
         <div className="page-shell menu-preview-ribbon" role="note">
-          <span>معاينة تجريبية: أسعار الباقات غير نهائية، وصور الأصناف والبيانات في انتظار الاعتماد.</span>
+          <span>معاينة قبل الاعتماد: أسعار الأصناف من الكاشير، وأسعار الباقات تُحمّل من التطبيق. الصور والتوفر في انتظار المراجعة.</span>
         </div>
       </section>
 
@@ -301,16 +307,17 @@ export function MenuExperience() {
             <aside className="menu-plan-result" aria-label="معاينة سعر الباقة">
               <span className="menu-plan-result-kicker">BASIC DIET / YOUR PLAN</span>
               <div className="menu-plan-result-top"><span>اشتراك {days} يوم</span><b>{grams} جم</b></div>
-              <p>سعر الباقة الأساسي في ملف التهيئة التجريبي</p>
+              <p>{price === null ? "سعر الباقة الأساسية" : "السعر الأساسي الحالي من كتالوج التطبيق"}</p>
               <div key={days + "-" + grams + "-" + meals} className="menu-price-pop" aria-live="polite" aria-atomic="true">
-                <strong>{numberFormatter.format(price)}</strong><span>ر.س</span>
+                {price !== null ? <><strong>{numberFormatter.format(price)}</strong><span>ر.س</span></> :
+                  <strong className="menu-price-unavailable">{planPriceState === "loading" ? "جاري تحميل السعر..." : "السعر غير متاح"}</strong>}
               </div>
               <div className="menu-plan-specs">
                 <div><strong>{totalMeals}</strong><span>وجبة خلال الباقة</span></div>
                 <div><strong>{meals}</strong><span>وجبة يوميًا</span></div>
                 <div><strong>{grams}g</strong><span>حجم البروتين</span></div>
               </div>
-              <p className="menu-plan-caution">سعر توضيحي من بيانات bootstrap وليس السعر المعتمد للبيع. لا يشمل رسوم التوصيل والإضافات أو أي خصم.</p>
+              <p className="menu-plan-caution">{price === null ? "الأسعار غير متاحة مؤقتًا. يمكن لفريق المطعم تأكيد تكلفة الباقة، أو الاطلاع عليها من التطبيق." : "السعر الأساسي مباشرة من كتالوج التطبيق، قبل رسوم التوصيل والإضافات وأي خصومات. السعر النهائي يحدده التطبيق عند الاشتراك."}</p>
               <MenuContactButton location="plans" intent="plan_selected" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">تبغى نكلمك عن هذي الباقة؟ <span aria-hidden="true">←</span></MenuContactButton>
               <a className="menu-result-subtle" href="#menu-download">أو حمّل التطبيق وابدأ بنفسك</a>
             </aside>
