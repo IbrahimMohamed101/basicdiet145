@@ -413,6 +413,7 @@ test("15 percent offer appears after food categories, before the priced catalog,
   await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
   await expect(dialog.locator(".lead-discount-notice")).toContainText("15%");
   await expect(dialog.locator(".lead-discount-notice")).toContainText("التسجيل وحده لا يفعّل الخصم");
+  await expect(dialog.locator(".lead-discount-notice")).toHaveCSS("background-color", "rgb(239, 250, 241)");
   await expect(dialog.getByRole("checkbox", { name: /أوافق على التواصل/ })).not.toBeChecked();
   await expect(dialog.getByRole("checkbox", { name: /عروض مستقبلية/ })).not.toBeChecked();
   await dialog.getByRole("textbox", { name: /اسمك/ }).fill("عميل تجربة");
