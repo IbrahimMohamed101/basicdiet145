@@ -3,6 +3,9 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { ANDROID_APP_URL, IOS_APP_URL } from "@/lib/app-links";
 
+import { normalizeSaudiPhone } from "@/lib/saudi-phone";
+import { SITE_OFFER_CTA, SITE_OFFER_TERMS } from "@/lib/site-offer";
+
 type LeadLocation = "hero" | "plans" | "final";
 
 type OpenMenuLead = {
@@ -15,13 +18,6 @@ type OpenMenuLead = {
   phone?: string;
 };
 
-function normalizeSaudiPhone(raw: string) {
-  let value = raw.replace(/[\s()-]/g, "");
-  if (value.startsWith("+966")) value = value.slice(4);
-  else if (value.startsWith("966")) value = value.slice(3);
-  else if (value.startsWith("0")) value = value.slice(1);
-  return /^5\d{8}$/.test(value);
-}
 
 export function openMenuLead(details: OpenMenuLead) {
   // No personally identifying data is sent in tracking events.
@@ -31,7 +27,9 @@ export function openMenuLead(details: OpenMenuLead) {
   window.dispatchEvent(new CustomEvent("basicdiet:open-lead", {
     detail: {
       location: details.location,
-      sourceDetail: "menu_" + details.intent,
+      sourceDetail: "menu_basic15_" + details.intent,
+      promoIntent: "BASIC15",
+      planOptional: !details.planDays,
       fastContact: true,
       planDays: details.planDays,
       grams: details.grams,
@@ -74,9 +72,9 @@ export function MenuLeadCapture() {
       return;
     }
     setError("");
-    // The shared LeadDialog loads a real sellable plan and asks for consent
+    // The shared dialog keeps these values and asks for contact consent
     // before submitting through the same /api/leads -> /api/landing/leads path.
-    openMenuLead({ location: "final", intent: "discount15_footer_form", name: name.trim(), phone });
+    openMenuLead({ location: "final", intent: "footer_form", name: name.trim(), phone });
   }
 
   return (
@@ -84,8 +82,8 @@ export function MenuLeadCapture() {
       <div className="menu-quick-lead-intro">
         <span className="menu-quick-lead-mark" aria-hidden="true">↗</span>
         <div>
-          <strong>سجّل بياناتك للاستفادة من خصم 15%</strong>
-          <p>هنكلمك ونساعدك تختار باقتك ونوضح لك طريقة الاستفادة من العرض.</p>
+          <strong>عرض الموقع: وفر 15% على اشتراكك</strong>
+          <p>اسمك ورقمك بس. نتواصل معك لمساعدتك تختار الاشتراك وتراجع استفادتك من العرض.</p>
         </div>
       </div>
       <form className="menu-quick-lead-form" onSubmit={startLead}>
@@ -98,13 +96,13 @@ export function MenuLeadCapture() {
           <input required autoComplete="tel-national" type="tel" inputMode="tel" dir="ltr" maxLength={32} value={phone} onChange={e => setPhone(e.target.value)} placeholder="05xxxxxxxx" />
         </label>
         <button className="menu-quick-lead-submit" type="submit">
-          سجّل بياناتك للخصم <span aria-hidden="true">←</span>
+          {SITE_OFFER_CTA} <span aria-hidden="true">←</span>
         </button>
       </form>
       {error && <p className="menu-quick-lead-error" role="alert">{error}</p>}
-      <p className="menu-quick-lead-privacy">الخصم 15% على قيمة الاشتراك فقط عند إتمامه، ولا يشمل التوصيل أو الإضافات. هتوافق على التواصل قبل الإرسال النهائي، والتسجيل لا يفعّل خصمًا أو اشتراكًا تلقائيًا.</p>
+      <p className="menu-quick-lead-privacy">{SITE_OFFER_TERMS}</p>
       <div className="menu-quick-lead-alternative">
-        <span>أو تفضل الاشتراك بنفسك؟</span>
+        <span>تفضل الاشتراك من التطبيق؟</span>
         <a href={IOS_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "app_store", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من App Store">App Store</a>
         <a href={ANDROID_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "google_play", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من Google Play">Google Play</a>
       </div>
@@ -116,7 +114,7 @@ export function MenuMobileConversionBar() {
   return (
     <div className="menu-mobile-conversion-bar" aria-label="ابدأ مع Basic Diet">
       <MenuContactButton location="final" intent="mobile_fixed" className="menu-mobile-primary">
-        سيب رقمك ونكلمك <span aria-hidden="true">←</span>
+        سجّل لخصم 15% <span aria-hidden="true">←</span>
       </MenuContactButton>
       <a href="#menu-download" className="menu-mobile-secondary">حمّل التطبيق</a>
     </div>

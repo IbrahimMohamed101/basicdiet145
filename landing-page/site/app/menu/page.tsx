@@ -3,8 +3,10 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MenuExperience } from "@/components/MenuExperience";
 import { LeadDialog } from "@/components/LeadDialog";
+import { PromoMobileBar } from "@/components/PromoExperience";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import "./menu.css";
+import "../calculator.css";
 import "./menu-refinement.css";
 
 const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true";
@@ -24,6 +26,7 @@ export default function MenuPage() {
       <AnalyticsTracker />
       <LeadDialog />
       <Header />
+      <PromoMobileBar />
       <MenuExperience />
       <Footer />
     </>

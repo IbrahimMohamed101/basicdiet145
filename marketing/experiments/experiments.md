@@ -47,3 +47,24 @@ Experiments separate assumptions from learned facts.
 **Guardrail:** do not use unsupported nutrition/weight-loss claims.
 
 **Result:** Pending.
+
+
+## 2026-10-28 — Website registration offer (preview)
+
+Hypothesis: food-first browsing, a consistent “سجّل لخصم 15%” CTA, expected SAR savings and an instant no-plan registration form improve completed callback requests. This is a hypothesis, not a measured conversion lift.
+
+Audience: Jeddah visitors interested in meals who may not have selected a subscription. Offer stays 15% on package subtotal only, excluding individual meals, delivery and add-ons. No customer-facing coupon, invented urgency, testimonials or nutrition claims. Eligibility is confirmed by staff; additional eligibility exclusions have not been supplied and must not be invented.
+
+Primary measurement: unique saved callback leads. Diagnostic measurements: `lp_lead_opened`, accepted form completions and placement. Leads are not paid subscriptions. Unselected inquiries have null plan dimensions and are excluded from plan-choice buckets.
+
+Implementation: canonical menu photos/prices on home, consistent CTAs, final registration CTA, Arabic-digit phone support, price-outage fallback, stale-response guard. Backend PR #174 and dashboard PR #61 are paired compatibility changes. Preview intake remains disabled on client and server.
+
+Validation: Next.js 16.4.3 build passed; backend lead/attribution unit contracts passed. Local MongoDB startup and Playwright download are unavailable in this execution environment; real persistence and responsive checks are included in CI. No live lead data, production deployment or campaign spend used. Results pending; no conversion uplift claimed.
+
+
+### Verification completed — 2026-10-28
+
+- 49 website registration, responsive, menu and origin checks passed in GitHub Actions run 40691131325 (bbd09894c58fb9b9ee403f3920107378a60dc04e). Screenshots reviewed at 320x520, 390x640 and 1440x900.
+- Real isolated HTTP intake -> MongoDB -> dashboard read/report test passed in run 40690019878, including duplicate prevention and null/unselected plan dimensions. Dashboard build and five UI/access tests passed.
+- Railway preview deployment 5a336064-5245-433f-9d77-24adbb79705c reached SUCCESS. Live home/menu/catalog returned 200; empty same-origin preview intake returned PREVIEW_ONLY/403. No actual customer lead was created.
+- Production image-cache fixes and current canonical gallery are retained in the coordinated release candidate. Backend #174, dashboard #61 and website #175 remain a paired release; production and paid ad spend are unchanged. No conversion uplift is claimed.

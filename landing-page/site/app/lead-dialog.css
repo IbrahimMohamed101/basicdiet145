@@ -95,3 +95,72 @@
 .lead-fulfillment-options button { min-height: 40px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 10px; background: white; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
 .lead-fulfillment-options button.is-selected { border-color: var(--brand-green); background: #eaf4ec; color: var(--brand-green); font-weight: 700; }
 .lead-fulfillment-options button:focus-visible { outline: 3px solid var(--brand-orange); outline-offset: 2px; }
+
+
+/* Conversion form: CTA never scrolls away; only the small form body scrolls. */
+.lead-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: min(92dvh, 690px);
+}
+.lead-sheet {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 20px 22px 16px;
+}
+.lead-sheet-top { flex: 0 0 auto; margin-bottom: 9px; }
+.lead-step-head { flex: 0 0 auto; }
+.lead-step-head--offer h2 { font-size: clamp(22px, 3vw, 27px); margin: 3px 0; }
+.lead-step-head--offer p { margin-bottom: 11px; line-height: 1.5; }
+.lead-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0;
+}
+.lead-form-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 5px 3px 12px;
+  gap: 11px;
+  scrollbar-width: thin;
+}
+.lead-form .lead-field { gap: 4px; }
+.lead-form .lead-field input { min-height: 46px; }
+.lead-form .lead-selection-summary { padding: 9px 12px; }
+.lead-form .lead-check { line-height: 1.5; }
+.lead-form .lead-offer-disclaimer { padding: 9px 11px; font-size: 11px; line-height: 1.6; }
+.lead-form-actions {
+  flex: 0 0 auto;
+  padding: 12px 2px max(5px,env(safe-area-inset-bottom));
+  background: var(--cream);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -10px 18px -18px rgb(5 45 27 / 30%);
+}
+.lead-form-actions .lead-primary { min-height: 52px; font-size: 16px; }
+.lead-form-actions .lead-back { min-height: 37px; margin-top: 6px; }
+.lead-dialog .lead-success { overflow-y: auto; }
+@media (max-width: 640px) {
+  .lead-dialog[open] { max-height: min(91dvh,730px); }
+  .lead-sheet { padding: 14px 18px 8px; }
+  .lead-step-head--offer h2 { font-size: 23px; }
+  .lead-step-head--offer p { font-size: 12px; margin-bottom: 7px; }
+  .lead-form-scroll { gap: 9px; padding-bottom: 11px; }
+  .lead-form-actions { padding-top: 10px; padding-bottom: max(12px,env(safe-area-inset-bottom)); }
+}
+@media (max-height: 620px) {
+  .lead-dialog[open] { max-height: 96dvh; }
+  .lead-sheet { padding-top: 9px; padding-bottom: 5px; }
+  .lead-sheet-top { margin-bottom: 3px; }
+  .lead-step-head--offer p { margin-bottom: 5px; }
+}
+
+/* Legacy plan selection also remains reachable on short screens. */
+.lead-sheet > .lead-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }

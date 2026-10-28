@@ -4,8 +4,11 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
+import { PlanCalculator } from "@/components/PlanCalculator";
+import { PromoOfferText, PromoOfferButton } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
+import { verifiedMenuDetails } from "@/lib/menu-item-details";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
 const secondImage = "/api/meal-image?id=1IxuZvbSI85kxn9pwF97kGCeScVpz0fdv";
@@ -16,12 +19,6 @@ const menuShowcaseCategories = [
   { label: "الفطور", tag: "BREAKFAST", image: "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_pwtdt4" },
   { label: "الساندويتشات", tag: "SANDWICHES", image: "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC" },
 ] as const;
-
-type LivePlan = {
-  daysCount: number;
-  gramsOptions: { grams: number; mealsOptions: { mealsPerDay: number; priceHalala: number }[] }[];
-};
-
 
 const menuCategories = [
   "الكل", "الوجبات", "السلطات", "الفطور", "الساندويتشات",
@@ -97,11 +94,6 @@ function ProductImage({ item, priority = false }: { item: MenuPreviewItem; prior
 }
 
 export function MenuExperience() {
-  const [days, setDays] = useState(26);
-  const [livePlans, setLivePlans] = useState<LivePlan[]>([]);
-  const [planPriceState, setPlanPriceState] = useState<"loading" | "live" | "unavailable">("loading");
-  const [grams, setGrams] = useState(150);
-  const [meals, setMeals] = useState(2);
   const [activeBuilder, setActiveBuilder] = useState<"meal" | "salad">("meal");
   const [protein, setProtein] = useState("دجاج مشوي");
   const [carbs, setCarbs] = useState<string[]>([]);
@@ -110,30 +102,10 @@ export function MenuExperience() {
   const [category, setCategory] = useState("الكل");
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
-  const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
 
-  const livePlan = livePlans.find(item => item.daysCount === days);
-  const liveGrams = livePlan?.gramsOptions.find(item => item.grams === grams);
-  const livePriceHalala = liveGrams?.mealsOptions.find(item => item.mealsPerDay === meals)?.priceHalala;
-  const price = Number.isSafeInteger(livePriceHalala) && (livePriceHalala ?? 0) > 0 ? (livePriceHalala ?? 0) / 100 : null;
-  const totalMeals = days * meals;
   const numberFormatter = new Intl.NumberFormat("ar-SA");
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/menu-plans", { cache: "no-store" })
-      .then(async response => {
-        if (!response.ok) throw new Error("LIVE_PRICES_UNAVAILABLE");
-        const result = await response.json() as { data?: LivePlan[]; status?: boolean; source?: string };
-        if (result.status !== true || result.source !== "live_app_catalog" || !Array.isArray(result.data) || result.data.length === 0) {
-          throw new Error("LIVE_PRICES_INVALID");
-        }
-        if (!cancelled) { setLivePlans(result.data); setPlanPriceState("live"); }
-      })
-      .catch(() => { if (!cancelled) setPlanPriceState("unavailable"); });
-    return () => { cancelled = true; };
-  }, []);
 
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
     return (category === "الكل" || item.category === category) &&
@@ -203,6 +175,7 @@ export function MenuExperience() {
             <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / OUR MENU</span>
             <h1 id="menu-hero-title">منيو بيسك دايت.<br /><em>وجبات تحبّها.</em></h1>
             <p>وجبات دجاج ولحم وسمك، سلطات، فطور وساندويتشات. تصفّح الصور والأسعار واختار اللي يعجبك.</p>
+            <PromoOfferText location="menu" />
             <div className="menu-hero-actions">
               <a className="menu-primary-link" href="#menu-products">استكشف الأطباق <span aria-hidden="true">↙</span></a>
               <a className="menu-ghost-link" href="#menu-custom">كوّن وجبتك <span aria-hidden="true">←</span></a>
@@ -247,23 +220,6 @@ export function MenuExperience() {
         </div>
       </section>
 
-      <section className="menu-offer-section" id="menu-offer" aria-labelledby="menu-offer-title">
-        <div className="page-shell">
-          <div className="menu-offer-card">
-            <div className="menu-offer-number" aria-label="خصم 15 بالمئة"><b>15<span>%</span></b><small>خصم على الاشتراك</small></div>
-            <div className="menu-offer-copy">
-              <span className="menu-offer-eyebrow">عرض خاص بطلب التواصل</span>
-              <h2 id="menu-offer-title">سجّل بياناتك، وخلي اشتراكك أوفر.</h2>
-              <p>سيب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك لمساعدتك تختار الباقة وتستفيد من خصم 15% عند إتمام الاشتراك.</p>
-              <small>الخصم على قيمة الباقة فقط، ولا يشمل التوصيل أو الإضافات. إرسال البيانات لا يفعّل الخصم أو الاشتراك تلقائيًا.</small>
-            </div>
-            <MenuContactButton location="final" intent="discount15_menu" className="menu-offer-cta">
-              سجّل بياناتك للعرض <span aria-hidden="true">←</span>
-            </MenuContactButton>
-          </div>
-        </div>
-      </section>
-
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
           <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="تصفح أطباق بيسك دايت بالصور والأسعار واختار القسم اللي يناسبك." />
@@ -277,22 +233,16 @@ export function MenuExperience() {
           <div className="menu-product-grid">
             {displayItems.slice(0, visibleCount).map((item) => {
               const family = variantFamilyById.get(item.id);
-              const activeItem = (family ? menuItemById.get(selectedSizes[family.key] || item.id) : null) || item;
+              const activeItem = item;
               return (
                 <article className="menu-product-card" key={family?.key || item.id}>
                   <ProductImage key={activeItem.id} item={activeItem} />
                   <div className="menu-product-body">
                     <span className="menu-product-category">{activeItem.category}</span>
                     <h3>{family?.title || activeItem.name}</h3>
-                    {family && <div className="menu-product-sizes" role="group" aria-label={"اختر وزن " + family.title}>
-                      {family.sizes.map(size => <button key={size.id} type="button" aria-pressed={activeItem.id === size.id}
-                        className={activeItem.id === size.id ? "is-active" : ""}
-                        onClick={() => setSelectedSizes(previous => ({ ...previous, [family.key]: size.id }))}>
-                        {size.grams} جم
-                      </button>)}
-                    </div>}
+                    {family && <p className="menu-product-weights-hint">متاح 100 / 150 / 200 جم · اختار الحجم من التفاصيل</p>}
                     <div className="menu-product-bottom">
-                      <div><small>السعر</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
+                      <div><small>{family ? "يبدأ من" : "السعر"}</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
                       <button type="button" onClick={() => setSelectedProduct(activeItem)} aria-label={"تفاصيل " + activeItem.name}>التفاصيل <span aria-hidden="true">←</span></button>
                     </div>
                   </div>
@@ -300,66 +250,24 @@ export function MenuExperience() {
               );
             })}
           </div>
+          {category === "الكل" && !search.trim() && displayItems.length >= 12 && <aside className="menu-offer-inline" aria-label="ميزة تسجيل الموقع">
+            <span className="menu-offer-inline-amount">15%</span>
+            <div className="menu-offer-inline-copy"><strong>عجبك الأكل؟ خلي اشتراكك أوفر.</strong>
+              <p>سجّل اسمك وجوالك من الموقع. فريقنا يساعدك تختار الاشتراك المناسب ويراجع معك الاستفادة من خصم 15% على الباقة.</p>
+              <small>بدون دفع أو التزام بالاشتراك عند التسجيل.</small>
+            </div>
+            <div className="menu-offer-inline-actions">
+              <PromoOfferButton placement="catalog" className="menu-offer-inline-primary">سجّل لخصم 15% ←</PromoOfferButton>
+              <a href="#menu-plans">احسب التوفير أولًا</a>
+            </div>
+          </aside>}
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
           {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
           <p className="menu-catalog-footnote">الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
         </div>
       </section>
 
-      <section className="menu-section menu-plans-section" id="menu-plans" aria-labelledby="menu-plans-title">
-        <div className="page-shell">
-          <Heading id="menu-plans-title" tag="الباقات / BASIC DIET" title="اشتراك يناسب يومك." copy="اختار مدة الاشتراك وحجم البروتين وعدد الوجبات، وشوف السعر الأساسي مباشرة." />
-          <div className="menu-plan-layout">
-            <div className="menu-plan-picker">
-              <p className="menu-control-label"><span>01</span> مدة الاشتراك</p>
-              <div className="menu-plan-durations" role="group" aria-label="مدة الاشتراك">
-                {[7, 26, 30].map((value) => (
-                  <button type="button" key={value} className={"menu-duration" + (days === value ? " is-active" : "")}
-                    aria-pressed={days === value} onClick={() => setDays(value)}>
-                    <strong>{value}</strong><span>يوم</span>
-
-                  </button>
-                ))}
-              </div>
-              <p className="menu-control-label"><span>02</span> حجم البروتين</p>
-              <div className="menu-select-pills" role="group" aria-label="حجم البروتين">
-                {[100, 150, 200].map((value) => (
-                  <button type="button" key={value} className={grams === value ? "is-active" : ""}
-                    aria-pressed={grams === value} onClick={() => setGrams(value)}><b>{value}</b> جم</button>
-                ))}
-              </div>
-              <p className="menu-control-label"><span>03</span> عدد الوجبات يوميًا</p>
-              <div className="menu-select-pills menu-meal-count" role="group" aria-label="عدد الوجبات">
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <button type="button" key={value} className={meals === value ? "is-active" : ""}
-                    aria-pressed={meals === value} onClick={() => setMeals(value)}>{value}</button>
-                ))}
-              </div>
-            </div>
-            <aside className="menu-plan-result" aria-label="سعر الباقة">
-              <span className="menu-plan-result-kicker">ملخص اشتراكك</span>
-              <div className="menu-plan-result-top"><span>{days} يوم</span><b>{grams} جرام بروتين</b></div>
-              <p>السعر الأساسي للباقة</p>
-              <div key={days + "-" + grams + "-" + meals} className="menu-price-pop" aria-live="polite" aria-atomic="true">
-                {price !== null ? <><strong>{numberFormatter.format(price)}</strong><span>ر.س</span></> :
-                  <strong className="menu-price-unavailable">{planPriceState === "loading" ? "جاري تحميل السعر..." : "السعر غير متاح"}</strong>}
-              </div>
-              <div className="menu-plan-specs">
-                <div><strong>{totalMeals}</strong><span>وجبة في الباقة</span></div>
-                <div><strong>{meals}</strong><span>وجبات يوميًا</span></div>
-                <div><strong>{grams}</strong><span>جرام بروتين</span></div>
-              </div>
-              <p className="menu-plan-caution">{price === null ? "الأسعار غير متاحة مؤقتًا. يمكن لفريق المطعم تأكيد تكلفة الباقة، أو الاطلاع عليها من التطبيق." : "السعر الأساسي مباشرة من كتالوج التطبيق، قبل رسوم التوصيل والإضافات وأي خصومات. السعر النهائي يحدده التطبيق عند الاشتراك."}</p>
-              <div className="menu-plan-offer">
-                <strong>وفر 15% على اشتراكك</strong>
-                <span>سيب بياناتك عشان نكلمك عن الباقة والعرض.</span>
-              </div>
-              <MenuContactButton location="plans" intent="discount15_plan" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">سجّل بياناتك للخصم <span aria-hidden="true">←</span></MenuContactButton>
-              <div className="menu-plan-store"><span>أو اشترك بنفسك من التطبيق</span><StoreLinks location="app" /></div>
-            </aside>
-          </div>
-        </div>
-      </section>
+      <PlanCalculator sectionId="menu-plans" context="menu" />
 
       <section className="menu-section menu-custom-section" id="menu-custom" aria-labelledby="menu-custom-title">
         <div className="page-shell">
@@ -453,8 +361,7 @@ export function MenuExperience() {
                 </div>
               )}
               <p className="menu-summary-disclaimer">استعراض فقط. لا يتم إنشاء طلب أو احتساب سعر أو سعرات من هذه الاختيارات.</p>
-              <p className="menu-builder-offer">عاجبك اختيارك؟ سجّل بياناتك واسألنا عن خصم 15% على الاشتراك.</p>
-              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "discount15_meal_builder" : "discount15_salad_builder"} className="menu-summary-cta">سجّل بياناتك وخلّينا نكلمك <span aria-hidden="true">←</span></MenuContactButton>
+              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "meal_builder" : "salad_builder"} className="menu-summary-cta">خلّينا نتواصل معك <span aria-hidden="true">←</span></MenuContactButton>
               <div className="menu-builder-store"><span>أو حمّل التطبيق وكمّل بنفسك</span><StoreLinks location="app" /></div>
             </aside>
           </div>
@@ -463,7 +370,7 @@ export function MenuExperience() {
 
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">جاهز تبدأ؟<br /><em>خصم 15% على اشتراكك.</em></h2><p>سجّل اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك ويشرح لك العرض المناسب. أو حمّل التطبيق واشترك بنفسك.</p><MenuLeadCapture /></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اختار أكلك…<br /><em>ووفّر 15% على اشتراكك.</em></h2><p>سجّل اسمك ورقم جوالك، وفريقنا يتواصل معك لإكمال اشتراكك والاستفادة من العرض. خصم الباقة فقط، حسب الشروط.</p><MenuLeadCapture /></div>
           <div className="menu-download-food" aria-label="من أطباق بيسك دايت">
             <div className="menu-download-food-main"><Image src={thirdImage} alt="سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 45vw, 350px" /></div>
             <div className="menu-download-food-mini"><Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 28vw, 180px" /></div>
@@ -477,12 +384,32 @@ export function MenuExperience() {
             <button type="button" className="menu-dialog-close" autoFocus aria-label="إغلاق التفاصيل" onClick={() => setSelectedProduct(null)}>×</button>
             <ProductImage item={selectedProduct} />
             <div className="menu-detail-copy">
-              <span className="menu-product-category">{selectedProduct.category}</span>
-              <h2 id="menu-detail-title">{selectedProduct.name}</h2>
-              <p>من أصناف بيسك دايت. لمعرفة التوفر والتفاصيل الدقيقة، تواصل معنا أو تصفح التطبيق. قد تختلف الصور التوضيحية عن المنتج النهائي.</p>
-              <strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س <small>قبل أي رسوم أو إضافات</small></strong>
-              <MenuContactButton location="final" intent={"product_" + selectedProduct.id} className="menu-detail-contact">تبغى نكلمك عن المنيو؟ ←</MenuContactButton>
-              <a href="#menu-download" onClick={() => setSelectedProduct(null)}>أو حمّل تطبيق Basic Diet ←</a>
+              <span className="menu-detail-eyebrow">{selectedProduct.category} · BASIC DIET</span>
+              <h2 id="menu-detail-title">{variantFamilyById.get(selectedProduct.id)?.title || selectedProduct.name}</h2>
+              <p className="menu-detail-description">{verifiedMenuDetails[selectedProduct.id]?.description || "المكونات والوصف المعتمدان لهذا الصنف قيد التحديث. تقدر تسأل فريقنا قبل الطلب."}</p>
+              {variantFamilyById.get(selectedProduct.id) && (
+                <div className="menu-detail-size-group" role="group" aria-label="اختر حجم الصنف">
+                  <strong>اختر الوزن</strong>
+                  <div>
+                    {variantFamilyById.get(selectedProduct.id)?.sizes.map(size => (
+                      <button key={size.id} type="button"
+                        aria-pressed={selectedProduct.id === size.id}
+                        onClick={() => setSelectedProduct(menuItemById.get(size.id) || selectedProduct)}>
+                        {size.grams} جم
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="menu-detail-nutrition">
+                <strong>المعلومات الغذائية ومسببات الحساسية</strong>
+                <p>القيم الغذائية ومسببات الحساسية لم تُعتمد للنشر لهذا الصنف. يُرجى تأكيد التفاصيل مع المطعم، خصوصًا إذا عندك حساسية غذائية.</p>
+              </div>
+              <div className="menu-detail-purchase-row">
+                <div><span>سعر الصنف</span><strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س</strong></div>
+                <MenuContactButton location="final" intent={"product_" + selectedProduct.id} className="menu-detail-contact">استفسر عن الصنف ←</MenuContactButton>
+              </div>
+              <a className="menu-detail-app-link" href="#menu-download" onClick={() => setSelectedProduct(null)}>أو حمّل التطبيق واطلب بنفسك ←</a>
             </div>
           </section>
         </div>

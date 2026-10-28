@@ -114,3 +114,18 @@ Source:
 ## Next execution phase
 
 **Live visual review + final launch QA**
+
+
+## 2026-10-28 — Website conversion polish
+
+Preview-only improvements unify the 15% registration CTA, preserve instant no-plan intake, prevent stale requests from changing reopened dialogs, accept Arabic phone digits, keep registration reachable during catalog outages, and use canonical menu photos/prices on the homepage. Next.js updated from vulnerable 16.4.0 to 16.4.3 after the official October advisory.
+
+Build passed. Responsive and isolated persistence CI checks are pending. Preview submissions remain blocked server-side; backend #174 and dashboard #61 are paired prerequisites for actual CRM intake. No production changes or measured marketing uplift.
+
+
+### Verification completed — 2026-10-28
+
+- 49 website registration, responsive, menu and origin checks passed in GitHub Actions run 40691131325 (bbd09894c58fb9b9ee403f3920107378a60dc04e). Screenshots reviewed at 320x520, 390x640 and 1440x900.
+- Real isolated HTTP intake -> MongoDB -> dashboard read/report test passed in run 40690019878, including duplicate prevention and null/unselected plan dimensions. Dashboard build and five UI/access tests passed.
+- Railway preview deployment 5a336064-5245-433f-9d77-24adbb79705c reached SUCCESS. Live home/menu/catalog returned 200; empty same-origin preview intake returned PREVIEW_ONLY/403. No actual customer lead was created.
+- Production image-cache fixes and current canonical gallery are retained in the coordinated release candidate. Backend #174, dashboard #61 and website #175 remain a paired release; production and paid ad spend are unchanged. No conversion uplift is claimed.

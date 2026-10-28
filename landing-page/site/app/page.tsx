@@ -2,15 +2,16 @@ import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { AppReveal } from "@/components/AppReveal";
 import { MealGallery } from "@/components/MealGallery";
-import { Benefits } from "@/components/Benefits";
+import { PlanCalculator } from "@/components/PlanCalculator";
 import { HowItWorks } from "@/components/HowItWorks";
+import { ServiceClarity } from "@/components/ServiceClarity";
 import { InstagramReels } from "@/components/InstagramReels";
-import { Plans } from "@/components/Plans";
 import { FAQ } from "@/components/FAQ";
 import { FinalCTA } from "@/components/FinalCTA";
 import { Footer } from "@/components/Footer";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { LeadDialog } from "@/components/LeadDialog";
+import { PromoMobileBar } from "@/components/PromoExperience";
 import { StructuredData } from "@/components/StructuredData";
 
 export default function Home() {
@@ -23,15 +24,16 @@ export default function Home() {
         انتقل للمحتوى
       </a>
       <Header />
+      <PromoMobileBar />
       <main id="main">
         <div id="top" />
         <Hero />
-        <AppReveal />
         <MealGallery />
-        <Benefits />
+        <PlanCalculator sectionId="plans" context="home" />
         <HowItWorks />
+        <ServiceClarity />
+        <AppReveal />
         <InstagramReels />
-        <Plans />
         <FAQ />
         <FinalCTA />
       </main>

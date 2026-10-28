@@ -115,7 +115,9 @@ export function AnalyticsTracker() {
       }
     };
 
+    const onLeadOpen = (event: Event) => track("lp_lead_opened", (event as CustomEvent).detail || {});
     const onLead = (event: Event) => track("lp_lead_submitted", (event as CustomEvent).detail || {});
+    window.addEventListener("basicdiet:lead_opened", onLeadOpen);
     window.addEventListener("basicdiet:lead_submitted", onLead);
     window.addEventListener("basicdiet:cta", onCta);
     window.addEventListener("basicdiet:store_click", onStoreClick);
@@ -123,6 +125,7 @@ export function AnalyticsTracker() {
     document.addEventListener("toggle", onToggle, true);
     return () => {
       observer?.disconnect();
+      window.removeEventListener("basicdiet:lead_opened", onLeadOpen);
       window.removeEventListener("basicdiet:lead_submitted", onLead);
       window.removeEventListener("basicdiet:cta", onCta);
       window.removeEventListener("basicdiet:store_click", onStoreClick);

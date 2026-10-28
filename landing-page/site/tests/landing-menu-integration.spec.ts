@@ -41,9 +41,9 @@ test("view-more in the homepage gallery opens the full menu, and the logo return
 test("one canonical menu link is present in hero, header, gallery, plans and footer", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('.site-header .desktop-nav a[href="/menu"]')).toHaveCount(1);
-  await expect(page.locator('.hero-cinema-actions a[href="/menu"]')).toHaveCount(1);
+  await expect(page.locator('.hero-cinema-actions a[href="/menu#menu-products"]')).toHaveCount(1);
   await expect(page.locator('#meals .food-link[href="/menu"]')).toHaveCount(1);
-  await expect(page.locator('#plans a[href="/menu"]')).toHaveCount(1);
+  await expect(page.locator('#plans a[href^="/menu?"]')).toHaveCount(1);
   await expect(page.locator('.footer-nav a[href="/menu"]')).toHaveCount(1);
 });
 
@@ -52,7 +52,7 @@ for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     await expect(page.locator("#meals .food-footer .food-link--menu")).toBeVisible();
-    await expect(page.locator(".hero-cinema-actions .hero-menu-link")).toBeVisible();
+    await expect(page.locator('.hero-cinema-actions a[href="/menu#menu-products"]')).toBeVisible();
     await expect.poll(async () => page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);

@@ -606,3 +606,61 @@
 @media (max-width: 520px) {
   .menu-photo-disclosure { inset-inline-start: 6px; bottom: 7px; padding: 3px 7px; font-size: 10px; min-height: 22px; }
 }
+
+
+/* October UX audit: consistent food frames, responsive browser controls and detail-sheet. */
+.menu-product-photo { background: radial-gradient(circle at 50% 45%,#f7f8ed 0%,#edf2e9 77%); }
+.menu-product-photo img { object-fit: contain; }
+.menu-product-photo:has(.menu-photo-disclosure) img { object-fit: contain; }
+.menu-product-card { display: flex; flex-direction: column; }
+.menu-product-body { display: flex; flex-direction: column; flex: 1; }
+.menu-product-body h3 { min-height: 0; margin: 8px 0 12px; }
+.menu-product-bottom { margin-top: auto; }
+.menu-product-weights-hint { font-size: 11px; color: #517461; line-height: 1.6; margin: 0 0 11px; }
+.menu-detail-dialog { width: min(940px, 100%); grid-template-columns: minmax(0,.93fr) minmax(0,1.07fr); }
+.menu-detail-copy { padding: 43px 31px 27px; }
+.menu-detail-eyebrow { color: #1a7e52; font-size: 12px; font-weight: 800; }
+.menu-detail-copy h2 { line-height: 1.25; margin: 8px 0 14px; font-size: clamp(24px,2.7vw,33px); }
+.menu-detail-copy p.menu-detail-description { color: #3b5946; font-size: 15px; line-height: 1.85; margin: 0 0 20px; }
+.menu-detail-size-group > strong, .menu-detail-nutrition > strong { display: block; font-size: 14px; margin-bottom: 10px; }
+.menu-detail-size-group > div { display: flex; gap: 10px; margin-bottom: 21px; }
+.menu-detail-size-group button { min-height: 48px; min-width: 88px; padding: 10px 14px; border-radius: 11px; background: #f0f5ec; color: #24513a; border: 1px solid #d4e7d4; font-weight: 800; }
+.menu-detail-size-group button[aria-pressed="true"] { background: #0e774e; color: white; border-color: #0e774e; }
+.menu-detail-nutrition { border-block: 1px solid #e0e9df; padding-block: 15px; margin-bottom: 16px; }
+.menu-detail-copy .menu-detail-nutrition p { margin: 0; font-size: 13px; line-height: 1.7; color: #66806d; }
+.menu-detail-purchase-row { display: flex; align-items: center; justify-content: space-between; gap: 13px; margin-top: auto; }
+.menu-detail-purchase-row > div { display: grid; gap: 4px; }
+.menu-detail-purchase-row > div span { color: #637d69; font-size: 12px; }
+.menu-detail-purchase-row > div strong { white-space: nowrap; font: 800 25px system-ui,sans-serif; }
+.menu-detail-purchase-row .menu-detail-contact { width: auto; min-height: 49px; margin: 0; padding: 11px 17px; }
+.menu-detail-copy a.menu-detail-app-link { display: block; margin-top: 11px; padding: 12px; text-align: center; color: #0f5c3a; background: #f0f6ed; border-radius: 11px; font-weight: 700; }
+@media (min-width: 1000px) {
+  .menu-product-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .menu-product-photo { height: clamp(205px,19vw,260px); }
+  .menu-product-body { min-height: 128px; }
+}
+@media (max-width: 760px) {
+  /* Search plus a horizontal category rail stay in view only inside menu. */
+  .menu-catalog-tools { position: sticky; z-index: 55; top: 71px; display: flex; flex-direction: column; gap: 9px; margin: 0 -10px 16px; padding: 10px; background: rgb(251 252 248 / 96%); backdrop-filter: blur(14px); border-bottom: 1px solid #e2eadf; }
+  .menu-catalog-tools .menu-search { order: 0; flex: none; width: 100%; }
+  .menu-catalog-tools .menu-search input { min-height: 46px; }
+  .menu-catalog-tools .menu-filter-strip { order: 1; display: flex; flex-wrap: nowrap; flex: none; width: 100%; gap: 7px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; padding: 2px 0 6px; }
+  .menu-catalog-tools .menu-filter-strip::-webkit-scrollbar { display: none; }
+  .menu-filter-strip button { flex: 0 0 auto; min-height: 44px; padding: 9px 14px; font-size: 13px; }
+  .menu-detail-dialog { width: 100%; max-height: min(92dvh,820px); border-radius: 23px 23px 0 0; grid-template-columns: 1fr; }
+  .menu-dialog-backdrop { align-items: end; padding: 0; }
+  .menu-detail-dialog .menu-product-photo { height: 29dvh; min-height: 175px; max-height: 280px; }
+  .menu-detail-copy { padding: 22px 20px max(24px,env(safe-area-inset-bottom)); }
+  .menu-detail-copy h2 { font-size: 27px; }
+  .menu-detail-size-group button { flex: 1; min-width: 0; min-height: 48px; }
+  .menu-detail-purchase-row { position: sticky; bottom: 0; padding: 11px 0; background: #fff; }
+  .menu-detail-purchase-row > div strong { font-size: 22px; }
+  .menu-detail-purchase-row .menu-detail-contact { min-height: 49px; font-size: 13px; }
+}
+@media (max-width: 520px) {
+  .menu-product-body { min-height: 126px; }
+  .menu-product-weights-hint { font-size: 10px; }
+  .menu-product-bottom small { font-size: 11px; }
+  .menu-product-photo { height: 150px; }
+  .menu-detail-dialog .menu-product-photo { height: 28dvh; }
+}

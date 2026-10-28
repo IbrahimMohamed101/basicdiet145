@@ -1,4 +1,4 @@
-import { AppCta } from "./AppCta";
+import { PromoOfferText } from "./PromoExperience";
 import { HERO_POSTER_URL, HERO_VIDEO_URL } from "@/lib/app-links";
 
 export function Hero() {
@@ -36,11 +36,10 @@ export function Hero() {
             مع بيسك دايت (Basic Diet)، اختر اشتراك وجبات صحية في جدة، وحدد مدة الاشتراك وكمية الوجبة وعدد وجباتك يوميًا بكل سهولة.
           </p>
 
+          <PromoOfferText location="hero" />
           <div className="hero-cinema-actions">
-            <AppCta location="hero" className="button button--hero button--hero-cinema">
-              ابدأ اشتراكك
-            </AppCta>
-            <a className="hero-menu-link" href="/menu">تصفح المنيو والأسعار <span aria-hidden="true">←</span></a>
+            <a className="button button--hero button--hero-cinema" href="#plans">احسب باقتك</a>
+            <a className="button button--hero-outline" href="/menu#menu-products">تصفّح المنيو</a>
           </div>
         </div>
       </div>
