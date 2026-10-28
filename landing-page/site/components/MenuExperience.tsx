@@ -135,7 +135,7 @@ export function MenuExperience() {
   function toggleCarb(item: string) {
     setCarbs((previous) => previous.includes(item)
       ? previous.filter((value) => value !== item)
-      : previous.length >= 2 ? previous : [...previous, item]);
+      : previous.length >= 2 ? [previous[1], item] : [...previous, item]);
   }
 
   function toggleSaladOption(key: SaladGroupKey, item: string, max: number) {
@@ -277,7 +277,15 @@ export function MenuExperience() {
             <div className="menu-builder-editor">
               {activeBuilder === "meal" ? (
                 <div key="meal">
-                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اختر نوع بروتين واحدًا وحتى خيارين من الكارب والإضافات؛ الملخص يتغير مع كل اختيار.</p></div>
+                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اختر بروتين واحدًا وحتى خيارين من الكارب والإضافات. اختيار إضافة ثالثة يستبدل الأقدم تلقائيًا.</p></div>
+                  <div className="menu-mobile-selection-status" role="status" aria-live="polite" aria-atomic="true">
+                    <div className="menu-mobile-selection-current">
+                      <small>اختيارات وجبتك</small>
+                      <strong>{protein}</strong>
+                      <span>{carbs.length} / 2 إضافات{carbs.length ? " · " + carbs.join("، ") : " · اختر الإضافات المناسبة"}</span>
+                    </div>
+                    <a href="#menu-builder-summary">الملخص <span aria-hidden="true">↓</span></a>
+                  </div>
                   <div className="menu-option-block">
                     <div className="menu-option-title"><strong>اختر البروتين</strong><span>اختيار واحد من {mealProteinChoices.length}</span></div>
                     <div className="menu-meal-protein-tabs" role="group" aria-label="تصفية أنواع البروتين">
@@ -308,9 +316,8 @@ export function MenuExperience() {
                     <div className="menu-option-grid">
                       {mealSideChoices.map((option) => {
                         const picked = carbs.includes(option.name);
-                        const full = carbs.length >= 2 && !picked;
                         const src = option.image || menuArtUrl(option.name);
-                        return <button type="button" key={option.name} aria-pressed={picked} disabled={full}
+                        return <button type="button" key={option.name} aria-pressed={picked}
                             className={"menu-option-photo-button" + (picked ? " is-active" : "")}
                             onClick={() => toggleCarb(option.name)}>
                           <span className="menu-option-thumb"><Image src={src} alt="" fill sizes="(max-width: 520px) 42vw, 180px" unoptimized={src.startsWith("/api/menu-art")} /></span>
@@ -343,7 +350,7 @@ export function MenuExperience() {
                 </div>
               )}
             </div>
-            <aside className="menu-builder-summary" aria-label="ملخص المكونات">
+            <aside className="menu-builder-summary" id="menu-builder-summary" aria-label="ملخص المكونات">
               <span className="menu-summary-eyebrow">ملخص اختياراتك</span>
               <div className="menu-summary-visual">
                 <div className="menu-summary-visual-photo">
