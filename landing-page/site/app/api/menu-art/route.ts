@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
-const kinds = new Set(["water","soda","juice","shake","icecream","cake","sweets","sandwich","burger","salad","eggs","chicken","beef","rice","pasta"]);
+const kinds = new Set(["water","soda","juice","shake","icecream","cake","sweets","sandwich","burger","salad","eggs","chicken","beef","rice","pasta","potato"]);
 const colors: Record<string, [string, string, string]> = {
   natural: ["#c88c46","#8c4d27","#f6e7bf"],
   cream: ["#e3c793","#8d6141","#fff1cc"],
@@ -18,6 +18,7 @@ function plateFood(kind: string, c: string[]) {
   if (kind === "salad") return '<ellipse cx="480" cy="365" rx="244" ry="160" fill="#f3eee1" stroke="#d8d1b8" stroke-width="16"/><ellipse cx="480" cy="365" rx="213" ry="135" fill="#4d9855"/><g fill="#b4d879"><circle cx="353" cy="328" r="48"/><circle cx="541" cy="304" r="53"/><circle cx="465" cy="419" r="50"/><circle cx="622" cy="389" r="41"/></g><g fill="#ee685a"><circle cx="402" cy="360" r="25"/><circle cx="565" cy="378" r="25"/><circle cx="484" cy="306" r="21"/></g><g fill="#f2e9cf"><rect x="467" y="362" width="45" height="35" rx="9" transform="rotate(22 467 362)"/><rect x="341" y="405" width="45" height="35" rx="9" transform="rotate(-25 341 405)"/></g>';
   if (kind === "eggs") return greens + '<g transform="rotate(-12 480 352)"><ellipse cx="409" cy="357" rx="111" ry="91" fill="#fffaf1" stroke="#dedace" stroke-width="6"/><ellipse cx="417" cy="352" rx="51" ry="48" fill="#efb843"/><ellipse cx="554" cy="385" rx="106" ry="81" fill="#fff9f0" stroke="#dedace" stroke-width="6"/><circle cx="559" cy="376" r="42" fill="#eab343"/></g>'+garnish;
   if (kind === "pasta") return '<g fill="none" stroke="#e8b877" stroke-width="15" stroke-linecap="round"><path d="M310 326q100-135 200 2t120 4 M335 401q110-160 216-12t111-14 M311 366q100 135 222-8t131 52 M367 298q87 99 149-4t119 65 M363 438q78-102 147-43t120-26"/></g><g fill="#f5e4b5"><ellipse cx="453" cy="322" rx="26" ry="12" transform="rotate(20 453 322)"/><ellipse cx="566" cy="410" rx="26" ry="12" transform="rotate(-24 566 410)"/></g>'+garnish;
+  if (kind === "potato") return greens + '<g fill="#e6a15a" stroke="#a45e35" stroke-width="8"><path d="M292 314q79-99 172 21l-67 145q-132-25-105-166z"/><path d="M485 292q116-89 166 74l-101 105q-96-47-65-179z"/><path d="M401 404q91-70 147 56l-98 64q-101-49-49-120z"/></g><g fill="#f7ca7d" opacity=".87"><path d="M332 322l87 22-38 84-55-22z"/><path d="M524 313l76 49-66 58-31-39z"/></g>'+garnish;
   if (kind === "rice") return rice + '<g><ellipse cx="385" cy="363" rx="145" ry="95" fill="#9f6038"/><ellipse cx="385" cy="340" rx="135" ry="79" fill="#d28747"/><ellipse cx="347" cy="338" rx="55" ry="35" fill="#aa562d" transform="rotate(-20 347 338)"/><ellipse cx="438" cy="372" rx="61" ry="31" fill="#8e5031" transform="rotate(22 438 372)"/></g>'+garnish;
   if (kind === "beef") return rice + '<g stroke="#804126" stroke-width="8" fill="#af5d39"><path d="M293 329q-17-70 73-70t100 44q61 35 2 86t-159-12z"/><path d="M335 387q16-61 85-37t53 73q-60 42-138-2z" fill="#8e3e29"/></g>'+garnish;
   return rice + '<g stroke="#b66b38" stroke-width="9" fill="#e5a364"><path d="M270 339q22-89 144-74t86 80q-7 97-152 82t-78-88z"/><path d="M322 349q24-66 86-30t39 75q-99 14-125-45z" fill="#f1bb79"/></g>'+garnish;
