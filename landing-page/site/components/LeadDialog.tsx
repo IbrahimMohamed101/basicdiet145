@@ -194,7 +194,7 @@ export function LeadDialog() {
       }
       setStep(3);
       window.dispatchEvent(new CustomEvent("basicdiet:lead_submitted", {
-        detail: { location, planDays: needsPlanAssistance ? null : selected?.daysCount, planSelected: !needsPlanAssistance, offer: promoMode, placement: sourceDetail },
+        detail: { requestId: requestId.current, location, planDays: needsPlanAssistance ? null : selected?.daysCount, planSelected: !needsPlanAssistance, offer: promoMode, placement: sourceDetail },
       }));
     } catch {
       if (submissionLoad !== loadId.current) return;
