@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
-import { MenuAppCatalog } from "@/components/MenuAppCatalog";
+import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
@@ -170,6 +170,9 @@ export function MenuExperience() {
   });
   const saladComplete = saladGroups.every(group => group.min === 0 || (saladChoices[group.key] || []).length >= group.min);
   const saladTotal = Object.values(saladChoices).reduce((sum, chosen) => sum + chosen.length, 0);
+  const selectedSaladLabels = saladGroups.flatMap(group => saladChoices[group.key] || []);
+  const mealSelections = 1 + carbs.length;
+  const saladMandatoryComplete = saladGroups.filter(group => group.min > 0 && (saladChoices[group.key] || []).length >= group.min).length;
 
   function toggleCarb(item: string) {
     setCarbs((previous) => previous.includes(item)
@@ -291,31 +294,29 @@ export function MenuExperience() {
         </div>
       </section>
 
-      <MenuAppCatalog />
-
       <section className="menu-section menu-plans-section" id="menu-plans" aria-labelledby="menu-plans-title">
         <div className="page-shell">
-          <Heading id="menu-plans-title" tag="SUBSCRIPTIONS / الباقات" title="روتينك. سعرك. اختيارك." copy="جرّب تغيير مدة الاشتراك وحجم الوجبة وعدد الوجبات يوميًا، وشاهد كيف تتغير الباقة أمامك." />
+          <Heading id="menu-plans-title" tag="الباقات / BASIC DIET" title="اشتراك يناسب يومك." copy="اختار مدة الاشتراك وحجم البروتين وعدد الوجبات، وشوف السعر الأساسي مباشرة." />
           <div className="menu-plan-layout">
             <div className="menu-plan-picker">
-              <p className="menu-control-label">01 / مدة الاشتراك</p>
+              <p className="menu-control-label"><span>01</span> مدة الاشتراك</p>
               <div className="menu-plan-durations" role="group" aria-label="مدة الاشتراك">
                 {[7, 26, 30].map((value) => (
                   <button type="button" key={value} className={"menu-duration" + (days === value ? " is-active" : "")}
                     aria-pressed={days === value} onClick={() => setDays(value)}>
                     <strong>{value}</strong><span>يوم</span>
-                    {value === 26 && <small>اختيار مميز</small>}
+
                   </button>
                 ))}
               </div>
-              <p className="menu-control-label">02 / حجم الوجبة</p>
+              <p className="menu-control-label"><span>02</span> حجم البروتين</p>
               <div className="menu-select-pills" role="group" aria-label="حجم الوجبة">
                 {[100, 150, 200].map((value) => (
                   <button type="button" key={value} className={grams === value ? "is-active" : ""}
                     aria-pressed={grams === value} onClick={() => setGrams(value)}><b>{value}</b> جم</button>
                 ))}
               </div>
-              <p className="menu-control-label">03 / عدد الوجبات يوميًا</p>
+              <p className="menu-control-label"><span>03</span> عدد الوجبات يوميًا</p>
               <div className="menu-select-pills menu-meal-count" role="group" aria-label="عدد الوجبات">
                 {[1, 2, 3, 4, 5].map((value) => (
                   <button type="button" key={value} className={meals === value ? "is-active" : ""}
@@ -324,21 +325,21 @@ export function MenuExperience() {
               </div>
             </div>
             <aside className="menu-plan-result" aria-label="معاينة سعر الباقة">
-              <span className="menu-plan-result-kicker">BASIC DIET / YOUR PLAN</span>
-              <div className="menu-plan-result-top"><span>اشتراك {days} يوم</span><b>{grams} جم</b></div>
-              <p>{price === null ? "سعر الباقة الأساسية" : "السعر الأساسي الحالي من كتالوج التطبيق"}</p>
+              <span className="menu-plan-result-kicker">ملخص اشتراكك</span>
+              <div className="menu-plan-result-top"><span>{days} يوم</span><b>{grams} جرام بروتين</b></div>
+              <p>السعر الأساسي للباقة</p>
               <div key={days + "-" + grams + "-" + meals} className="menu-price-pop" aria-live="polite" aria-atomic="true">
                 {price !== null ? <><strong>{numberFormatter.format(price)}</strong><span>ر.س</span></> :
                   <strong className="menu-price-unavailable">{planPriceState === "loading" ? "جاري تحميل السعر..." : "السعر غير متاح"}</strong>}
               </div>
               <div className="menu-plan-specs">
-                <div><strong>{totalMeals}</strong><span>وجبة خلال الباقة</span></div>
-                <div><strong>{meals}</strong><span>وجبة يوميًا</span></div>
-                <div><strong>{grams}g</strong><span>حجم البروتين</span></div>
+                <div><strong>{totalMeals}</strong><span>وجبة في الباقة</span></div>
+                <div><strong>{meals}</strong><span>وجبات يوميًا</span></div>
+                <div><strong>{grams}</strong><span>جرام بروتين</span></div>
               </div>
               <p className="menu-plan-caution">{price === null ? "الأسعار غير متاحة مؤقتًا. يمكن لفريق المطعم تأكيد تكلفة الباقة، أو الاطلاع عليها من التطبيق." : "السعر الأساسي مباشرة من كتالوج التطبيق، قبل رسوم التوصيل والإضافات وأي خصومات. السعر النهائي يحدده التطبيق عند الاشتراك."}</p>
-              <MenuContactButton location="plans" intent="plan_selected" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">تبغى نكلمك عن هذي الباقة؟ <span aria-hidden="true">←</span></MenuContactButton>
-              <a className="menu-result-subtle" href="#menu-download">أو حمّل التطبيق وابدأ بنفسك</a>
+              <MenuContactButton location="plans" intent="plan_selected" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">اطلب تواصل بخصوص الباقة <span aria-hidden="true">←</span></MenuContactButton>
+              <div className="menu-plan-store"><span>أو اشترك بنفسك من التطبيق</span><StoreLinks location="app" /></div>
             </aside>
           </div>
         </div>
@@ -346,13 +347,13 @@ export function MenuExperience() {
 
       <section className="menu-section menu-custom-section" id="menu-custom" aria-labelledby="menu-custom-title">
         <div className="page-shell">
-          <Heading id="menu-custom-title" tag="BUILD YOUR OWN / اصنع بنفسك" title="كل التفاصيل منك. والطعم علينا." copy="استكشف شكل تخصيص الوجبة والسلطة. تختار المكونات وتتابع ملخصك، بدون إضافة للسلة أو طلب فعلي." />
+          <Heading id="menu-custom-title" tag="كوّنها بطريقتك" title="اصنع وجبتك أو سلطتك." copy="اختار مكوناتك وشوف اختياراتك تتجمع قدامك. تجربة للمعاينة بدون طلب أو دفع." />
           <div className="menu-builder-switch" role="group" aria-label="نوع تجربة التخصيص">
             <button type="button" className={activeBuilder === "meal" ? "is-active" : ""} aria-pressed={activeBuilder === "meal"} onClick={() => setActiveBuilder("meal")}>
-              <span className="menu-builder-switch-num">01</span><b>اصنع وجبتك</b><small>بروتين + كارب</small>
+              <span className="menu-builder-switch-num">01</span><b>اصنع وجبتك</b><small>اختار البروتين والكارب</small>
             </button>
             <button type="button" className={activeBuilder === "salad" ? "is-active" : ""} aria-pressed={activeBuilder === "salad"} onClick={() => setActiveBuilder("salad")}>
-              <span className="menu-builder-switch-num">02</span><b>اصنع سلطتك</b><small>الاختيار من 6 مجموعات</small>
+              <span className="menu-builder-switch-num">02</span><b>اصنع سلطتك</b><small>مكونات على مزاجك</small>
             </button>
           </div>
 
@@ -360,7 +361,7 @@ export function MenuExperience() {
             <div className="menu-builder-editor">
               {activeBuilder === "meal" ? (
                 <div key="meal">
-                  <div className="menu-editor-heading"><span>01 / بناء الوجبة</span><h3>كوّن وجبتك خطوة بخطوة</h3><p>الاختيارات نموذج لواجهة التطبيق، وليست قائمة توافر حية.</p></div>
+                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اضغط على الصور اللي تعجبك؛ الملخص يتغير مع كل اختيار.</p></div>
                   <div className="menu-option-block">
                     <div className="menu-option-title"><strong>اختر البروتين</strong><span>اختيار واحد</span></div>
                     <div className="menu-option-grid">
@@ -379,11 +380,11 @@ export function MenuExperience() {
                       </button>)}
                     </div>
                   </div>
-                  <p className="menu-editor-note">هذه واجهة استكشاف توضيحية: بروتين واحد وحتى نوعين كارب. الأوزان وحدود التخصيص والتوفر تُراجع من التطبيق قبل أي اشتراك.</p>
+                  <p className="menu-editor-note">معاينة للتخصيص فقط. يمكن اختيار بروتين ونوعين كارب هنا؛ الاختيارات النهائية والتوفر حسب التطبيق.</p>
                 </div>
               ) : (
                 <div key="salad">
-                  <div className="menu-editor-heading"><span>02 / بناء السلطة</span><h3>سلطتك بالطريقة اللي تحبها</h3><p>مرّ على المجموعات واختَر مكوّناتك.</p></div>
+                  <div className="menu-editor-heading"><span>الخطوة 02</span><h3>سلطتك على مزاجك</h3><p>اختار من المجموعات المتاحة وشوف المكونات في الملخص.</p></div>
                   <div className="menu-salad-tabs" role="group" aria-label="مجموعات مكونات السلطة">
                     {saladGroups.map((group) => <button key={group.key} type="button" aria-pressed={saladTab === group.key} className={saladTab === group.key ? "is-active" : ""} onClick={() => setSaladTab(group.key)}>{group.label}<small>{saladChoices[group.key]?.length || 0}</small></button>)}
                   </div>
@@ -397,30 +398,47 @@ export function MenuExperience() {
                       })}
                     </div>
                   </div>
-                  <p className="menu-editor-note">حدود الاختيار في هذه المعاينة توضيحية. المعتمد فعليًا يأتي من مجموعات الخيارات المنشورة في Backend.</p>
+                  <p className="menu-editor-note">المجموعات وحدود الاختيارات هنا للتجربة البصرية؛ التخصيص النهائي يتم من التطبيق.</p>
                 </div>
               )}
             </div>
             <aside className="menu-builder-summary" aria-label="ملخص المكونات">
-              <span className="menu-summary-eyebrow">YOUR CREATION / معاينة حية</span>
-              <div className="menu-summary-disc" aria-hidden="true"><span className="menu-summary-disc-center">BD.</span></div>
-              <h3>{activeBuilder === "meal" ? "وجبتك كما اخترتها" : "سلطتك كما اخترتها"}</h3>
+              <span className="menu-summary-eyebrow">ملخص اختياراتك</span>
+              <div className="menu-summary-visual">
+                <div className="menu-summary-visual-photo">
+                  <Image key={activeBuilder === "meal" ? protein : "salad"}
+                    src={activeBuilder === "meal" ? (mealProteinPhotos[protein] || menuArtUrl(protein)) : secondImage}
+                    alt={activeBuilder === "meal" ? "صورة تمثيلية للبروتين المختار: " + protein : "صورة توضيحية للسلطة"}
+                    fill sizes="(max-width:760px) 42vw, 230px"
+                    unoptimized={activeBuilder === "meal" && (mealProteinPhotos[protein] || "").startsWith("/api/menu-art")} />
+                </div>
+                <span className="menu-summary-visual-caption">معاينة من صور المنيو وليست صورة لتركيبتك النهائية</span>
+              </div>
+              <div className="menu-summary-heading">
+                <h3>{activeBuilder === "meal" ? "وجبتك" : "سلطتك"}</h3>
+                <button type="button" onClick={() => activeBuilder === "meal" ? setCarbs([]) : setSaladChoices({})}>ابدأ من جديد</button>
+              </div>
+              <div className="menu-summary-chips" aria-live="polite">
+                {(activeBuilder === "meal" ? [protein, ...carbs] : selectedSaladLabels).map((choice, index) =>
+                  <span key={choice + index}>{choice}</span>)}
+                {activeBuilder === "salad" && selectedSaladLabels.length === 0 && <span className="is-empty">ابدأ باختيار مكوناتك</span>}
+              </div>
               {activeBuilder === "meal" ? (
                 <div className="menu-summary-data">
                   <div><span>البروتين</span><b>{protein}</b></div>
                   <div><span>الكارب</span><b>{carbs.length ? carbs.join(" • ") : "لسه ما اخترت"}</b></div>
-                  <div><span>الاكتمال</span><b>{carbs.length === 2 ? "الخيارات مكتملة" : "اختر " + (2 - carbs.length) + " كارب"}</b></div>
+                  <div><span>الاختيارات</span><b>{mealSelections} من 3</b></div>
                 </div>
               ) : (
                 <div className="menu-summary-data">
                   <div><span>المكونات المختارة</span><b>{saladTotal}</b></div>
                   <div><span>مجموعات اخترت منها</span><b>{saladGroupStatus.filter((s) => s.count > 0).length} / 6</b></div>
-                  <div><span>الحالة</span><b>{saladComplete ? "الخيارات مكتملة" : "اكمل المجموعات المطلوبة"}</b></div>
+                  <div><span>المجموعات المطلوبة</span><b>{saladMandatoryComplete} من {saladGroups.filter(g => g.min > 0).length}</b></div>
                 </div>
               )}
-              <p className="menu-summary-disclaimer">استعراض تفاعلي فقط. لا نكوّن طلبًا، ولا نحسب سعرًا أو سعرات غير مؤكدة.</p>
-              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "meal_builder" : "salad_builder"} className="menu-summary-cta">عندك سؤال؟ خلّينا نتواصل معك <span aria-hidden="true">←</span></MenuContactButton>
-              <a className="menu-result-subtle menu-builder-app-cta" href="#menu-download">أو حمّل التطبيق وكمّل اختياراتك</a>
+              <p className="menu-summary-disclaimer">استعراض فقط. لا يتم إنشاء طلب أو احتساب سعر أو سعرات من هذه الاختيارات.</p>
+              <MenuContactButton location="final" intent={activeBuilder === "meal" ? "meal_builder" : "salad_builder"} className="menu-summary-cta">خلّينا نتواصل معك <span aria-hidden="true">←</span></MenuContactButton>
+              <div className="menu-builder-store"><span>أو حمّل التطبيق وكمّل بنفسك</span><StoreLinks location="app" /></div>
             </aside>
           </div>
         </div>
@@ -428,7 +446,7 @@ export function MenuExperience() {
 
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> KEEP IN TOUCH</p><h2 id="menu-download-title">عجبك المنيو؟<br /><em>خلّنا نساعدك تختار.</em></h2><p>اتفرج على الأصناف الأول براحتك. لو لقيت اللي يناسبك، سيب رقمك في الآخر أو حمّل التطبيق وكمّل بنفسك.</p><MenuLeadCapture /></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اختارت اللي تحبه؟<br /><em>نساعدك تبدأ.</em></h2><p>سيب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك بخصوص الاشتراك. أو حمّل التطبيق بنفسك.</p><MenuLeadCapture /></div>
           <div className="menu-download-food" aria-label="من أطباق بيسك دايت">
             <div className="menu-download-food-main"><Image src={thirdImage} alt="سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 45vw, 350px" /></div>
             <div className="menu-download-food-mini"><Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 28vw, 180px" /></div>
