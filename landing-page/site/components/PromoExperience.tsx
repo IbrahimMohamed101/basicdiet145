@@ -9,7 +9,7 @@ export const PROMO_PERCENT = 15;
 export function openPromoLead(placement: string, plan?: { days: number; grams: number; meals: number; fulfillment: "pickup" | "delivery" }) {
   const isMenu = window.location.pathname === "/menu";
   const detail = {
-    location: placement === "header" ? "header" : placement === "hero" ? "hero" : "final",
+    location: placement === "header" ? "header" : placement.includes("hero") ? "hero" : "final",
     sourceDetail: (isMenu ? "menu_" : "home_") + "basic15_" + placement,
     fastContact: true,
     promoIntent: "BASIC15",
