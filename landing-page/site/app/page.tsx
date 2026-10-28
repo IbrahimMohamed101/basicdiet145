@@ -11,6 +11,7 @@ import { FinalCTA } from "@/components/FinalCTA";
 import { Footer } from "@/components/Footer";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { LeadDialog } from "@/components/LeadDialog";
+import { PromoMobileBar } from "@/components/PromoExperience";
 import { StructuredData } from "@/components/StructuredData";
 
 export default function Home() {
@@ -23,6 +24,7 @@ export default function Home() {
         انتقل للمحتوى
       </a>
       <Header />
+      <PromoMobileBar />
       <main id="main">
         <div id="top" />
         <Hero />
