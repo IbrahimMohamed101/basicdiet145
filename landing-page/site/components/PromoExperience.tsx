@@ -56,12 +56,14 @@ export function PromoMobileBar() {
     const update = () => {
       const form = document.getElementById("menu-quick-contact");
       const calculator = document.querySelector(".bd-calculator-section");
+      const customMealBuilder = document.getElementById("menu-custom");
       const inView = (element: Element | null) => {
         if (!element) return false;
         const bounds = element.getBoundingClientRect();
         return bounds.top < window.innerHeight - 90 && bounds.bottom > 115;
       };
-      setVisible(window.scrollY > 220 && !inView(form) && !inView(calculator));
+      // Do not cover interactive food cards or mobile choice feedback with the offer bar.
+      setVisible(window.scrollY > 220 && !inView(form) && !inView(calculator) && !inView(customMealBuilder));
     };
     update();
     window.addEventListener("scroll", update, { passive: true });
