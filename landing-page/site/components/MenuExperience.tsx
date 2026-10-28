@@ -161,15 +161,15 @@ export function MenuExperience() {
   const activeSaladGroup = saladGroups.find((group) => group.key === saladTab) || saladGroups[0];
   const saladGroupStatus = saladGroups.map((group) => {
     const count = (saladChoices[group.key] || []).length;
-    return { key: group.key, complete: count >= group.min && count <= group.max, count };
+    return { key: group.key, complete: group.min > 0 ? count >= group.min && count <= group.max : count > 0, count };
   });
-  const saladComplete = saladGroupStatus.every((item) => item.complete);
+  const saladComplete = saladGroups.every(group => group.min === 0 || (saladChoices[group.key] || []).length >= group.min);
   const saladTotal = Object.values(saladChoices).reduce((sum, chosen) => sum + chosen.length, 0);
 
   function toggleCarb(item: string) {
     setCarbs((previous) => previous.includes(item)
       ? previous.filter((value) => value !== item)
-      : previous.length >= 3 ? previous : [...previous, item]);
+      : previous.length >= 2 ? previous : [...previous, item]);
   }
 
   function toggleSaladOption(key: SaladGroupKey, item: string, max: number) {
@@ -366,15 +366,15 @@ export function MenuExperience() {
                     </div>
                   </div>
                   <div className="menu-option-block">
-                    <div className="menu-option-title"><strong>اختر الكارب</strong><span>{carbs.length} / 3</span></div>
+                    <div className="menu-option-title"><strong>اختر الكارب</strong><span>{carbs.length} / 2</span></div>
                     <div className="menu-option-grid">
-                      {mealCarbs.map((option) => <button type="button" key={option} aria-pressed={carbs.includes(option)} disabled={carbs.length >= 3 && !carbs.includes(option)} className={"menu-option-photo-button" + (carbs.includes(option) ? " is-active" : "")} onClick={() => toggleCarb(option)}>
+                      {mealCarbs.map((option) => <button type="button" key={option} aria-pressed={carbs.includes(option)} disabled={carbs.length >= 2 && !carbs.includes(option)} className={"menu-option-photo-button" + (carbs.includes(option) ? " is-active" : "")} onClick={() => toggleCarb(option)}>
                         <span className="menu-option-thumb">{mealCarbPhotos[option] ? <Image src={mealCarbPhotos[option]} alt="" fill sizes="88px" /> : <strong aria-hidden="true">BD.</strong>}</span>
                         <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{carbs.includes(option) ? "✓" : "+"}</span>
                       </button>)}
                     </div>
                   </div>
-                  <p className="menu-editor-note">القاعدة التوضيحية هنا: بروتين واحد و3 اختيارات كارب. الأوزان والأسعار النهائية تُجلب من كتالوج التطبيق المعتمد لاحقًا.</p>
+                  <p className="menu-editor-note">هذه واجهة استكشاف توضيحية: بروتين واحد وحتى نوعين كارب. الأوزان وحدود التخصيص والتوفر تُراجع من التطبيق قبل أي اشتراك.</p>
                 </div>
               ) : (
                 <div key="salad">
@@ -404,12 +404,12 @@ export function MenuExperience() {
                 <div className="menu-summary-data">
                   <div><span>البروتين</span><b>{protein}</b></div>
                   <div><span>الكارب</span><b>{carbs.length ? carbs.join(" • ") : "لسه ما اخترت"}</b></div>
-                  <div><span>الاكتمال</span><b>{carbs.length === 3 ? "الخيارات مكتملة" : "اختر " + (3 - carbs.length) + " كارب"}</b></div>
+                  <div><span>الاكتمال</span><b>{carbs.length === 2 ? "الخيارات مكتملة" : "اختر " + (2 - carbs.length) + " كارب"}</b></div>
                 </div>
               ) : (
                 <div className="menu-summary-data">
                   <div><span>المكونات المختارة</span><b>{saladTotal}</b></div>
-                  <div><span>المجموعات المكتملة</span><b>{saladGroupStatus.filter((s) => s.complete).length} / 6</b></div>
+                  <div><span>مجموعات اخترت منها</span><b>{saladGroupStatus.filter((s) => s.count > 0).length} / 6</b></div>
                   <div><span>الحالة</span><b>{saladComplete ? "الخيارات مكتملة" : "اكمل المجموعات المطلوبة"}</b></div>
                 </div>
               )}
