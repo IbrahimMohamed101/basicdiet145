@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
-import { StoreLinks } from "@/components/StoreLinks";
+import { PlanCalculator } from "@/components/PlanCalculator";
 import { menuArtUrl } from "@/lib/menu-art";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
@@ -16,12 +16,6 @@ const menuShowcaseCategories = [
   { label: "الفطور", tag: "BREAKFAST", image: "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_pwtdt4" },
   { label: "الساندويتشات", tag: "SANDWICHES", image: "/api/meal-image?id=1Jk3Xg_v-3dQRVx41KNlq_cr5F3aGYZHC" },
 ] as const;
-
-type LivePlan = {
-  daysCount: number;
-  gramsOptions: { grams: number; mealsOptions: { mealsPerDay: number; priceHalala: number }[] }[];
-};
-
 
 const menuCategories = [
   "الكل", "الوجبات", "السلطات", "الفطور", "الساندويتشات",
@@ -97,11 +91,6 @@ function ProductImage({ item, priority = false }: { item: MenuPreviewItem; prior
 }
 
 export function MenuExperience() {
-  const [days, setDays] = useState(26);
-  const [livePlans, setLivePlans] = useState<LivePlan[]>([]);
-  const [planPriceState, setPlanPriceState] = useState<"loading" | "live" | "unavailable">("loading");
-  const [grams, setGrams] = useState(150);
-  const [meals, setMeals] = useState(2);
   const [activeBuilder, setActiveBuilder] = useState<"meal" | "salad">("meal");
   const [protein, setProtein] = useState("دجاج مشوي");
   const [carbs, setCarbs] = useState<string[]>([]);
@@ -117,23 +106,8 @@ export function MenuExperience() {
   const liveGrams = livePlan?.gramsOptions.find(item => item.grams === grams);
   const livePriceHalala = liveGrams?.mealsOptions.find(item => item.mealsPerDay === meals)?.priceHalala;
   const price = Number.isSafeInteger(livePriceHalala) && (livePriceHalala ?? 0) > 0 ? (livePriceHalala ?? 0) / 100 : null;
-  const totalMeals = days * meals;
   const numberFormatter = new Intl.NumberFormat("ar-SA");
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/menu-plans", { cache: "no-store" })
-      .then(async response => {
-        if (!response.ok) throw new Error("LIVE_PRICES_UNAVAILABLE");
-        const result = await response.json() as { data?: LivePlan[]; status?: boolean; source?: string };
-        if (result.status !== true || result.source !== "live_app_catalog" || !Array.isArray(result.data) || result.data.length === 0) {
-          throw new Error("LIVE_PRICES_INVALID");
-        }
-        if (!cancelled) { setLivePlans(result.data); setPlanPriceState("live"); }
-      })
-      .catch(() => { if (!cancelled) setPlanPriceState("unavailable"); });
-    return () => { cancelled = true; };
-  }, []);
 
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
     return (category === "الكل" || item.category === category) &&
@@ -289,56 +263,7 @@ export function MenuExperience() {
         </div>
       </section>
 
-      <section className="menu-section menu-plans-section" id="menu-plans" aria-labelledby="menu-plans-title">
-        <div className="page-shell">
-          <Heading id="menu-plans-title" tag="الباقات / BASIC DIET" title="اشتراك يناسب يومك." copy="اختار مدة الاشتراك وحجم البروتين وعدد الوجبات، وشوف السعر الأساسي مباشرة." />
-          <div className="menu-plan-layout">
-            <div className="menu-plan-picker">
-              <p className="menu-control-label"><span>01</span> مدة الاشتراك</p>
-              <div className="menu-plan-durations" role="group" aria-label="مدة الاشتراك">
-                {[7, 26, 30].map((value) => (
-                  <button type="button" key={value} className={"menu-duration" + (days === value ? " is-active" : "")}
-                    aria-pressed={days === value} onClick={() => setDays(value)}>
-                    <strong>{value}</strong><span>يوم</span>
-
-                  </button>
-                ))}
-              </div>
-              <p className="menu-control-label"><span>02</span> حجم البروتين</p>
-              <div className="menu-select-pills" role="group" aria-label="حجم البروتين">
-                {[100, 150, 200].map((value) => (
-                  <button type="button" key={value} className={grams === value ? "is-active" : ""}
-                    aria-pressed={grams === value} onClick={() => setGrams(value)}><b>{value}</b> جم</button>
-                ))}
-              </div>
-              <p className="menu-control-label"><span>03</span> عدد الوجبات يوميًا</p>
-              <div className="menu-select-pills menu-meal-count" role="group" aria-label="عدد الوجبات">
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <button type="button" key={value} className={meals === value ? "is-active" : ""}
-                    aria-pressed={meals === value} onClick={() => setMeals(value)}>{value}</button>
-                ))}
-              </div>
-            </div>
-            <aside className="menu-plan-result" aria-label="سعر الباقة">
-              <span className="menu-plan-result-kicker">ملخص اشتراكك</span>
-              <div className="menu-plan-result-top"><span>{days} يوم</span><b>{grams} جرام بروتين</b></div>
-              <p>السعر الأساسي للباقة</p>
-              <div key={days + "-" + grams + "-" + meals} className="menu-price-pop" aria-live="polite" aria-atomic="true">
-                {price !== null ? <><strong>{numberFormatter.format(price)}</strong><span>ر.س</span></> :
-                  <strong className="menu-price-unavailable">{planPriceState === "loading" ? "جاري تحميل السعر..." : "السعر غير متاح"}</strong>}
-              </div>
-              <div className="menu-plan-specs">
-                <div><strong>{totalMeals}</strong><span>وجبة في الباقة</span></div>
-                <div><strong>{meals}</strong><span>وجبات يوميًا</span></div>
-                <div><strong>{grams}</strong><span>جرام بروتين</span></div>
-              </div>
-              <p className="menu-plan-caution">{price === null ? "الأسعار غير متاحة مؤقتًا. يمكن لفريق المطعم تأكيد تكلفة الباقة، أو الاطلاع عليها من التطبيق." : "السعر الأساسي مباشرة من كتالوج التطبيق، قبل رسوم التوصيل والإضافات وأي خصومات. السعر النهائي يحدده التطبيق عند الاشتراك."}</p>
-              <MenuContactButton location="plans" intent="plan_selected" planDays={days} grams={grams} mealsPerDay={meals} className="menu-result-link">اطلب تواصل بخصوص الباقة <span aria-hidden="true">←</span></MenuContactButton>
-              <div className="menu-plan-store"><span>أو اشترك بنفسك من التطبيق</span><StoreLinks location="app" /></div>
-            </aside>
-          </div>
-        </div>
-      </section>
+      <PlanCalculator sectionId="menu-plans" context="menu" />
 
       <section className="menu-section menu-custom-section" id="menu-custom" aria-labelledby="menu-custom-title">
         <div className="page-shell">
