@@ -591,41 +591,6 @@
 }
 
 
-/* Current published app menu: distinct from the cashier price list. */
-.menu-app-catalog-section { padding: 68px 0 80px; background: #eef3e9; border-top: 1px solid #e0eadd; }
-.menu-app-head { display: flex; align-items: end; justify-content: space-between; gap: 25px; margin-bottom: 23px; }
-.menu-app-head .menu-kicker { color: #14805b; }
-.menu-app-head h2 { font-size: clamp(32px,3.8vw,56px); letter-spacing: -.04em; line-height: 1.13; color: #113d2a; margin: 12px 0 12px; }
-.menu-app-head p:last-child { max-width: 700px; color: #4d6c55; font-size: 15px; line-height: 1.8; }
-.menu-app-live { flex: none; border: 1px solid #b8dcc2; background: #e0f3e6; color: #0e6641; padding: 9px 15px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-.menu-app-status { background: #fff; border: 1px solid #d3e3d3; border-radius: 17px; padding: 25px; color: #25543b; font-size: 15px; line-height: 1.9; }
-.menu-app-stores { margin-top: 12px; }
-.menu-app-total { color: #42664f; font-size: 13px; margin-bottom: 14px; }
-.menu-app-section-tabs { display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 14px; margin-bottom: 9px; }
-.menu-app-section-tabs button { flex: none; min-height: 41px; display: inline-flex; align-items: center; gap: 9px; border: 1px solid #d5e7d7; padding: 8px 16px; border-radius: 999px; background: #fff; color: #28543c; font-weight: 700; font-size: 13px; }
-.menu-app-section-tabs button.is-active { color: #fff; background: #075238; border-color: #075238; }
-.menu-app-section-tabs small { border-radius: 999px; background: rgb(54 145 90 / 12%); padding: 2px 5px; font: 700 11px system-ui,sans-serif; }
-.menu-app-section-tabs button.is-active small { background: rgb(255 255 255 / 22%); }
-.menu-app-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 13px; }
-.menu-app-card { min-width: 0; border: 1px solid #d8e5d7; border-radius: 17px; overflow: hidden; background: white; box-shadow: 0 8px 24px rgb(24 53 34 / 3%); }
-.menu-app-photo { position: relative; height: 175px; background: #e5eddf; }
-.menu-app-photo img { object-fit: cover; }
-.menu-app-placeholder { display: grid; place-items: center; height: 100%; color: #4c7b5c; background: radial-gradient(circle, #f4f8eb, #dce7d7); }
-.menu-app-placeholder strong { font: 800 20px/1.2 system-ui,sans-serif; }
-.menu-app-card-copy { display: grid; gap: 5px; padding: 14px 16px 17px; }
-.menu-app-card-copy h3 { font-size: 16px; margin: 0 0 4px; line-height: 1.5; color: #19432c; font-weight: 700; }
-.menu-app-card-copy small { color: #657f68; font-size: 12px; }
-.menu-app-premium { justify-self: start; border: 1px solid #d9af72; color: #8c571d; background: #fff5e5; border-radius: 8px; padding: 3px 7px; font-size: 11px; font-weight: 700; }
-.menu-app-note { color: #587363; font-size: 12px; margin-top: 20px; line-height: 1.9; }
-.menu-app-cta { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-top: 20px; }
-.menu-app-contact { border-radius: 12px; padding: 15px 23px; background: #08583a; color: white; font-weight: 700; font-size: 14px; }
-.menu-app-contact:hover { background: #14764d; }
-.menu-app-cta > a { color: #1a6c46; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
-@media (max-width: 920px) { .menu-app-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
-@media (max-width: 700px) { .menu-app-head { display: block; } .menu-app-live { display: inline-block; margin-top: 10px; } .menu-app-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; } .menu-app-photo { height: 145px; } .menu-app-catalog-section { padding-block: 45px 56px; } }
-@media (max-width: 370px) { .menu-app-photo { height: 122px; } .menu-app-card-copy { padding: 11px; } .menu-app-card-copy h3 { font-size: 14px; } }
-
-
 /* The photograph source is never conflated with an illustrative image. */
 .menu-photo-disclosure {
   position: absolute; inset-inline-start: 10px; bottom: 10px; z-index: 2;
