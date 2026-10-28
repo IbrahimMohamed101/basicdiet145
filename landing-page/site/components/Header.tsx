@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "#meals", label: "الوجبات" },
+  { href: "/menu", label: "المنيو" },
   { href: "#how-it-works", label: "كيف يعمل" },
   { href: "#app", label: "التطبيق" },
   { href: "#plans", label: "الباقات" },
@@ -132,7 +133,7 @@ export function Header() {
   const navLinks = currentLinks.map((link) => (
     <a
       key={link.href}
-      href={isHome || isMenu ? link.href : "/" + link.href}
+      href={link.href.startsWith("/") || isHome || isMenu ? link.href : "/" + link.href}
       aria-current={activeHref === link.href ? "location" : undefined}
     >
       {link.label}
