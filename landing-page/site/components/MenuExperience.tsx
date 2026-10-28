@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
 import { PlanCalculator } from "@/components/PlanCalculator";
+import { PromoOfferText } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
@@ -174,6 +175,7 @@ export function MenuExperience() {
             <span className="menu-hero-eyebrow"><span className="menu-dot" /> BASIC DIET / OUR MENU</span>
             <h1 id="menu-hero-title">منيو بيسك دايت.<br /><em>وجبات تحبّها.</em></h1>
             <p>وجبات دجاج ولحم وسمك، سلطات، فطور وساندويتشات. تصفّح الصور والأسعار واختار اللي يعجبك.</p>
+            <PromoOfferText location="menu" />
             <div className="menu-hero-actions">
               <a className="menu-primary-link" href="#menu-products">استكشف الأطباق <span aria-hidden="true">↙</span></a>
               <a className="menu-ghost-link" href="#menu-custom">كوّن وجبتك <span aria-hidden="true">←</span></a>
@@ -357,7 +359,7 @@ export function MenuExperience() {
 
       <section className="menu-download-section" id="menu-download" aria-labelledby="menu-download-title">
         <div className="page-shell menu-download-grid">
-          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اخترت اللي تحبه؟<br /><em>نساعدك تبدأ.</em></h2><p>اكتب اسمك ورقم جوالك، وفريق بيسك دايت يتواصل معك لمساعدتك. أو حمّل التطبيق واشترك بنفسك.</p><MenuLeadCapture /></div>
+          <div><p className="menu-kicker"><span aria-hidden="true" /> تواصل معنا</p><h2 id="menu-download-title">اختار أكلك…<br /><em>ووفّر 15% على اشتراكك.</em></h2><p>سجّل اسمك ورقم جوالك، وفريقنا يتواصل معك لإكمال اشتراكك والاستفادة من العرض. خصم الباقة فقط، حسب الشروط.</p><MenuLeadCapture /></div>
           <div className="menu-download-food" aria-label="من أطباق بيسك دايت">
             <div className="menu-download-food-main"><Image src={thirdImage} alt="سالمون من منيو بيسك دايت" fill sizes="(max-width: 700px) 45vw, 350px" /></div>
             <div className="menu-download-food-mini"><Image src={secondImage} alt="سلطة سيزر بالدجاج من منيو بيسك دايت" fill sizes="(max-width: 700px) 28vw, 180px" /></div>
