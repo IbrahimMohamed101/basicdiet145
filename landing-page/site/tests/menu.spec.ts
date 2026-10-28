@@ -292,8 +292,8 @@ test("below the menu, subscription and builder cards have compact mobile spacing
       viewport: document.documentElement.clientWidth,
     };
   });
-  for (const [key, bounds] of Object.entries(measurements)) {
-    if (key === "viewport") continue;
+  for (const key of ["picker", "price", "editor", "summary", "form"] as const) {
+    const bounds = measurements[key];
     expect(bounds.width).toBeGreaterThan(250);
     expect(bounds.height).toBeGreaterThan(80);
     expect(bounds.left).toBeGreaterThanOrEqual(0);
