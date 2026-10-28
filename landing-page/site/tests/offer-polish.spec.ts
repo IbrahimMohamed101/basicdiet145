@@ -70,7 +70,7 @@ test('homepage food gallery and final offer use the canonical menu and registrat
 });
 
 for (const [width, height] of [[320, 520], [390, 640], [1440, 900]]) {
-  test(`registration fields remain reachable and submit stays visible at ${width}x${height}`, async ({ page }, testInfo) => {
+  test(`registration fields remain reachable and submit stays visible at ${width}x${height}`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const dialog = await openForm(page);
@@ -80,7 +80,7 @@ for (const [width, height] of [[320, 520], [390, 640], [1440, 900]]) {
       const box = await button.boundingBox();
       return box ? box.y + box.height : Infinity;
     }).toBeLessThanOrEqual(height);
-    await testInfo.attach(`registration-${width}x${height}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await page.screenshot({ path: `test-results/registration-${width}x${height}.png`, animations: 'disabled' });
     await dialog.getByRole('textbox', { name: 'رقم الجوال' }).fill('0500000000');
     await dialog.getByRole('checkbox', { name: /أوافق على التواصل/ }).check();
     await expect(button).toBeVisible();
@@ -101,3 +101,17 @@ test('legacy plan selection can scroll to continue on a short viewport', async (
   await dialog.getByRole('button', { name: /متابعة/ }).click();
   await expect(dialog.getByRole('textbox', { name: 'رقم الجوال' })).toBeVisible();
 });
+
+for (const width of [320, 390]) {
+  test(`all five daily meal choices fit one touchable row at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/menu');
+    const buttons = page.locator('#menu-plans fieldset').nth(2).getByRole('button');
+    const boxes = await buttons.evaluateAll(elements => elements.map(element => {
+      const b = element.getBoundingClientRect(); return { y: b.y, width: b.width, height: b.height };
+    }));
+    expect(boxes).toHaveLength(5);
+    expect(Math.max(...boxes.map(b => b.y)) - Math.min(...boxes.map(b => b.y))).toBeLessThan(1);
+    expect(boxes.every(b => b.width >= 44 && b.height >= 44)).toBe(true);
+  });
+}

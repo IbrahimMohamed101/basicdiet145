@@ -53,3 +53,7 @@
 @media (prefers-reduced-motion: reduce) {
   .bd-calculator-controls button { transition: none; }
 }
+
+/* All five daily meal choices stay in one row, including narrow phones. */
+.bd-calculator-controls fieldset:nth-of-type(3) .bd-calculator-options { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.bd-calculator-controls fieldset:nth-of-type(3) .bd-calculator-options button { min-width: 0; padding-inline: 3px; }
