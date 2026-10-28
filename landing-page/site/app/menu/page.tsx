@@ -5,6 +5,7 @@ import { MenuExperience } from "@/components/MenuExperience";
 import { LeadDialog } from "@/components/LeadDialog";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import "./menu.css";
+import "../calculator.css";
 import "./menu-refinement.css";
 
 const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true";
