@@ -157,6 +157,15 @@ export function LeadDialog() {
       attribution = JSON.parse(sessionStorage.getItem(ATTRIBUTION_KEY) || "{}");
       sessionId = sessionStorage.getItem(SESSION_KEY) || "";
     } catch { /* disabled storage */ }
+    let adsTrackingConsent = false;
+    try {
+      const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
+      adsTrackingConsent = process.env.NEXT_PUBLIC_META_PIXEL_ENABLED === "true"
+        && /^\d{8,20}$/.test(process.env.NEXT_PUBLIC_META_PIXEL_ID || "")
+        && navigator.doNotTrack !== "1"
+        && privacy.globalPrivacyControl !== true
+        && localStorage.getItem("basicdiet_meta_tracking_consent_v1") === "granted";
+    } catch { /* advertising tracking is opt-in and defaults off */ }
     let referrerHost = "";
     try { if (document.referrer) referrerHost = new URL(document.referrer).hostname; } catch { /* no referrer */ }
     try {
@@ -170,7 +179,7 @@ export function LeadDialog() {
             fulfillmentMethod,
           }),
           phone: normalized, name: name.trim().slice(0, 70),
-          contactConsent, marketingConsent, location, sessionId, referrerHost, website,
+          contactConsent, marketingConsent, adsTrackingConsent, location, sessionId, referrerHost, website,
           source: attribution.source || "",
           medium: attribution.medium || "",
           campaign: attribution.campaign || "",
