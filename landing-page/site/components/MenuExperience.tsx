@@ -8,6 +8,7 @@ import { PlanCalculator } from "@/components/PlanCalculator";
 import { PromoOfferText, PromoOfferButton } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
+import { mealProteinChoices, mealProteinGroups, mealSideChoices } from "@/lib/meal-builder-options";
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
 import { editorialMenuDescriptions } from "@/lib/menu-editorial-descriptions";
 import { MenuCalories } from "@/components/MenuCalories";
@@ -41,24 +42,6 @@ const menuItemById = new Map(menuPreviewItems.map(item => [item.id, item]));
 const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
 
 
-const mealProteins = ["دجاج مشوي", "تونا", "بيض مسلوق", "سالمون", "جمبري"];
-const mealCarbs = ["رز أبيض", "رز بالكركم", "رز برياني", "كينوا", "بطاطس مشوي", "بطاطا حلوة", "باستا ألفريدو"];
-const mealProteinPhotos: Record<string, string> = {
-  "دجاج مشوي": "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
-  "بيض مسلوق": "/menu-images/pos_39.webp",
-  "تونا": "/api/meal-image?id=1niUYE8DPHKnOuXEA-8DO9DYDJs3xv82U",
-  "سالمون": "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
-  "جمبري": "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b",
-};
-const mealCarbPhotos: Record<string, string> = {
-  "رز برياني": "/menu-images/builder_biryani_rice.webp",
-  "كينوا": "/menu-images/builder_quinoa.webp",
-  "بطاطا حلوة": "/menu-images/builder_sweet_potato.webp",
-  "رز أبيض": "/api/meal-image?id=1J0uWPLXV7sTiQEfZzAf0W0WK_HrYpt5O",
-  "رز بالكركم": "/api/meal-image?id=1QKGfdTGcXJKk_dk9gpg4dJlb27ibEbcD",
-  "بطاطس مشوي": "/api/meal-image?id=1Yee9VzPNT76BYe8BwTWrxjsq1Y6qZoBl",
-  "باستا ألفريدو": "/api/meal-image?id=1JR-lQhqRwbwjB9p7nk2n6LNBBiAW1Dne",
-};
 const saladGroups = [
   { key: "leafy", label: "الورقيات", options: ["خس", "جرجير", "ملفوف"], min: 2, max: 2 },
   { key: "vegetables", label: "الخضروات", options: ["خيار", "طماطم", "جزر", "ذرة", "حمص", "بروكلي", "زيتون أخضر"], min: 0, max: 7 },
@@ -100,7 +83,8 @@ function ProductImage({ item, priority = false }: { item: MenuPreviewItem; prior
 
 export function MenuExperience() {
   const [activeBuilder, setActiveBuilder] = useState<"meal" | "salad">("meal");
-  const [protein, setProtein] = useState("دجاج مشوي");
+  const [protein, setProtein] = useState<string>("دجاج مشوي");
+  const [proteinGroup, setProteinGroup] = useState<(typeof mealProteinGroups)[number]["key"]>("all");
   const [carbs, setCarbs] = useState<string[]>([]);
   const [saladTab, setSaladTab] = useState<SaladGroupKey>("leafy");
   const [saladChoices, setSaladChoices] = useState<Record<string, string[]>>({});
@@ -144,6 +128,8 @@ export function MenuExperience() {
   const saladTotal = Object.values(saladChoices).reduce((sum, chosen) => sum + chosen.length, 0);
   const selectedSaladLabels = saladGroups.flatMap(group => saladChoices[group.key] || []);
   const mealSelections = 1 + carbs.length;
+  const activeProtein = mealProteinChoices.find((choice) => choice.name === protein) || mealProteinChoices[0];
+  const filteredProteinChoices = proteinGroup === "all" ? mealProteinChoices : mealProteinChoices.filter((choice) => choice.group === proteinGroup);
   const saladMandatoryComplete = saladGroups.filter(group => group.min > 0 && (saladChoices[group.key] || []).length >= group.min).length;
 
   function toggleCarb(item: string) {
@@ -280,7 +266,7 @@ export function MenuExperience() {
           <Heading id="menu-custom-title" tag="كوّنها بطريقتك" title="اصنع وجبتك أو سلطتك." copy="اختار مكوناتك وشوف اختياراتك تتجمع قدامك. تجربة للمعاينة بدون طلب أو دفع." />
           <div className="menu-builder-switch" role="group" aria-label="نوع تجربة التخصيص">
             <button type="button" className={activeBuilder === "meal" ? "is-active" : ""} aria-pressed={activeBuilder === "meal"} onClick={() => setActiveBuilder("meal")}>
-              <span className="menu-builder-switch-num">01</span><b>اصنع وجبتك</b><small>اختار البروتين والكارب</small>
+              <span className="menu-builder-switch-num">01</span><b>اصنع وجبتك</b><small>اختار البروتين والكارب والإضافات</small>
             </button>
             <button type="button" className={activeBuilder === "salad" ? "is-active" : ""} aria-pressed={activeBuilder === "salad"} onClick={() => setActiveBuilder("salad")}>
               <span className="menu-builder-switch-num">02</span><b>اصنع سلطتك</b><small>مكونات على مزاجك</small>
@@ -291,23 +277,48 @@ export function MenuExperience() {
             <div className="menu-builder-editor">
               {activeBuilder === "meal" ? (
                 <div key="meal">
-                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اضغط على الصور اللي تعجبك؛ الملخص يتغير مع كل اختيار.</p></div>
+                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اختر نوع بروتين واحدًا وحتى خيارين من الكارب والإضافات؛ الملخص يتغير مع كل اختيار.</p></div>
                   <div className="menu-option-block">
-                    <div className="menu-option-title"><strong>اختر البروتين</strong><span>اختيار واحد</span></div>
+                    <div className="menu-option-title"><strong>اختر البروتين</strong><span>اختيار واحد من {mealProteinChoices.length}</span></div>
+                    <div className="menu-meal-protein-tabs" role="group" aria-label="تصفية أنواع البروتين">
+                      {mealProteinGroups.map((group) => (
+                        <button key={group.key} type="button"
+                          className={proteinGroup === group.key ? "is-active" : ""}
+                          aria-pressed={proteinGroup === group.key}
+                          onClick={() => setProteinGroup(group.key)}>{group.label}</button>
+                      ))}
+                    </div>
                     <div className="menu-option-grid">
-                      {mealProteins.map((option) => <button type="button" key={option} aria-pressed={protein === option} className={"menu-option-photo-button" + (protein === option ? " is-active" : "")} onClick={() => setProtein(option)}>
-                        <span className="menu-option-thumb"><Image src={mealProteinPhotos[option] || menuArtUrl(option)} alt="" fill sizes="88px" unoptimized={(mealProteinPhotos[option] || "").startsWith("/api/menu-art")} /></span>
-                        <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{protein === option ? "✓" : "+"}</span>
-                      </button>)}
+                      {filteredProteinChoices.map((option) => {
+                        const selected = protein === option.name;
+                        const src = option.image || menuArtUrl(option.name);
+                        return <button type="button" key={option.name} aria-pressed={selected}
+                            className={"menu-option-photo-button" + (selected ? " is-active" : "")}
+                            onClick={() => setProtein(option.name)}>
+                          <span className="menu-option-thumb"><Image src={src} alt="" fill sizes="(max-width: 520px) 42vw, 180px" unoptimized={src.startsWith("/api/menu-art")} /></span>
+                          <span className="menu-option-name">{option.name}</span>
+                          <small className="menu-builder-photo-note">صورة توضيحية</small>
+                          <span className="menu-option-check" aria-hidden="true">{selected ? "✓" : "+"}</span>
+                        </button>;
+                      })}
                     </div>
                   </div>
                   <div className="menu-option-block">
-                    <div className="menu-option-title"><strong>اختر الكارب</strong><span>{carbs.length} / 2</span></div>
+                    <div className="menu-option-title"><strong>اختر الكارب والإضافات</strong><span>{carbs.length} / 2</span></div>
                     <div className="menu-option-grid">
-                      {mealCarbs.map((option) => <button type="button" key={option} aria-pressed={carbs.includes(option)} disabled={carbs.length >= 2 && !carbs.includes(option)} className={"menu-option-photo-button" + (carbs.includes(option) ? " is-active" : "")} onClick={() => toggleCarb(option)}>
-                        <span className="menu-option-thumb"><Image src={mealCarbPhotos[option] || menuArtUrl(option)} alt="" fill sizes="88px" unoptimized={(mealCarbPhotos[option] || "").startsWith("/api/menu-art")} /></span>
-                        <span className="menu-option-name">{option}</span><span className="menu-option-check" aria-hidden="true">{carbs.includes(option) ? "✓" : "+"}</span>
-                      </button>)}
+                      {mealSideChoices.map((option) => {
+                        const picked = carbs.includes(option.name);
+                        const full = carbs.length >= 2 && !picked;
+                        const src = option.image || menuArtUrl(option.name);
+                        return <button type="button" key={option.name} aria-pressed={picked} disabled={full}
+                            className={"menu-option-photo-button" + (picked ? " is-active" : "")}
+                            onClick={() => toggleCarb(option.name)}>
+                          <span className="menu-option-thumb"><Image src={src} alt="" fill sizes="(max-width: 520px) 42vw, 180px" unoptimized={src.startsWith("/api/menu-art")} /></span>
+                          <span className="menu-option-name">{option.name}</span>
+                          <small className="menu-builder-photo-note">صورة توضيحية</small>
+                          <span className="menu-option-check" aria-hidden="true">{picked ? "✓" : "+"}</span>
+                        </button>;
+                      })}
                     </div>
                   </div>
                   <p className="menu-editor-note">الصور توضيحية وليست توثيقًا لشكل الحصة الفعلية. هذه تجربة تخصيص فقط؛ الخيارات النهائية والتوفر حسب التطبيق.</p>
@@ -337,16 +348,16 @@ export function MenuExperience() {
               <div className="menu-summary-visual">
                 <div className="menu-summary-visual-photo">
                   <Image key={activeBuilder === "meal" ? protein : "salad"}
-                    src={activeBuilder === "meal" ? (mealProteinPhotos[protein] || menuArtUrl(protein)) : secondImage}
+                    src={activeBuilder === "meal" ? (activeProtein.image || menuArtUrl(protein)) : secondImage}
                     alt={activeBuilder === "meal" ? "صورة تمثيلية للبروتين المختار: " + protein : "صورة توضيحية للسلطة"}
                     fill sizes="(max-width:760px) 42vw, 230px"
-                    unoptimized={activeBuilder === "meal" && (mealProteinPhotos[protein] || "").startsWith("/api/menu-art")} />
+                    unoptimized={activeBuilder === "meal" && !activeProtein.image} />
                 </div>
                 <span className="menu-summary-visual-caption">معاينة من صور المنيو وليست صورة لتركيبتك النهائية</span>
               </div>
               <div className="menu-summary-heading">
                 <h3>{activeBuilder === "meal" ? "وجبتك" : "سلطتك"}</h3>
-                <button type="button" onClick={() => activeBuilder === "meal" ? setCarbs([]) : setSaladChoices({})}>ابدأ من جديد</button>
+                <button type="button" onClick={() => activeBuilder === "meal" ? (setProtein("دجاج مشوي"), setCarbs([]), setProteinGroup("all")) : setSaladChoices({})}>ابدأ من جديد</button>
               </div>
               <div className="menu-summary-chips" aria-live="polite">
                 {(activeBuilder === "meal" ? [protein, ...carbs] : selectedSaladLabels).map((choice, index) =>
@@ -356,7 +367,7 @@ export function MenuExperience() {
               {activeBuilder === "meal" ? (
                 <div className="menu-summary-data">
                   <div><span>البروتين</span><b>{protein}</b></div>
-                  <div><span>الكارب</span><b>{carbs.length ? carbs.join(" • ") : "لسه ما اخترت"}</b></div>
+                  <div><span>الكارب والإضافات</span><b>{carbs.length ? carbs.join(" • ") : "لسه ما اخترت"}</b></div>
                   <div><span>الاختيارات</span><b>{mealSelections} من 3</b></div>
                 </div>
               ) : (
