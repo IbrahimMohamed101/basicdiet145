@@ -247,7 +247,7 @@ export function MenuExperience() {
         </div>
       </section>
 
-      <section className="menu-offer-section" aria-labelledby="menu-offer-title">
+      <section className="menu-offer-section" id="menu-offer" aria-labelledby="menu-offer-title">
         <div className="page-shell">
           <div className="menu-offer-card">
             <div className="menu-offer-number" aria-label="خصم 15 بالمئة"><b>15<span>%</span></b><small>خصم على الاشتراك</small></div>
