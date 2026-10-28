@@ -7,10 +7,12 @@ const LandingLeadSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   phoneHash: { type: String, required: true, select: false },
   dayBucket: { type: String, required: true, select: false },
-  planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: true },
-  daysCount: { type: Number, required: true },
-  grams: { type: Number, required: true },
-  mealsPerDay: { type: Number, required: true },
+  // Explicit website inquiry without a chosen plan. Never fill a fake/default choice.
+  planSelectionStatus: { type: String, enum: ["selected", "unselected"], default: "selected" },
+  planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", default: null },
+  daysCount: { type: Number, default: null },
+  grams: { type: Number, default: null },
+  mealsPerDay: { type: Number, default: null },
   // Non-binding customer preference, confirmed later by the restaurant.
   fulfillmentMethod: { type: String, enum: ["delivery", "pickup", "unspecified"], default: "unspecified" },
   contactConsent: { type: Boolean, required: true },
