@@ -347,3 +347,25 @@ test("visual review snapshots for both screen sizes of redesigned lower menu", a
   await page.locator("#menu-plans").screenshot({ path: "test-results/plans-desktop-1440.png", animations: "disabled" });
   await page.locator("#menu-custom").screenshot({ path: "test-results/builder-salad-desktop-1440.png", animations: "disabled" });
 });
+
+
+test("mobile salad builder controls do not clip on either edge", async ({ page }) => {
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/menu");
+    const builder = page.locator("#menu-custom");
+    await builder.getByRole("group", { name: "نوع تجربة التخصيص" })
+      .getByRole("button", { name: /اصنع سلطتك/ }).click();
+    const clipped = await page.evaluate(() => {
+      const viewport = document.documentElement.clientWidth;
+      return Array.from(document.querySelectorAll("#menu-custom .menu-builder-editor button, #menu-custom .menu-builder-summary button, #menu-custom .menu-builder-summary a"))
+        .map(element => {
+          const r = element.getBoundingClientRect();
+          return { text: (element.textContent || "").trim().slice(0, 32), left: r.left, right: r.right };
+        })
+        .filter(rect => rect.left < -1 || rect.right > viewport + 1);
+    });
+    expect(clipped).toEqual([]);
+    await expect(builder.locator(".menu-salad-tabs button")).toHaveCount(6);
+  }
+});
