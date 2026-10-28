@@ -105,7 +105,7 @@ export function MetaPixel() {
 
   if (!ENABLED || consent === "loading" || privacySignal() || (consent !== "unknown" && !settingsOpen)) return null;
   return (
-    <aside role="dialog" aria-label="إعدادات تتبع الإعلانات" dir="rtl"
+    <aside role="region" aria-label="إعدادات تتبع الإعلانات" dir="rtl"
       style={{ position: "fixed", zIndex: 9999, bottom: 16, left: 16, right: 16, maxWidth: 460,
         marginInline: "auto", borderRadius: 16, background: "#fff", color: "#153a2b",
         border: "1px solid #cbded4", boxShadow: "0 8px 30px #1038272b", padding: 16 }}>
