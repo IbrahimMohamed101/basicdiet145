@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 export const PROMO_PERCENT = 15;
@@ -33,7 +33,7 @@ export function PromoOfferText({ location = "hero" }: { location?: "hero" | "men
   );
 }
 
-export function PromoOfferButton({ placement, className = "", children }: { placement: string; className?: string; children: React.ReactNode }) {
+export function PromoOfferButton({ placement, className = "", children }: { placement: string; className?: string; children: ReactNode }) {
   return <button type="button" className={className} onClick={() => openPromoLead(placement)}>{children}</button>;
 }
 
