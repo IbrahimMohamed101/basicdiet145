@@ -184,3 +184,6 @@ For "ننزل إيه النهارده؟":
 ## Website conversion update — 2026-10-28
 
 The active website preview is food-first with a 15% registration offer, no coupon entry and no required plan selection. Current task improves form reliability, consistent offer wording, canonical menu content, backend optional-plan support and dashboard funnel visibility. Backend #174 and dashboard #61 must ship together before live intake is enabled. Preview does not accept actual customer submissions. Production launch and live conversion lift are not claimed. See experiments log for hypothesis and QA limits.
+
+
+Website verification: 49 frontend checks and real isolated persistence/read/report integration passed; dashboard build and five targeted tests passed. The updated preview is deployed and actual preview intake is blocked server-side. Production-compatible release branches are prepared together (#175/#174/dashboard #61). Next step is coordinated production release, followed by real approved intake verification and measurement before paid scaling.
