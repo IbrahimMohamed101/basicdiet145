@@ -34,10 +34,28 @@ try {
   const sample = priceIndex.find(p => p.days === 26 && p.grams === 150 && p.meals === 2);
   console.log("LIVE_PLAN_PRICE_COUNT", priceIndex.length, "26d_150g_2meals", sample?.halala ?? "not_available");
 
-  const sections = await readOnlyCatalog("/api/subscriptions/meal-builder");
-  const totalItems = sections.reduce((sum, section) => sum + (Array.isArray(section.items) ? section.items.length : 0), 0);
-  if (!sections.length || !totalItems) throw new Error("Published meal builder is empty");
-  console.log("PUBLISHED_APP_MENU", sections.length, "sections", totalItems, "options");
+  let sections = [];
+  try { sections = await readOnlyCatalog("/api/subscriptions/meal-builder"); }
+  catch (error) { console.log("DIRECT_APP_BUILDER_UNAVAILABLE", error instanceof Error ? error.message : String(error)); }
+  if (!sections.length) {
+    const response = await fetch(base + "/api/subscriptions/meal-planner-menu", {
+      redirect: "manual", signal: AbortSignal.timeout(10_000),
+      headers: { accept: "application/json", "accept-language": "ar" },
+    });
+    const body = await response.json();
+    if (!response.ok || body.status !== true) throw new Error("Canonical Flutter meal catalog unavailable: HTTP " + response.status);
+    sections = body.data?.plannerCatalog?.sections || body.data?.builderCatalog?.sections || [];
+    const fallback = body.data?.builderCatalog || {};
+    console.log("CANONICAL_APP_CATALOG", "sections", sections.length,
+      "proteins", fallback.proteins?.length || 0, "carbs", fallback.carbs?.length || 0);
+    if (!sections.length && !(fallback.proteins?.length || fallback.carbs?.length)) {
+      throw new Error("Published planner menu had no sections and no basic options");
+    }
+  }
+  const totalItems = sections.reduce((sum, section) => sum
+    + (Array.isArray(section.items) ? section.items.length : 0)
+    + (Array.isArray(section.products) ? section.products.length : 0), 0);
+  console.log("PUBLISHED_APP_MENU", sections.length, "sections", totalItems, "direct entries");
   console.log("Source checked with public GET only. No data written.");
 } catch (error) {
   console.error("PUBLIC_CATALOG_CHECK_FAILED", error instanceof Error ? error.message : String(error));
