@@ -431,8 +431,8 @@ export function MenuExperience() {
               ) : (
                 <div className="menu-summary-data">
                   <div><span>المكونات المختارة</span><b>{saladTotal}</b></div>
-                  <div><span>مجموعات اخترت منها</span><b>{saladGroupStatus.filter((s) => s.count > 0).length} / 6</b></div>
-                  <div><span>المجموعات المطلوبة</span><b>{saladMandatoryComplete} من {saladGroups.filter(g => g.min > 0).length}</b></div>
+                  <div><span>مجموعات اخترت منها</span><b>{numberFormatter.format(saladGroupStatus.filter((s) => s.count > 0).length)} من ٦</b></div>
+                  <div><span>المجموعات المطلوبة</span><b>{numberFormatter.format(saladMandatoryComplete)} من {numberFormatter.format(saladGroups.filter(g => g.min > 0).length)}</b></div>
                 </div>
               )}
               <p className="menu-summary-disclaimer">استعراض فقط. لا يتم إنشاء طلب أو احتساب سعر أو سعرات من هذه الاختيارات.</p>
