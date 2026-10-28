@@ -487,3 +487,46 @@ body:has(.menu-page) a.skip-link:focus-visible {
 @media(max-width:350px) {
   .menu-page .menu-salad-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
+
+/* Custom-meal protein filter and clear image-source disclosures. */
+.menu-page .menu-meal-protein-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+}
+.menu-page .menu-meal-protein-tabs button {
+  border: 1px solid #d8e8d9;
+  border-radius: 999px;
+  background: #f7faf5;
+  color: #20543a;
+  min-height: 38px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.menu-page .menu-meal-protein-tabs button.is-active {
+  border-color: #11583c;
+  color: #fff;
+  background: #11583c;
+}
+.menu-page .menu-option-grid button.menu-option-photo-button .menu-builder-photo-note {
+  display: block;
+  color: #60776a;
+  border: 0;
+  width: 100%;
+  height: auto;
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: right;
+  font-weight: 500;
+}
+.menu-page .menu-option-grid button.menu-option-photo-button:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+@media (max-width: 520px) {
+  .menu-page .menu-meal-protein-tabs { gap: 6px; }
+  .menu-page .menu-meal-protein-tabs button { min-height: 35px; padding: 7px 12px; font-size: 12px; }
+}
