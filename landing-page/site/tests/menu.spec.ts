@@ -109,7 +109,7 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   await form.getByRole("button", { name: /كمّل طلب التواصل/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: /اسمك/ })).toHaveValue("عميل تجربة");
   await expect(dialog.getByRole("textbox", { name: "رقم الجوال" })).toHaveValue("0501234567");
   await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
@@ -122,7 +122,9 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   expect(sent[0].daysCount).toBe(26);
   expect(sent[0].contactConsent).toBe(true);
   expect(sent[0].location).toBe("final");
-  expect(String(sent[0].content)).toContain("menu_footer_form");
+  expect(String(sent[0].content)).toContain("menu_basic15_footer_form");
+  expect(String(sent[0].content)).toContain("offer15");
+  expect(String(sent[0].content)).toContain("plan_to_confirm");
 });
 
 test("plan contact CTA passes calculator dimensions to existing lead flow", async ({ page }) => {
@@ -137,9 +139,9 @@ test("plan contact CTA passes calculator dimensions to existing lead flow", asyn
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await plans.locator("fieldset").nth(1).getByRole("button", { name: /200/ }).click();
-  await plans.getByRole("button", { name: /خلّنا نساعدك بالاشتراك/ }).click();
+  await plans.getByRole("button", { name: /سجّل للاستفادة من خصم 15%/ }).click();
   const dialog = page.locator(".lead-dialog");
-  await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
   await expect(dialog.locator(".lead-selection-summary")).toContainText("200 جرام");
 });
 
@@ -201,7 +203,7 @@ test("builder asks for callback only when explicitly selected", async ({ page })
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await builder.getByRole("button", { name: /خلّينا نتواصل معك/ }).click();
   await expect(page.locator(".lead-dialog")).toBeVisible();
-  await expect(page.locator(".lead-dialog").getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
+  await expect(page.locator(".lead-dialog").getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
 });
 
 
@@ -238,7 +240,7 @@ test("calculator fails closed without live prices", async ({ page }) => {
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await expect(plans.locator(".bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
-  await expect(plans.getByRole("button", { name: /خلّنا نساعدك/ })).toBeDisabled();
+  await expect(plans.getByRole("button", { name: /سجّل للاستفادة من خصم 15%/ })).toBeDisabled();
 });
 
 test("meal-builder shows photos only for supported matched dishes", async ({ page }) => {
@@ -406,4 +408,72 @@ test("mobile menu search and categories are swipeable and option targets exceed 
     .evaluateAll(buttons => buttons.map(b => b.getBoundingClientRect().height));
   expect(heights.length).toBe(3);
   expect(heights.every(height => height >= 44)).toBeTruthy();
+});
+
+
+test("the 15% savings are displayed without exposing a customer-facing coupon code", async ({ page }) => {
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify(priceCatalog),
+  }));
+  await page.goto("/menu");
+  const calculator = page.locator("#menu-plans");
+  const money = new Intl.NumberFormat("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  await expect(calculator.locator(".bd-calculator-offer-price strong")).toContainText(money.format(1008.1));
+  await expect(calculator.locator(".bd-calculator-offer-savings b")).toContainText(money.format(177.9));
+  await expect(page.locator("body")).not.toContainText("BASIC15");
+  await expect(page.locator(".menu-hero .bd-offer-copy")).toContainText("15%");
+  await expect(page.locator(".menu-offer-inline")).toContainText("بدون دفع");
+  await expect(page.locator("#menu-download")).toContainText("15%");
+});
+
+test("header website offer opens registration directly and submits an unconfirmed plan interest to the same CRM route", async ({ page }) => {
+  const sent: Record<string, unknown>[] = [];
+  await page.route("**/api/lead-options", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ status: true, data: [
+      { planId: "6a621995f4f8d0974cebc472", daysCount: 26,
+        gramsOptions: [{ grams: 150, mealsPerDay: [2] }] },
+    ] }),
+  }));
+  await page.route("**/api/leads", async route => {
+    sent.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 202, contentType: "application/json", body: '{"status":true}' });
+  });
+  await page.goto("/menu");
+  await page.locator(".nav-actions").getByRole("button", { name: "سجّل لخصم 15%" }).click();
+  const dialog = page.locator(".lead-dialog");
+  await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
+  await expect(dialog.locator(".lead-selection-summary")).toContainText("فريقنا يساعدك تختار");
+  await dialog.getByRole("textbox", { name: /اسمك/ }).fill("عميل موقع");
+  await dialog.getByRole("textbox", { name: "رقم الجوال" }).fill("0501234567");
+  await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
+  await dialog.getByRole("button", { name: /سجّل بياناتي واستفيد من العرض/ }).click();
+  await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
+  expect(sent).toHaveLength(1);
+  expect(sent[0].name).toBe("عميل موقع");
+  expect(sent[0].phone).toBe("+966501234567");
+  expect(sent[0].contactConsent).toBe(true);
+  expect(sent[0].location).toBe("header");
+  expect(String(sent[0].content)).toContain("plan_to_confirm");
+  expect(String(sent[0].content)).toContain("offer15");
+});
+
+test("mobile promo bar appears after first scroll and hides at footer form", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/menu");
+  await expect(page.locator(".bd-offer-mobile-bar")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 650));
+  await expect(page.locator(".bd-offer-mobile-bar")).toBeVisible();
+  await page.locator("#menu-download").scrollIntoViewIfNeeded();
+  await expect(page.locator(".bd-offer-mobile-bar")).toHaveCount(0);
+});
+
+test("homepage promotes website registration but keeps the food and plan paths", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /وجبات تحبها/ })).toBeVisible();
+  await expect(page.locator(".hero .bd-offer-copy")).toContainText("15%");
+  await expect(page.locator(".hero .bd-offer-copy")).toContainText("بدون دفع الآن");
+  await expect(page.locator(".hero a[href='#plans']")).toHaveCount(1);
+  await expect(page.locator(".hero a[href='/menu#menu-products']")).toHaveCount(1);
+  await expect(page.locator("body")).not.toContainText("BASIC15");
 });
