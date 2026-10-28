@@ -82,7 +82,7 @@ async function groupByField(base, event, field) {
 async function buildLandingAnalyticsReport({ from, to }) {
   const period = resolveRange(from, to);
   const base = { createdAt: { $gte: period.start, $lte: period.end } };
-  const [totals, daily, uniques, sourcePairs, campaigns, devices, ctas, sections, stores, reels, referrers, plans, uniqueLeads, leadSourcePairs, leadStatusRows] =
+  const [totals, daily, uniques, sourcePairs, campaigns, devices, ctas, sections, stores, reels, referrers, plans, uniqueLeads, leadSourcePairs, leadStatusRows, leadOpensByPlacement, leadSubmissionsByPlacement] =
     await Promise.all([
       LandingAnalyticsEvent.aggregate([
         { $match: base }, { $group: { _id: "$event", count: { $sum: 1 } } },
@@ -118,6 +118,8 @@ async function buildLandingAnalyticsReport({ from, to }) {
         { $group: { _id: "$status", count: { $sum: 1 } } },
         { $sort: { count: -1, _id: 1 } },
       ]),
+      groupByField(base, "lp_lead_opened", "placement"),
+      groupByField(base, "lp_lead_submitted", "placement"),
     ]);
   const sourceSummary = summarizeSources(sourcePairs);
   const leadSourceSummary = summarizeSources(leadSourcePairs);
@@ -156,6 +158,8 @@ async function buildLandingAnalyticsReport({ from, to }) {
     leadSources: leadSourceSummary.rows,
     leadAttribution: leadSourceSummary.attribution,
     leadStatuses: flattenGroups(leadStatusRows),
+    leadOpensByPlacement: flattenGroups(leadOpensByPlacement),
+    leadSubmissionsByPlacement: flattenGroups(leadSubmissionsByPlacement),
     campaigns: flattenGroups(campaigns),
     devices: flattenGroups(devices), ctas: flattenGroups(ctas),
     sections: flattenGroups(sections), stores: flattenGroups(stores),
