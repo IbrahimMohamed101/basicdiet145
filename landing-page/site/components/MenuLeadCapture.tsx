@@ -76,7 +76,7 @@ export function MenuLeadCapture() {
     setError("");
     // The shared LeadDialog loads a real sellable plan and asks for consent
     // before submitting through the same /api/leads -> /api/landing/leads path.
-    openMenuLead({ location: "final", intent: "footer_form", name: name.trim(), phone });
+    openMenuLead({ location: "final", intent: "discount15_footer_form", name: name.trim(), phone });
   }
 
   return (
@@ -84,8 +84,8 @@ export function MenuLeadCapture() {
       <div className="menu-quick-lead-intro">
         <span className="menu-quick-lead-mark" aria-hidden="true">↗</span>
         <div>
-          <strong>تبغى نساعدك تختار اشتراكك؟</strong>
-          <p>سيب اسمك ورقمك، وفريق Basic Diet يتواصل معك بخصوص طلبك.</p>
+          <strong>سجّل بياناتك للاستفادة من خصم 15%</strong>
+          <p>هنكلمك ونساعدك تختار باقتك ونوضح لك طريقة الاستفادة من العرض.</p>
         </div>
       </div>
       <form className="menu-quick-lead-form" onSubmit={startLead}>
@@ -98,13 +98,13 @@ export function MenuLeadCapture() {
           <input required autoComplete="tel-national" type="tel" inputMode="tel" dir="ltr" maxLength={32} value={phone} onChange={e => setPhone(e.target.value)} placeholder="05xxxxxxxx" />
         </label>
         <button className="menu-quick-lead-submit" type="submit">
-          كمّل طلب التواصل <span aria-hidden="true">←</span>
+          سجّل بياناتك للخصم <span aria-hidden="true">←</span>
         </button>
       </form>
       {error && <p className="menu-quick-lead-error" role="alert">{error}</p>}
-      <p className="menu-quick-lead-privacy">قبل الإرسال النهائي هتراجع اختيارك وتوافق على التواصل معك. مفيش اشتراك أو دفع بيتعمل من النموذج.</p>
+      <p className="menu-quick-lead-privacy">الخصم 15% على قيمة الاشتراك فقط عند إتمامه، ولا يشمل التوصيل أو الإضافات. هتوافق على التواصل قبل الإرسال النهائي، والتسجيل لا يفعّل خصمًا أو اشتراكًا تلقائيًا.</p>
       <div className="menu-quick-lead-alternative">
-        <span>تفضل تسجّل بنفسك؟</span>
+        <span>أو تفضل الاشتراك بنفسك؟</span>
         <a href={IOS_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "app_store", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من App Store">App Store</a>
         <a href={ANDROID_APP_URL} onClick={() => window.dispatchEvent(new CustomEvent("basicdiet:store_click", { detail: { location: "app", store: "google_play", entry: "menu_footer" } }))} aria-label="تحميل Basic Diet من Google Play">Google Play</a>
       </div>
