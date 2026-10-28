@@ -7,6 +7,7 @@ import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture
 import { PlanCalculator } from "@/components/PlanCalculator";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
+import { verifiedMenuDetails } from "@/lib/menu-item-details";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
 const secondImage = "/api/meal-image?id=1IxuZvbSI85kxn9pwF97kGCeScVpz0fdv";
@@ -100,7 +101,6 @@ export function MenuExperience() {
   const [category, setCategory] = useState("الكل");
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
-  const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
 
   const numberFormatter = new Intl.NumberFormat("ar-SA");
@@ -231,22 +231,16 @@ export function MenuExperience() {
           <div className="menu-product-grid">
             {displayItems.slice(0, visibleCount).map((item) => {
               const family = variantFamilyById.get(item.id);
-              const activeItem = (family ? menuItemById.get(selectedSizes[family.key] || item.id) : null) || item;
+              const activeItem = item;
               return (
                 <article className="menu-product-card" key={family?.key || item.id}>
                   <ProductImage key={activeItem.id} item={activeItem} />
                   <div className="menu-product-body">
                     <span className="menu-product-category">{activeItem.category}</span>
                     <h3>{family?.title || activeItem.name}</h3>
-                    {family && <div className="menu-product-sizes" role="group" aria-label={"اختر وزن " + family.title}>
-                      {family.sizes.map(size => <button key={size.id} type="button" aria-pressed={activeItem.id === size.id}
-                        className={activeItem.id === size.id ? "is-active" : ""}
-                        onClick={() => setSelectedSizes(previous => ({ ...previous, [family.key]: size.id }))}>
-                        {size.grams} جم
-                      </button>)}
-                    </div>}
+                    {family && <p className="menu-product-weights-hint">متاح 100 / 150 / 200 جم · اختار الحجم من التفاصيل</p>}
                     <div className="menu-product-bottom">
-                      <div><small>السعر</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
+                      <div><small>{family ? "يبدأ من" : "السعر"}</small><strong>{numberFormatter.format(activeItem.priceSar)} <span>ر.س</span></strong></div>
                       <button type="button" onClick={() => setSelectedProduct(activeItem)} aria-label={"تفاصيل " + activeItem.name}>التفاصيل <span aria-hidden="true">←</span></button>
                     </div>
                   </div>
@@ -377,12 +371,32 @@ export function MenuExperience() {
             <button type="button" className="menu-dialog-close" autoFocus aria-label="إغلاق التفاصيل" onClick={() => setSelectedProduct(null)}>×</button>
             <ProductImage item={selectedProduct} />
             <div className="menu-detail-copy">
-              <span className="menu-product-category">{selectedProduct.category}</span>
-              <h2 id="menu-detail-title">{selectedProduct.name}</h2>
-              <p>من أصناف بيسك دايت. لمعرفة التوفر والتفاصيل الدقيقة، تواصل معنا أو تصفح التطبيق. قد تختلف الصور التوضيحية عن المنتج النهائي.</p>
-              <strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س <small>قبل أي رسوم أو إضافات</small></strong>
-              <MenuContactButton location="final" intent={"product_" + selectedProduct.id} className="menu-detail-contact">تبغى نكلمك عن المنيو؟ ←</MenuContactButton>
-              <a href="#menu-download" onClick={() => setSelectedProduct(null)}>أو حمّل تطبيق Basic Diet ←</a>
+              <span className="menu-detail-eyebrow">{selectedProduct.category} · BASIC DIET</span>
+              <h2 id="menu-detail-title">{variantFamilyById.get(selectedProduct.id)?.title || selectedProduct.name}</h2>
+              <p className="menu-detail-description">{verifiedMenuDetails[selectedProduct.id]?.description || "المكونات والوصف المعتمدان لهذا الصنف قيد التحديث. تقدر تسأل فريقنا قبل الطلب."}</p>
+              {variantFamilyById.get(selectedProduct.id) && (
+                <div className="menu-detail-size-group" role="group" aria-label="اختر حجم الصنف">
+                  <strong>اختر الوزن</strong>
+                  <div>
+                    {variantFamilyById.get(selectedProduct.id)?.sizes.map(size => (
+                      <button key={size.id} type="button"
+                        aria-pressed={selectedProduct.id === size.id}
+                        onClick={() => setSelectedProduct(menuItemById.get(size.id) || selectedProduct)}>
+                        {size.grams} جم
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="menu-detail-nutrition">
+                <strong>المعلومات الغذائية ومسببات الحساسية</strong>
+                <p>القيم الغذائية ومسببات الحساسية لم تُعتمد للنشر لهذا الصنف. يُرجى تأكيد التفاصيل مع المطعم، خصوصًا إذا عندك حساسية غذائية.</p>
+              </div>
+              <div className="menu-detail-purchase-row">
+                <div><span>سعر الصنف</span><strong>{numberFormatter.format(selectedProduct.priceSar)} ر.س</strong></div>
+                <MenuContactButton location="final" intent={"product_" + selectedProduct.id} className="menu-detail-contact">استفسر عن الصنف ←</MenuContactButton>
+              </div>
+              <a className="menu-detail-app-link" href="#menu-download" onClick={() => setSelectedProduct(null)}>أو حمّل التطبيق واطلب بنفسك ←</a>
             </div>
           </section>
         </div>
