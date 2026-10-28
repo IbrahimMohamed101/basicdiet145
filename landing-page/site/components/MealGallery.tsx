@@ -1,46 +1,13 @@
 import Image from "next/image";
+import { menuPreviewItems } from "@/lib/menu-preview-items";
 
-const meals = [
-  {
-    name: "وجبة ستيك",
-    category: "لحوم",
-    image:
-      "/api/meal-image?id=1tASbr8vUBgPqdeJywruTTGdUrS7l-unS",
-    featured: true,
-    comingSoon: true,
-  },
-  {
-    name: "سلمون",
-    category: "بحريات",
-    image:
-      "/api/meal-image?id=1y1jr9EftvmqVYpckSnuwi7SUwDoBpvzH",
-    featured: true,
-  },
-  {
-    name: "جمبري",
-    category: "بحريات",
-    image:
-      "/api/meal-image?id=1bezXaW35QSvbEV7yEWtShjbltYsN5E1b",
-  },
-  {
-    name: "دجاج بالزبدة",
-    category: "دجاج",
-    image:
-      "/api/meal-image?id=1H2InhiMdECMrs8bsf6L_h9yM-rOfYqw6",
-  },
-  {
-    name: "شيش طاووق",
-    category: "دجاج",
-    image:
-      "/api/meal-image?id=1fw69ZcOyMtusTGj9Cx1tVfvpf6ZyJNAu",
-  },
-  {
-    name: "لحم استرغانوف",
-    category: "لحوم",
-    image:
-      "/api/meal-image?id=1gciSqekCnVLdjxl9jv7HAF8mUgAn2sc_",
-  },
-];
+// A single cashier menu powers both the landing-page preview and /menu.
+// Use only real, menu-listed dishes with existing photos. No coming-soon steak.
+export const homepageFeaturedMenuIds = ["186", "78", "77", "176", "195", "211"] as const;
+const meals = homepageFeaturedMenuIds
+  .map((id) => menuPreviewItems.find((item) => item.id === id))
+  .filter((item): item is (typeof menuPreviewItems)[number] => Boolean(item?.image));
+const currency = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 });
 
 export function MealGallery() {
   return (
@@ -48,60 +15,50 @@ export function MealGallery() {
       <div className="page-shell">
         <div className="section-heading section-heading--split food-heading">
           <div>
-            <p className="eyebrow">
-              <span />
-              من قائمة وجباتنا
-            </p>
+            <p className="eyebrow"><span />من منيو بيسك دايت</p>
             <h2 id="food-title">
               أكل محسوب بطعم
               <br />
               <span>تحب ترجع له كل يوم.</span>
             </h2>
           </div>
-
           <p>
-            اختيارات متنوعة بين اللحوم والدجاج والبحريات، عشان تلتزم بخطتك
-            بدون ما تحس إنك تكرر نفس الوجبة.
+            دي لمحة من منيو بيسك دايت. شوف الصور والأسعار، وبعدها ادخل المنيو الكامل
+            واختار بين الوجبات والسلطات والفطور والساندويتشات.
           </p>
         </div>
 
         <div className="meal-grid meal-showcase">
-          {meals.map((meal) => (
+          {meals.map((meal, index) => (
             <figure
-              key={meal.name}
-              className={`meal-card${meal.featured ? " meal-card--featured" : ""}`}
+              key={meal.id}
+              className={`meal-card${index < 2 ? " meal-card--featured" : ""}`}
             >
               <div className="meal-image-wrap">
                 <Image
                   fill
-                  sizes={meal.featured ? "(max-width: 640px) 82vw, (max-width: 1100px) 48vw, 620px" : "(max-width: 640px) 82vw, (max-width: 1100px) 48vw, 310px"}
-                  src={meal.image}
-                  alt={`وجبة ${meal.name}`}
+                  sizes={index < 2 ? "(max-width: 640px) 82vw, (max-width: 1100px) 48vw, 620px" : "(max-width: 640px) 82vw, (max-width: 1100px) 48vw, 310px"}
+                  src={meal.image || "/api/menu-art?kind=rice&tone=natural"}
+                  alt={meal.name}
+                  unoptimized={Boolean(meal.image?.startsWith("https://"))}
                   loading="lazy"
                   decoding="async"
                 />
               </div>
-
-              {meal.comingSoon && (
-                <span className="meal-soon-ribbon" aria-label="قريبًا">
-                  Soon
-                </span>
-              )}
-
               <div className="meal-card-shade" aria-hidden="true" />
-
               <figcaption>
                 <small>{meal.category}</small>
                 <span>{meal.name}</span>
+                <strong className="meal-card-price">{currency.format(meal.priceSar)} ر.س</strong>
               </figcaption>
             </figure>
           ))}
         </div>
 
         <div className="food-footer">
-          <p>مجرد لمحة من الوجبات المتاحة في التطبيق.</p>
-          <a className="food-link" href="#how-it-works">
-            شوف كيف تختار وجباتك
+          <p>دي بعض الأصناف فقط. المنيو الكامل فيه باقي الوجبات والأسعار وخيارات الاشتراك.</p>
+          <a className="food-link food-link--menu" href="/menu" aria-label="مشاهدة المزيد من أصناف منيو بيسك دايت وأسعارها">
+            مشاهدة المزيد من الأصناف
             <span aria-hidden="true">←</span>
           </a>
         </div>
