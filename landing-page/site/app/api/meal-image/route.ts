@@ -49,6 +49,7 @@ const ALLOWED_MEAL_IMAGE_IDS = new Set([
   "1sWQhsJSvuiu016TMwfx-QMwBjpGVHGxs", // دجاج كريمة
   "1Xn_zM9vUEmYx_BNcJOIyRLpGhbyaKz7i", // دجاج بالملوخية
   "1O54P_hDBopu9POcVVB6XEOYeNdLiYFR5", // باستا صوص أحمر
+  "1x7vUZBAaWcLR8z8N7feuntgrN5w9d4b2", // photo of burger in restaurant Drive; user review before live
 ]);
 
 const DRIVE_SOURCES = (id: string) => [
