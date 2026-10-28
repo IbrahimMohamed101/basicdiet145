@@ -1,6 +1,6 @@
 import { getMenuNutrition } from "@/lib/menu-nutrition";
 
-const number = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 });
+const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
 export function MenuCalories({ posId, detail = false }: { posId: string; detail?: boolean }) {
   const nutrition = getMenuNutrition(posId);
