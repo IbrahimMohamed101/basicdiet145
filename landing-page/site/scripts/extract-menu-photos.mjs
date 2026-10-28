@@ -48,4 +48,18 @@ for (let entry = 0; entry < entryCount; entry++) {
   written++;
 }
 if (written !== 36) throw new Error('Expected 36 menu photos, found ' + written);
-console.log('Basic Diet menu: extracted ' + written + ' labeled product images.');
+// Independent ingredient photos for the interactive meal builder.
+// Kept as readable base64 assets because the production menu has an existing
+// deterministic build-time photo unpacking pipeline.
+const builderImageNames = ['biryani_rice', 'quinoa', 'sweet_potato'];
+for (const name of builderImageNames) {
+  const encoded = readFileSync(resolve(site, 'assets/builder-photos', name + '.b64'), 'utf8').trim();
+  const picture = Buffer.from(encoded, 'base64');
+  if (picture.length < 1000 || picture.length > 512 * 1024 ||
+      picture.toString('ascii', 0, 4) !== 'RIFF' ||
+      picture.toString('ascii', 8, 12) !== 'WEBP') {
+    throw new Error('Invalid builder photo: ' + name);
+  }
+  writeFileSync(join(output, 'builder_' + name + '.webp'), picture);
+}
+console.log('Basic Diet menu: extracted ' + written + ' labeled product images and ' + builderImageNames.length + ' illustrative ingredient images.');
