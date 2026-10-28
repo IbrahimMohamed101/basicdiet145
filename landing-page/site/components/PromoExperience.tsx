@@ -24,8 +24,10 @@ export function PromoOfferText({ location = "hero" }: { location?: "hero" | "men
   return (
     <div className={"bd-offer-copy bd-offer-copy--" + location}>
       <span className="bd-offer-percent" aria-hidden="true">15%</span>
-      <div><strong>سجّل من الموقع ووفّر 15% على اشتراكك</strong>
-        <small>عرض تسجيل الموقع · فريقنا يساعدك تبدأ ويؤكد أهلية الخصم. على الباقة فقط.</small>
+      <div className="bd-offer-body">
+        <strong>سجّل من الموقع ووفّر 15% على اشتراكك</strong>
+        <small>سيب اسمك وجوالك بس، ونساعدك تختار. بدون دفع الآن.</small>
+        <PromoOfferButton className="bd-offer-register-link" placement={location === "menu" ? "menu_hero" : "hero"}>سجّل واستفسر عن العرض <span aria-hidden="true">←</span></PromoOfferButton>
       </div>
     </div>
   );
