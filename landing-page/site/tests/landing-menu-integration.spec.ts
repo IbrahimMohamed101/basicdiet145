@@ -52,7 +52,7 @@ for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     await expect(page.locator("#meals .food-footer .food-link--menu")).toBeVisible();
-    await expect(page.locator(".hero-cinema-actions a[href="/menu#menu-products"]")).toBeVisible();
+    await expect(page.locator('.hero-cinema-actions a[href="/menu#menu-products"]')).toBeVisible();
     await expect.poll(async () => page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);
