@@ -125,7 +125,7 @@ test("plan call request carries the selected plan dimensions", async ({ page }) 
   }));
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
-  await plans.getByRole("group", { name: "حجم الوجبة" }).getByRole("button", { name: /200/ }).click();
+  await plans.getByRole("group", { name: "حجم البروتين" }).getByRole("button", { name: /200/ }).click();
   await plans.getByRole("button", { name: /اطلب تواصل بخصوص الباقة/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
