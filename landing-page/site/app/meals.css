@@ -68,4 +68,54 @@
   .food-footer { margin-block-start: 18px; align-items: start; flex-direction: column; gap: 8px; }
   .food-footer > p { font-size: 14px; }
 }
+.meal-card-price {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  width: fit-content;
+  margin-block-start: 5px;
+  padding: 5px 12px;
+  color: #f9fff5;
+  background: rgb(15 84 54 / 86%);
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+.food-link--menu {
+  justify-content: center;
+  padding: 12px 21px;
+  border: 1px solid var(--brand-green);
+  border-radius: 13px;
+  background: var(--brand-green);
+  color: #fff;
+  min-height: 48px;
+  transition: background-color 170ms ease, border-color 170ms ease;
+}
+.food-link--menu:hover { background: var(--brand-green-hover); border-color: var(--brand-green-hover); }
+.food-link--menu span { color: #e4f7e4; }
+.hero-menu-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-height: 52px;
+  padding: 10px 19px;
+  border-radius: 13px;
+  background: rgb(9 48 32 / 30%);
+  border: 1px solid rgb(255 255 255 / 55%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 750;
+  transition: background 170ms ease;
+}
+.hero-menu-link:hover { color: #fff; background: rgb(9 48 32 / 58%); }
+.hero-menu-link:focus-visible,
+.food-link--menu:focus-visible { outline: 3px solid #e7f9e8; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .meal-card-price { font-size: 12px; padding: 3px 8px; margin-block-start: 3px; }
+  .food-link--menu { width: 100%; font-size: 14px; }
+  .hero-menu-link { min-height: 46px; width: 100%; font-size: 14px; }
+}
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) { .meal-card:hover img { transform: scale(1.035); } }

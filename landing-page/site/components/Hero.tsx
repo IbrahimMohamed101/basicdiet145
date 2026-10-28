@@ -40,6 +40,7 @@ export function Hero() {
             <AppCta location="hero" className="button button--hero button--hero-cinema">
               ابدأ اشتراكك
             </AppCta>
+            <a className="hero-menu-link" href="/menu">تصفح المنيو والأسعار <span aria-hidden="true">←</span></a>
           </div>
         </div>
       </div>
