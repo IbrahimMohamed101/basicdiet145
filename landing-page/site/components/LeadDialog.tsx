@@ -209,7 +209,7 @@ export function LeadDialog() {
           {step < 3 ? (
             <>
               <div className="lead-step-head">
-                <span className="lead-step-count">{step} / 2</span>
+                <span className="lead-step-count">{promoMode && step === 2 ? "خطوة واحدة بس" : `${step} / 2`}</span>
                 <h2 id="lead-dialog-heading">{promoMode ? "خصم 15% على اشتراكك" : step === 1 ? "خلّنا نضبط اشتراكك" : "باقي خطوة ونساعدك تبدأ"}</h2>
                 <p>{promoMode ? "سجّل اسمك ورقم جوالك، وفريقنا يتواصل معك لإكمال الاشتراك ومراجعة استفادتك من عرض الموقع." : step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
               </div>
