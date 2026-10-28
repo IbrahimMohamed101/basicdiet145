@@ -11,6 +11,7 @@ type Choice = { days: number; grams: number; meals: number; fulfillment: "delive
 const KEY = "basicdiet_plan_choice_v2";
 const initial: Choice = { days: 26, grams: 150, meals: 2, fulfillment: "delivery" };
 const number = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 });
+const discountedNumber = new Intl.NumberFormat("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function readChoice(): Choice | null {
   try {
@@ -75,8 +76,8 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
   const baseHalalas = price != null ? Math.round(price * 100) : null;
   const savingHalalas = baseHalalas != null ? Math.round(baseHalalas * PROMO_PERCENT / 100) : null;
   const offerHalalas = baseHalalas != null && savingHalalas != null ? baseHalalas - savingHalalas : null;
-  const offerPrice = offerHalalas == null ? null : number.format(offerHalalas / 100) + " ر.س";
-  const savingPrice = savingHalalas == null ? null : number.format(savingHalalas / 100) + " ر.س";
+  const offerPrice = offerHalalas == null ? null : discountedNumber.format(offerHalalas / 100) + " ر.س";
+  const savingPrice = savingHalalas == null ? null : discountedNumber.format(savingHalalas / 100) + " ر.س";
   const availableGrams = selectedPlan?.gramsOptions.map(item => item.grams) || [];
   const availableMeals = selectedGram?.mealsOptions.map(item => item.mealsPerDay) || [];
   const allDays = [...new Set(plans.map(plan => plan.daysCount))];
