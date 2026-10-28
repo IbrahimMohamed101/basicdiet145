@@ -16,7 +16,14 @@ const catalog = {
   ],
 };
 
-test("benefits CTA carries selected grams, meals, delivery and explicit consent into the lead request", async ({ page }) => {
+const prices = { data: catalog.data.map(plan => ({ ...plan, gramsOptions: plan.gramsOptions.map(g => ({
+  grams: g.grams, mealsOptions: g.mealsPerDay.map(mealsPerDay => ({ mealsPerDay, priceSar: 1000 })),
+})) })) };
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/plan-catalog", route => route.fulfill({ json: prices }));
+});
+
+test("calculator CTA carries selected grams, meals, delivery and explicit consent into the lead request", async ({ page }) => {
   let submitted: Record<string, unknown> | null = null;
   await page.route("**/api/lead-options", async route => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(catalog) });
@@ -26,27 +33,25 @@ test("benefits CTA carries selected grams, meals, delivery and explicit consent 
     await route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ status: true }) });
   });
   await page.goto("/?utm_source=instagram&utm_campaign=autumn", { waitUntil: "domcontentloaded" });
-  await page.locator('label:has(input[name="grams"][value="200"])').click();
-  await page.locator('label:has(input[name="meals"][value="5"])').click();
-  await page.locator('label:has(input[name="delivery"][value="استلام"])').click();
-  await page.getByRole("button", { name: "اطلب اشتراكك" }).click();
+  const calculator = page.locator("#plans");
+  await calculator.locator("fieldset").nth(1).getByRole("button", { name: "200 جم" }).click();
+  await calculator.locator("fieldset").nth(2).getByRole("button", { name: "5", exact: true }).click();
+  await calculator.getByRole("button", { name: "استلام", exact: true }).click();
+  await calculator.locator(".bd-calculator-primary").click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("combobox", { name: "حجم الوجبة" })).toHaveValue("200");
-  await expect(dialog.getByRole("combobox", { name: "وجبات يوميًا" })).toHaveValue("5");
-  await expect(dialog.getByRole("button", { name: "استلام" })).toHaveAttribute("aria-pressed", "true");
-  await dialog.getByRole("button", { name: /متابعة/ }).click();
   await expect(dialog.getByText(/26 يوم · 200 جرام · 5 وجبات يوميًا · استلام/)).toBeVisible();
+  await dialog.getByRole("textbox", { name: /اسمك/ }).fill("QA fixture");
   await dialog.getByPlaceholder("05xxxxxxxx").fill("0500000000");
-  await expect(dialog.getByRole("button", { name: "اطلب تواصل من Basic Diet" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "سجّل لخصم 15%" })).toBeDisabled();
   await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
-  await dialog.getByRole("button", { name: "اطلب تواصل من Basic Diet" }).click();
+  await dialog.getByRole("button", { name: "سجّل لخصم 15%" }).click();
   await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
   expect(submitted).toMatchObject({
     phone: "+966500000000", planId: "507f1f77bcf86cd799439026",
     grams: 200, mealsPerDay: 5, daysCount: 26,
-    fulfillmentMethod: "pickup", location: "benefits",
+    fulfillmentMethod: "pickup", location: "plans",
     contactConsent: true, marketingConsent: false,
   });
   // The confirmation remains a lead, not a payment or subscription record.
@@ -61,11 +66,12 @@ test("mobile sheet keeps layout within viewport and 7-day plan selection survive
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(catalog) })
   );
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const plan = page.locator('.plan-option').filter({ has: page.getByText("7", { exact: true }) });
-  await plan.getByRole("button").click();
+  const calculator = page.locator("#plans");
+  await calculator.locator("fieldset").first().getByRole("button", { name: /7 يوم/ }).click();
+  await calculator.locator(".bd-calculator-primary").click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: /7 يوم/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.locator(".lead-selection-summary")).toContainText("7 يوم");
   // The sheet intentionally animates from below the viewport for ~260ms.
   // Poll for the settled position instead of measuring the entrance frame.
   await expect.poll(async () => {
@@ -84,8 +90,8 @@ test("disabled plan catalog displays an app fallback without collecting a phone"
   await page.route("**/api/lead-options", route =>
     route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ status: false, data: [] }) })
   );
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "اطلب اشتراكك" }).click();
+  await page.goto("/jeddah/healthy-meals", { waitUntil: "domcontentloaded" });
+  await page.locator(".nav-actions").getByRole("button", { name: "ابدأ اشتراكك" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(/تعذر تحميل الباقات/)).toBeVisible();
@@ -97,8 +103,8 @@ test("privacy notice is reachable from required consent and provides the support
   await page.route("**/api/lead-options", route =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(catalog) })
   );
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "اطلب اشتراكك" }).click();
+  await page.goto("/jeddah/healthy-meals", { waitUntil: "domcontentloaded" });
+  await page.locator(".nav-actions").getByRole("button", { name: "ابدأ اشتراكك" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: /متابعة/ }).click();
   const link = dialog.getByRole("link", { name: "سياسة الخصوصية" });

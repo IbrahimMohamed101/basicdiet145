@@ -191,7 +191,10 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
             <div className="bd-calculator-secondary">
               <a href={IOS_APP_URL}>App Store</a>
               <a href={ANDROID_APP_URL}>Google Play</a>
-              {context === "home" && <a href={menuUrl}>شوف اختياراتك في المنيو</a>}
+              {context === "home" && <>
+                <a href={menuUrl}>شوف اختياراتك في المنيو</a>
+                <a href="/jeddah/healthy-meals">قارن باقات بيسك دايت وخيارات التوصيل في جدة</a>
+              </>}
             </div>
           </aside>
         </div>
