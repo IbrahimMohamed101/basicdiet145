@@ -102,14 +102,14 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   const form = page.locator("#menu-quick-contact form");
   await form.getByRole("textbox", { name: "الاسم" }).fill("عميل تجربة");
   await form.getByRole("textbox", { name: "رقم الجوال السعودي" }).fill("0501234567");
-  await form.getByRole("button", { name: /كمّل طلب التواصل/ }).click();
+  await form.getByRole("button", { name: /سجّل بياناتك للخصم/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: /اسمك/ })).toHaveValue("عميل تجربة");
   await expect(dialog.getByRole("textbox", { name: "رقم الجوال" })).toHaveValue("0501234567");
   await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
-  await dialog.getByRole("button", { name: /اطلب تواصل من Basic Diet/ }).click();
+  await dialog.getByRole("button", { name: /أرسل بياناتي للاستفادة من العرض/ }).click();
   await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
   expect(sent).toHaveLength(1);
   expect(sent[0].name).toBe("عميل تجربة");
@@ -118,7 +118,8 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   expect(sent[0].daysCount).toBe(26);
   expect(sent[0].contactConsent).toBe(true);
   expect(sent[0].location).toBe("final");
-  expect(String(sent[0].content)).toContain("menu_footer_form");
+  expect(String(sent[0].content)).toContain("menu_discount15_footer_form");
+  expect(sent[0].marketingConsent).toBe(false);
 });
 
 test("plan call request carries the selected plan dimensions", async ({ page }) => {
@@ -134,7 +135,7 @@ test("plan call request carries the selected plan dimensions", async ({ page }) 
   await page.goto("/menu");
   const plans = page.locator("#menu-plans");
   await plans.getByRole("group", { name: "حجم البروتين" }).getByRole("button", { name: /200/ }).click();
-  await plans.getByRole("button", { name: /اطلب تواصل بخصوص الباقة/ }).click();
+  await plans.getByRole("button", { name: /سجّل بياناتك للخصم/ }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
   await expect(dialog.locator(".lead-selection-summary")).toContainText("200 جرام");
@@ -196,7 +197,7 @@ test("builder asks for callback only when explicitly selected", async ({ page })
   await builder.getByRole("group", { name: "نوع تجربة التخصيص" })
     .getByRole("button", { name: /اصنع سلطتك/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await builder.getByRole("button", { name: /خلّينا نتواصل معك/ }).click();
+  await builder.getByRole("button", { name: /سجّل بياناتك وخلّينا نكلمك/ }).click();
   await expect(page.locator(".lead-dialog")).toBeVisible();
   await expect(page.locator(".lead-dialog").getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
 });
@@ -375,5 +376,70 @@ test("mobile salad builder controls do not clip on either edge", async ({ page }
     });
     expect(clipped).toEqual([]);
     await expect(builder.locator(".menu-salad-tabs button")).toHaveCount(6);
+  }
+});
+
+
+test("15 percent offer appears after food categories, before the priced catalog, and is fully opt-in", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sent: Record<string, unknown>[] = [];
+  await page.route("**/api/lead-options", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      status: true, data: [{ planId: "6a621995f4f8d0974cebc472", daysCount: 26,
+        gramsOptions: [{ grams: 150, mealsPerDay: [2] }] }],
+    }),
+  }));
+  await page.route("**/api/leads", route => {
+    sent.push(route.request().postDataJSON() as Record<string, unknown>);
+    return route.fulfill({ status: 202, contentType: "application/json", body: '{"status":true}' });
+  });
+  await page.goto("/menu");
+  const offer = page.locator(".menu-offer-section");
+  await expect(offer.getByRole("heading", { name: /سجّل بياناتك/ })).toBeVisible();
+  await expect(offer).toContainText("15%");
+  await expect(offer).toContainText("التوصيل أو الإضافات");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".menu-mobile-conversion-bar")).toHaveCount(0);
+  const positions = await page.evaluate(() => {
+    const top = (sel: string) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
+    return { category: top(".menu-featured-categories"), offer: top(".menu-offer-section"), menu: top("#menu-products") };
+  });
+  expect(positions.category).toBeLessThan(positions.offer);
+  expect(positions.offer).toBeLessThan(positions.menu);
+
+  await offer.getByRole("button", { name: /سجّل بياناتك للعرض/ }).click();
+  const dialog = page.locator(".lead-dialog");
+  await expect(dialog.getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
+  await expect(dialog.locator(".lead-discount-notice")).toContainText("15%");
+  await expect(dialog.locator(".lead-discount-notice")).toContainText("التسجيل وحده لا يفعّل الخصم");
+  await expect(dialog.getByRole("checkbox", { name: /أوافق على التواصل/ })).not.toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: /عروض مستقبلية/ })).not.toBeChecked();
+  await dialog.getByRole("textbox", { name: /اسمك/ }).fill("عميل تجربة");
+  await dialog.getByRole("textbox", { name: "رقم الجوال" }).fill("0501234567");
+  await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
+  await dialog.getByRole("button", { name: /أرسل بياناتي للاستفادة من العرض/ }).click();
+  await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
+  expect(sent).toHaveLength(1);
+  expect(sent[0].name).toBe("عميل تجربة");
+  expect(sent[0].phone).toBe("+966501234567");
+  expect(sent[0].contactConsent).toBe(true);
+  expect(sent[0].marketingConsent).toBe(false);
+  expect(String(sent[0].content)).toContain("menu_discount15_menu");
+});
+
+test("15 percent contact offer stays readable with no side overflow on narrow phones", async ({ page }) => {
+  for (const width of [320, 360, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 820 });
+    await page.goto("/menu");
+    const offer = page.locator(".menu-offer-card");
+    const box = await offer.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(-1);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+    await expect(offer.getByRole("button", { name: /سجّل بياناتك للعرض/ })).toBeVisible();
+    await expect.poll(async () => page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )).toBeLessThanOrEqual(1);
   }
 });

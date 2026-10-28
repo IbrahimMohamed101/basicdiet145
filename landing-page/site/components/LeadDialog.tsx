@@ -57,6 +57,7 @@ export function LeadDialog() {
   const selectedGram = selected?.gramsOptions.find(g => g.grams === grams);
   const days = selected?.daysCount || 26;
   const isMenuPreview = process.env.NEXT_PUBLIC_MENU_PREVIEW_MODE === "true" && sourceDetail.startsWith("menu_");
+  const isMenuDiscount = sourceDetail.startsWith("menu_discount15_");
 
   useEffect(() => {
     let cancelled = false;
@@ -198,7 +199,7 @@ export function LeadDialog() {
       {active && (
         <div className="lead-sheet">
           <div className="lead-sheet-top">
-            <span className="lead-sheet-kicker">Basic Diet <span aria-hidden="true">•</span> اختيارك يبدأ هنا</span>
+            <span className="lead-sheet-kicker">Basic Diet <span aria-hidden="true">•</span> {isMenuDiscount ? "عرض 15% على الاشتراك" : "اختيارك يبدأ هنا"}</span>
             <button type="button" className="lead-close" onClick={close} aria-label="إغلاق النافذة">×</button>
           </div>
           {step < 3 ? (
@@ -206,7 +207,7 @@ export function LeadDialog() {
               <div className="lead-step-head">
                 <span className="lead-step-count">{step} / 2</span>
                 <h2 id="lead-dialog-heading">{step === 1 ? "خلّنا نضبط اشتراكك" : "باقي خطوة ونساعدك تبدأ"}</h2>
-                <p>{step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
+                <p>{step === 1 ? "اختَر اللي يناسب يومك، والتفاصيل نكملها معك." : isMenuDiscount ? "سيب اسمك ورقمك عشان نكلمك ونساعدك تستفيد من خصم 15% عند إتمام الاشتراك." : "بنستخدم رقمك للتواصل معك بشأن الباقة اللي اخترتها."}</p>
               </div>
               <div className="lead-step-line"><span style={{ width: step === 1 ? "50%" : "100%" }} /></div>
               {step === 1 ? (
@@ -266,6 +267,7 @@ export function LeadDialog() {
                 </div>
               ) : (
                 <form className="lead-fields" onSubmit={submit}>
+                  {isMenuDiscount && <div className="lead-discount-notice" role="note"><strong>خصم 15% على قيمة الاشتراك</strong><span>يُطبق عند إتمام الاشتراك وفق شروط العرض، ولا يشمل التوصيل والإضافات. التسجيل وحده لا يفعّل الخصم.</span></div>}
                   <div className="lead-selection-summary">
                     <span>اختيارك</span>
                     <strong>{days} يوم · {grams} جرام · {mealsPerDay} {mealsPerDay === 1 ? "وجبة" : "وجبات"} يوميًا · {fulfillmentMethod === "delivery" ? "توصيل" : "استلام"}</strong>
@@ -294,7 +296,7 @@ export function LeadDialog() {
                   {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة للمنيو. لحماية بياناتك، طلبات التواصل غير مفعّلة هنا. التسجيل الفعلي متاح عبر الموقع الرسمي أو التطبيق.</p>}
                   {error && <p className="lead-error" role="alert">{error}</p>}
                   <button className="lead-primary" type="submit" disabled={isMenuPreview || sending || !contactConsent || !normalizePhone(phone) || (fastContact && name.trim().length < 2)}>
-                    {sending ? "جاري إرسال طلبك..." : "اطلب تواصل من Basic Diet"}
+                    {sending ? "جاري إرسال طلبك..." : isMenuDiscount ? "أرسل بياناتي للاستفادة من العرض" : "اطلب تواصل من Basic Diet"}
                   </button>
                   <button className="lead-back" type="button" onClick={() => { setStep(1); setError(""); }} disabled={sending}>تعديل الاختيارات</button>
                 </form>
@@ -305,7 +307,7 @@ export function LeadDialog() {
             <div className="lead-success">
               <div className="lead-success-mark" aria-hidden="true">✓</div>
               <h2 id="lead-dialog-heading">وصلنا طلبك!</h2>
-              <p>فريق Basic Diet يقدر يتواصل معك بخصوص اشتراكك. وتقدر تبدأ بنفسك من التطبيق في أي وقت.</p>
+              <p>{isMenuDiscount ? "استلمنا طلب تواصلك بخصوص عرض 15%. فريقنا يقدر يتواصل معك لتوضيح التفاصيل وتأكيد الباقة والخصم عند إتمام الاشتراك." : "فريق Basic Diet يقدر يتواصل معك بخصوص اشتراكك. وتقدر تبدأ بنفسك من التطبيق في أي وقت."}</p>
               <div className="lead-success-stores"><StoreLinks location="app" /></div>
               <button type="button" className="lead-back" onClick={close}>رجوع للموقع</button>
             </div>
