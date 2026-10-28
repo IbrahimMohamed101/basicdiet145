@@ -5,7 +5,7 @@ export function ServiceClarity() {
         <div className="bd-service-title">
           <p>قبل ما تبدأ</p>
           <h2 id="bd-service-title">اختيارك واضح. والتفاصيل عندك.</h2>
-          <span>معلومات عن طريقة الاشتراك، من غير تقييمات أو مواعيد غير موثقة.</span>
+          <span>تفاصيل مهمة تساعدك تختار اشتراكك وطريقة الاستلام المناسبة.</span>
         </div>
         <div className="bd-service-grid">
           <article><strong>01 / نخدم جدة</strong><p>تأكد من تغطية عنوانك داخل التطبيق قبل إتمام طلبك.</p></article>
