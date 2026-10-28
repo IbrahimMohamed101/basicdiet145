@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
+import { MenuAppCatalog } from "@/components/MenuAppCatalog";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
 const secondImage = "/api/meal-image?id=1IxuZvbSI85kxn9pwF97kGCeScVpz0fdv";
@@ -284,6 +285,8 @@ export function MenuExperience() {
           <p className="menu-catalog-footnote">المنتجات المعروضة مرشحة فقط. الصورة أو الوصف أو السعرات التي لم يوافق عليها المطعم لا تُنشر كحقيقة نهائية.</p>
         </div>
       </section>
+
+      <MenuAppCatalog />
 
       <section className="menu-section menu-plans-section" id="menu-plans" aria-labelledby="menu-plans-title">
         <div className="page-shell">
