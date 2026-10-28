@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { menuPreviewItems, type MenuPreviewItem } from "@/lib/menu-preview-items";
 import { MenuLeadCapture, MenuContactButton } from "@/components/MenuLeadCapture";
 import { PlanCalculator } from "@/components/PlanCalculator";
+import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
@@ -102,10 +103,6 @@ export function MenuExperience() {
   const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
 
-  const livePlan = livePlans.find(item => item.daysCount === days);
-  const liveGrams = livePlan?.gramsOptions.find(item => item.grams === grams);
-  const livePriceHalala = liveGrams?.mealsOptions.find(item => item.mealsPerDay === meals)?.priceHalala;
-  const price = Number.isSafeInteger(livePriceHalala) && (livePriceHalala ?? 0) > 0 ? (livePriceHalala ?? 0) / 100 : null;
   const numberFormatter = new Intl.NumberFormat("ar-SA");
 
 
