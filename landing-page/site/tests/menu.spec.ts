@@ -113,13 +113,14 @@ test("footer callback uses the existing landing lead endpoint and preserves the 
   await expect(dialog.getByRole("textbox", { name: /اسمك/ })).toHaveValue("عميل تجربة");
   await expect(dialog.getByRole("textbox", { name: "رقم الجوال" })).toHaveValue("0501234567");
   await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
-  await dialog.getByRole("button", { name: /اطلب تواصل من Basic Diet/ }).click();
+  await dialog.getByRole("button", { name: "سجّل لخصم 15%" }).click();
   await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
   expect(sent).toHaveLength(1);
   expect(sent[0].name).toBe("عميل تجربة");
   expect(sent[0].phone).toBe("+966501234567");
-  expect(sent[0].planId).toBe("6a621995f4f8d0974cebc472");
-  expect(sent[0].daysCount).toBe(26);
+  expect(sent[0].planUnselected).toBe(true);
+  expect(sent[0].planId).toBeUndefined();
+  expect(sent[0].daysCount).toBeUndefined();
   expect(sent[0].contactConsent).toBe(true);
   expect(sent[0].location).toBe("final");
   expect(String(sent[0].content)).toContain("menu_basic15_footer_form");
@@ -203,7 +204,7 @@ test("builder asks for callback only when explicitly selected", async ({ page })
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await builder.getByRole("button", { name: /خلّينا نتواصل معك/ }).click();
   await expect(page.locator(".lead-dialog")).toBeVisible();
-  await expect(page.locator(".lead-dialog").getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
+  await expect(page.locator(".lead-dialog").getByRole("heading", { name: "باقي خطوة ونساعدك تبدأ" })).toBeVisible();
 });
 
 
@@ -443,15 +444,17 @@ test("header website offer opens registration directly and submits an unconfirme
   await page.locator(".nav-actions").getByRole("button", { name: "سجّل لخصم 15%" }).click();
   const dialog = page.locator(".lead-dialog");
   await expect(dialog.getByRole("heading", { name: "خصم 15% على اشتراكك" })).toBeVisible();
-  await expect(dialog.locator(".lead-selection-summary")).toContainText("فريقنا يساعدك تختار");
+  await expect(dialog.locator(".lead-selection-summary")).toContainText("لم تحدد باقة");
   await dialog.getByRole("textbox", { name: /اسمك/ }).fill("عميل موقع");
   await dialog.getByRole("textbox", { name: "رقم الجوال" }).fill("0501234567");
   await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
-  await dialog.getByRole("button", { name: /سجّل بياناتي واستفيد من العرض/ }).click();
+  await dialog.getByRole("button", { name: "سجّل لخصم 15%" }).click();
   await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
   expect(sent).toHaveLength(1);
   expect(sent[0].name).toBe("عميل موقع");
   expect(sent[0].phone).toBe("+966501234567");
+  expect(sent[0].planUnselected).toBe(true);
+  expect(sent[0].planId).toBeUndefined();
   expect(sent[0].contactConsent).toBe(true);
   expect(sent[0].location).toBe("header");
   expect(String(sent[0].content)).toContain("plan_to_confirm");
@@ -476,4 +479,60 @@ test("homepage promotes website registration but keeps the food and plan paths",
   await expect(page.locator(".hero a[href='#plans']")).toHaveCount(1);
   await expect(page.locator(".hero a[href='/menu#menu-products']")).toHaveCount(1);
   await expect(page.locator("body")).not.toContainText("BASIC15");
+});
+
+
+test("no-plan website registration opens before catalog network settles", async ({ page }) => {
+  let catalogCalls = 0;
+  await page.route("**/api/lead-options", async route => { catalogCalls++; await route.abort(); });
+  await page.goto("/menu");
+  await page.locator(".nav-actions").getByRole("button", { name: "سجّل لخصم 15%" }).click();
+  const dialog = page.locator(".lead-dialog");
+  await expect(dialog.getByRole("textbox", { name: /اسمك/ })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "رقم الجوال" })).toBeVisible();
+  await expect(dialog).not.toContainText("جاري تحميل الباقات");
+  expect(catalogCalls).toBe(0);
+  await expect(dialog.locator(".lead-form-actions button[type='submit']")).toBeVisible();
+});
+
+test("form submit button remains visible at bottom on short mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 520 });
+  await page.goto("/menu");
+  await page.locator(".nav-actions").getByRole("button", { name: "سجّل لخصم 15%" }).click();
+  const dialog = page.locator(".lead-dialog");
+  const button = dialog.locator(".lead-form-actions button[type='submit']");
+  await expect(button).toBeVisible();
+  const [submitBox, dialogBox] = await Promise.all([button.boundingBox(), dialog.boundingBox()]);
+  expect(submitBox).not.toBeNull();
+  expect(dialogBox).not.toBeNull();
+  expect(submitBox!.y).toBeGreaterThan(dialogBox!.y);
+  expect(submitBox!.y + submitBox!.height).toBeLessThanOrEqual(520);
+  const scroll = await dialog.locator(".lead-form-scroll").evaluate(e => ({
+    client: e.clientHeight, scroll: e.scrollHeight, overflow: getComputedStyle(e).overflowY,
+  }));
+  expect(["auto", "scroll"]).toContain(scroll.overflow);
+});
+
+test("double activation of registration CTA sends only one request", async ({ page }) => {
+  let requests = 0;
+  await page.route("**/api/leads", async route => {
+    requests++;
+    await route.fulfill({ status: 202, contentType: "application/json", body: '{"status":true}' });
+  });
+  await page.goto("/menu");
+  await page.locator(".nav-actions").getByRole("button", { name: "سجّل لخصم 15%" }).click();
+  const dialog = page.locator(".lead-dialog");
+  await dialog.getByRole("textbox", { name: /اسمك/ }).fill("عميل تجريبي");
+  await dialog.getByRole("textbox", { name: "رقم الجوال" }).fill("0501234567");
+  await dialog.getByRole("checkbox", { name: /أوافق على التواصل/ }).check();
+  const submit = dialog.locator(".lead-form-actions button[type='submit']");
+  await submit.evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+  await expect(dialog.getByRole("heading", { name: "وصلنا طلبك!" })).toBeVisible();
+  expect(requests).toBe(1);
+  const recorded = await page.evaluate(() => {
+    const layer = (window as typeof window & { dataLayer?: Array<{ event?: string; placement?: string }> }).dataLayer || [];
+    return layer.filter(e => e.event === "lp_lead_opened" || e.event === "lp_lead_submitted");
+  });
+  expect(recorded.filter(e => e.event === "lp_lead_opened")).toHaveLength(1);
+  expect(recorded.filter(e => e.event === "lp_lead_submitted")).toHaveLength(1);
 });
