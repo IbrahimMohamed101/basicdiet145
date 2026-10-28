@@ -38,6 +38,16 @@ async function run() {
   assert.equal(Boolean(service.isValidRequest({ ...base(), fulfillmentMethod: "courier" })), false);
   assert.equal(Boolean(service.isValidRequest({ ...base(), fulfillmentMethod: null })), false);
   assert.ok(service.isValidRequest({ ...base(), fulfillmentMethod: undefined }));
+  const noPlan = () => ({
+    requestId: crypto.randomUUID(), phone: "0501234567",
+    contactConsent: true, name: "عميل موقع", location: "header",
+    planUnselected: true, content: "menu_basic15_header|offer15|plan_to_confirm",
+  });
+  assert.equal(Boolean(service.isValidRequest(noPlan())), true);
+  assert.equal(Boolean(service.isValidRequest({ ...noPlan(), planId: ID })), false);
+  assert.equal(Boolean(service.isValidRequest({ ...noPlan(), daysCount: 26 })), false);
+  assert.equal(Boolean(service.isValidRequest({ ...noPlan(), contactConsent: false })), false);
+  assert.equal(Boolean(service.isValidRequest({ ...noPlan(), fulfillmentMethod: "delivery" })), false);
 
   const previousSecret = process.env.LANDING_ANALYTICS_INGEST_SECRET;
   process.env.LANDING_ANALYTICS_INGEST_SECRET = "test-only-secret-no-production";
@@ -66,6 +76,21 @@ async function run() {
     assert.equal(saved.fulfillmentMethod, "unspecified");
     assert.equal(saved.phoneHash.length, 64);
     assert.equal(saved.status, undefined);
+    assert.equal(saved.planSelectionStatus, "selected");
+
+    // The website conversion form must not fabricate a default subscription choice.
+    Plan.findOne = () => { throw new Error("plan lookup forbidden for unselected lead"); };
+    const unselected = await service.submitLead(noPlan());
+    assert.deepEqual(unselected, { ok: true, created: true });
+    assert.equal(saved.name, "عميل موقع");
+    assert.equal(saved.planSelectionStatus, "unselected");
+    assert.equal(saved.planId, null);
+    assert.equal(saved.daysCount, null);
+    assert.equal(saved.grams, null);
+    assert.equal(saved.mealsPerDay, null);
+    assert.equal(saved.fulfillmentMethod, "unspecified");
+    assert.equal(saved.content.includes("plan_to_confirm"), true);
+    Plan.findOne = () => ({ lean: async () => plan });
     assert.equal(saved.expiresAt.getTime() > Date.now(), true);
     assert.equal(Object.keys(saved).includes("ipAddress"), false);
 
@@ -80,6 +105,7 @@ async function run() {
 
     Lead.create = async () => { const e = new Error("duplicate"); e.code = 11000; throw e; };
     assert.deepEqual(await service.submitLead(base()), { ok: true, created: false });
+    assert.deepEqual(await service.submitLead(noPlan()), { ok: true, created: false });
 
     const planWithUnavailableGram = { ...plan, gramsOptions: [
       ...plan.gramsOptions,
@@ -102,6 +128,6 @@ async function run() {
     if (previousSecret === undefined) delete process.env.LANDING_ANALYTICS_INGEST_SECRET;
     else process.env.LANDING_ANALYTICS_INGEST_SECRET = previousSecret;
   }
-  console.log("Landing lead normalization, opt-in, plan validation, privacy, dedupe: PASS");
+  console.log("Landing lead validation, real/no-plan choices, opt-in, privacy, dedupe: PASS");
 }
 run().catch(e => { console.error(e); process.exitCode = 1; });
