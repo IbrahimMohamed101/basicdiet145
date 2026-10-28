@@ -34,6 +34,8 @@ const sizeVariantFamilies = [
   { key: "shrimp", title: "جمبري", sizes: [{ id: "77", grams: 100 }, { id: "83", grams: 150 }, { id: "84", grams: 200 }] },
   { key: "salmon", title: "سالمون", sizes: [{ id: "78", grams: 100 }, { id: "88", grams: 150 }, { id: "89", grams: 200 }] },
   { key: "fillet", title: "سمك فيليه", sizes: [{ id: "85", grams: 100 }, { id: "86", grams: 150 }, { id: "87", grams: 200 }] },
+  { key: "chicken-meal", title: "وجبة دجاج", sizes: [{ id: "42", grams: 100 }, { id: "43", grams: 150 }, { id: "44", grams: 200 }] },
+  { key: "beef-meal", title: "وجبة لحم", sizes: [{ id: "129", grams: 100 }, { id: "79", grams: 150 }, { id: "80", grams: 200 }] },
 ] as const;
 const menuItemById = new Map(menuPreviewItems.map(item => [item.id, item]));
 const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
