@@ -18,7 +18,7 @@ test("search-intent page is crawlable, useful and links to the lead enquiry", as
   await expect(page.getByRole("heading", { name: /باقات اشتراكات وجبات صحية/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /طريقة بدء اشتراك/ })).toBeVisible();
 
-  await page.getByRole("button", { name: /استفسر عن الباقة/ }).first().click();
+  await page.getByRole("button", { name: /سجّل لخصم 15%/ }).first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: /26 يوم/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("dialog").getByRole("button", { name: "إغلاق النافذة" }).click();
@@ -32,6 +32,9 @@ test("sitemap and robots list canonical public content, excluding private lead A
   expect(robots.status()).toBe(200);
   const xml = await map.text();
   expect(xml).toContain("/jeddah/healthy-meals");
+  expect(xml).toContain("/jeddah/subscription-prices");
+  expect(xml).toContain("/menu");
+  expect(xml).toContain("<lastmod>");
   expect(xml).toContain("https://");
   expect(xml).not.toContain("/privacy");
   const text = await robots.text();
@@ -59,7 +62,7 @@ test("Jeddah page has useful local links, a real meal image and correct breadcru
   await page.goto("/jeddah/healthy-meals", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: /وجبات دايت في جدة تختارها حسب باقتك/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /موقع المطعم والتواصل/ })).toBeVisible();
-  await expect(page.getByRole("img", { name: /دجاج بالزبدة من أمثلة وجبات بيسك دايت/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /سالمون من أصناف منيو بيسك دايت/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /موقع Basic Diet على Google Maps/ })).toHaveAttribute("href", /maps.app.goo.gl/);
   const rawSchemas = await page.locator('script[type="application/ld+json"]').allTextContents();
   const schemas = rawSchemas.map(raw => JSON.parse(raw));
@@ -68,4 +71,32 @@ test("Jeddah page has useful local links, a real meal image and correct breadcru
   const schema = breadcrumbSchemas[0];
   expect(schema.itemListElement).toHaveLength(2);
   expect(schema.itemListElement[1].item).toMatch(/\/jeddah\/healthy-meals$/);
+});
+
+test("pricing SEO page has canonical, crawlable server HTML and a safe live-feed fallback", async ({ request, page }) => {
+  const response = await request.get("/jeddah/subscription-prices");
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toContain("أسعار اشتراك وجبات دايت في جدة");
+  expect(html).toContain("/jeddah/subscription-prices");
+  expect(html).toContain("وجبات");
+  // Both conditions are legitimate: live price feed can be temporarily unavailable in CI.
+  expect(html.includes("جدول أسعار باقات الاشتراك")).toBeTruthy();
+  expect(html.includes("قائمة الأسعار غير متاحة للعرض الآن") ||
+    html.includes("السعر الأساسي")).toBeTruthy();
+
+  await page.goto("/jeddah/subscription-prices", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("link[rel='canonical']")).toHaveAttribute("href", /\/jeddah\/subscription-prices$/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("أسعار اشتراك وجبات دايت");
+  await expect(page.getByRole("link", { name: /تصفّح منيو بيسك دايت/ })).toHaveAttribute("href", "/menu");
+});
+
+test("homepage offers crawlable pricing content and business data without invented 24-hour opening", async ({ request }) => {
+  const result = await request.get("/");
+  expect(result.status()).toBe(200);
+  const html = await result.text();
+  expect(html).toContain("قارن أسعار باقات بيسك دايت قبل التسجيل");
+  expect(html).toContain("/jeddah/subscription-prices");
+  expect(html).not.toContain('Mo-Su 00:00-23:59');
+  expect(html).toContain('"hasMenu"');
 });
