@@ -57,8 +57,8 @@ export function Footer() {
             <div className="footer-info-icon"><FooterIcon type="clock" /></div>
             <div>
               <p className="footer-label" id="footer-hours-title">أوقات العمل</p>
-              <strong className="footer-hours">تأكد من المواعيد قبل الزيارة</strong>
-              <p>تواصل معنا للتأكد من مواعيد الفرع المتاحة حاليًا.</p>
+              <strong className="footer-hours">يوميًا · 24 ساعة</strong>
+              <p>المواعيد المنشورة على خرائط Google؛ تأكد من مواعيد العطلات قبل الزيارة.</p>
             </div>
           </section>
         </div>
