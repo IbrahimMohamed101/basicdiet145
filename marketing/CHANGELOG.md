@@ -51,3 +51,9 @@ Marketing strategy and execution should continue across new chats/agents without
 - Label values approximate and portion-specific, preserve true zero, and clear values for unmapped weight variants.
 - Document source workbook hashes, distinct sandwich/breakfast/size joins, and 26 unavailable items/portions.
 - Record that website/backend/dashboard release #174/#61/#175 is now live; application nutrition was not changed by this calorie-display work.
+
+## 2026-10-31 — SEO remediation proposal (review-only)
+
+- Draft server-rendered verified subscription-price comparison, Saudi copy, canonical/sitemap updates, and truthful business hours.
+- Document manual Search Console/Google Business Profile steps and production approval gate in `marketing/analytics/2026-10-31-seo-implementation.md`.
+- No deployment, ranking uplift, or indexing outcome claimed.
