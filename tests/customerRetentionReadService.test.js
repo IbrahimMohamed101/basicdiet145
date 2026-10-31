@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const {
-  buildCanonical, classifyEntitlements, buildLiveRows, addDays,
+  buildCanonical, classifyEntitlements, buildLiveRows, addDays, dateKey,
 } = require("../src/services/dashboard/customerRetentionReadService");
 
 const nowKey = "2026-10-31";
@@ -27,11 +27,14 @@ const current = (s, b) => classifyEntitlements({
   subscriptions: [s], batches: b, nowKey,
 });
 assert.equal(addDays("2026-10-31", 1), "2026-11-01");
+assert.equal(dateKey("2026-10-31T22:30:00Z"), "2026-11-01", "KSA calendar day must be used");
 assert.equal(current(subscription(), [expiry("2026-11-20")]).status, "active");
 assert.equal(current(subscription(), [expiry("2026-11-02")]).status, "due_soon");
 assert.equal(current(subscription(), [expiry("2026-10-25", 0)]).status, "grace_14");
 assert.equal(current(subscription(), [expiry("2026-10-10", 0)]).status, "overdue_14");
 assert.equal(current(subscription(), [expiry("2026-11-20", 0)]).status, "review");
+assert.equal(current(subscription(), [expiry("2026-11-20", 0, { remainingMeals: undefined })]).status, "review", "missing remaining must never become zero");
+assert.equal(current(subscription(), [expiry("2026-11-20", 0, { reservedMeals: undefined })]).status, "review", "missing reserved must never become zero");
 assert.equal(current(subscription(), [expiry("2026-11-20", 0, { exhaustedAt: "2026-10-15T10:00:00Z" })]).status, "overdue_14");
 assert.equal(current(subscription(), [expiry("2026-11-20", 0, { sourceType: "legacy_seed", exhaustedAt: "2026-10-15T10:00:00Z" })]).status, "review");
 assert.equal(current(subscription(), [expiry("2026-10-10", 0), expiry("2026-11-20", 5, { _id: "b2" })]).status, "active");
@@ -48,4 +51,6 @@ const rows = buildLiveRows({
 assert.equal(rows.length, 1);
 assert.equal(rows[0].userId, "u2");
 assert.equal(rows[0].status, "grace_14");
+assert.equal(rows[0].lastRecordedAt, "2026-09-01T10:00:00.000Z");
+assert.equal(rows[0].lastPurchaseAt, undefined, "record timestamp must not claim verified paid purchase");
 console.log("customerRetentionReadService: PASS");
