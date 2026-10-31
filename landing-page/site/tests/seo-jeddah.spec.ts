@@ -175,3 +175,29 @@ test("menu helper labels meet 4.5:1 contrast against white", async ({ page }) =>
     expect(result.contrast, result.selector).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+test("calculator loads only near its section, without losing prices or signup", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let catalogRequests = 0;
+  await page.route("**/api/plan-catalog", route => {
+    catalogRequests += 1;
+    return route.fulfill({ json: { data: [{ planId: "507f1f77bcf86cd799439026",
+      daysCount: 26, gramsOptions: [{ grams: 150, mealsOptions: [{ mealsPerDay: 2, priceSar: 1186 }] }] }] } });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".hero-cinema-mobile-poster")).toBeVisible();
+  await expect(page.locator("#plans")).toBeAttached();
+  expect(catalogRequests).toBe(0);
+  await expect(page.getByRole("link", { name: /شاهد أسعار ومدد الاشتراكات بالتفصيل/ })).toHaveAttribute("href", "/jeddah/subscription-prices");
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  await expect(page.locator("#plans fieldset").first()).toBeVisible();
+  await expect.poll(() => catalogRequests).toBe(1);
+});
+
+test("homepage defers calculator JavaScript without breaking hero registration", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /سجّل لخصم 15%/ }).first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog").getByPlaceholder("05xxxxxxxx")).toBeVisible();
+});
