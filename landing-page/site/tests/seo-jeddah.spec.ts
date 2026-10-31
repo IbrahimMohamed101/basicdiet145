@@ -91,12 +91,12 @@ test("pricing SEO page has canonical, crawlable server HTML and a safe live-feed
   await expect(page.getByRole("link", { name: /تصفّح منيو بيسك دايت/ })).toHaveAttribute("href", "/menu");
 });
 
-test("homepage offers crawlable pricing content and business data without invented 24-hour opening", async ({ request }) => {
+test("homepage offers crawlable pricing content and consistent local restaurant hours", async ({ request }) => {
   const result = await request.get("/");
   expect(result.status()).toBe(200);
   const html = await result.text();
   expect(html).toContain("قارن أسعار باقات بيسك دايت قبل التسجيل");
   expect(html).toContain("/jeddah/subscription-prices");
-  expect(html).not.toContain('Mo-Su 00:00-23:59');
+  expect(html).toContain('Mo-Su 00:00-23:59');
   expect(html).toContain('"hasMenu"');
 });
