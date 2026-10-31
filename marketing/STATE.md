@@ -191,3 +191,7 @@ The user requested the previously unified channel calorie values on the website.
 
 
 Website verification: 49 frontend checks and real isolated persistence/read/report integration passed; dashboard build and five targeted tests passed. The updated preview is deployed and actual preview intake is blocked server-side. Production-compatible release branches are prepared together (#175/#174/dashboard #61). Next step is coordinated production release, followed by real approved intake verification and measurement before paid scaling.
+
+## Website SEO work in review — 2026-10-31
+
+A separate review branch `seo/website-repair-20261031` proposes server-rendered prices and copy/schema/sitemap corrections for the Railway landing. Not live until approved and deployed. See `marketing/analytics/2026-10-31-seo-implementation.md` for verification gates and the external Search Console / Business Profile follow-up.
