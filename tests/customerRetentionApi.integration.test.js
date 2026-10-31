@@ -145,13 +145,19 @@ async function run() {
   // Old source opt-out remains effective after merge and beyond the 30-row UI history.
   await Followup.create({ _id: "retention-source-optout", userId: second._id, actorId: superadmin._id,
     channel: "phone", outcome: "do_not_contact", createdAt: new Date("2026-01-01") });
+  await Followup.insertMany(Array.from({ length: 31 }, (_, i) => ({
+    _id: "retention-source-history-" + String(i).padStart(3, "0"), userId: second._id,
+    actorId: superadmin._id, channel: "phone", outcome: "no_answer", createdAt: new Date(Date.now() + i),
+  })));
   const target = await User.create({ name: "Synthetic Merge Target", role: "client", phone: "+966500000504" });
   await User.updateOne({ _id: second._id }, { $set: { mergedIntoUserId: target._id } });
   await Merge.collection.insertOne({ sourceUserId: second._id, targetUserId: target._id, state: "completed" });
   const targetUrl = url + "/" + target._id + "/followups";
   response = await client.get(targetUrl).set(auth(superadmin));
   assert.equal(response.status, 200);
-  assert.equal(response.body.data.some((e) => e.outcome === "do_not_contact"), true);
+  assert.equal(response.body.data.length, 30);
+  assert.equal(response.body.data.some((e) => e.outcome === "do_not_contact"), false,
+    "Opt-out is deliberately outside the last 30 events; server policy must still find it");
   response = await client.post(targetUrl).set(auth(superadmin)).send({ ...payload, requestId: "retention-merge-blocked" });
   assert.equal(response.status, 409);
   assert.equal(response.body.error.code, "CUSTOMER_DO_NOT_CONTACT");

@@ -1,8 +1,19 @@
 # Basic Diet Marketing State
 
+
 **State version:** v2  
-**Last updated:** 2026-10-28  
+**Last updated:** 2026-10-31
 **Status:** Core data foundation complete enough for daily organic content execution. Live commercial baseline remains the main measurement gap.
+
+## 2026-10-31 — Retention dashboard final QA: NOT READY
+
+- Backend PR186 and Dashboard PR62 updated with conservative payment/entitlement classification, sticky do-not-contact enforcement across completed merges, cross-origin read fix and session-cache protection.
+- Real local HTTP/MongoDB and built-dashboard Chromium desktop/mobile integration passed on synthetic data; no customer outreach or production writes.
+- Full Dashboard regression still has44 failing assertions reproduced on main; full lint32 errors remains open. Focused retention tests11/11 and Build/project TypeScript pass.
+- Railway staging backend remains August93d255c on agent/email-otp-auth; dashboard1de7b3f on main. Database isolation cannot be established through redacted OAuth values; no Railway settings changed and staging acceptance remains incomplete.
+- Production dependency High findings were fixed by lockfile updates;4 Moderate findings remain. Historical October numbers are a fixed snapshot, not current live metrics.
+- Canonical report and all limitations: [RETENTION_DASHBOARD_FINAL_QA_REPORT.md](../RETENTION_DASHBOARD_FINAL_QA_REPORT.md). No merge or deployment approval.
+
 
 ## North Star
 

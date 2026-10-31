@@ -1,0 +1,43 @@
+{
+  "scope": "production dependencies only",
+  "versions": {
+    "body-parser": "1.20.9",
+    "multer": "2.5.0"
+  },
+  "counts": {
+    "info": 0,
+    "low": 0,
+    "moderate": 4,
+    "high": 0,
+    "critical": 0,
+    "total": 4
+  },
+  "findings": [
+    {
+      "package": "glob",
+      "severity": "moderate",
+      "advisories": []
+    },
+    {
+      "package": "minimatch",
+      "severity": "moderate",
+      "advisories": [
+        "https://github.com/advisories/GHSA-g3hv-75wg-m249"
+      ]
+    },
+    {
+      "package": "nodemailer",
+      "severity": "moderate",
+      "advisories": [
+        "https://github.com/advisories/GHSA-8c8m-p3m8-cjg8",
+        "https://github.com/advisories/GHSA-m943-m63m-w62w",
+        "https://github.com/advisories/GHSA-85x2-q946-cp5h"
+      ]
+    },
+    {
+      "package": "swagger-jsdoc",
+      "severity": "moderate",
+      "advisories": []
+    }
+  ]
+}
