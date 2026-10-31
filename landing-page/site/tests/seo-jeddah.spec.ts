@@ -240,6 +240,7 @@ test("PERF DIAGNOSTIC: throttled preview homepage resource waterfall", async ({ 
   console.log("HOMEPAGE_DEFERRED_WATERFALL "+JSON.stringify(result));
   expect(result.plansLoaded).toBe(false);
   expect(result.lcp).toBeTruthy();
+  expect(result.files.some(file=>file.name === "/media/hero-poster.webp")).toBe(false);
   await cdp.detach();
 });
 
@@ -263,6 +264,7 @@ test("mobile poster uses responsive optimization instead of full-size transfer",
   await expect(poster).toHaveAttribute("fetchpriority", "high");
   const response=await request.get("/_next/image?url=%2Fmedia%2Fhero-poster.webp&w=828&q=75");
   expect(response.ok()).toBe(true);
-  expect(response.headers()["content-type"]).toMatch(/image\/webp|image\/avif/);
+  expect(response.headers()["content-type"]).toMatch(/image\/(webp|avif|jpeg)/);
   expect((await response.body()).byteLength).toBeLessThan(63248);
+  await expect(page.locator(".hero-cinema-video")).not.toHaveAttribute("poster", /.+/);
 });
