@@ -254,3 +254,15 @@ test("app section stays server-rendered and its motion is lazy", async ({ page, 
   await page.locator("#app").scrollIntoViewIfNeeded();
   await expect(page.locator("#app .app-reveal-stage")).toHaveAttribute("data-scene-interactive", /^(true|false)$/);
 });
+
+test("mobile poster uses responsive optimization instead of full-size transfer", async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const poster=page.locator(".hero-cinema-mobile-poster");
+  await expect(poster).toHaveAttribute("srcset", /_next\/image/);
+  await expect(poster).toHaveAttribute("fetchpriority", "high");
+  const response=await request.get("/_next/image?url=%2Fmedia%2Fhero-poster.webp&w=828&q=75");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toMatch(/image\/webp|image\/avif/);
+  expect((await response.body()).byteLength).toBeLessThan(63248);
+});
