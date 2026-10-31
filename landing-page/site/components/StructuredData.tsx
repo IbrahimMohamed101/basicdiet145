@@ -23,7 +23,6 @@ export function StructuredData() {
     logo: siteUrl + "/brand/logo-primary.png",
     address: {
       "@type": "PostalAddress",
-      streetAddress: "H4GX+JF7، السلامة",
       addressLocality: "جدة",
       addressRegion: "مكة المكرمة",
       addressCountry: "SA",
@@ -34,7 +33,8 @@ export function StructuredData() {
     },
     servesCuisine: "Healthy meals",
     telephone: "+966535332639",
-    openingHours: "Mo-Su 00:00-23:59",
+    // Do not advertise 24/7 opening hours unless verified against the restaurant.
+    hasMenu: siteUrl + "/menu",
     hasMap: "https://maps.app.goo.gl/CGEn7oQWiKEXJzgG7",
     sameAs: [
       "https://apps.apple.com/ar/app/basic-diet/id6775085745",
