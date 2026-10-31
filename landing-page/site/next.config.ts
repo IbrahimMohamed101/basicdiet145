@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     // Only the existing allowlisted proxy accepts query strings.
     localPatterns: [
       { pathname: "/api/meal-image" },
+      { pathname: "/media/**", search: "" },
       { pathname: "/meals/**", search: "" },
       { pathname: "/menu-images/**", search: "" },
       { pathname: "/brand/**", search: "" },
