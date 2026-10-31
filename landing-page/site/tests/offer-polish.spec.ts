@@ -53,6 +53,7 @@ test('calculator outage preserves a working registration route without a fabrica
   await page.route('**/api/plan-catalog', route => route.fulfill({ status: 503, json: { data: [] } }));
   await page.goto('/');
   const calculator = page.locator('#plans');
+  await calculator.scrollIntoViewIfNeeded();
   await expect(calculator).toContainText('تعذّر تحميل الأسعار');
   await calculator.getByRole('button', { name: /سجّل لخصم 15%/ }).click();
   await expect(page.locator('.lead-dialog .lead-selection-summary')).toContainText('لم تحدد باقة');

@@ -175,3 +175,96 @@ test("menu helper labels meet 4.5:1 contrast against white", async ({ page }) =>
     expect(result.contrast, result.selector).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+test("calculator loads only near its section, without losing prices or signup", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let catalogRequests = 0;
+  await page.route("**/api/plan-catalog", route => {
+    catalogRequests += 1;
+    return route.fulfill({ json: { data: [{ planId: "507f1f77bcf86cd799439026",
+      daysCount: 26, gramsOptions: [{ grams: 150, mealsOptions: [{ mealsPerDay: 2, priceSar: 1186 }] }] }] } });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".hero-cinema-mobile-poster")).toBeVisible();
+  await expect(page.locator("#plans")).toBeAttached();
+  expect(catalogRequests).toBe(0);
+  await expect(page.getByRole("link", { name: /شاهد أسعار ومدد الاشتراكات بالتفصيل/ })).toHaveAttribute("href", "/jeddah/subscription-prices");
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  await expect(page.locator("#plans fieldset").first()).toBeVisible();
+  await expect.poll(() => catalogRequests).toBe(1);
+});
+
+test("homepage defers calculator JavaScript without breaking hero registration", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /سجّل لخصم 15%/ }).first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog").getByPlaceholder("05xxxxxxxx")).toBeVisible();
+});
+
+test("PERF DIAGNOSTIC: throttled preview homepage resource waterfall", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.setCacheDisabled", {cacheDisabled: true});
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline:false,latency:150,downloadThroughput:210000,uploadThroughput:100000,
+  });
+  await cdp.send("Emulation.setCPUThrottlingRate", {rate:4});
+  await page.addInitScript(() => {
+    const win = window as typeof window & { __lcpPerf?: Array<Record<string,unknown>> };
+    win.__lcpPerf=[];
+    new PerformanceObserver(list => {
+      for (const item of list.getEntries()) {
+        const entry=item as PerformanceEntry & { renderTime?:number;loadTime?:number;element?:Element };
+        win.__lcpPerf?.push({
+          t:entry.startTime,render:entry.renderTime,load:entry.loadTime,
+          tag:entry.element?.tagName,className:entry.element?.getAttribute("class"),
+        });
+      }
+    }).observe({type:"largest-contentful-paint",buffered:true});
+  });
+  await page.goto("/", {waitUntil:"domcontentloaded"});
+  await page.waitForTimeout(4300);
+  const result=await page.evaluate(() => ({
+    lcp:(window as typeof window & {__lcpPerf?:unknown}).__lcpPerf,
+    files:performance.getEntriesByType("resource")
+      .filter(x => /hero-poster\.webp|\.css|\.js/.test(x.name))
+      .map(x=>{const r=x as PerformanceResourceTiming;return{
+        name:r.name.replace(location.origin,"").slice(0,90),
+        start:+r.startTime.toFixed(0),end:+r.responseEnd.toFixed(0),
+        bytes:r.transferSize,decoded:r.decodedBodySize,
+      };}).sort((a,b)=>a.start-b.start),
+    plansLoaded:!!document.querySelector("#plans fieldset"),
+  }));
+  console.log("HOMEPAGE_DEFERRED_WATERFALL "+JSON.stringify(result));
+  expect(result.plansLoaded).toBe(false);
+  expect(result.lcp).toBeTruthy();
+  expect(result.files.some(file=>file.name === "/media/hero-poster.webp")).toBe(false);
+  await cdp.detach();
+});
+
+test("app section stays server-rendered and its motion is lazy", async ({ page, request }) => {
+  const html = await (await request.get("/")).text();
+  expect(html).toContain("وجبتك قدامك");
+  expect(html).toContain("واشتراكك في يدك");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", {waitUntil:"domcontentloaded"});
+  await expect(page.locator("#app")).toBeAttached();
+  await expect(page.locator("#app .app-reveal-stage")).toBeAttached();
+  await page.locator("#app").scrollIntoViewIfNeeded();
+  await expect(page.locator("#app .app-reveal-stage")).toHaveAttribute("data-scene-interactive", /^(true|false)$/);
+});
+
+test("mobile poster uses responsive optimization instead of full-size transfer", async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const poster=page.locator(".hero-cinema-mobile-poster");
+  await expect(poster).toHaveAttribute("srcset", /_next\/image/);
+  await expect(poster).toHaveAttribute("fetchpriority", "high");
+  const response=await request.get("/_next/image?url=%2Fmedia%2Fhero-poster.webp&w=828&q=75");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toMatch(/image\/(webp|avif|jpeg)/);
+  expect((await response.body()).byteLength).toBeLessThan(63248);
+  await expect(page.locator(".hero-cinema-video")).not.toHaveAttribute("poster", /.+/);
+});

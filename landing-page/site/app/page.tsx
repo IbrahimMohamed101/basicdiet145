@@ -3,7 +3,7 @@ import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { AppReveal } from "@/components/AppReveal";
 import { MealGallery } from "@/components/MealGallery";
-import { PlanCalculator } from "@/components/PlanCalculator";
+import { DeferredPlanCalculator } from "@/components/DeferredPlanCalculator";
 import { PlanPriceHighlights } from "@/components/PlanPriceHighlights";
 import { HowItWorks } from "@/components/HowItWorks";
 import { ServiceClarity } from "@/components/ServiceClarity";
@@ -34,7 +34,7 @@ export default function Home() {
         <div id="top" />
         <Hero />
         <MealGallery />
-        <PlanCalculator sectionId="plans" context="home" />
+        <DeferredPlanCalculator />
         <Suspense fallback={<section aria-label="أسعار الاشتراكات" className="py-12"><div className="page-shell">الأسعار تتحدد حسب الباقة. شاهد تفاصيل أسعار الاشتراكات في جدة.</div></section>}>
           <PlanPriceHighlights />
         </Suspense>

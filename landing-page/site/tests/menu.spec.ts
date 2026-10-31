@@ -47,6 +47,7 @@ test("shared calculator reads public plan prices and preserves chosen dimensions
   await plans.locator("fieldset").nth(2).getByRole("button", { name: "3" }).click();
   await expect(plans.locator(".bd-calculator-price")).toContainText("630");
   await page.goto("/");
+  await page.locator("#plans").scrollIntoViewIfNeeded();
   await expect(page.locator("#plans .bd-calculator-price")).toContainText("630");
   await expect(page.locator("#plans")).toContainText("وزن حصة البروتين");
 });

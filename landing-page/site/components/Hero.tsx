@@ -1,23 +1,26 @@
+import Image from "next/image";
 import { PromoOfferText } from "./PromoExperience";
 import { HERO_POSTER_URL, HERO_VIDEO_URL } from "@/lib/app-links";
 
 export function Hero() {
   return (
     <section className="hero hero--cinematic" aria-labelledby="hero-title">
-      {/* Only the homepage needs the cinematic poster. React hoists this preload. */}
-      <link rel="preload" as="image" href={HERO_POSTER_URL} fetchPriority="high" />
       <div className="hero-cinema-media" aria-hidden="true">
         {/* On small screens render a stable, high-priority poster instead of a video LCP. */}
-        <img
+        <Image
           className="hero-cinema-mobile-poster"
           src={HERO_POSTER_URL}
           width={1600}
           height={900}
+          sizes="(max-width: 640px) 80vw, 640px"
+          quality={75}
           loading="eager"
-          decoding="async"
+          preload
           fetchPriority="high"
+          unoptimized={HERO_POSTER_URL.startsWith("http")}
           alt=""
         />
+        {/* A CSS background replaces the video poster to avoid duplicate mobile downloads. */}
         <video
           className="hero-cinema-video"
           data-motion-video=""
@@ -25,7 +28,7 @@ export function Hero() {
           loop
           playsInline
           preload="none"
-          poster={HERO_POSTER_URL || undefined}
+          style={{ backgroundImage: `url("${HERO_POSTER_URL}")`, backgroundPosition: "center", backgroundSize: "cover" }}
           tabIndex={-1}
         >
           <source data-src={HERO_VIDEO_URL} type="video/mp4" />
