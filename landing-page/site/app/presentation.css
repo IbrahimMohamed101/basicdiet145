@@ -361,6 +361,9 @@
   background: #12251c;
 }
 
+/* Desktop keeps the cinematic video; mobile uses an immediate image LCP. */
+.hero-cinema-mobile-poster { display: none; }
+
 .hero-cinema-video {
   width: 100%;
   height: 100%;
@@ -802,6 +805,22 @@
 
 }
 @media (max-width: 640px) {
+/* Avoid video decoding and its poster-paint delay on narrow screens. */
+.hero-cinema-video { display: none; }
+.hero-cinema-mobile-poster {
+  display: block;
+  position: absolute;
+  inset-inline: 0;
+  top: clamp(124px, 15svh, 148px);
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  object-position: center;
+  filter: saturate(1.06) contrast(1.02) brightness(.92);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 84%, transparent 100%);
+}
 .hero {
   padding: 90px 0 52px;
   padding-top: 88px;
