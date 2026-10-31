@@ -8,6 +8,7 @@
 const Subscription = require("../../models/Subscription");
 const Batch = require("../../models/SubscriptionEntitlementBatch");
 const User = require("../../models/User");
+const Payment = require("../../models/Payment");
 const CustomerAccountMerge = require("../../models/CustomerAccountMerge");
 const RetentionFollowupEvent = require("../../models/RetentionFollowupEvent");
 
@@ -59,15 +60,26 @@ function buildCanonical(merges) {
       map.set(String(row.sourceUserId), String(row.targetUserId));
     }
   }
-  return (id) => {
+  const resolve = (id) => {
     let key = String(id);
-    const seen = new Set();
-    while (map.has(key) && !seen.has(key)) {
-      seen.add(key);
+    const path = [];
+    while (map.has(key) && !path.includes(key)) {
+      path.push(key);
       key = map.get(key);
     }
-    return key;
+    // Corrupt cyclic merge records still produce one deterministic customer.
+    return path.includes(key) ? path.slice(path.indexOf(key)).sort()[0] : key;
   };
+  resolve.isAmbiguous = (id) => {
+    let key = String(id);
+    const seen = new Set();
+    while (map.has(key)) {
+      if (seen.has(key)) return true;
+      seen.add(key); key = map.get(key);
+    }
+    return false;
+  };
+  return resolve;
 }
 
 function effectiveBatch(batch) {
@@ -88,7 +100,15 @@ function effectiveBatch(batch) {
  * Conservative current eligibility; a missing reliable early exhaustion date
  * is Review rather than inventing the day credits ran out.
  */
-function classifyEntitlements({ subscriptions, batches, nowKey }) {
+function classifyEntitlements({ subscriptions, batches, payments = [], nowKey }) {
+  const review = (reason) => ({ status: "review", dueDate: null, balance: null, reason });
+  const paid = (payment) => payment.status === "paid" && payment.amount > 0
+    && ["subscription_activation", "subscription_renewal"].includes(payment.type);
+  const paidIds = new Set(payments.filter(paid).map((payment) => String(payment._id)));
+  const commercialParent = (s) => {
+    const linked = payments.filter((payment) => String(payment.subscriptionId) === String(s._id));
+    return linked.length ? linked.some(paid) : Number(s.totalPriceHalala) > 0;
+  };
   const keptSubscriptions = subscriptions.filter((s) =>
     ["active", "frozen", "expired", "completed", "canceled"].includes(s.status)
   );
@@ -104,13 +124,23 @@ function classifyEntitlements({ subscriptions, batches, nowKey }) {
   }
 
   const entitlements = [];
+  if (batches.some((b) => !subscriptions.some((s) => String(s._id) === String(b.containerSubscriptionId)))) {
+    return review("orphan_entitlement_batch");
+  }
   const activeSub = keptSubscriptions.filter((s) => s.status !== "canceled");
   for (const s of activeSub) {
     const existingBatches = byContainer.get(String(s._id)) || [];
     if (existingBatches.length) {
+      if (existingBatches.some((b) => b.status !== "canceled" && b.sourceType !== "legacy_seed"
+        && b.applicationState !== "applied")) return review("unsettled_entitlement_application");
+      if (existingBatches.some((b) => b.status !== "canceled" && (b.sourceType === "legacy_seed"
+        ? !commercialParent(s) : !paidIds.has(String(b.paymentId))
+          || payments.some((p) => String(p._id) === String(b.paymentId) && p.subscriptionId
+            && String(p.subscriptionId) !== String(s._id))))) return review("unverified_commercial_entitlement");
       // Never sum the parent mirror and entitlement batches.
       entitlements.push(...existingBatches.map(effectiveBatch).filter(Boolean));
     } else {
+      if (!commercialParent(s)) return review("unverified_commercial_entitlement");
       entitlements.push({
         validity: dateKey(s.validityEndDate || s.endDate),
         start: dateKey(s.startDate),
@@ -129,7 +159,7 @@ function classifyEntitlements({ subscriptions, batches, nowKey }) {
       balance: null, reason: allCanceled ? "all_contracts_canceled" : "no_eligible_entitlement",
     };
   }
-  if (entitlements.some((e) => !e.validity || !e.start)) {
+  if (entitlements.some((e) => !e.validity || !e.start || e.start > e.validity)) {
     return { status: "review", dueDate: null, balance: null, reason: "missing_entitlement_dates" };
   }
   if (entitlements.some((e) => e.remaining === null || e.reserved === null)) {
@@ -153,26 +183,25 @@ function classifyEntitlements({ subscriptions, batches, nowKey }) {
     };
   }
 
-  // All valid balances are zero. Do not date depletion using a migration timestamp.
-  if (valid.length) {
-    const provenDates = valid.map((e) => e.exhausted).filter(Boolean);
-    if (provenDates.length !== valid.length) {
-      return { status: "review", dueDate: null, balance: 0, reason: "unproven_early_exhaustion" };
+  // A zero balance can have run out before its validity deadline, including
+  // already expired documents. Missing depletion evidence must remain Review.
+  // Consider *all* batches: a later expired purchase can outlast a depleted one.
+  const boundaries = [];
+  for (const e of entitlements) {
+    const expiry = addDays(e.validity, 1);
+    if (e.remaining + e.reserved === 0) {
+      if (!e.exhausted) return review("unproven_early_exhaustion");
+      if (e.exhausted < e.start || e.exhausted > nowKey) return review("invalid_exhaustion_timestamp");
+      boundaries.push(e.exhausted < expiry ? e.exhausted : expiry);
+    } else {
+      boundaries.push(expiry);
     }
-    const lastExhaustion = provenDates.sort().at(-1);
-    if (lastExhaustion > nowKey) {
-      return { status: "review", dueDate: null, balance: 0, reason: "future_exhaustion_timestamp" };
-    }
-    const days = afterToday(nowKey, lastExhaustion);
-    return { status: days <= 14 ? "grace_14" : "overdue_14", dueDate: lastExhaustion, balance: 0, reason: "proven_entitlement_exhaustion" };
   }
-
-  const lastExpiry = entitlements.map((e) => e.validity).sort().at(-1);
-  const dueDate = addDays(lastExpiry, 1);
+  const dueDate = boundaries.sort().at(-1);
   const days = afterToday(nowKey, dueDate);
   return {
     status: days >= 0 && days <= 14 ? "grace_14" : days > 14 ? "overdue_14" : "review",
-    dueDate, balance: 0, reason: "validity_ended",
+    dueDate, balance: 0, reason: "verified_entitlement_boundary",
   };
 }
 
@@ -182,7 +211,10 @@ function recordedEntitlementEvents(subscriptions, batches) {
   const items = [];
   for (const s of subscriptions) {
     if (!["active", "frozen", "expired", "completed", "canceled"].includes(s.status)) continue;
-    if (s.cancellationReason === "activation_failed") continue;
+    if (["activation_failed", "replaced_by_new_subscription"].includes(s.cancellationReason)) continue;
+    // Initial activation stores a parent and a purchase batch for one event.
+    if (batches.some((b) => b.sourceType === "checkout" && b.applicationState === "applied"
+      && String(b.containerSubscriptionId) === String(s._id))) continue;
     if (s.createdAt) items.push(s.createdAt);
   }
   for (const b of batches) {
@@ -192,7 +224,7 @@ function recordedEntitlementEvents(subscriptions, batches) {
   return items.sort((a, b) => new Date(a) - new Date(b));
 }
 
-function buildLiveRows({ subscriptions, batches, users, merges, optedOutIds = [], now = new Date() }) {
+function buildLiveRows({ subscriptions, batches, users, merges, payments = [], optedOutIds = [], now = new Date() }) {
   const canonical = buildCanonical(merges);
   const suppressed = new Set(optedOutIds.map((id) => canonical(id)));
   const perCustomer = new Map();
@@ -209,7 +241,10 @@ function buildLiveRows({ subscriptions, batches, users, merges, optedOutIds = []
     const records = recordedEntitlementEvents(group.subscriptions, group.batches);
     if (!records.length) return [];
     const customer = userMap.get(group.userId) || {};
-    const classification = classifyEntitlements({ subscriptions: group.subscriptions, batches: group.batches, nowKey: today });
+    const classification = [...group.subscriptions, ...group.batches].some((row) => canonical.isAmbiguous(row.userId))
+      ? { status: "review", dueDate: null, balance: null, reason: "ambiguous_account_merge" }
+      : classifyEntitlements({ subscriptions: group.subscriptions, batches: group.batches,
+        payments: payments.filter((p) => canonical(p.userId) === group.userId), nowKey: today });
     return [{
       userId: group.userId,
       doNotContact: suppressed.has(group.userId),
@@ -240,17 +275,21 @@ function parsePage(value, fallback, max) {
   return n;
 }
 
-async function getLiveRetentionReport({ page, pageSize, status, search, now = new Date() } = {}) {
+async function getLiveRetentionReport({ page, pageSize, status, search, contactableOnly, now = new Date() } = {}) {
   const pageNumber = parsePage(page, 1, 100000);
   const size = parsePage(pageSize, 20, PAGE_MAX);
+  if (contactableOnly !== undefined && !["true", "false"].includes(String(contactableOnly))) {
+    const err = new Error("Invalid contactability filter");
+    err.status = 400; err.code = "INVALID_RETENTION_FILTER"; throw err;
+  }
   const category = status ? String(status) : "all";
   if (category !== "all" && !CATEGORIES.includes(category)) {
     const err = new Error("Invalid retention status");
     err.status = 400; err.code = "INVALID_RETENTION_FILTER"; throw err;
   }
   const query = String(search || "").trim().slice(0, 80).toLowerCase();
-  const projectionSub = "userId status cancellationReason createdAt startDate endDate validityEndDate remainingMeals reservedMeals contractSource";
-  const projectionBatch = "userId containerSubscriptionId status sourceType applicationState createdAt effectiveStartDate endDate validityEndDate remainingMeals reservedMeals exhaustedAt";
+  const projectionSub = "userId status cancellationReason createdAt startDate endDate validityEndDate remainingMeals reservedMeals contractSource totalPriceHalala";
+  const projectionBatch = "userId containerSubscriptionId status sourceType applicationState createdAt effectiveStartDate endDate validityEndDate remainingMeals reservedMeals exhaustedAt paymentId";
   const [subscriptions, batches, merges, optedOutIds] = await Promise.all([
     Subscription.find({ status: { $in: ["active", "frozen", "expired", "completed", "canceled"] } })
       .select(projectionSub).limit(MAX_ROWS + 1).lean(),
@@ -265,14 +304,24 @@ async function getLiveRetentionReport({ page, pageSize, status, search, now = ne
     err.status = 503; err.code = "RETENTION_DATASET_LIMIT"; throw err;
   }
   const userIds = [...new Set([...subscriptions.map((s) => String(s.userId)), ...batches.map((b) => String(b.userId)), ...merges.map((m) => String(m.targetUserId))])];
-  const users = userIds.length
-    ? await User.find({ _id: { $in: userIds } }).select("_id name phone phoneE164").lean()
-    : [];
-  const all = buildLiveRows({ subscriptions, batches, merges, users, optedOutIds, now });
+  const [users, payments] = await Promise.all([
+    userIds.length ? User.find({ _id: { $in: userIds }, role: "client" }).select("_id name phone phoneE164").lean() : [],
+    Payment.find({ $or: [
+      { subscriptionId: { $in: subscriptions.map((s) => s._id) } },
+      { _id: { $in: batches.map((b) => b.paymentId).filter(Boolean) } },
+    ], type: { $in: ["subscription_activation", "subscription_renewal"] } })
+      .select("_id userId subscriptionId status type amount").limit(MAX_ROWS + 1).lean(),
+  ]);
+  if (payments.length > MAX_ROWS) {
+    const err = new Error("Retention payment evidence exceeds preview limit");
+    err.status = 503; err.code = "RETENTION_DATASET_LIMIT"; throw err;
+  }
+  const all = buildLiveRows({ subscriptions, batches, merges, users, payments, optedOutIds, now });
   const totals = Object.fromEntries(CATEGORIES.map((key) => [key, 0]));
   for (const row of all) totals[row.status] += 1;
   const filtered = all.filter((row) =>
-    (category === "all" || row.status === category)
+    (String(contactableOnly) !== "true" || !row.doNotContact)
+    && (category === "all" || row.status === category)
     && (!query || [row.name, row.phone, row.userId].some((v) => String(v).toLowerCase().includes(query)))
   );
   return {

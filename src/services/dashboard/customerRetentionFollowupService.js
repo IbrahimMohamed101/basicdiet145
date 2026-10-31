@@ -2,6 +2,7 @@
 const mongoose = require("mongoose");
 const User = require("../../models/User");
 const Event = require("../../models/RetentionFollowupEvent");
+const { getRetentionContactPolicy } = require("./retentionContactPolicyService");
 
 const CHANNELS = ["phone", "whatsapp", "in_person", "other"];
 const OUTCOMES = [
@@ -60,7 +61,8 @@ async function assertCustomer(customerId) {
 }
 async function getCustomerRetentionFollowups(customerId) {
   const userId = await assertCustomer(customerId);
-  const rows = await Event.find({ userId })
+  const { userIds } = await getRetentionContactPolicy(userId);
+  const rows = await Event.find({ userId: { $in: userIds } })
     .sort({ createdAt: -1, _id: -1 }).limit(30).lean();
   return rows.map(serialize);
 }
@@ -79,6 +81,10 @@ async function createCustomerRetentionFollowup({ customerId, actorId, payload })
   if (previous) {
     if (!identical(previous)) throw failure(409, "FOLLOWUP_IDEMPOTENCY_CONFLICT", "requestId was used for different data");
     return { event: serialize(previous), replayed: true };
+  }
+  const policy = await getRetentionContactPolicy(userId);
+  if (policy.doNotContact) {
+    throw failure(409, "CUSTOMER_DO_NOT_CONTACT", "Customer requested no further contact");
   }
   try {
     const created = await Event.create({

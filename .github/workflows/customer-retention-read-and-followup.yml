@@ -5,6 +5,8 @@ on:
     paths:
       - "src/services/dashboard/customerRetentionReadService.js"
       - "src/services/dashboard/customerRetentionFollowupService.js"
+      - "src/services/dashboard/retentionContactPolicyService.js"
+      - "tests/helpers/retentionQaServer.js"
       - "src/controllers/dashboard/customerRetentionController.js"
       - "src/controllers/dashboard/customerRetentionFollowupController.js"
       - "src/models/RetentionFollowupEvent.js"
@@ -18,6 +20,8 @@ on:
     paths:
       - "src/services/dashboard/customerRetentionReadService.js"
       - "src/services/dashboard/customerRetentionFollowupService.js"
+      - "src/services/dashboard/retentionContactPolicyService.js"
+      - "tests/helpers/retentionQaServer.js"
       - "src/controllers/dashboard/customerRetentionController.js"
       - "src/controllers/dashboard/customerRetentionFollowupController.js"
       - "src/models/RetentionFollowupEvent.js"
@@ -44,6 +48,8 @@ jobs:
         run: |
           node --check src/services/dashboard/customerRetentionReadService.js
           node --check src/services/dashboard/customerRetentionFollowupService.js
+          node --check src/services/dashboard/retentionContactPolicyService.js
+          node --check tests/helpers/retentionQaServer.js
           node --check src/controllers/dashboard/customerRetentionController.js
           node --check src/controllers/dashboard/customerRetentionFollowupController.js
           node --check src/models/RetentionFollowupEvent.js

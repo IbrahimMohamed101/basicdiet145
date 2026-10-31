@@ -15,6 +15,9 @@ const DashboardUser = require("../src/models/DashboardUser");
 const Subscription = require("../src/models/Subscription");
 const User = require("../src/models/User");
 const Followup = require("../src/models/RetentionFollowupEvent");
+const Batch = require("../src/models/SubscriptionEntitlementBatch");
+const Payment = require("../src/models/Payment");
+const Merge = require("../src/models/CustomerAccountMerge");
 const { issueDashboardAccessToken } = require("../src/services/dashboardTokenService");
 
 let memory;
@@ -47,7 +50,7 @@ async function run() {
     validityEndDate: new Date(Date.now() + 20 * 86400000),
     remainingMeals: 10,
     reservedMeals: 0,
-    totalMeals: 15,
+    totalMeals: 15, totalPriceHalala: 10000,
     deliveryMode: "pickup",
   });
 
@@ -107,6 +110,83 @@ async function run() {
   assert.equal(response.body.data.rows[0].doNotContact, true,
     "Superadmin list must expose no-contact requests before outreach");
 
+  response = await client.post(followupUrl).set(auth(superadmin))
+    .send({ ...payload, requestId: "retention-integration-blocked", outcome: "contacted" });
+  assert.equal(response.status, 409, "Opt-out must be enforced server-side");
+  assert.equal(response.body.error.code, "CUSTOMER_DO_NOT_CONTACT");
+  response = await client.post(followupUrl).set(auth(superadmin)).send(payload);
+  assert.equal(response.status, 200, "Replaying a pre-opt-out write remains a read of the original event");
+  assert.equal(response.body.meta.replayed, true);
+  response = await client.get(url).set(auth(superadmin)).query({ contactableOnly: true });
+  assert.equal(response.body.data.rows.length, 0, "Suppressed customers cannot appear in contactable lists");
+  response = await client.get(url).set(auth(superadmin)).query({ contactableOnly: "invalid" });
+  assert.equal(response.status, 400);
+  for (const role of ["restaurant", "kitchen", "courier", "cashier"]) {
+    const user = await DashboardUser.create({ email: "retention-" + role + "@example.test", role,
+      passwordHash: "test", isActive: true });
+    for (const route of [url, followupUrl]) {
+      response = await client.get(route).set(auth(user));
+      assert.equal(response.status, 403, role + " must not read customer retention");
+      assert.equal(response.body.data, undefined);
+    }
+    response = await client.post(followupUrl).set(auth(user)).send(payload);
+    assert.equal(response.status, 403);
+  }
+  response = await client.get(followupUrl);
+  assert.equal(response.status, 401);
+  // Parallel retries exercise the _id uniqueness race against a real MongoDB.
+  const second = await User.create({ name: "Synthetic Parallel Customer", role: "client", phone: "+966500000503" });
+  const secondUrl = url + "/" + second._id + "/followups";
+  const parallelPayload = { ...payload, requestId: "retention-parallel-0001", outcome: "not_interested", reasonCode: "price", note: "Synthetic customer stated price" };
+  const concurrent = await Promise.all(Array.from({ length: 8 }, () => client.post(secondUrl).set(auth(superadmin)).send(parallelPayload)));
+  assert.equal(concurrent.filter((r) => r.status === 201).length, 1);
+  assert.equal(concurrent.filter((r) => r.status === 200).length, 7);
+  assert.equal(await Followup.countDocuments({ userId: second._id }), 1);
+  // Old source opt-out remains effective after merge and beyond the 30-row UI history.
+  await Followup.create({ _id: "retention-source-optout", userId: second._id, actorId: superadmin._id,
+    channel: "phone", outcome: "do_not_contact", createdAt: new Date("2026-01-01") });
+  const target = await User.create({ name: "Synthetic Merge Target", role: "client", phone: "+966500000504" });
+  await User.updateOne({ _id: second._id }, { $set: { mergedIntoUserId: target._id } });
+  await Merge.collection.insertOne({ sourceUserId: second._id, targetUserId: target._id, state: "completed" });
+  const targetUrl = url + "/" + target._id + "/followups";
+  response = await client.get(targetUrl).set(auth(superadmin));
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.some((e) => e.outcome === "do_not_contact"), true);
+  response = await client.post(targetUrl).set(auth(superadmin)).send({ ...payload, requestId: "retention-merge-blocked" });
+  assert.equal(response.status, 409);
+  assert.equal(response.body.error.code, "CUSTOMER_DO_NOT_CONTACT");
+  response = await client.post(secondUrl).set(auth(superadmin)).send(parallelPayload);
+  assert.equal(response.status, 409, "Merged source cannot accept new follow-ups");
+  // Real database payment evidence and pagination/search/filter contracts.
+  const s = await Subscription.create({ userId: target._id, planId: new mongoose.Types.ObjectId(), status: "active",
+    startDate: new Date(Date.now() - 86400000), endDate: new Date(Date.now() + 30 * 86400000),
+    remainingMeals: 10, reservedMeals: 2, totalMeals: 20, deliveryMode: "pickup", totalPriceHalala: 10000 });
+  const payment = await Payment.create({ userId: target._id, subscriptionId: s._id, provider: "manual",
+    type: "subscription_activation", amount: 10000, status: "paid" });
+  await Batch.collection.insertOne({ userId: target._id, containerSubscriptionId: s._id,
+    sourceType: "checkout", paymentId: payment._id, applicationState: "applied", status: "active",
+    createdAt: new Date(), effectiveStartDate: s.startDate, validityEndDate: s.endDate,
+    remainingMeals: 5, reservedMeals: 2 });
+  response = await client.get(url).set(auth(superadmin)).query({ search: "Synthetic Merge", status: "active", pageSize: 1 });
+  assert.equal(response.body.data.rows.length, 1);
+  assert.equal(response.body.data.rows[0].remainingAndReserved, 7, "Parent and batch cannot double-count");
+  assert.equal(response.body.data.rows[0].subscriptionRecordCount, 1);
+  assert.equal(response.body.data.rows[0].doNotContact, true);
+  const total = response.body.data.totals.all;
+  response = await client.get(url).set(auth(superadmin)).query({ page: 2, pageSize: 1 });
+  assert.equal(response.body.data.pagination.total, total);
+  assert.equal(response.body.data.rows.length, 1);
+  await Payment.updateOne({ _id: payment._id }, { $set: { status: "canceled" } });
+  response = await client.get(url).set(auth(superadmin)).query({ search: "Synthetic Merge" });
+  assert.equal(response.body.data.rows[0].status, "review", "Canceled payment cannot establish live paid eligibility");
+  // Fresh role/deactivation checks must override stale token claims.
+  const staleToken = auth(superadmin);
+  await DashboardUser.updateOne({ _id: superadmin._id }, { $set: { role: "admin" } });
+  response = await client.get(url).set(staleToken);
+  assert.equal(response.status, 403);
+  await DashboardUser.updateOne({ _id: superadmin._id }, { $set: { role: "superadmin", isActive: false } });
+  response = await client.get(url).set(staleToken);
+  assert.equal(response.status, 403);
   console.log("customerRetentionApi.integration.test.js: PASS");
 }
 run().catch((error) => {

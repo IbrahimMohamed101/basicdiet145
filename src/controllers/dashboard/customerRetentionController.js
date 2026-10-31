@@ -11,6 +11,7 @@ async function getRetention(req, res) {
       pageSize: req.query.pageSize,
       status: req.query.status,
       search: req.query.search,
+      contactableOnly: req.query.contactableOnly,
     });
     res.set("Cache-Control", "private, no-store");
     return res.status(200).json({ status: true, data });
