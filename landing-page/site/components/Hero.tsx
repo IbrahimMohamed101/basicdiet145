@@ -27,7 +27,9 @@ export function Hero() {
           loop
           playsInline
           preload="none"
-          poster={HERO_POSTER_URL || undefined}
+          // No HTML video poster: mobile browsers fetched it even with video display:none.
+          // The CSS background provides the desktop fallback without mobile transfer.
+          style={{ backgroundImage: `url("${HERO_POSTER_URL}")`, backgroundPosition: "center", backgroundSize: "cover" }}
           tabIndex={-1}
         >
           <source data-src={HERO_VIDEO_URL} type="video/mp4" />
