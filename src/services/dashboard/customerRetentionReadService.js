@@ -9,6 +9,7 @@ const Subscription = require("../../models/Subscription");
 const Batch = require("../../models/SubscriptionEntitlementBatch");
 const User = require("../../models/User");
 const CustomerAccountMerge = require("../../models/CustomerAccountMerge");
+const RetentionFollowupEvent = require("../../models/RetentionFollowupEvent");
 
 const MAX_ROWS = 5000;
 const PAGE_MAX = 50;
@@ -191,8 +192,9 @@ function recordedEntitlementEvents(subscriptions, batches) {
   return items.sort((a, b) => new Date(a) - new Date(b));
 }
 
-function buildLiveRows({ subscriptions, batches, users, merges, now = new Date() }) {
+function buildLiveRows({ subscriptions, batches, users, merges, optedOutIds = [], now = new Date() }) {
   const canonical = buildCanonical(merges);
+  const suppressed = new Set(optedOutIds.map((id) => canonical(id)));
   const perCustomer = new Map();
   const ensure = (id) => {
     const key = canonical(id);
@@ -210,6 +212,7 @@ function buildLiveRows({ subscriptions, batches, users, merges, now = new Date()
     const classification = classifyEntitlements({ subscriptions: group.subscriptions, batches: group.batches, nowKey: today });
     return [{
       userId: group.userId,
+      doNotContact: suppressed.has(group.userId),
       name: typeof customer.name === "string" ? customer.name : "",
       phone: String(customer.phoneE164 || customer.phone || ""),
       firstRecordedAt: new Date(records[0]).toISOString(),
@@ -248,13 +251,14 @@ async function getLiveRetentionReport({ page, pageSize, status, search, now = ne
   const query = String(search || "").trim().slice(0, 80).toLowerCase();
   const projectionSub = "userId status cancellationReason createdAt startDate endDate validityEndDate remainingMeals reservedMeals contractSource";
   const projectionBatch = "userId containerSubscriptionId status sourceType applicationState createdAt effectiveStartDate endDate validityEndDate remainingMeals reservedMeals exhaustedAt";
-  const [subscriptions, batches, merges] = await Promise.all([
+  const [subscriptions, batches, merges, optedOutIds] = await Promise.all([
     Subscription.find({ status: { $in: ["active", "frozen", "expired", "completed", "canceled"] } })
       .select(projectionSub).limit(MAX_ROWS + 1).lean(),
     Batch.find({ sourceType: { $ne: "migration" } })
       .select(projectionBatch).limit(MAX_ROWS + 1).lean(),
     CustomerAccountMerge.find({ state: "completed" })
       .select("sourceUserId targetUserId state").limit(MAX_ROWS + 1).lean(),
+    RetentionFollowupEvent.distinct("userId", { outcome: "do_not_contact" }),
   ]);
   if ([subscriptions, batches, merges].some((rows) => rows.length > MAX_ROWS)) {
     const err = new Error("Retention dataset exceeds read-only preview limit");
@@ -264,7 +268,7 @@ async function getLiveRetentionReport({ page, pageSize, status, search, now = ne
   const users = userIds.length
     ? await User.find({ _id: { $in: userIds } }).select("_id name phone phoneE164").lean()
     : [];
-  const all = buildLiveRows({ subscriptions, batches, merges, users, now });
+  const all = buildLiveRows({ subscriptions, batches, merges, users, optedOutIds, now });
   const totals = Object.fromEntries(CATEGORIES.map((key) => [key, 0]));
   for (const row of all) totals[row.status] += 1;
   const filtered = all.filter((row) =>
@@ -282,6 +286,7 @@ async function getLiveRetentionReport({ page, pageSize, status, search, now = ne
       "تاريخ آخر سجل اشتراك ليس إثباتًا لعملية شراء مدفوعة، ولا يمثل معدل تجديد.",
       "القراءة من مستندات متعددة وليست لقطة معاملات متزامنة.",
       "لا توجد هنا موافقة محفوظة على التواصل التسويقي أو إجراء إرسال.",
+      "عميل طلب عدم التواصل يجب استبعاده من أي اتصالات تسويقية؛ هذا السجل يعكس الطلبات التي وثقها الموظفون فقط.",
     ],
     totals: { ...totals, all: all.length },
     pagination: { page: pageNumber, pageSize: size, total: filtered.length },

@@ -53,4 +53,11 @@ assert.equal(rows[0].userId, "u2");
 assert.equal(rows[0].status, "grace_14");
 assert.equal(rows[0].lastRecordedAt, "2026-09-01T10:00:00.000Z");
 assert.equal(rows[0].lastPurchaseAt, undefined, "record timestamp must not claim verified paid purchase");
+const suppressedRows = buildLiveRows({
+  subscriptions: [subscription()], batches: [],
+  users: [{ _id: "u2", name: "Test" }],
+  merges: [{ sourceUserId: "u1", targetUserId: "u2", state: "completed" }],
+  optedOutIds: ["u1"], now: new Date("2026-10-31T15:00:00Z"),
+});
+assert.equal(suppressedRows[0].doNotContact, true, "Opt-outs survive account merge");
 console.log("customerRetentionReadService: PASS");

@@ -102,6 +102,10 @@ async function run() {
   assert.equal(response.status, 201, JSON.stringify(response.body));
   response = await client.get(followupUrl).set(auth(superadmin));
   assert.equal(response.body.data[0].outcome, "do_not_contact");
+  response = await client.get(url).set(auth(superadmin));
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.rows[0].doNotContact, true,
+    "Superadmin list must expose no-contact requests before outreach");
 
   console.log("customerRetentionApi.integration.test.js: PASS");
 }
