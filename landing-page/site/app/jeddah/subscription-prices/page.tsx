@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   openGraph: { title: "أسعار باقات الوجبات الصحية في جدة | بيسك دايت", locale: "ar_SA", type: "website" },
 };
 
+// Always return server HTML from a current or 15-minute cached live price catalog.
+export const dynamic = "force-dynamic";
+
 export default async function SubscriptionPricesPage() {
   const plans = await getPublicPlanPrices();
   const rows = plans.flatMap(plan =>
