@@ -37,8 +37,12 @@ function addDays(key, days) {
   return index === null ? null : new Date((index + days) * 86400000).toISOString().slice(0, 10);
 }
 
-function nonnegative(value) {
-  return Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : 0;
+// Missing/invalid counters are *unknown*, not zero. Never classify a customer
+// as expired or exhausted solely because an old record omitted a balance.
+function countOrUnknown(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 
 function afterToday(nowKey, dueDate) {
@@ -72,8 +76,8 @@ function effectiveBatch(batch) {
   return {
     validity: dateKey(batch.validityEndDate || batch.endDate),
     start: dateKey(batch.effectiveStartDate),
-    remaining: nonnegative(batch.remainingMeals),
-    reserved: nonnegative(batch.reservedMeals),
+    remaining: countOrUnknown(batch.remainingMeals),
+    reserved: countOrUnknown(batch.reservedMeals),
     exhausted: batch.sourceType === "legacy_seed" ? null : dateKey(batch.exhaustedAt),
     isLegacy: batch.sourceType === "legacy_seed",
   };
@@ -109,8 +113,8 @@ function classifyEntitlements({ subscriptions, batches, nowKey }) {
       entitlements.push({
         validity: dateKey(s.validityEndDate || s.endDate),
         start: dateKey(s.startDate),
-        remaining: nonnegative(s.remainingMeals),
-        reserved: nonnegative(s.reservedMeals),
+        remaining: countOrUnknown(s.remainingMeals),
+        reserved: countOrUnknown(s.reservedMeals),
         exhausted: null, // no safe historical parent exhaustion timestamp
         isLegacy: true,
       });
@@ -126,6 +130,9 @@ function classifyEntitlements({ subscriptions, batches, nowKey }) {
   }
   if (entitlements.some((e) => !e.validity || !e.start)) {
     return { status: "review", dueDate: null, balance: null, reason: "missing_entitlement_dates" };
+  }
+  if (entitlements.some((e) => e.remaining === null || e.reserved === null)) {
+    return { status: "review", dueDate: null, balance: null, reason: "missing_entitlement_balance" };
   }
 
   const valid = entitlements.filter((e) => e.validity >= nowKey);
@@ -168,7 +175,9 @@ function classifyEntitlements({ subscriptions, batches, nowKey }) {
   };
 }
 
-function purchasesForCustomer(subscriptions, batches) {
+// This describes recorded subscription/entitlement documents, NOT proof of
+// payment: an initial checkout can create both a parent and an applied batch.
+function recordedEntitlementEvents(subscriptions, batches) {
   const items = [];
   for (const s of subscriptions) {
     if (!["active", "frozen", "expired", "completed", "canceled"].includes(s.status)) continue;
@@ -195,17 +204,17 @@ function buildLiveRows({ subscriptions, batches, users, merges, now = new Date()
   const userMap = new Map(users.map((u) => [String(u._id), u]));
   const today = dateKey(now);
   return [...perCustomer.values()].flatMap((group) => {
-    const purchases = purchasesForCustomer(group.subscriptions, group.batches);
-    if (!purchases.length) return [];
+    const records = recordedEntitlementEvents(group.subscriptions, group.batches);
+    if (!records.length) return [];
     const customer = userMap.get(group.userId) || {};
     const classification = classifyEntitlements({ subscriptions: group.subscriptions, batches: group.batches, nowKey: today });
     return [{
       userId: group.userId,
       name: typeof customer.name === "string" ? customer.name : "",
       phone: String(customer.phoneE164 || customer.phone || ""),
-      firstPurchaseAt: new Date(purchases[0]).toISOString(),
-      lastPurchaseAt: new Date(purchases.at(-1)).toISOString(),
-      purchaseEvents: purchases.length,
+      firstRecordedAt: new Date(records[0]).toISOString(),
+      lastRecordedAt: new Date(records.at(-1)).toISOString(),
+      subscriptionRecordCount: records.length,
       status: classification.status,
       reason: classification.reason,
       dueDate: classification.dueDate,
@@ -214,7 +223,7 @@ function buildLiveRows({ subscriptions, batches, users, merges, now = new Date()
     }];
   }).sort((a, b) => {
     const order = { overdue_14: 0, grace_14: 1, due_soon: 2, review: 3, active: 4, scheduled: 5, canceled: 6 };
-    return order[a.status] - order[b.status] || a.lastPurchaseAt.localeCompare(b.lastPurchaseAt);
+    return order[a.status] - order[b.status] || a.lastRecordedAt.localeCompare(b.lastRecordedAt);
   });
 }
 
@@ -266,10 +275,11 @@ async function getLiveRetentionReport({ page, pageSize, status, search, now = ne
     asOf: now.toISOString(),
     timezone: "Asia/Riyadh",
     mode: "live_operational_preview",
-    definition: "Current stored entitlement balance and validity, not historical cohort renewal rate",
+    definition: "Current stored entitlement balance and validity; recorded subscription documents are not proof of paid purchases",
     warnings: [
       "تاريخ الاستحقاق المتوقع حد للصلاحية وقد ينتهي الرصيد قبله؛ راجع الرصيد قبل التواصل.",
-      "الأرصدة المنتهية مبكرًا دون تاريخ استنفاد موثق ضمن الحالات التي تحتاج مراجعة.",
+      "الأرصدة المنتهية مبكرًا دون تاريخ استنفاد موثق أو رصيد ناقص ضمن الحالات التي تحتاج مراجعة.",
+      "تاريخ آخر سجل اشتراك ليس إثباتًا لعملية شراء مدفوعة، ولا يمثل معدل تجديد.",
       "القراءة من مستندات متعددة وليست لقطة معاملات متزامنة.",
       "لا توجد هنا موافقة محفوظة على التواصل التسويقي أو إجراء إرسال.",
     ],
