@@ -3,6 +3,7 @@
 const { Router } = require("express");
 const controller = require("../controllers/dashboardCustomerManagementController");
 const financialControlController = require("../controllers/dashboardSubscriptionFinancialControlController");
+const retentionController = require("../controllers/dashboard/customerRetentionController");
 const asyncHandler = require("../middleware/asyncHandler");
 const { adminPasswordResetLimiter } = require("../middleware/rateLimit");
 const {
@@ -25,6 +26,9 @@ router.post(
   adminPasswordResetLimiter,
   asyncHandler(controller.resetCustomerPassword)
 );
+
+// Must precede the parameterized customer routes.
+router.get("/retention", superadminOnly, asyncHandler(retentionController.getRetention));
 
 router.get("/:id", superadminOnly, asyncHandler(controller.getCustomer));
 router.patch("/:id", superadminOnly, asyncHandler(controller.updateCustomer));
