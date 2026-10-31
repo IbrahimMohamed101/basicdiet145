@@ -100,3 +100,31 @@ test("homepage offers crawlable pricing content and consistent local restaurant 
   expect(html).toContain('Mo-Su 00:00-23:59');
   expect(html).toContain('"hasMenu"');
 });
+
+test("mobile homepage uses a high-priority image instead of the cinematic video", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const poster = page.locator(".hero-cinema-mobile-poster");
+  await expect(poster).toBeVisible();
+  await expect(poster).toHaveAttribute("loading", "eager");
+  await expect(poster).toHaveAttribute("fetchpriority", "high");
+  await expect(page.locator(".hero-cinema-video")).toBeHidden();
+});
+
+test("menu first featured image is eager and prioritized; noncritical images stay lazy", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/menu", { waitUntil: "domcontentloaded" });
+  const featuredImages = page.locator(".menu-featured-card img");
+  await expect(featuredImages).toHaveCount(4);
+  await expect(featuredImages.nth(0)).toHaveAttribute("loading", "eager");
+  await expect(featuredImages.nth(0)).toHaveAttribute("fetchpriority", "high");
+  await expect(featuredImages.nth(1)).toHaveAttribute("loading", "eager");
+  await expect(featuredImages.nth(2)).toHaveAttribute("loading", "lazy");
+});
+
+test("unrelated pages do not preload the homepage cinematic poster", async ({ page }) => {
+  for (const path of ["/menu", "/jeddah/subscription-prices"]) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    await expect(page.locator('link[rel="preload"][as="image"][href*="hero-poster"]')).toHaveCount(0);
+  }
+});
