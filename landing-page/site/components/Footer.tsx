@@ -57,8 +57,8 @@ export function Footer() {
             <div className="footer-info-icon"><FooterIcon type="clock" /></div>
             <div>
               <p className="footer-label" id="footer-hours-title">أوقات العمل</p>
-              <strong className="footer-hours">يوميًا · 24 ساعة</strong>
-              <p>نخدمكم على مدار اليوم عشان ما تخرب الدايت بأي وقت.</p>
+              <strong className="footer-hours">تأكد من المواعيد قبل الزيارة</strong>
+              <p>تواصل معنا للتأكد من مواعيد الفرع المتاحة حاليًا.</p>
             </div>
           </section>
         </div>
@@ -69,6 +69,7 @@ export function Footer() {
             <a href="/menu">المنيو الكامل</a>
             <a href="/#plans">الباقات</a>
             <a href="/jeddah/healthy-meals">اشتراكات وجبات صحية جدة</a>
+            <a href="/jeddah/subscription-prices">أسعار الاشتراكات</a>
             <a href="/#faq">الأسئلة</a>
             <a href="/privacy">خصوصية طلب التواصل</a>
           </nav>
