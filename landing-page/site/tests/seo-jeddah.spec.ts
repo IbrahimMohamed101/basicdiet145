@@ -201,3 +201,44 @@ test("homepage defers calculator JavaScript without breaking hero registration",
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByPlaceholder("05xxxxxxxx")).toBeVisible();
 });
+
+test("PERF DIAGNOSTIC: throttled preview homepage resource waterfall", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.setCacheDisabled", {cacheDisabled: true});
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline:false,latency:150,downloadThroughput:210000,uploadThroughput:100000,
+  });
+  await cdp.send("Emulation.setCPUThrottlingRate", {rate:4});
+  await page.addInitScript(() => {
+    const win = window as typeof window & { __lcpPerf?: Array<Record<string,unknown>> };
+    win.__lcpPerf=[];
+    new PerformanceObserver(list => {
+      for (const item of list.getEntries()) {
+        const entry=item as PerformanceEntry & { renderTime?:number;loadTime?:number;element?:Element };
+        win.__lcpPerf?.push({
+          t:entry.startTime,render:entry.renderTime,load:entry.loadTime,
+          tag:entry.element?.tagName,className:entry.element?.getAttribute("class"),
+        });
+      }
+    }).observe({type:"largest-contentful-paint",buffered:true});
+  });
+  await page.goto("/", {waitUntil:"domcontentloaded"});
+  await page.waitForTimeout(4300);
+  const result=await page.evaluate(() => ({
+    lcp:(window as typeof window & {__lcpPerf?:unknown}).__lcpPerf,
+    files:performance.getEntriesByType("resource")
+      .filter(x => /hero-poster\.webp|\.css|\.js/.test(x.name))
+      .map(x=>{const r=x as PerformanceResourceTiming;return{
+        name:r.name.replace(location.origin,"").slice(0,90),
+        start:+r.startTime.toFixed(0),end:+r.responseEnd.toFixed(0),
+        bytes:r.transferSize,decoded:r.decodedBodySize,
+      };}).sort((a,b)=>a.start-b.start),
+    plansLoaded:!!document.querySelector("#plans fieldset"),
+  }));
+  console.log("HOMEPAGE_DEFERRED_WATERFALL "+JSON.stringify(result));
+  expect(result.plansLoaded).toBe(false);
+  expect(result.lcp).toBeTruthy();
+  await cdp.detach();
+});
