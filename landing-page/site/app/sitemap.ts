@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
 
+// Keep the sitemap generated at request time instead of serving an older
+// prerendered XML after adding or removing indexed routes.
+export const dynamic = "force-dynamic";
+
 const DEFAULT_SITE_URL = "https://basicdietksa.com";
 
 export function getSitemapOrigin() {
