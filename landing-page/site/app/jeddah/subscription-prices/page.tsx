@@ -68,8 +68,8 @@ export default async function SubscriptionPricesPage() {
                     <tbody>
                       {rows.map(row => (
                         <tr className="border-t" style={{ borderColor: "#dbe8db" }} key={row.days + "-" + row.grams + "-" + row.meals}>
-                          <td className="p-4">{row.days} يوم</td><td className="p-4">{row.grams} جم</td>
-                          <td className="p-4">{row.meals}</td><td className="p-4 font-bold">{formatSar(row.price)}</td>
+                          <td className="p-4">{row.days === 7 ? "7 أيام" : `${row.days} يومًا`}</td><td className="p-4">{row.grams} جم</td>
+                          <td className="p-4">{row.meals}</td><td className="p-4 font-bold"><span dir="ltr">{formatSar(row.price)}</span></td>
                         </tr>
                       ))}
                     </tbody>

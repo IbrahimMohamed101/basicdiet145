@@ -1,4 +1,4 @@
-/**
+/** 
  * Read-only price feed for crawlable, server-rendered subscription prices.
  * Never guess prices: render a price only after validating the live app catalog.
  */
@@ -58,4 +58,4 @@ export async function getPublicPlanPrices(): Promise<PublicPlanPrices[]> {
 }
 
 export const formatSar = (value: number) =>
-  new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 }).format(value) + " ر.س";
+  new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value) + " ر.س";
