@@ -90,7 +90,7 @@
 .menu-heading { display: flex; gap: 40px; justify-content: space-between; align-items: end; margin-bottom: 36px; }
 .menu-heading h2 { max-width: 760px; margin: 0; line-height: 1.18; letter-spacing: -.035em; font-size: clamp(36px, 4.3vw, 64px); font-weight: 700; color: #103a2b; }
 .menu-heading > p { max-width: 380px; font-size: 17px; line-height: 1.85; margin: 0; color: #657369; }
-.menu-kicker { display: inline-flex; gap: 10px; align-items: center; margin: 0 0 22px; color: #2d8c60; font: 700 12px/1.8 system-ui, sans-serif; letter-spacing: .08em; }
+.menu-kicker { display: inline-flex; gap: 10px; align-items: center; margin: 0 0 22px; color: #226648; font: 700 12px/1.8 system-ui, sans-serif; letter-spacing: .08em; }
 .menu-kicker span { background: #df673e; border-radius: 9px; height: 3px; width: 28px; }
 .menu-plans-section { background: #f9faf5; }
 .menu-plan-layout { display: grid; grid-template-columns: 1.12fr .88fr; gap: 28px; align-items: stretch; }
@@ -148,7 +148,7 @@
 .menu-option-block { padding: 20px 0; border-top: 1px solid #e6ece4; }
 .menu-option-title { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px; align-items: center; }
 .menu-option-title strong { font-size: 18px; color: #1f442d; }
-.menu-option-title span { color: #55826a; font-size: 13px; }
+.menu-option-title span { color: #3f674e; font-size: 13px; }
 .menu-option-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .menu-option-grid button {
   display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 54px;
@@ -490,7 +490,7 @@
 .menu-heading h2 { font-size: clamp(32px,3.2vw,51px); }
 .menu-heading > p { color: #4e6f58; }
 .menu-catalog-count { margin-top: 4px; margin-bottom: 18px; color: #516e5b; }
-.menu-catalog-count small { color: #728e79; font-size: 12px; }
+.menu-catalog-count small { color: #486a52; font-size: 12px; }
 .menu-product-grid { gap: 16px; }
 .menu-product-card { border-radius: 19px; }
 .menu-product-photo { height: 218px; }
