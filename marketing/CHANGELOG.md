@@ -1,5 +1,9 @@
 # Marketing OS Changelog
 
+## 2026-10-31 — Retention release QA
+
+Executed isolated full-stack retention QA, fixed eligibility/payment evidence, opt-out policy, cross-origin reads, stale customer cache and duplicate form submission; added regression tests and auditable CI gates. Published [final QA report](../RETENTION_DASHBOARD_FINAL_QA_REPORT.md), synthetic browser evidence and baseline failure inventory. Decision NOT READY: full dashboard regression/lint fail and staging isolation/versions remain unverified. No production write, outreach, merge or deployment.
+
 ## 2026-10-07 — v2
 
 Completed the first external data-gathering pass for content readiness.

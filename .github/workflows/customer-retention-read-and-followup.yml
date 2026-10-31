@@ -1,0 +1,62 @@
+name: Customer retention dashboard checks
+
+on:
+  pull_request:
+    paths:
+      - "src/services/dashboard/customerRetentionReadService.js"
+      - "src/services/dashboard/customerRetentionFollowupService.js"
+      - "src/services/dashboard/retentionContactPolicyService.js"
+      - "tests/helpers/retentionQaServer.js"
+      - "src/controllers/dashboard/customerRetentionController.js"
+      - "src/controllers/dashboard/customerRetentionFollowupController.js"
+      - "src/models/RetentionFollowupEvent.js"
+      - "src/routes/dashboardCustomerManagement.js"
+      - "tests/customerRetentionReadService.test.js"
+      - "tests/customerRetentionFollowupService.test.js"
+      - "tests/customerRetentionApi.integration.test.js"
+      - ".github/workflows/customer-retention-read-and-followup.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "src/services/dashboard/customerRetentionReadService.js"
+      - "src/services/dashboard/customerRetentionFollowupService.js"
+      - "src/services/dashboard/retentionContactPolicyService.js"
+      - "tests/helpers/retentionQaServer.js"
+      - "src/controllers/dashboard/customerRetentionController.js"
+      - "src/controllers/dashboard/customerRetentionFollowupController.js"
+      - "src/models/RetentionFollowupEvent.js"
+      - "src/routes/dashboardCustomerManagement.js"
+      - "tests/customerRetentionReadService.test.js"
+      - "tests/customerRetentionFollowupService.test.js"
+      - "tests/customerRetentionApi.integration.test.js"
+
+permissions:
+  contents: read
+
+jobs:
+  retention-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Syntax check
+        run: |
+          node --check src/services/dashboard/customerRetentionReadService.js
+          node --check src/services/dashboard/customerRetentionFollowupService.js
+          node --check src/services/dashboard/retentionContactPolicyService.js
+          node --check tests/helpers/retentionQaServer.js
+          node --check src/controllers/dashboard/customerRetentionController.js
+          node --check src/controllers/dashboard/customerRetentionFollowupController.js
+          node --check src/models/RetentionFollowupEvent.js
+          node --check src/routes/dashboardCustomerManagement.js
+      - name: Pure calculation and input-validation tests
+        run: |
+          NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/customerRetentionReadService.test.js
+          NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/customerRetentionFollowupService.test.js
+      - name: Isolated MongoDB HTTP role + idempotency integration
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/customerRetentionApi.integration.test.js

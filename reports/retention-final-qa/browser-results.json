@@ -1,0 +1,30 @@
+{
+  "isolated": true,
+  "syntheticOnly": true,
+  "results": [
+    {
+      "device": "desktop",
+      "login": "PASS",
+      "listSearchFilterPagination": "PASS",
+      "profile": "PASS",
+      "followupReplayRefresh": "PASS",
+      "doNotContact": "PASS",
+      "october": "PASS",
+      "errorAndRTL": "PASS"
+    },
+    {
+      "device": "mobile",
+      "login": "PASS",
+      "listSearchFilterPagination": "PASS",
+      "profile": "PASS",
+      "followupReplayRefresh": "PASS",
+      "doNotContact": "PASS",
+      "october": "PASS",
+      "errorAndRTL": "PASS"
+    },
+    {
+      "anonymous": "401 PASS",
+      "allNonSuperadminRoles": "403 + UI redirect PASS"
+    }
+  ]
+}
