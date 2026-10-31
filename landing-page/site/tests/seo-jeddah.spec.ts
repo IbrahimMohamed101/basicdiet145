@@ -212,7 +212,7 @@ test("DIAGNOSTIC: mobile LCP timeline under throttling", async ({ page }) => {
     });
     window.addEventListener("load", () => changes.push({ event:"load",t:performance.now() }));
   });
-  await page.goto("/", { waitUntil:"domcontentloaded" });
+  await page.goto("https://basicdietksa.com/", { waitUntil:"domcontentloaded" });
   await page.waitForTimeout(4800);
   const metrics = await page.evaluate(() => {
     const w = window as typeof window & { __lcpAudit?: Record<string,unknown> };
@@ -236,7 +236,7 @@ test("DIAGNOSTIC: mobile LCP timeline under throttling", async ({ page }) => {
       nav:performance.getEntriesByType("navigation").map(x=>{const n=x as PerformanceNavigationTiming;return{responseStart:n.responseStart,domContentLoaded:n.domContentLoadedEventEnd,load:n.loadEventEnd};}),
       t:performance.now()};
   });
-  console.log("HERO_LCP_DIAGNOSTIC "+JSON.stringify(metrics));
+  console.log("HERO_LCP_LIVE_DIAGNOSTIC "+JSON.stringify(metrics));
   await client.detach();
   expect(metrics.poster.complete).toBe(true);
 });
