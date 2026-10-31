@@ -14,6 +14,7 @@ export function Hero() {
           height={900}
           sizes="(max-width: 640px) 80vw, 640px"
           quality={75}
+          loading="eager"
           preload
           fetchPriority="high"
           unoptimized={HERO_POSTER_URL.startsWith("http")}
