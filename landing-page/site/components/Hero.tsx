@@ -20,6 +20,7 @@ export function Hero() {
           unoptimized={HERO_POSTER_URL.startsWith("http")}
           alt=""
         />
+        {/* A CSS background replaces the video poster to avoid duplicate mobile downloads. */}
         <video
           className="hero-cinema-video"
           data-motion-video=""
@@ -27,8 +28,6 @@ export function Hero() {
           loop
           playsInline
           preload="none"
-          // No HTML video poster: mobile browsers fetched it even with video display:none.
-          // The CSS background provides the desktop fallback without mobile transfer.
           style={{ backgroundImage: `url("${HERO_POSTER_URL}")`, backgroundPosition: "center", backgroundSize: "cover" }}
           tabIndex={-1}
         >
