@@ -22,6 +22,7 @@ function CalculatorPlaceholder() {
         <h2 id="plans-heading">احسب باقتك.</h2>
         <p>اختر مدة الاشتراك وحجم وجباتك وعددها اليومي.</p>
         <p>جاري تجهيز حاسبة الاشتراكات...</p>
+        <p><a href="/jeddah/healthy-meals">قارن باقات بيسك دايت وخيارات التوصيل في جدة</a></p>
         <a href="/jeddah/subscription-prices">شاهد أسعار الاشتراكات الحالية</a>
       </div>
     </section>
