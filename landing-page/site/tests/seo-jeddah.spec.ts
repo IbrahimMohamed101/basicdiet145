@@ -128,3 +128,50 @@ test("unrelated pages do not preload the homepage cinematic poster", async ({ pa
     await expect(page.locator('link[rel="preload"][as="image"][href*="hero-poster"]')).toHaveCount(0);
   }
 });
+
+test("mobile hero poster paints without a costly blur, mask or duplicate background image", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const styles = await page.locator(".hero-cinema-mobile-poster").evaluate((img) => {
+    const poster = getComputedStyle(img);
+    const behind = getComputedStyle(img.parentElement!, "::before");
+    return {
+      filter: poster.filter,
+      mask: poster.maskImage,
+      webkitMask: poster.getPropertyValue("-webkit-mask-image"),
+      behindImage: behind.backgroundImage,
+      behindFilter: behind.filter,
+    };
+  });
+  expect(styles.filter).toBe("none");
+  expect(styles.mask).toBe("none");
+  expect(styles.webkitMask).toBe("none");
+  expect(styles.behindImage).not.toContain("hero-poster");
+  expect(styles.behindFilter).toBe("none");
+});
+
+test("menu helper labels meet 4.5:1 contrast against white", async ({ page }) => {
+  await page.goto("/menu", { waitUntil: "domcontentloaded" });
+  const contrasts = await page.evaluate(() => {
+    const selectors = [
+      ".menu-featured-intro .menu-kicker",
+      ".menu-catalog-count small",
+      ".menu-option-title span",
+    ];
+    function luminance(rgb: string): number {
+      const channels = (rgb.match(/[0-9.]+/g) ?? []).slice(0, 3)
+        .map(n => Number(n) / 255)
+        .map(n => n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4);
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    }
+    return selectors.map(selector => {
+      const el = document.querySelector(selector);
+      if (!el) return { selector, contrast: 0 };
+      const foreground = luminance(getComputedStyle(el).color);
+      return { selector, contrast: 1.05 / (foreground + 0.05) };
+    });
+  });
+  for (const result of contrasts) {
+    expect(result.contrast, result.selector).toBeGreaterThanOrEqual(4.5);
+  }
+});
