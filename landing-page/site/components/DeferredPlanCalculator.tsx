@@ -23,6 +23,7 @@ function CalculatorPlaceholder() {
         <p>اختر مدة الاشتراك وحجم وجباتك وعددها اليومي.</p>
         <p>جاري تجهيز حاسبة الاشتراكات...</p>
         <p><a href="/jeddah/healthy-meals">قارن باقات بيسك دايت وخيارات التوصيل في جدة</a></p>
+        <p><a href="/menu?from=home_plans">شوف الأصناف المتاحة في المنيو</a></p>
         <a href="/jeddah/subscription-prices">شاهد أسعار الاشتراكات الحالية</a>
       </div>
     </section>
