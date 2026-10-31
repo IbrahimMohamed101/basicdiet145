@@ -264,7 +264,7 @@ test("all 108 cashier items have a picture reference and illustrative exceptions
   expect(menuPreviewItems).toHaveLength(108);
   expect(menuPreviewItems.filter(item => !item.image)).toHaveLength(0);
   expect(menuPreviewItems.filter(item => item.illustrativeImage === true)).toHaveLength(36);
-  expect(menuPreviewItems.filter(item => item.image?.startsWith("/api/menu-art"))).toHaveLength(25);
+  expect(menuPreviewItems.filter(item => item.image?.startsWith("/api/menu-art"))).toHaveLength(36);
   const artwork = await page.request.get("/api/menu-art?kind=juice&tone=pink");
   expect(artwork.status()).toBe(200);
   expect(artwork.headers()["content-type"]).toContain("image/svg+xml");
