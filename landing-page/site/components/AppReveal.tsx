@@ -201,8 +201,8 @@ export function AppReveal() {
               <div className="hero-plate">
                 <span className="hero-plate-rim" aria-hidden="true" />
                 <Image
-                  src="/meals/butter-chicken.png"
-                  alt="وجبة دجاج بالزبدة"
+                  src="/meals/salmon.png"
+                  alt="وجبة سالمون من منيو بيسك دايت"
                   className="hero-meal-image"
                   width={896}
                   height={760}
