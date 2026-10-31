@@ -32,8 +32,9 @@ Production Railway service: `basicdiet-landing`; last observed SUCCESS 2026-10-2
 ## Measurement protocol
 Measure GSC at country=Saudi Arabia, segment brand/non-brand queries, monitor weekly impressions/clicks/CTR/rank by page and first-time paid subscriptions. Previous report figures are user-supplied Oct 11–29 snapshot, not independently fetched in this change. No ranking or conversion improvement claimed prior to release and measurement.
 
-## Additional verified menu regression (same review branch)
-- A live code review showed 36 items with `illustrativeImage: true` referenced `/menu-images/pos_*.webp`, but the repository has no committed `public/menu-images/` directory. This is a broken-asset risk, not evidence the expected photos exist on the CDN.
-- The published SVG illustration endpoint `/api/menu-art` already exists; the menu preview now normalizes those 36 missing local paths to matching type/color SVG illustrations, explicitly preserving `illustrativeImage: true` and the user-facing disclosure. This is an interim placeholder, **not** a claim that real food photos were imported or approved.
-- Normalized art references are asserted in the Menu Preview QA suite; salmon 200g retained its verified 59 SAR source value, while the test accepts Western or Arabic digits.
-- A later deliverable should replace these fallbacks with photographed, verified menu assets from Drive, after upload and exact POS ID mapping.
+## Menu QA resolution
+
+- The 36 `/menu-images/pos_*.webp` references are not missing in production. The source file `assets/menu-photos/pack-01..04.b64` includes an immutable checksum-verified archive; `scripts/extract-menu-photos.mjs` unpacks 36 WebP photos into `public/menu-images/` as part of `npm run build`. The earlier file-tree-only inspection was insufficient.
+- Source code keeps all 36 original image references and `illustrativeImage` truth labels. No product photographs were replaced with synthetic art.
+- Corrected the stale Playwright assertion to require exactly 36 `/menu-images/pos_` references and zero static `/api/menu-art` references; dynamic illustration endpoint remains a fallback for runtime load failures.
+- The salmon 200g base POS price remains 59 SAR; test now accepts western/Arabic numeral display.
