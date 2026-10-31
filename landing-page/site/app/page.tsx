@@ -3,6 +3,7 @@ import { Hero } from "@/components/Hero";
 import { AppReveal } from "@/components/AppReveal";
 import { MealGallery } from "@/components/MealGallery";
 import { PlanCalculator } from "@/components/PlanCalculator";
+import { PlanPriceHighlights } from "@/components/PlanPriceHighlights";
 import { HowItWorks } from "@/components/HowItWorks";
 import { ServiceClarity } from "@/components/ServiceClarity";
 import { InstagramReels } from "@/components/InstagramReels";
@@ -30,6 +31,7 @@ export default function Home() {
         <Hero />
         <MealGallery />
         <PlanCalculator sectionId="plans" context="home" />
+        <PlanPriceHighlights />
         <HowItWorks />
         <ServiceClarity />
         <AppReveal />
