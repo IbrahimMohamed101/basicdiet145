@@ -199,10 +199,18 @@ export function MenuExperience() {
             <a href="#menu-products">شوف المنيو بالكامل <span aria-hidden="true">←</span></a>
           </div>
           <div className="menu-featured-grid">
-            {menuShowcaseCategories.map((group) => (
+            {menuShowcaseCategories.map((group, index) => (
               <a key={group.label} href="#menu-products" className="menu-featured-card"
                 onClick={() => { setCategory(group.label); setSearch(""); setVisibleCount(12); }}>
-                <Image src={group.image} alt="" fill unoptimized={group.image.startsWith("https://")} sizes="(max-width: 760px) 60vw, 26vw" />
+                <Image
+                  src={group.image}
+                  alt=""
+                  fill
+                  unoptimized={group.image.startsWith("https://")}
+                  sizes="(max-width: 760px) 60vw, 26vw"
+                  loading={index < 2 ? "eager" : "lazy"}
+                  fetchPriority={index === 0 ? "high" : undefined}
+                />
                 <span className="menu-featured-overlay" aria-hidden="true" />
                 <span className="menu-featured-card-content"><small>{group.tag}</small><strong>{group.label}</strong><b aria-hidden="true">←</b></span>
               </a>
