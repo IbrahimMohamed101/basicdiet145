@@ -175,3 +175,68 @@ test("menu helper labels meet 4.5:1 contrast against white", async ({ page }) =>
     expect(result.contrast, result.selector).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+test("DIAGNOSTIC: mobile LCP timeline under throttling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const client = await page.context().newCDPSession(page);
+  await client.send("Network.enable");
+  await client.send("Network.setCacheDisabled", { cacheDisabled: true });
+  await client.send("Network.emulateNetworkConditions", {
+    offline: false, latency: 150, downloadThroughput: 210000, uploadThroughput: 100000,
+  });
+  await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  await page.addInitScript(() => {
+    const w = window as typeof window & { __lcpAudit?: Record<string, unknown> };
+    const start = performance.now();
+    const lcp: Array<Record<string, unknown>> = [];
+    const tasks: Array<Record<string, unknown>> = [];
+    const paints: Array<Record<string, unknown>> = [];
+    const changes: Array<Record<string, unknown>> = [];
+    w.__lcpAudit = { start, lcp, tasks, paints, changes };
+    try {
+      new PerformanceObserver((entries) => {
+        entries.getEntries().forEach(e => {
+          const x = e as PerformanceEntry & { renderTime?: number; loadTime?: number; size?: number; element?: Element };
+          lcp.push({ t: e.startTime, render: x.renderTime, load: x.loadTime,
+            size: x.size, tag: x.element?.tagName, className: x.element?.getAttribute("class"),
+            url: (x.element as HTMLImageElement | undefined)?.currentSrc });
+        });
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+      new PerformanceObserver(list => list.getEntries().forEach(e => tasks.push({start:e.startTime,duration:e.duration})))
+        .observe({type:"longtask",buffered:true});
+      new PerformanceObserver(list => list.getEntries().forEach(e => paints.push({name:e.name,t:e.startTime})))
+        .observe({type:"paint",buffered:true});
+    } catch (e) { changes.push({observerError:String(e)}); }
+    document.addEventListener("readystatechange", () => {
+      changes.push({event: document.readyState, t: performance.now()});
+    });
+    window.addEventListener("load", () => changes.push({ event:"load",t:performance.now() }));
+  });
+  await page.goto("/", { waitUntil:"domcontentloaded" });
+  await page.waitForTimeout(4800);
+  const metrics = await page.evaluate(() => {
+    const w = window as typeof window & { __lcpAudit?: Record<string,unknown> };
+    const img = document.querySelector<HTMLImageElement>(".hero-cinema-mobile-poster");
+    const hero = document.querySelector<HTMLElement>(".hero-cinema-media");
+    const resources = performance.getEntriesByType("resource").map(x => {
+      const y=x as PerformanceResourceTiming;
+      return {url:y.name.slice(0,140),t:+y.startTime.toFixed(1),request:+y.requestStart.toFixed(1),
+        responseEnd:+y.responseEnd.toFixed(1),dur:+y.duration.toFixed(1),bytes:y.transferSize,decoded:y.decodedBodySize,
+        initiator:y.initiatorType};
+    }).filter(x=>/hero-poster|\.css|\.woff|\.js|\.mp4/.test(x.url)).sort((a,b)=>a.t-b.t).slice(0,35);
+    const css=img?getComputedStyle(img):null;
+    const elem=hero?getComputedStyle(hero):null;
+    const rect=img?.getBoundingClientRect();
+    return {audit:w.__lcpAudit, resources,
+      poster: {complete:img?.complete,naturalWidth:img?.naturalWidth,currentSrc:img?.currentSrc,
+        visibility:css?.visibility,display:css?.display,opacity:css?.opacity,filter:css?.filter,
+        rect:{top:rect?.top,height:rect?.height,width:rect?.width},
+        parentOpacity:elem?.opacity,parentDisplay:elem?.display},
+      fonts:document.fonts.status,
+      nav:performance.getEntriesByType("navigation").map(x=>{const n=x as PerformanceNavigationTiming;return{responseStart:n.responseStart,domContentLoaded:n.domContentLoadedEventEnd,load:n.loadEventEnd};}),
+      t:performance.now()};
+  });
+  console.log("HERO_LCP_DIAGNOSTIC "+JSON.stringify(metrics));
+  await client.detach();
+  expect(metrics.poster.complete).toBe(true);
+});
