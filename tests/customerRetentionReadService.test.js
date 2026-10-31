@@ -7,6 +7,7 @@ const {
 const nowKey = "2026-10-31";
 const expiry = (day, remaining = 1, props = {}) => ({
   _id: props._id || "b1",
+  containerSubscriptionId: "s1",
   sourceType: props.sourceType || "dashboard",
   applicationState: "applied",
   status: "active",
