@@ -31,3 +31,9 @@ Production Railway service: `basicdiet-landing`; last observed SUCCESS 2026-10-2
 
 ## Measurement protocol
 Measure GSC at country=Saudi Arabia, segment brand/non-brand queries, monitor weekly impressions/clicks/CTR/rank by page and first-time paid subscriptions. Previous report figures are user-supplied Oct 11–29 snapshot, not independently fetched in this change. No ranking or conversion improvement claimed prior to release and measurement.
+
+## Additional verified menu regression (same review branch)
+- A live code review showed 36 items with `illustrativeImage: true` referenced `/menu-images/pos_*.webp`, but the repository has no committed `public/menu-images/` directory. This is a broken-asset risk, not evidence the expected photos exist on the CDN.
+- The published SVG illustration endpoint `/api/menu-art` already exists; the menu preview now normalizes those 36 missing local paths to matching type/color SVG illustrations, explicitly preserving `illustrativeImage: true` and the user-facing disclosure. This is an interim placeholder, **not** a claim that real food photos were imported or approved.
+- Normalized art references are asserted in the Menu Preview QA suite; salmon 200g retained its verified 59 SAR source value, while the test accepts Western or Arabic digits.
+- A later deliverable should replace these fallbacks with photographed, verified menu assets from Drive, after upload and exact POS ID mapping.
