@@ -23,7 +23,7 @@ export async function PlanPriceHighlights() {
             <div className="mt-5 grid gap-4 md:grid-cols-3">
               {examples.map(item => (
                 <article key={item.days} className="rounded-2xl border bg-white p-5" style={{ borderColor: "#dbe8db" }}>
-                  <h3 className="font-bold">باقة {item.days} يوم</h3>
+                  <h3 className="font-bold">باقة {item.days} {item.days === 7 ? "أيام" : "يومًا"}</h3>
                   <p className="mt-3 text-2xl font-extrabold" dir="auto">{formatSar(item.price)}</p>
                   <p className="mt-2 text-sm">150 جم · وجبتان يوميًا · قبل خصم التسجيل</p>
                 </article>
