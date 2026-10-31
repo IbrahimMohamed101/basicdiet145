@@ -34,6 +34,8 @@ test("calculator CTA carries selected grams, meals, delivery and explicit consen
   });
   await page.goto("/?utm_source=instagram&utm_campaign=autumn", { waitUntil: "domcontentloaded" });
   const calculator = page.locator("#plans");
+  await calculator.scrollIntoViewIfNeeded();
+  await expect(calculator.locator("fieldset").first()).toBeVisible();
   await calculator.locator("fieldset").nth(1).getByRole("button", { name: "200 جم" }).click();
   await calculator.locator("fieldset").nth(2).getByRole("button", { name: "5", exact: true }).click();
   await calculator.getByRole("button", { name: "استلام", exact: true }).click();
@@ -67,6 +69,8 @@ test("mobile sheet keeps layout within viewport and 7-day plan selection survive
   );
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const calculator = page.locator("#plans");
+  await calculator.scrollIntoViewIfNeeded();
+  await expect(calculator.locator("fieldset").first()).toBeVisible();
   await calculator.locator("fieldset").first().getByRole("button", { name: /7 يوم/ }).click();
   await calculator.locator(".bd-calculator-primary").click();
   const dialog = page.getByRole("dialog");
