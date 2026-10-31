@@ -16,7 +16,7 @@ const canonical = (() => {
 })();
 
 export const metadata: Metadata = {
-  title: "اشتراك وجبات صحية في جدة | بيسك دايت Basic Diet",
+  title: "اشتراك وجبات دايت جدة | باقات أسبوعية وشهرية | بيسك دايت",
   description: "اشتراكات وجبات صحية ودايت في جدة من بيسك دايت Basic Diet. قارن بين باقات 7 و26 و30 يومًا، واختر 100 أو 150 أو 200 جرام وعدد وجباتك اليومية، مع التوصيل أو الاستلام حسب المتاح.",
   alternates: { canonical },
   openGraph: {
@@ -38,16 +38,16 @@ const breadcrumbStructuredData = {
 const faqs = [
   { q: "كيف أختار اشتراك وجبات صحية مناسبًا في جدة؟", a: "ابدأ بتحديد عدد الأيام والوجبات التي تحتاجها يوميًا، ثم اختر حجم الوجبة وطريقة الاستلام. راجع تفاصيل الباقة والسعر النهائي داخل تطبيق Basic Diet قبل الدفع." },
   { q: "هل توجد اشتراكات وجبات صحية أسبوعية وشهرية؟", a: "توجد خيارات اشتراك لمدة 7 أيام و26 يومًا و30 يومًا. توافر خيارات كل باقة يعتمد على الإعدادات الحالية." },
-  { q: "هل أقدر أطلب وجبة واحدة يوميًا؟", a: "تقدر تختار عدد الوجبات من الخيارات المتاحة في الباقة، بما فيها وجبة واحدة عندما تكون مفعّلة." },
+  { q: "هل يمكنني طلب وجبة واحدة يوميًا؟", a: "يمكنك اختيار عدد الوجبات من الخيارات المتاحة للباقة، بما فيها وجبة واحدة يوميًا عندما تكون متاحة." },
   { q: "هل يتم توصيل الاشتراكات لكل أحياء جدة؟", a: "تُراجع تغطية منطقة عنوانك أثناء الطلب؛ لا يمكن تأكيد توصيل كل الأحياء قبل التحقق من موقع العميل." },
   { q: "هل إرسال الطلب من الموقع يُنشئ اشتراكًا مدفوعًا؟", a: "لا. إرسال رقم جوالك من الموقع هو طلب للتواصل معك بشأن الباقة، وليس عملية دفع أو اشتراكًا مؤكدًا." },
   { q: "ما الفرق بين اشتراك 7 أيام و26 يومًا و30 يومًا؟", a: "الفرق الأساسي هو مدة الباقة؛ اختَر مدة قصيرة للتجربة أو فترة أطول لتخطيط وجباتك. راجع عدد الوجبات والجرامات وخيارات التوصيل والأسعار النهائية لكل باقة داخل التطبيق." },
-  { q: "هل أقدر أختار 100 أو 150 أو 200 جرام؟", a: "هذه أحجام الوجبات المعروضة في بيسك دايت. توافر كل حجم وعدد الوجبات يختلف حسب خيارات الباقة المفعّلة، وتظهر التفاصيل النهائية عند الاختيار." },
+  { q: "هل يمكنني اختيار 100 أو 150 أو 200 جرام؟", a: "هذه أحجام حصص البروتين المتاحة في خيارات بيسك دايت. توافر كل حجم وعدد الوجبات يختلف حسب خيارات الباقة المفعّلة، وتظهر التفاصيل النهائية عند الاختيار." },
 ];
 const plans = [
   { days: 7, title: "اشتراك أسبوعي", copy: "خيار لتجربة تنظيم وجباتك لمدة أقصر." },
-  { days: 26, title: "اشتراك 26 يومًا", copy: "للي يفضل تنظيم وجباته على فترة أطول." },
-  { days: 30, title: "اشتراك 30 يومًا", copy: "لتخطيط وجبات الشهر بشكل متواصل." },
+  { days: 26, title: "اشتراك 26 يومًا", copy: "لمن يفضّل تنظيم وجباته على فترة أطول." },
+  { days: 30, title: "اشتراك 30 يومًا", copy: "لتنظيم وجبات الشهر على مدار 30 يومًا." },
 ];
 
 export default function JeddahHealthyMealsPage() {
@@ -67,17 +67,17 @@ export default function JeddahHealthyMealsPage() {
             <p className="mb-3 text-sm font-bold" style={{ color: "#108055" }}>بيسك دايت | Basic Diet · جدة</p>
             <h1 className="text-3xl font-extrabold leading-tight md:text-5xl">اشتراك وجبات صحية في جدة، على مقاس يومك</h1>
             <p className="mt-6 text-base leading-8 md:text-lg">
-              لو بتدور على اشتراك وجبات دايت في جدة، تقدر تبدأ بتحديد المدة اللي تناسبك وحجم الوجبة
-              وعدد وجباتك اليومية. بيسك دايت (Basic Diet) بيوفر خيارات اشتراك مرنة تخلّيك تختار الوجبات
-              اللي تناسب روتينك، سواء لجدول الأسبوع أو باقات الفترة الأطول.
+              إذا كنت تبحث عن اشتراك وجبات دايت في جدة، ابدأ بتحديد المدة المناسبة لك وحجم الوجبة
+              وعدد وجباتك اليومية. يوفر بيسك دايت (Basic Diet) خيارات اشتراك مرنة تتيح لك اختيار الوجبات
+              التي تناسب يومك، سواء كنت تفضّل اشتراكًا أسبوعيًا أو باقة شهرية.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-4">
-              <AppCta location="plans" className="button">اطلب تواصل بخصوص اشتراكك ←</AppCta>
+              <AppCta location="plans" className="button">سجّل لخصم 15% ←</AppCta>
               <Link href="/#plans" className="text-sm font-bold underline underline-offset-4" style={{ color: "#108055" }}>
-                شوف تفاصيل الباقات
+                شاهد تفاصيل الباقات
               </Link>
             </div>
-            <p className="mt-3 text-xs" style={{ color: "#63756d" }}>طلب التواصل مش عملية دفع. الأسعار النهائية بتظهر بعد تحديد خياراتك في التطبيق.</p>
+            <p className="mt-3 text-xs" style={{ color: "#63756d" }}>التسجيل طلب تواصل بدون دفع. يمكنك مقارنة الأسعار الأساسية للباقة، ويؤكد الفريق الأهلية والسعر النهائي قبل الاشتراك.</p>
             <div className="mt-5 flex flex-wrap gap-3 text-sm">
               <a href="#jeddah-plans-heading" className="font-bold underline underline-offset-4" style={{ color: "#108055" }}>قارن مدد الاشتراكات</a>
               <a href="#jeddah-faq-heading" className="font-bold underline underline-offset-4" style={{ color: "#108055" }}>أسئلة مهمة قبل الاشتراك</a>
@@ -87,7 +87,7 @@ export default function JeddahHealthyMealsPage() {
           <section className="mt-16 md:mt-20" aria-labelledby="jeddah-plans-heading">
             <h2 id="jeddah-plans-heading" className="text-2xl font-bold md:text-3xl">باقات اشتراكات وجبات صحية أسبوعية وشهرية</h2>
             <p className="mt-3 max-w-3xl leading-8" style={{ color: "#526c5d" }}>
-              اختار مدة الاشتراك، وبعدها حدد عدد وجباتك اليومية والكمية المناسبة لك. توافر كل خيار بيتحدد حسب الباقة.
+              اختر مدة الاشتراك، ثم حدد عدد الوجبات اليومية وحصة البروتين المناسبة لك. تختلف الخيارات المتاحة حسب الباقة.
             </p>
             <div className="mt-6 grid gap-4 md:grid-cols-3">
               {plans.map(plan => (
@@ -95,17 +95,25 @@ export default function JeddahHealthyMealsPage() {
                   <p className="text-sm font-bold" style={{ color: "#108055" }}>{plan.title}</p>
                   <h3 className="text-3xl font-extrabold">{plan.days} يومًا</h3>
                   <p className="flex-1 text-sm leading-7" style={{ color: "#526c5d" }}>{plan.copy}</p>
-                  <AppCta location="plans" planDays={plan.days} className="button">استفسر عن الباقة ←</AppCta>
+                  <AppCta location="plans" planDays={plan.days} className="button">سجّل لخصم 15% ←</AppCta>
                 </article>
               ))}
             </div>
           </section>
 
+          <div className="mt-8 rounded-2xl border bg-white p-5 leading-8" style={{ borderColor: "#dbe8db" }}>
+            <h2 className="text-xl font-bold">كم أسعار اشتراكات الوجبات الصحية في جدة؟</h2>
+            <p className="mt-2">تختلف أسعار باقات 7 و26 و30 يومًا بحسب حصة البروتين (100 أو 150 أو 200 جم)، وعدد الوجبات اليومية، وطريقة الاستلام. قارن الأسعار الأساسية من قائمة الاشتراكات الحالية قبل تطبيق العروض أو رسوم التوصيل.</p>
+            <Link href="/jeddah/subscription-prices" className="mt-3 inline-block font-bold underline underline-offset-4" style={{ color: "#108055" }}>
+              شاهد جدول أسعار اشتراكات بيسك دايت في جدة ←
+            </Link>
+          </div>
+
           <section className="mt-16 grid gap-7 md:mt-20 md:grid-cols-2 md:items-center" aria-labelledby="jeddah-meals-heading">
             <div className="overflow-hidden rounded-3xl bg-white" style={{ border: "1px solid #dbe8db" }}>
               <Image
-                src="/meals/butter-chicken.png"
-                alt="وجبة دجاج بالزبدة من أمثلة وجبات بيسك دايت في جدة"
+                src="/meals/salmon.png"
+                alt="وجبة سالمون من أصناف منيو بيسك دايت في جدة"
                 width={920}
                 height={690}
                 sizes="(max-width: 767px) 100vw, 50vw"
@@ -121,13 +129,13 @@ export default function JeddahHealthyMealsPage() {
                 وجبات دايت في جدة تختارها حسب باقتك
               </h2>
               <p className="mt-4 leading-8">
-                الاشتراك مش مجرد عدد أيام؛ بعد اختيار المدة تقدر تحدد حجم الوجبة من الخيارات المتاحة،
-                وعدد الوجبات اليومية، ثم تختار أصنافك من قائمة التطبيق.
-                تشوف خيارات الدجاج واللحوم والبحريات حسب المنيو الحالي بدل الاعتماد على قائمة ثابتة.
+                الاشتراك ليس مجرد عدد أيام؛ بعد اختيار المدة يمكنك تحديد حجم الوجبة من الخيارات المتاحة،
+                وعدد الوجبات اليومية، ثم اختيار أصنافك من قائمة التطبيق.
+                اطّلع على خيارات الدجاج واللحوم والبحريات حسب المنيو الحالي، وتأكد من توفر كل صنف قبل الطلب.
               </p>
               <p className="mt-3 leading-8">
-                قبل إتمام الدفع، راجع تفاصيل التوصيل أو الاستلام ومناطق التغطية في جدة،
-                والإضافات والسعر النهائي للباقة اللي اخترتها.
+                قبل إتمام الاشتراك، راجع تفاصيل التوصيل أو الاستلام ومناطق التغطية في جدة،
+                والإضافات والسعر النهائي للباقة التي اخترتها.
               </p>
               <Link href="/#meals" className="mt-4 inline-flex font-bold underline underline-offset-4" style={{ color: "#108055" }}>
                 شاهد أمثلة من وجبات بيسك دايت
@@ -146,14 +154,14 @@ export default function JeddahHealthyMealsPage() {
               </div>
             </div>
             <div className="rounded-3xl p-7 md:p-9" style={{ background: "#e5f0e5" }}>
-              <h3 className="text-xl font-bold">مش متأكد تختار أي اشتراك؟</h3>
+              <h3 className="text-xl font-bold">تحتاج مساعدة في اختيار الاشتراك؟</h3>
               <p className="mt-4 leading-8">
-                اختَر مدة مبدئية من الموقع وسيب رقم جوالك، وفريق Basic Diet يتواصل معك
-                بخصوص الخيارات المتاحة. ولو تفضّل تبدأ بنفسك، تقدر تستخدم التطبيق
-                لتحديد الوجبات والاستلام ومراجعة السعر الفعلي.
+                اختر مدة مبدئية من الموقع وسجّل اسمك ورقم جوالك، وسيتواصل معك فريق بيسك دايت
+                لمراجعة الخيارات المتاحة. وإذا تفضّل البدء بنفسك، يمكنك استخدام التطبيق
+                لتحديد الوجبات وطريقة الاستلام ومراجعة السعر النهائي.
               </p>
               <p className="mt-4 text-sm" style={{ color: "#526c5d" }}>التوصيل والاستلام حسب الخيارات المتاحة ومناطق التغطية في جدة.</p>
-              <AppCta location="final" className="button mt-5">ساعدني أختار الاشتراك ←</AppCta>
+              <AppCta location="final" className="button mt-5">سجّل لخصم 15% ←</AppCta>
             </div>
           </section>
 
