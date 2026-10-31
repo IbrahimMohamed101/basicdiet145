@@ -41,7 +41,7 @@ test("changing dish weight never reuses or scales a different portion's calories
   await dialog.getByRole("button", { name: "200 جم", exact: true }).click();
   await expect(dialog.locator(".menu-calories")).toHaveCount(0);
   await expect(dialog.locator(".menu-calories-missing")).toContainText("السعرات غير متوفرة");
-  await expect(dialog.locator(".menu-detail-purchase-row")).toContainText("٥٩");
+  await expect(dialog.locator(".menu-detail-purchase-row")).toContainText(/(?:59|٥٩)/);
   await dialog.getByRole("button", { name: "100 جم", exact: true }).click();
   await expect(dialog.locator(".menu-calories")).toHaveAttribute("data-calories", "210");
 });

@@ -1,4 +1,3 @@
-import { faqItems } from "@/lib/faq-data";
 
 export function StructuredData() {
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://basicdietksa.com").replace(/\/+$/, "");
@@ -34,7 +33,9 @@ export function StructuredData() {
     },
     servesCuisine: "Healthy meals",
     telephone: "+966535332639",
+    // Matches the current published local business listing; reconfirm for holiday changes.
     openingHours: "Mo-Su 00:00-23:59",
+    hasMenu: siteUrl + "/menu",
     hasMap: "https://maps.app.goo.gl/CGEn7oQWiKEXJzgG7",
     sameAs: [
       "https://apps.apple.com/ar/app/basic-diet/id6775085745",
@@ -45,29 +46,12 @@ export function StructuredData() {
     ],
   };
 
-  const faq = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: faqItems.map((item) => ({
-      "@type": "Question",
-      name: item.question,
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: item.answer,
-      },
-    })),
-  };
-
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(restaurant) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faq) }}
       />
     </>
   );
