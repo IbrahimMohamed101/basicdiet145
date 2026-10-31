@@ -1,8 +1,8 @@
 "use strict";
 
-const errorResponse = require("../utils/errorResponse");
-const { logger } = require("../utils/logger");
-const { getLiveRetentionReport } = require("../services/dashboard/customerRetentionReadService");
+const errorResponse = require("../../utils/errorResponse");
+const { logger } = require("../../utils/logger");
+const { getLiveRetentionReport } = require("../../services/dashboard/customerRetentionReadService");
 
 async function getRetention(req, res) {
   try {
