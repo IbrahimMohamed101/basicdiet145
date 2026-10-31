@@ -22,6 +22,7 @@ export function StructuredData() {
     logo: siteUrl + "/brand/logo-primary.png",
     address: {
       "@type": "PostalAddress",
+      streetAddress: "H4GX+JF7، السلامة",
       addressLocality: "جدة",
       addressRegion: "مكة المكرمة",
       addressCountry: "SA",
@@ -32,7 +33,8 @@ export function StructuredData() {
     },
     servesCuisine: "Healthy meals",
     telephone: "+966535332639",
-    // Do not advertise 24/7 opening hours unless verified against the restaurant.
+    // Matches the current published local business listing; reconfirm for holiday changes.
+    openingHours: "Mo-Su 00:00-23:59",
     hasMenu: siteUrl + "/menu",
     hasMap: "https://maps.app.goo.gl/CGEn7oQWiKEXJzgG7",
     sameAs: [
