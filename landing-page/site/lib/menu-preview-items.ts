@@ -1,3 +1,5 @@
+import { menuArtUrl } from "./menu-art";
+
 /** Cashier preview candidates, POS ID and price preserved from official source.
  * Original matching photos are not yet visually approved.
  * illustrativeImage=true explicitly marks an illustrative or representative visual, NOT a confirmed POS dish photo.
@@ -796,4 +798,11 @@ export const menuPreviewItems: MenuPreviewItem[] = [
     "image": "/menu-images/pos_198.webp",
     "illustrativeImage": true
   }
-];
+].map(item =>
+  item.image?.startsWith("/menu-images/") ? {
+    ...item,
+    // Source assets were never committed. Never serve a broken image or imply a real photo.
+    image: menuArtUrl(item.name, item.category),
+    illustrativeImage: true,
+  } : item
+);
