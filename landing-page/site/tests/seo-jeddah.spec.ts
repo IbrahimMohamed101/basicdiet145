@@ -12,7 +12,7 @@ test("search-intent page is crawlable, useful and links to the lead enquiry", as
   }));
   await page.goto("/jeddah/healthy-meals", { waitUntil: "domcontentloaded" });
 
-  await expect(page).toHaveTitle(/اشتراك وجبات صحية في جدة/);
+  await expect(page).toHaveTitle(/اشتراك وجبات دايت جدة/);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("اشتراك وجبات صحية في جدة");
   await expect(page.locator("link[rel='canonical']")).toHaveAttribute("href", /\/jeddah\/healthy-meals$/);
   await expect(page.getByRole("heading", { name: /باقات اشتراكات وجبات صحية/ })).toBeVisible();
