@@ -242,3 +242,15 @@ test("PERF DIAGNOSTIC: throttled preview homepage resource waterfall", async ({ 
   expect(result.lcp).toBeTruthy();
   await cdp.detach();
 });
+
+test("app section stays server-rendered and its motion is lazy", async ({ page, request }) => {
+  const html = await (await request.get("/")).text();
+  expect(html).toContain("وجبتك قدامك");
+  expect(html).toContain("واشتراكك في يدك");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", {waitUntil:"domcontentloaded"});
+  await expect(page.locator("#app")).toBeAttached();
+  await expect(page.locator("#app .app-reveal-stage")).toBeAttached();
+  await page.locator("#app").scrollIntoViewIfNeeded();
+  await expect(page.locator("#app .app-reveal-stage")).toHaveAttribute("data-scene-interactive", /^(true|false)$/);
+});
