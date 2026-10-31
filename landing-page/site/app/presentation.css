@@ -817,9 +817,10 @@
   aspect-ratio: 16 / 9;
   object-fit: contain;
   object-position: center;
-  filter: saturate(1.06) contrast(1.02) brightness(.92);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 84%, transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 84%, transparent 100%);
+  /* Keep the LCP image paintable in one pass on slow mobile GPUs. */
+  filter: none;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .hero {
   padding: 90px 0 52px;
@@ -927,10 +928,9 @@
 .hero-cinema-media::before {
   content: "";
   position: absolute;
-  inset: -32px;
-  background: url("/media/hero-poster.webp") center / cover no-repeat;
-  filter: blur(30px) saturate(0.85) brightness(0.38);
-  opacity: 0.85;
+  inset: 0;
+  /* Avoid decoding and heavily blurring a second full-screen poster. */
+  background: linear-gradient(180deg, #142820, #07160e);
   pointer-events: none;
 }
 
