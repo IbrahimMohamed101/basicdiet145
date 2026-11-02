@@ -121,7 +121,9 @@ function normalizeMoyasarPayload(payload, { verifiedInvoiceCallback = false } = 
     paymentId: invoicePayment && invoicePayment.id
       ? String(invoicePayment.id)
       : isInvoiceObject
-        ? undefined
+        ? (verifiedInvoiceCallback && normalizePaymentStatus(data, eventType) === "paid" && data && data.payment_id
+          ? String(data.payment_id)
+          : undefined)
         : data && data.id,
     invoiceId: isInvoiceObject
       ? data && (data.id || data.invoice_id || data.invoiceId)
@@ -753,4 +755,4 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   }
 }
 
-module.exports = { handleMoyasarWebhook, resolveProviderReferenceUpdates, shouldIgnoreNonPaidAttemptAfterPaid };
+module.exports = { handleMoyasarWebhook, resolveProviderReferenceUpdates, shouldIgnoreNonPaidAttemptAfterPaid, normalizeMoyasarPayload };
