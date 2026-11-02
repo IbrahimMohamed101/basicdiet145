@@ -424,6 +424,16 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       }
 
       if (!isPaid) {
+        // A late failed/canceled attempt for the same invoice must never
+        // downgrade a payment that a different attempt has already paid.
+        // Refunds are handled by their dedicated branch above.
+        if (String(paymentInSession.status || "").toLowerCase() === "paid") {
+          logger.info("Moyasar non-paid event ignored: invoice already paid", {
+            ...logContext,
+            internalPaymentId: String(paymentInSession._id),
+          });
+          return { nonPaid: true, ignored: true, status: "paid" };
+        }
         const nonPaidUpdate = {};
         if (paymentStatus) nonPaidUpdate.status = paymentStatus;
         // Never pin a non-paid attempt's provider payment id: a later
