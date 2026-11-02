@@ -33,6 +33,7 @@ const {
 const {
   resolveProviderReferenceUpdates,
   shouldIgnoreNonPaidAttemptAfterPaid,
+  normalizeMoyasarPayload,
 } = require("../src/controllers/webhookController");
 
 const results = [];
@@ -305,6 +306,19 @@ async function main() {
     assert.equal(shouldIgnoreNonPaidAttemptAfterPaid({ status: "paid" }, false), true);
     assert.equal(shouldIgnoreNonPaidAttemptAfterPaid({ status: "paid" }, true), false);
     assert.equal(shouldIgnoreNonPaidAttemptAfterPaid({ status: "failed" }, false), false);
+  });
+
+  await run("verified paid invoice payment_id is saved even without payments array entries", async () => {
+    const invoice = {
+      id: "inv_verified", status: "paid", currency: "SAR",
+      payment_id: "pay_captured", payments: [],
+    };
+    const verified = normalizeMoyasarPayload(invoice, { verifiedInvoiceCallback: true });
+    assert.equal(verified.invoiceId, "inv_verified");
+    assert.equal(verified.paymentStatus, "paid");
+    assert.equal(verified.paymentId, "pay_captured");
+    const unverified = normalizeMoyasarPayload(invoice, { verifiedInvoiceCallback: false });
+    assert.equal(unverified.paymentId, undefined, "unverified invoice must not pin provider refs");
   });
 
   const failed = results.filter((r) => !r.ok);
