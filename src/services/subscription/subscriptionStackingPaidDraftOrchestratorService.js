@@ -13,6 +13,7 @@ const {
   activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
   completePaidDraftStackingActivation,
   hasPaidPurchaseExtras,
+  assertPaidDraftLinkage,
 } = require("./subscriptionStackingActivationService");
 const {
   isExtraActivationCanaryEnabledForUser,
@@ -110,7 +111,14 @@ function defaultRuntime() {
     },
     prepareStandalonePayment({ paymentId, containerId, draftId, session }) {
       return Payment.findOneAndUpdate(
-        { _id: paymentId, status: "paid" },
+        {
+          _id: paymentId,
+          status: "paid",
+          $and: [
+            { $or: [{ subscriptionId: null }, { subscriptionId: { $exists: false } }, { subscriptionId: containerId }] },
+            { $or: [{ checkoutDraftId: null }, { checkoutDraftId: { $exists: false } }, { checkoutDraftId: draftId }] },
+          ],
+        },
         {
           $set: {
             applied: false,
@@ -182,6 +190,16 @@ async function applyPaidDraftToSubscriptionStackCoreTransactional({
       "Checkout draft and payment belong to different users",
       409
     );
+  }
+  // On standalone MongoDB later failures do not roll back a newly created
+  // entitlement batch. Reject mismatched invoice, amount, owner or link
+  // references *before* the very first write.
+  if (expectedParentSubscriptionId) {
+    assertPaidDraftLinkage({
+      draft,
+      payment,
+      containerId: expectedParentSubscriptionId,
+    });
   }
 
   const runtime = resolveRuntime(runtimeOverrides, runtimeDefaults);
