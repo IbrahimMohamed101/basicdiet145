@@ -31,6 +31,9 @@ jobs:
       - name: Stacking paid-draft recovery regression tests
         run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/stackingPaidDraftRecoveryFixes.test.js
 
+      - name: Standalone paid-draft partial-write recovery integration
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/stackingPaidDraftStandaloneRecovery.integration.test.js
+
       - name: Existing stacking activation service tests
         run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
 
