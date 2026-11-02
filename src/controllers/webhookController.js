@@ -64,6 +64,10 @@ function resolveProviderReferenceUpdates(payment, { paymentId = null, invoiceId 
   return updates;
 }
 
+function shouldIgnoreNonPaidAttemptAfterPaid(payment, isPaid) {
+  return !isPaid && String(payment && payment.status || "").toLowerCase() === "paid";
+}
+
 function redactId(value) {
   if (value === undefined || value === null) return undefined;
   const text = String(value);
@@ -427,7 +431,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
         // A late failed/canceled attempt for the same invoice must never
         // downgrade a payment that a different attempt has already paid.
         // Refunds are handled by their dedicated branch above.
-        if (String(paymentInSession.status || "").toLowerCase() === "paid") {
+        if (shouldIgnoreNonPaidAttemptAfterPaid(paymentInSession, isPaid)) {
           logger.info("Moyasar non-paid event ignored: invoice already paid", {
             ...logContext,
             internalPaymentId: String(paymentInSession._id),
@@ -749,4 +753,4 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   }
 }
 
-module.exports = { handleMoyasarWebhook, resolveProviderReferenceUpdates };
+module.exports = { handleMoyasarWebhook, resolveProviderReferenceUpdates, shouldIgnoreNonPaidAttemptAfterPaid };
