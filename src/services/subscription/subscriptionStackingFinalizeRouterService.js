@@ -13,6 +13,9 @@ const {
   applyPaidDraftToSubscriptionStackTransactional,
 } = require("./subscriptionStackingPaidDraftOrchestratorService");
 const {
+  assertPaidDraftLinkage,
+} = require("./subscriptionStackingActivationService");
+const {
   seedInitialPaidPurchaseEntitlementsTransactional,
 } = require("./subscriptionStackingInitialActivationService");
 const {
@@ -48,17 +51,24 @@ function defaultRuntime() {
     seedInitialEntitlements: (args) => seedInitialPaidPurchaseEntitlementsTransactional(args),
     applyStack: (args) => applyPaidDraftToSubscriptionStackTransactional(args),
     async repairStackingIdempotentLinks({ draft, payment, containerId, session }) {
+      assertPaidDraftLinkage({ draft, payment, containerId });
       const batch = await SubscriptionEntitlementBatch.findOne({
         containerSubscriptionId: containerId,
         applicationState: "applied",
-        $or: [
-          { paymentId: payment._id },
-          { checkoutDraftId: draft._id },
-        ],
+        paymentId: payment._id,
+        checkoutDraftId: draft._id,
       }).session(session).lean();
       if (!batch) return false;
-      await CheckoutDraft.updateOne(
-        { _id: draft._id },
+      const updatedDraft = await CheckoutDraft.updateOne(
+        {
+          _id: draft._id,
+          status: "completed",
+          subscriptionId: containerId,
+          $and: [
+            { $or: [{ activationSubscriptionId: null }, { activationSubscriptionId: { $exists: false } }, { activationSubscriptionId: containerId }] },
+            { $or: [{ paymentId: null }, { paymentId: { $exists: false } }, { paymentId: payment._id }] },
+          ],
+        },
         {
           $set: {
             status: "completed",
@@ -71,8 +81,15 @@ function defaultRuntime() {
         },
         { session }
       );
+      if (!updatedDraft || updatedDraft.matchedCount !== 1) return false;
       const linked = await Payment.findOneAndUpdate(
-        { _id: payment._id, status: "paid" },
+        {
+          _id: payment._id, status: "paid",
+          $and: [
+            { $or: [{ subscriptionId: null }, { subscriptionId: { $exists: false } }, { subscriptionId: containerId }] },
+            { $or: [{ checkoutDraftId: null }, { checkoutDraftId: { $exists: false } }, { checkoutDraftId: draft._id }] },
+          ],
+        },
         {
           $set: {
             applied: true,

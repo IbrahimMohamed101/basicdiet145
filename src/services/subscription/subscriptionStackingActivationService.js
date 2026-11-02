@@ -46,6 +46,115 @@ function stringId(value) {
   return String(value && value._id ? value._id : value);
 }
 
+// A paid draft may reach completion after an earlier provider attempt on the
+// same invoice already marked it failed/canceled/expired (Moyasar allows a
+// second attempt). The standard activation path recovers those drafts; the
+// stacking path must accept them too, otherwise entitlements written by the
+// standalone saga are never finalized. A draft already bound to a different
+// subscription is never re-pointed.
+const STACKING_COMPLETABLE_DRAFT_STATUSES = Object.freeze([
+  "pending_payment",
+  "completed",
+  "failed",
+  "canceled",
+  "expired",
+]);
+
+function buildDraftCompletionQuery({ draftId, containerId, paymentId = null } = {}) {
+  const guards = [{
+    $or: [
+      { activationSubscriptionId: null },
+      { activationSubscriptionId: { $exists: false } },
+      { activationSubscriptionId: containerId },
+    ],
+  }];
+  if (paymentId) {
+    guards.push({
+      $or: [
+        { paymentId: null },
+        { paymentId: { $exists: false } },
+        { paymentId },
+      ],
+    });
+  }
+  return {
+    _id: draftId,
+    status: { $in: STACKING_COMPLETABLE_DRAFT_STATUSES.slice() },
+    $or: [
+      { subscriptionId: null },
+      { subscriptionId: { $exists: false } },
+      { subscriptionId: containerId },
+    ],
+    $and: guards,
+  };
+}
+
+function assertPaidDraftLinkage({ draft, payment, containerId } = {}) {
+  const mismatch = (field) => {
+    throw activationError(
+      "STACKING_PAID_DRAFT_LINK_MISMATCH",
+      `Paid stacking checkout ${field} does not match the intended payment and parent`,
+      409,
+      { field }
+    );
+  };
+  if (!draft || !payment || String(payment.status || "") !== "paid") {
+    mismatch("payment.status");
+  }
+  if (draft.userId && payment.userId && stringId(draft.userId) !== stringId(payment.userId)) {
+    mismatch("userId");
+  }
+  if (payment.checkoutDraftId && stringId(payment.checkoutDraftId) !== stringId(draft._id)) {
+    mismatch("checkoutDraftId");
+  }
+  if (payment.subscriptionId && stringId(payment.subscriptionId) !== stringId(containerId)) {
+    mismatch("subscriptionId");
+  }
+  if (draft.subscriptionId && stringId(draft.subscriptionId) !== stringId(containerId)) {
+    mismatch("draft.subscriptionId");
+  }
+  if (draft.activationSubscriptionId && stringId(draft.activationSubscriptionId) !== stringId(containerId)) {
+    mismatch("draft.activationSubscriptionId");
+  }
+  if (draft.paymentId && stringId(draft.paymentId) !== stringId(payment._id)) {
+    mismatch("draft.paymentId");
+  }
+  if (
+    draft.providerInvoiceId && payment.providerInvoiceId
+    && String(draft.providerInvoiceId) !== String(payment.providerInvoiceId)
+  ) {
+    mismatch("providerInvoiceId");
+  }
+  const expectedAmount = draft.breakdown && draft.breakdown.totalHalala;
+  if (
+    expectedAmount !== undefined && expectedAmount !== null
+    && payment.amount !== undefined && payment.amount !== null
+    && Number(expectedAmount) !== Number(payment.amount)
+  ) {
+    mismatch("amount");
+  }
+  const expectedCurrency = draft.breakdown && draft.breakdown.currency;
+  if (
+    expectedCurrency && payment.currency
+    && String(expectedCurrency).toUpperCase() !== String(payment.currency).toUpperCase()
+  ) {
+    mismatch("currency");
+  }
+}
+
+function buildDraftCompletionUpdate({ containerId, paymentId = null, now = new Date() } = {}) {
+  const set = {
+    status: "completed",
+    subscriptionId: containerId,
+    activationSubscriptionId: containerId,
+    completedAt: now,
+    failedAt: null,
+    failureReason: "",
+  };
+  if (paymentId) set.paymentId = paymentId;
+  return { $set: set };
+}
+
 function normalizeDate(value, fieldName) {
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -192,26 +301,23 @@ function defaultRuntime() {
         { new: true, session }
       );
     },
-    async updateDraftCompleted({ draftId, containerId, now, session }) {
+    async updateDraftCompleted({ draftId, containerId, paymentId = null, now, session }) {
       return CheckoutDraft.findOneAndUpdate(
-        { _id: draftId, status: { $in: ["pending_payment", "completed"] } },
-        {
-          $set: {
-            status: "completed",
-            subscriptionId: containerId,
-            activationSubscriptionId: containerId,
-            completedAt: now,
-            failedAt: null,
-            failureReason: "",
-          },
-        },
+        buildDraftCompletionQuery({ draftId, containerId, paymentId }),
+        buildDraftCompletionUpdate({ containerId, paymentId, now }),
         { new: true, session }
       );
     },
     async linkPayment({ paymentId, containerId, draftId, session }) {
       if (!paymentId) return null;
       return Payment.findOneAndUpdate(
-        { _id: paymentId, status: "paid" },
+        {
+          _id: paymentId, status: "paid",
+          $and: [
+            { $or: [{ subscriptionId: null }, { subscriptionId: { $exists: false } }, { subscriptionId: containerId }] },
+            { $or: [{ checkoutDraftId: null }, { checkoutDraftId: { $exists: false } }, { checkoutDraftId: draftId }] },
+          ],
+        },
         {
           $set: {
             subscriptionId: containerId,
@@ -222,8 +328,16 @@ function defaultRuntime() {
         { new: true, session }
       );
     },
-    consumePromoReservation: (draftId, subscriptionId, options) => (
-      consumePromoCodeUsageReservation(draftId, subscriptionId, options)
+    // consumePromoCodeUsageReservation takes ONE options object. Passing the
+    // draft id positionally left checkoutDraftId undefined, so stacking
+    // purchases never consumed their promo reservation.
+    consumePromoReservation: (draftId, subscriptionId, options = {}) => (
+      consumePromoCodeUsageReservation({
+        checkoutDraftId: draftId,
+        subscriptionId,
+        paymentId: options && options.paymentId ? options.paymentId : null,
+        session: options && options.session ? options.session : null,
+      })
     ),
   };
 }
@@ -474,9 +588,12 @@ async function completePaidDraftStackingActivation({
   const runtime = runtimeOverrides && runtimeOverrides.updateDraftCompleted
     ? runtimeOverrides
     : resolveRuntime(runtimeOverrides);
+  // Reject mismatched references before any standalone completion writes.
+  assertPaidDraftLinkage({ draft, payment, containerId });
   const updatedDraft = await runtime.updateDraftCompleted({
     draftId: draft._id,
     containerId,
+    paymentId: payment && payment._id ? payment._id : null,
     now,
     session,
   });
@@ -505,7 +622,10 @@ async function completePaidDraftStackingActivation({
   }
 
   if (draft.promo && draft.promo.usageId) {
-    await runtime.consumePromoReservation(draft._id, containerId, { session });
+    await runtime.consumePromoReservation(draft._id, containerId, {
+      session,
+      paymentId: payment && payment._id ? payment._id : null,
+    });
   }
   return { draft: updatedDraft, payment: linkedPayment };
 }
@@ -548,8 +668,12 @@ module.exports = {
   activatePaidDraftIntoExistingContainerTransactional,
   activatePaidDraftIntoExistingContainerStandalone,
   activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
+  STACKING_COMPLETABLE_DRAFT_STATUSES,
   buildContainerMirror,
   buildDayFulfillmentOverrides,
+  buildDraftCompletionQuery,
+  buildDraftCompletionUpdate,
+  assertPaidDraftLinkage,
   completePaidDraftStackingActivation,
   hasPaidPurchaseExtras,
 };
