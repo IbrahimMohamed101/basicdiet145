@@ -50,6 +50,20 @@ function normalizePaymentStatus(payload, eventType) {
   return undefined;
 }
 
+// Provider references to write for this event, computed from the payment as
+// it was READ (before any in-memory assignment). Only missing values are set,
+// so a stored reference is never overwritten.
+function resolveProviderReferenceUpdates(payment, { paymentId = null, invoiceId = null } = {}) {
+  const updates = {};
+  if (paymentId && !(payment && payment.providerPaymentId)) {
+    updates.providerPaymentId = paymentId;
+  }
+  if (invoiceId && !(payment && payment.providerInvoiceId)) {
+    updates.providerInvoiceId = invoiceId;
+  }
+  return updates;
+}
+
 function redactId(value) {
   if (value === undefined || value === null) return undefined;
   const text = String(value);
@@ -380,6 +394,14 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
         throw err;
       }
 
+      // Decide which provider references must be persisted BEFORE the
+      // in-memory document is mutated below; checking the mutated document
+      // later made every "!providerPaymentId" guard false, so successful
+      // Moyasar payment ids were never written to the database.
+      const providerReferenceUpdates = resolveProviderReferenceUpdates(paymentInSession, {
+        paymentId,
+        invoiceId,
+      });
       if (paymentId && !paymentInSession.providerPaymentId) paymentInSession.providerPaymentId = paymentId;
       if (invoiceId && !paymentInSession.providerInvoiceId) paymentInSession.providerInvoiceId = invoiceId;
 
@@ -404,8 +426,12 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       if (!isPaid) {
         const nonPaidUpdate = {};
         if (paymentStatus) nonPaidUpdate.status = paymentStatus;
-        if (paymentId && !paymentInSession.providerPaymentId) nonPaidUpdate.providerPaymentId = paymentId;
-        if (invoiceId && !paymentInSession.providerInvoiceId) nonPaidUpdate.providerInvoiceId = invoiceId;
+        // Never pin a non-paid attempt's provider payment id: a later
+        // successful attempt on the same invoice carries a different id and
+        // would then be rejected as a mismatch.
+        if (providerReferenceUpdates.providerInvoiceId) {
+          nonPaidUpdate.providerInvoiceId = providerReferenceUpdates.providerInvoiceId;
+        }
         if (Object.keys(nonPaidUpdate).length) {
           await Payment.updateOne({ _id: paymentInSession._id }, { $set: nonPaidUpdate }, { session });
         }
@@ -478,12 +504,7 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
         status: "paid",
         paidAt: paymentInSession.paidAt || new Date(),
       };
-      if (paymentId && !paymentInSession.providerPaymentId) {
-        claimUpdate.providerPaymentId = paymentId;
-      }
-      if (invoiceId && !paymentInSession.providerInvoiceId) {
-        claimUpdate.providerInvoiceId = invoiceId;
-      }
+      Object.assign(claimUpdate, providerReferenceUpdates);
 
       const claim = await Payment.findOneAndUpdate(
         { _id: paymentInSession._id, applied: false },
@@ -718,4 +739,4 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
   }
 }
 
-module.exports = { handleMoyasarWebhook };
+module.exports = { handleMoyasarWebhook, resolveProviderReferenceUpdates };

@@ -46,6 +46,45 @@ function stringId(value) {
   return String(value && value._id ? value._id : value);
 }
 
+// A paid draft may reach completion after an earlier provider attempt on the
+// same invoice already marked it failed/canceled/expired (Moyasar allows a
+// second attempt). The standard activation path recovers those drafts; the
+// stacking path must accept them too, otherwise entitlements written by the
+// standalone saga are never finalized. A draft already bound to a different
+// subscription is never re-pointed.
+const STACKING_COMPLETABLE_DRAFT_STATUSES = Object.freeze([
+  "pending_payment",
+  "completed",
+  "failed",
+  "canceled",
+  "expired",
+]);
+
+function buildDraftCompletionQuery({ draftId, containerId } = {}) {
+  return {
+    _id: draftId,
+    status: { $in: STACKING_COMPLETABLE_DRAFT_STATUSES.slice() },
+    $or: [
+      { subscriptionId: null },
+      { subscriptionId: { $exists: false } },
+      { subscriptionId: containerId },
+    ],
+  };
+}
+
+function buildDraftCompletionUpdate({ containerId, paymentId = null, now = new Date() } = {}) {
+  const set = {
+    status: "completed",
+    subscriptionId: containerId,
+    activationSubscriptionId: containerId,
+    completedAt: now,
+    failedAt: null,
+    failureReason: "",
+  };
+  if (paymentId) set.paymentId = paymentId;
+  return { $set: set };
+}
+
 function normalizeDate(value, fieldName) {
   const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -192,19 +231,10 @@ function defaultRuntime() {
         { new: true, session }
       );
     },
-    async updateDraftCompleted({ draftId, containerId, now, session }) {
+    async updateDraftCompleted({ draftId, containerId, paymentId = null, now, session }) {
       return CheckoutDraft.findOneAndUpdate(
-        { _id: draftId, status: { $in: ["pending_payment", "completed"] } },
-        {
-          $set: {
-            status: "completed",
-            subscriptionId: containerId,
-            activationSubscriptionId: containerId,
-            completedAt: now,
-            failedAt: null,
-            failureReason: "",
-          },
-        },
+        buildDraftCompletionQuery({ draftId, containerId }),
+        buildDraftCompletionUpdate({ containerId, paymentId, now }),
         { new: true, session }
       );
     },
@@ -222,8 +252,16 @@ function defaultRuntime() {
         { new: true, session }
       );
     },
-    consumePromoReservation: (draftId, subscriptionId, options) => (
-      consumePromoCodeUsageReservation(draftId, subscriptionId, options)
+    // consumePromoCodeUsageReservation takes ONE options object. Passing the
+    // draft id positionally left checkoutDraftId undefined, so stacking
+    // purchases never consumed their promo reservation.
+    consumePromoReservation: (draftId, subscriptionId, options = {}) => (
+      consumePromoCodeUsageReservation({
+        checkoutDraftId: draftId,
+        subscriptionId,
+        paymentId: options && options.paymentId ? options.paymentId : null,
+        session: options && options.session ? options.session : null,
+      })
     ),
   };
 }
@@ -477,6 +515,7 @@ async function completePaidDraftStackingActivation({
   const updatedDraft = await runtime.updateDraftCompleted({
     draftId: draft._id,
     containerId,
+    paymentId: payment && payment._id ? payment._id : null,
     now,
     session,
   });
@@ -505,7 +544,10 @@ async function completePaidDraftStackingActivation({
   }
 
   if (draft.promo && draft.promo.usageId) {
-    await runtime.consumePromoReservation(draft._id, containerId, { session });
+    await runtime.consumePromoReservation(draft._id, containerId, {
+      session,
+      paymentId: payment && payment._id ? payment._id : null,
+    });
   }
   return { draft: updatedDraft, payment: linkedPayment };
 }
@@ -548,8 +590,11 @@ module.exports = {
   activatePaidDraftIntoExistingContainerTransactional,
   activatePaidDraftIntoExistingContainerStandalone,
   activatePinnedExtrasPaidDraftIntoExistingContainerTransactional,
+  STACKING_COMPLETABLE_DRAFT_STATUSES,
   buildContainerMirror,
   buildDayFulfillmentOverrides,
+  buildDraftCompletionQuery,
+  buildDraftCompletionUpdate,
   completePaidDraftStackingActivation,
   hasPaidPurchaseExtras,
 };

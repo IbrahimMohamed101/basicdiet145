@@ -1,0 +1,38 @@
+name: Stacking paid-draft recovery
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  stacking-paid-draft-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stacking paid-draft recovery regression tests
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/stackingPaidDraftRecoveryFixes.test.js
+
+      - name: Existing stacking activation service tests
+        run: NODE_ENV=test node tests/subscriptionStackingActivationService.test.js
+
+      - name: Moyasar invoice callback contract
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/moyasarInvoiceCallbackContract.test.js
