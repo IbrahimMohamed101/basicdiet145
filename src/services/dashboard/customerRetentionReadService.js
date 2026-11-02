@@ -11,6 +11,7 @@ const User = require("../../models/User");
 const Payment = require("../../models/Payment");
 const CustomerAccountMerge = require("../../models/CustomerAccountMerge");
 const RetentionFollowupEvent = require("../../models/RetentionFollowupEvent");
+const DashboardUser = require("../../models/DashboardUser");
 
 const MAX_ROWS = 5000;
 const PAGE_MAX = 50;
@@ -224,7 +225,7 @@ function recordedEntitlementEvents(subscriptions, batches) {
   return items.sort((a, b) => new Date(a) - new Date(b));
 }
 
-function buildLiveRows({ subscriptions, batches, users, merges, payments = [], optedOutIds = [], now = new Date() }) {
+function buildLiveRows({ subscriptions, batches, users, merges, payments = [], optedOutIds = [], followups = [], now = new Date() }) {
   const canonical = buildCanonical(merges);
   const suppressed = new Set(optedOutIds.map((id) => canonical(id)));
   const perCustomer = new Map();
@@ -236,6 +237,14 @@ function buildLiveRows({ subscriptions, batches, users, merges, payments = [], o
   for (const s of subscriptions) if (s.userId) ensure(s.userId).subscriptions.push(s);
   for (const b of batches) if (b.userId) ensure(b.userId).batches.push(b);
   const userMap = new Map(users.map((u) => [String(u._id), u]));
+  const latestByCustomer = new Map();
+  for (const item of followups) {
+    const id = canonical(item.userId);
+    const previous = latestByCustomer.get(id);
+    if (!previous || new Date(item.createdAt) > new Date(previous.createdAt)) {
+      latestByCustomer.set(id, item);
+    }
+  }
   const today = dateKey(now);
   return [...perCustomer.values()].flatMap((group) => {
     const records = recordedEntitlementEvents(group.subscriptions, group.batches);
@@ -258,10 +267,13 @@ function buildLiveRows({ subscriptions, batches, users, merges, payments = [], o
       dueDate: classification.dueDate,
       dueDateIsLatestValidityBound: Boolean(classification.dueDateIsLatestValidityBound),
       remainingAndReserved: classification.balance,
+      latestFollowup: latestByCustomer.get(group.userId) || null,
     }];
   }).sort((a, b) => {
     const order = { overdue_14: 0, grace_14: 1, due_soon: 2, review: 3, active: 4, scheduled: 5, canceled: 6 };
-    return order[a.status] - order[b.status] || a.lastRecordedAt.localeCompare(b.lastRecordedAt);
+    return order[a.status] - order[b.status]
+      || (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31")
+      || a.lastRecordedAt.localeCompare(b.lastRecordedAt);
   });
 }
 
@@ -275,11 +287,21 @@ function parsePage(value, fallback, max) {
   return n;
 }
 
-async function getLiveRetentionReport({ page, pageSize, status, search, contactableOnly, now = new Date() } = {}) {
+async function getLiveRetentionReport({ page, pageSize, status, search, contactableOnly, uncontactedOnly, dueFrom, dueTo, now = new Date() } = {}) {
   const pageNumber = parsePage(page, 1, 100000);
   const size = parsePage(pageSize, 20, PAGE_MAX);
   if (contactableOnly !== undefined && !["true", "false"].includes(String(contactableOnly))) {
     const err = new Error("Invalid contactability filter");
+    err.status = 400; err.code = "INVALID_RETENTION_FILTER"; throw err;
+  }
+  if (uncontactedOnly !== undefined && !["true", "false"].includes(String(uncontactedOnly))) {
+    const err = new Error("Invalid follow-up filter");
+    err.status = 400; err.code = "INVALID_RETENTION_FILTER"; throw err;
+  }
+  const validDate = (v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(String(v))
+    && dateKey(String(v) + "T12:00:00Z") === String(v);
+  if (!validDate(dueFrom) || !validDate(dueTo) || (dueFrom && dueTo && dueFrom > dueTo)) {
+    const err = new Error("Invalid due date range");
     err.status = 400; err.code = "INVALID_RETENTION_FILTER"; throw err;
   }
   const category = status ? String(status) : "all";
@@ -316,12 +338,35 @@ async function getLiveRetentionReport({ page, pageSize, status, search, contacta
     const err = new Error("Retention payment evidence exceeds preview limit");
     err.status = 503; err.code = "RETENTION_DATASET_LIMIT"; throw err;
   }
-  const all = buildLiveRows({ subscriptions, batches, merges, users, payments, optedOutIds, now });
+  // One latest follow-up per source customer, including merged accounts.
+  // Aggregate before pagination so "not followed up" and export use real server data.
+  const eventGroups = userIds.length ? await RetentionFollowupEvent.aggregate([
+    { $match: { userId: { $in: users.map((u) => u._id) } } },
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $group: { _id: "$userId", last: { $first: {
+      actorId: "$actorId", outcome: "$outcome", channel: "$channel", createdAt: "$createdAt",
+    } } } },
+  ]) : [];
+  const actorIds = [...new Set(eventGroups.map((row) => String(row.last.actorId)).filter(Boolean))];
+  const actors = actorIds.length
+    ? await DashboardUser.find({ _id: { $in: actorIds } }).select("_id email").lean() : [];
+  const actorMap = new Map(actors.map((actor) => [String(actor._id), actor.email]));
+  const followups = eventGroups.map((row) => ({
+    userId: String(row._id),
+    createdAt: row.last.createdAt,
+    outcome: row.last.outcome,
+    channel: row.last.channel,
+    actor: actorMap.get(String(row.last.actorId)) || "موظف سابق",
+  }));
+  const all = buildLiveRows({ subscriptions, batches, merges, users, payments, optedOutIds, followups, now });
   const totals = Object.fromEntries(CATEGORIES.map((key) => [key, 0]));
   for (const row of all) totals[row.status] += 1;
   const filtered = all.filter((row) =>
     (String(contactableOnly) !== "true" || !row.doNotContact)
     && (category === "all" || row.status === category)
+    && (String(uncontactedOnly) !== "true" || !row.latestFollowup)
+    && (!dueFrom || (row.dueDate && row.dueDate >= String(dueFrom)))
+    && (!dueTo || (row.dueDate && row.dueDate <= String(dueTo)))
     && (!query || [row.name, row.phone, row.userId].some((v) => String(v).toLowerCase().includes(query)))
   );
   return {
