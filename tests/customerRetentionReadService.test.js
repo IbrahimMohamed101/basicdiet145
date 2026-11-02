@@ -65,6 +65,18 @@ const suppressedRows = buildLiveRows({
   optedOutIds: ["u1"], now: new Date("2026-10-31T15:00:00Z"),
 });
 assert.equal(suppressedRows[0].doNotContact, true, "Opt-outs survive account merge");
+const lastFollowedRows = buildLiveRows({
+  subscriptions: [subscription()], batches: [],
+  users: [{ _id: "u2", name: "Test" }],
+  merges: [{ sourceUserId: "u1", targetUserId: "u2", state: "completed" }],
+  followups: [
+    { userId: "u1", createdAt: "2026-10-05T10:00:00Z", outcome: "contacted", actor: "old@example.com" },
+    { userId: "u2", createdAt: "2026-10-20T10:00:00Z", outcome: "callback_requested", actor: "new@example.com" },
+  ], now: new Date("2026-10-31T15:00:00Z"),
+});
+assert.equal(lastFollowedRows[0].latestFollowup.actor, "new@example.com");
+assert.equal(lastFollowedRows[0].latestFollowup.outcome, "callback_requested");
+assert.equal(rows[0].latestFollowup, null, "No follow-up must not be inferred from subscriptions");
 // Positive applied entitlement is never proof of settlement on its own.
 assert.equal(current(subscription(), [expiry("2026-11-20", 5, { paymentId: "missing" })]).status, "review");
 for (const applicationState of ["pending", "applying", "failed"]) {
