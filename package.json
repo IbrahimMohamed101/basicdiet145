@@ -7,6 +7,8 @@
   },
   "main": "src/index.js",
   "scripts": {
+    "test:retention": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/customerRetentionReadService.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/customerRetentionFollowupService.test.js && NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/customerRetentionApi.integration.test.js",
+    "qa:retention:serve": "NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/helpers/retentionQaServer.js",
     "start": "node src/index.js",
     "diagnose:subscription-menu": "node scripts/diagnose-subscription-menu-data.js",
     "diagnose:pickup-entitlements": "node scripts/diagnose-pickup-entitlements.js",

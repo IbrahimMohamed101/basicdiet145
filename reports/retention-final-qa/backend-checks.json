@@ -1,0 +1,203 @@
+{
+  "candidate": "6de157fd",
+  "checks": [
+    {
+      "name": "release-gates",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768964/job/124642156197"
+    },
+    {
+      "name": "release-gates",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768993/job/124642099287"
+    },
+    {
+      "name": "repeated-balance-policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236769006/job/124642099263"
+    },
+    {
+      "name": "Two-type policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099195"
+    },
+    {
+      "name": "operations-and-admin",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768931/job/124642099181"
+    },
+    {
+      "name": "contracts-and-addon-lifecycle",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768931/job/124642099150"
+    },
+    {
+      "name": "Dashboard compatibility",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099125"
+    },
+    {
+      "name": "Authoritative authoring catalog",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099113"
+    },
+    {
+      "name": "Complete catalog",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099091"
+    },
+    {
+      "name": "Compatible default seed",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099087"
+    },
+    {
+      "name": "Existing option catalog closure",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099077"
+    },
+    {
+      "name": "Full meal end to end",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099076"
+    },
+    {
+      "name": "Source kind compatibility",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099066"
+    },
+    {
+      "name": "Sandwich card end to end",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099059"
+    },
+    {
+      "name": "Card lifecycle",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099054"
+    },
+    {
+      "name": "Full meal product contract",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099047"
+    },
+    {
+      "name": "Production product compatibility",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099045"
+    },
+    {
+      "name": "final-integration-candidate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768918/job/124642099039"
+    },
+    {
+      "name": "Option-family card lifecycle",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099026"
+    },
+    {
+      "name": "production-dependency-audit",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768938/job/124642099025"
+    },
+    {
+      "name": "test",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768997/job/124642099014"
+    },
+    {
+      "name": "Dashboard mobile parity",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642099005"
+    },
+    {
+      "name": "test",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768982/job/124642098994"
+    },
+    {
+      "name": "kitchen-arabic-contract",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768992/job/124642098993"
+    },
+    {
+      "name": "Flutter card policy",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768909/job/124642098990"
+    },
+    {
+      "name": "commerce-and-security",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768931/job/124642098970"
+    },
+    {
+      "name": "retention-check",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768981/job/124642098966"
+    },
+    {
+      "name": "regression",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768961/job/124642098943"
+    },
+    {
+      "name": "changed-code-secret-scan",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768952/job/124642098936"
+    },
+    {
+      "name": "premium-meal-lifecycle",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768967/job/124642098919"
+    },
+    {
+      "name": "pickup-closure",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768916/job/124642098910"
+    },
+    {
+      "name": "syntax-check",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768948/job/124642098887"
+    },
+    {
+      "name": "email-otp-contract",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/41236768924/job/124642098758"
+    }
+  ]
+}

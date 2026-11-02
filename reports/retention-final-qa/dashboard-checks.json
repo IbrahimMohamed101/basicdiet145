@@ -1,0 +1,41 @@
+{
+  "candidate": "7fd36e0",
+  "checks": [
+    {
+      "name": "verify",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/client_dashbourd/actions/runs/41236609133/job/124641666673"
+    },
+    {
+      "name": "full-dashboard-tests",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/IbrahimMohamed101/client_dashbourd/actions/runs/41236609062/job/124641613096"
+    },
+    {
+      "name": "focused-checks",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/client_dashbourd/actions/runs/41236609062/job/124641613087"
+    },
+    {
+      "name": "full-dashboard-lint",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/IbrahimMohamed101/client_dashbourd/actions/runs/41236609062/job/124641612879"
+    },
+    {
+      "name": "validate",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/client_dashbourd/actions/runs/41236609027/job/124641612837"
+    },
+    {
+      "name": "build",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/IbrahimMohamed101/client_dashbourd/actions/runs/41236608994/job/124641612554"
+    }
+  ]
+}
