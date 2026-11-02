@@ -18,6 +18,9 @@ const CheckoutDraft = require("../src/models/CheckoutDraft");
 const Payment = require("../src/models/Payment");
 const PromoUsage = require("../src/models/PromoUsage");
 const {
+  applyPaidDraftToSubscriptionStackTransactional,
+} = require("../src/services/subscription/subscriptionStackingPaidDraftOrchestratorService");
+const {
   STACKING_COMPLETABLE_DRAFT_STATUSES,
   buildDraftCompletionQuery,
   buildDraftCompletionUpdate,
@@ -269,6 +272,33 @@ async function main() {
     fail({ ...draft, subscriptionId: oid() });
     fail({ ...draft, activationSubscriptionId: oid() });
     fail({ ...draft, paymentId: oid() });
+  });
+
+  await run("invalid paid invoice amount is rejected before any standalone writes", async () => {
+    const containerId = oid();
+    const draftId = oid();
+    const userId = oid();
+    const draft = {
+      _id: draftId, userId,
+      breakdown: { totalHalala: 113135, currency: "SAR" },
+      providerInvoiceId: "inv_paid",
+    };
+    const payment = {
+      _id: oid(), userId, status: "paid",
+      amount: 113136, currency: "SAR", providerInvoiceId: "inv_paid",
+    };
+    let buildCalls = 0;
+    await assert.rejects(
+      applyPaidDraftToSubscriptionStackTransactional({
+        draft, payment, businessDate: "2026-08-06",
+        expectedParentSubscriptionId: containerId,
+        runtime: {
+          async buildActivationPayload() { buildCalls += 1; throw Error("should never be called"); },
+        },
+      }),
+      (err) => err.code === "STACKING_PAID_DRAFT_LINK_MISMATCH"
+    );
+    assert.equal(buildCalls, 0);
   });
 
   await run("late failure cannot downgrade a paid Moyasar invoice", async () => {
