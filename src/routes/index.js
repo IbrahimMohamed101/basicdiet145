@@ -197,6 +197,13 @@ const webhookRoutes = require("./webhooks");
 
 const router = Router();
 
+// POS phase 0 is opt-in and exposes only an authenticated read-only health check.
+// No POS models or routes are imported when POS_ENABLED is off.
+if (String(process.env.POS_ENABLED || "").trim().toLowerCase() === "true") {
+  router.use("/pos", require("../modules/pos/routes"));
+}
+
+
 // Successful dashboard catalog writes invalidate both static catalog caches.
 // User-specific subscription balances/add-on allowances are never cached here.
 router.use(menuMutationCacheInvalidationMiddleware);
