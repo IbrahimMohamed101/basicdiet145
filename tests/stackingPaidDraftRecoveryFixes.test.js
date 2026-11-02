@@ -22,12 +22,14 @@ const {
   buildDraftCompletionQuery,
   buildDraftCompletionUpdate,
   completePaidDraftStackingActivation,
+  assertPaidDraftLinkage,
 } = require("../src/services/subscription/subscriptionStackingActivationService");
 const {
   resolveExistingPromoUsageDecision,
 } = require("../src/services/promoCodeService");
 const {
   resolveProviderReferenceUpdates,
+  shouldIgnoreNonPaidAttemptAfterPaid,
 } = require("../src/controllers/webhookController");
 
 const results = [];
@@ -213,6 +215,66 @@ async function main() {
       {}
     );
     assert.deepEqual(resolveProviderReferenceUpdates({}, {}), {});
+  });
+
+  await run("completed draft checks all already linked parent/payment IDs", async () => {
+    const containerId = oid();
+    const paymentId = oid();
+    const query = buildDraftCompletionQuery({ draftId: oid(), containerId, paymentId });
+    assert.equal(query.$and.length, 2);
+    assert.deepEqual(query.$and[0].$or, [
+      { activationSubscriptionId: null },
+      { activationSubscriptionId: { $exists: false } },
+      { activationSubscriptionId: containerId },
+    ]);
+    assert.deepEqual(query.$and[1].$or, [
+      { paymentId: null },
+      { paymentId: { $exists: false } },
+      { paymentId },
+    ]);
+  });
+
+  await run("completion fails closed for conflicting payment, owner, invoice, or amount", async () => {
+    const userId = oid();
+    const containerId = oid();
+    const draftId = oid();
+    const paymentId = oid();
+    const draft = {
+      _id: draftId, userId, subscriptionId: containerId,
+      activationSubscriptionId: containerId, paymentId,
+      providerInvoiceId: "invoice_1",
+      breakdown: { totalHalala: 113135, currency: "SAR" },
+    };
+    const payment = {
+      _id: paymentId, userId, status: "paid",
+      subscriptionId: containerId, checkoutDraftId: draftId,
+      providerInvoiceId: "invoice_1", amount: 113135, currency: "SAR",
+    };
+    assert.doesNotThrow(() => assertPaidDraftLinkage({ draft, payment, containerId }));
+    const fail = (changedDraft, changedPayment) => assert.throws(
+      () => assertPaidDraftLinkage({
+        draft: changedDraft || draft,
+        payment: changedPayment || payment,
+        containerId,
+      }),
+      (err) => err.code === "STACKING_PAID_DRAFT_LINK_MISMATCH"
+    );
+    fail(null, { ...payment, userId: oid() });
+    fail(null, { ...payment, status: "failed" });
+    fail(null, { ...payment, checkoutDraftId: oid() });
+    fail(null, { ...payment, subscriptionId: oid() });
+    fail(null, { ...payment, providerInvoiceId: "another_invoice" });
+    fail(null, { ...payment, amount: 120000 });
+    fail(null, { ...payment, currency: "USD" });
+    fail({ ...draft, subscriptionId: oid() });
+    fail({ ...draft, activationSubscriptionId: oid() });
+    fail({ ...draft, paymentId: oid() });
+  });
+
+  await run("late failure cannot downgrade a paid Moyasar invoice", async () => {
+    assert.equal(shouldIgnoreNonPaidAttemptAfterPaid({ status: "paid" }, false), true);
+    assert.equal(shouldIgnoreNonPaidAttemptAfterPaid({ status: "paid" }, true), false);
+    assert.equal(shouldIgnoreNonPaidAttemptAfterPaid({ status: "failed" }, false), false);
   });
 
   const failed = results.filter((r) => !r.ok);
