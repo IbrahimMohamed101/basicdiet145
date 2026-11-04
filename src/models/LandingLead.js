@@ -18,6 +18,8 @@ const LandingLeadSchema = new mongoose.Schema({
   fulfillmentMethod: { type: String, enum: ["delivery", "pickup", "unspecified"], default: "unspecified" },
   contactConsent: { type: Boolean, required: true },
   marketingConsent: { type: Boolean, default: false },
+  // Explicit separate opt-in for optional Meta ad measurement; never inferred from contact consent.
+  adsTrackingConsent: { type: Boolean, default: false },
   consentAt: { type: Date, required: true },
   status: {
     type: String,

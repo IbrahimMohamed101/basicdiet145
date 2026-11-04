@@ -12,6 +12,10 @@ on:
       - "src/services/subscription/subscriptionOperationsReadService.js"
       - "src/controllers/adminController.js"
       - "tests/landingLeads.test.js"
+      - "tests/metaLandingConversions.test.js"
+      - "src/services/metaLandingConversionsService.js"
+      - "src/models/MetaLandingEvent.js"
+      - "src/jobs/index.js"
       - "tests/landingLeadPersistence.test.js"
       - "tests/landingLeadConversion.test.js"
       - "package.json"
@@ -40,6 +44,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run test:landing-leads
+      - name: Meta CAPI consent and queue regression
+        run: node tests/metaLandingConversions.test.js
 
       - name: Real lead persistence and dashboard read integration (ephemeral MongoDB)
         run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/landingLeadPersistence.test.js
