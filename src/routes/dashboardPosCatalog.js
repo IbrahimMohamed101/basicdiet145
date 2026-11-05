@@ -52,7 +52,7 @@ router.get("/catalog/manage", manage, asyncHandler(async (_req, res) => {
   return res.json({ status: true, data: adminView(doc) });
 }));
 
-// Prior published prices are read-only and available only to managers.
+// Prior published prices are read-only and available to POS catalog operators.
 // A receipt can reference the exact revision hash without mutable prices.
 router.get("/catalog/revisions", manage, asyncHandler(async (_req, res) => {
   const revisions = await getCatalogRevisions(50);
