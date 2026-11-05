@@ -48,7 +48,7 @@ test("rejects nonexistent, inactive, or incompatible add-ons", () => {
   assert.throws(() => quotePosCart(doc, request({ items: invalid })), /الإضافة/);
   const disabled = structuredClone(doc);
   disabled.published.products[0].active = false;
-  assert.throws(() => quotePosCart(disabled, request()), /غير متاح/);
+  assert.throws(() => quotePosCart(disabled, request()), (err) => err.code === "POS_PRODUCT_UNAVAILABLE");
   assert.throws(() => quotePosCart(doc, request({ items: [
     { productId: "water", variantId: "bottle", quantity: 1, addonIds: ["extra-chicken"] },
   ] })), /الإضافات غير متاحة/);
