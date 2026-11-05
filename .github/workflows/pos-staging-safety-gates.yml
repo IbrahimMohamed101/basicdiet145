@@ -46,6 +46,8 @@ jobs:
         run: NODE_ENV=test node --test tests/posCatalogValidation.test.js
       - name: Catalog version history (pure)
         run: NODE_ENV=test node --test tests/posCatalogHistory.test.js
+      - name: Reject unredacted Production-derived staging fixtures
+        run: NODE_ENV=test node --test tests/posStagingFixtureSanitization.test.js
       - name: Start disposable MongoDB replica set
         run: bash scripts/ci/start-mongo-replset.sh pos-ci-guard-mongo
       - name: Atomic publish and historical price records
