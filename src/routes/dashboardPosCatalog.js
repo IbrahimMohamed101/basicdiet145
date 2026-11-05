@@ -9,7 +9,9 @@ const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevi
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 
 const router = Router();
-const manage = dashboardRoleMiddleware(["admin"]);
+// POS management is an operational duty of cashier and restaurant; financial
+// admin privileges and customer-app menu publication remain separately guarded.
+const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
 const readers = new Set(["cashier", "admin", "superadmin"]);
 
