@@ -1,4 +1,6 @@
 require("dotenv").config();
+const { preparePosStagingRuntime } = require("./utils/posStagingRuntime");
+const isolatedPosStaging = preparePosStagingRuntime();
 const {
   assertSubscriptionStackingProductionSafety,
 } = require("./services/subscription/subscriptionStackingProductionSafetyService");
@@ -120,9 +122,15 @@ connectDb()
       throw migrationError;
     }
 
-    logger.info("[startup] Starting background jobs");
-    startJobs();
-    logger.info("[startup] Background jobs started");
+    if (isolatedPosStaging) {
+      const { ensureDefaultDashboardUsers } = require("./services/dashboardDefaultUsersService");
+      await ensureDefaultDashboardUsers();
+      logger.info("[startup] Isolated POS Staging: dashboard fixtures ready; background jobs disabled");
+    } else {
+      logger.info("[startup] Starting background jobs");
+      startJobs();
+      logger.info("[startup] Background jobs started");
+    }
 
     logger.info("[startup] Starting HTTP server", { port: PORT, host: "0.0.0.0" });
     server.listen(PORT, "0.0.0.0", () => {
