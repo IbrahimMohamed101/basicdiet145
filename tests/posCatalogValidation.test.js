@@ -50,3 +50,16 @@ test("adds a new POS channel without code changes while requiring every variant 
   copy.channels = copy.channels.filter((channel) => channel.id !== "restaurant");
   assert.throws(() => normalizePosCatalog(copy), /المطعم/);
 });
+
+
+test("product-specific add-on allowlist references only valid add-on items", () => {
+  const scoped = structuredClone(seed);
+  scoped.products[0].allowedAddonIds = ["extra-chicken"];
+  assert.deepEqual(normalizePosCatalog(scoped).products[0].allowedAddonIds, ["extra-chicken"]);
+  scoped.products[0].allowedAddonIds = ["butter"];
+  assert.throws(() => normalizePosCatalog(scoped), /إضافة/);
+  scoped.products[0].allowedAddonIds = ["missing-extra"];
+  assert.throws(() => normalizePosCatalog(scoped), /إضافة/);
+  scoped.products[0].allowedAddonIds = ["extra-chicken", "extra-chicken"];
+  assert.throws(() => normalizePosCatalog(scoped), /مكرر/);
+});
