@@ -38,7 +38,7 @@ function restaurantCourierReadOnlyResponse(req, res, next) {
       meta: {
         ...(payload.meta && typeof payload.meta === "object" ? payload.meta : {}),
         readOnly: true,
-        role: "restaurant",
+        role: req.dashboardUserRole,
       },
     });
   };
