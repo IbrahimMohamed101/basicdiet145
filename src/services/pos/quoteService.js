@@ -7,7 +7,7 @@
  * A quote is NOT a payable invoice: tax, discount, and settlement are not yet
  * implemented. Do not persist transactions or enable checkout from this result.
  */
-const CHANNELS = new Set(["restaurant", "hungerstation", "keeta"]);
+const { normalizePosChannels } = require("./catalogValidation");
 const MAX_LINES = 50;
 const MAX_QUANTITY = 99;
 const MAX_HALALAS = 1_000_000_000;
@@ -50,7 +50,7 @@ function quotePosCart(doc, request) {
   if (doc.publishedRevision !== request.revision) {
     throw new PosQuoteError("POS_CATALOG_CONFLICT", "المنيو تغير. راجع الأسعار الجديدة.", 409);
   }
-  if (!CHANNELS.has(request.channel)) {
+  if (!normalizePosChannels(doc.published.channels).some((item) => item.id === request.channel)) {
     invalid("POS_QUOTE_INVALID", "قناة البيع غير صحيحة.");
   }
   if (!Array.isArray(request.items) || request.items.length < 1 || request.items.length > MAX_LINES) {
