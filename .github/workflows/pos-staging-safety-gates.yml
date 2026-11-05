@@ -44,5 +44,12 @@ jobs:
         run: NODE_ENV=test node --test tests/posQuote.test.js
       - name: Catalog validation
         run: NODE_ENV=test node --test tests/posCatalogValidation.test.js
-      - name: Catalog version history
+      - name: Catalog version history (pure)
         run: NODE_ENV=test node --test tests/posCatalogHistory.test.js
+      - name: Start disposable MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh pos-ci-guard-mongo
+      - name: Atomic publish and historical price records
+        env:
+          NODE_ENV: test
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_history_ci_test?replicaSet=rs0
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posCatalogHistory.integration.test.js
