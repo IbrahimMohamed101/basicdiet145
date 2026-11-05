@@ -1,0 +1,38 @@
+name: POS Staging Quote Validation
+on:
+  push:
+    branches:
+      - codex/pos-quote-staging-20261105
+  pull_request:
+    branches:
+      - codex/pos-staging-isolation
+    paths:
+      - "src/services/pos/**"
+      - "src/routes/dashboardPosCatalog.js"
+      - "tests/posQuote.test.js"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-staging-quote
+  cancel-in-progress: true
+
+jobs:
+  verify-quote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Syntax safety
+        run: |
+          node --check src/services/pos/quoteService.js
+          node --check src/routes/dashboardPosCatalog.js
+          node --check tests/posQuote.test.js
+      - name: Read-only quote regression
+        run: node --test tests/posQuote.test.js
+      - name: Catalog validation regression
+        run: node --test tests/posCatalogValidation.test.js
