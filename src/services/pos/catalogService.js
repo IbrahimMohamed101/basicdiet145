@@ -6,6 +6,9 @@ const PosCatalog = require("../../models/PosCatalog");
 const PosCatalogRevision = require("../../models/PosCatalogRevision");
 const { normalizePosCatalog } = require("./catalogValidation");
 const stagingCatalog = require("./stagingCatalog.json");
+const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
+const { buildSanitizedStagingFixture } = require("../../../scripts/pos/buildSanitizedStagingFixture");
+const publicMenuSample = require("../../../fixtures/pos/public-menu-nonpersonal-sample.json");
 
 const CATALOG_ID = "pos-menu";
 
@@ -49,6 +52,24 @@ async function seedPosStagingCatalog() {
       await PosCatalogRevision.updateOne({ _id: snapshot._id }, {
         $setOnInsert: snapshot,
       }, { upsert: true });
+    }
+  }
+  // This optional Staging-only draft consists exclusively of names and sizes
+  // from the public restaurant menu. It contains NO customer, subscription or
+  // payment records; all POS prices are null and all products inactive.
+  if (process.env.POS_STAGING_FIXTURE_PROFILE === "public-menu-12") {
+    if (!isPosStagingRuntime()) {
+      throw new Error("POS public-menu fixtures can run only on the isolated Staging service");
+    }
+    if (current?.revision === 1 && current.publishedRevision === 1
+      && current.draft === null
+      && current.published.products.some((item) => item.id === "butter")) {
+      const draft = buildSanitizedStagingFixture(publicMenuSample);
+      await PosCatalog.findOneAndUpdate(
+        { _id: CATALOG_ID, revision: 1, draft: null },
+        { $set: { draft }, $inc: { revision: 1 } },
+        { new: true }
+      );
     }
   }
 }
