@@ -192,7 +192,7 @@ function roleAllowedForActionMode(actionId, role, mode) {
     // The unified restaurant account owns the end-to-end operations board.
     // Unlike a legacy kitchen-only account, it may confirm a home delivery so
     // the canonical fulfillment service settles the customer's meal balance.
-    if (role === "restaurant") return mode === "pickup" || mode === "delivery";
+    if (branchOperator) return mode === "pickup" || mode === "delivery";
     if (operationalRole === "kitchen" && mode !== "pickup") return false;
     if (operationalRole === "courier" && mode === "pickup") return false;
   }
