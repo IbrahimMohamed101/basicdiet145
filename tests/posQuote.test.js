@@ -101,3 +101,16 @@ test("server quote accepts new configured channel with its own price", () => {
   assert.equal(quote.canCommit, false);
   assert.throws(() => quotePosCart(expanded, request({ channel: "other" })), /قناة/);
 });
+
+
+test("per-product add-on allowlist prevents invalid protein combinations", () => {
+  const restricted = structuredClone(doc);
+  restricted.published.products[0].allowedAddonIds = ["extra-chicken"];
+  const good = quotePosCart(restricted, request({
+    items: [{ productId: "butter", variantId: "150", quantity: 1, addonIds: ["extra-chicken"] }],
+  }));
+  assert.equal(good.provisionalSubtotalHalalas, 3700);
+  assert.throws(() => quotePosCart(restricted, request({
+    items: [{ productId: "butter", variantId: "150", quantity: 1, addonIds: ["extra-beef"] }],
+  })), (err) => err.code === "POS_ADDON_UNAVAILABLE");
+});
