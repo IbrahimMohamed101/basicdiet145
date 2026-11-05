@@ -78,9 +78,27 @@ function normalizePosCatalog(input) {
     if (typeof product.active !== "boolean" || (product.hasAddons !== undefined && typeof product.hasAddons !== "boolean")) {
       invalid("حالة الصنف والإضافات غير صالحة.");
     }
-    return { id, name: label(product.name), category, variants, active: product.active,
-      hasAddons: category !== "addons" && product.hasAddons === true };
+    const allowedAddonIds = product.allowedAddonIds;
+    if (allowedAddonIds !== undefined) {
+      if (category === "addons" || product.hasAddons !== true
+        || !Array.isArray(allowedAddonIds) || allowedAddonIds.length > 100) {
+        invalid("قائمة الإضافات المسموحة غير صالحة.");
+      }
+      const usedAllowed = new Set();
+      for (const addonId of allowedAddonIds) uniqueId(addonId, usedAllowed);
+    }
+    return {
+      id, name: label(product.name), category, variants, active: product.active,
+      hasAddons: category !== "addons" && product.hasAddons === true,
+      ...(allowedAddonIds === undefined ? {} : { allowedAddonIds }),
+    };
   });
+  const addonProductIds = new Set(products.filter((p) => p.category === "addons").map((p) => p.id));
+  for (const product of products) {
+    if (product.allowedAddonIds?.some((id) => !addonProductIds.has(id))) {
+      invalid("القائمة تحتوي إضافة غير موجودة أو ليست من قسم الإضافات.");
+    }
+  }
   return { channels, categories, products };
 }
 
