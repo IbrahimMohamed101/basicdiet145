@@ -1,6 +1,24 @@
 "use strict";
 
-const channels = ["restaurant", "hungerstation", "keeta"];
+const DEFAULT_CHANNELS = Object.freeze([
+  { id: "restaurant", label: "المطعم" },
+  { id: "hungerstation", label: "HungerStation" },
+  { id: "keeta", label: "Keeta" },
+]);
+
+function normalizePosChannels(source) {
+  const list = source === undefined ? DEFAULT_CHANNELS : source;
+  if (!Array.isArray(list) || list.length < 1 || list.length > 30) {
+    invalid("يجب إدخال قناة واحدة على الأقل وبحد أقصى 30 قناة.");
+  }
+  const used = new Set();
+  const channels = list.map((item) => ({
+    id: uniqueId(item?.id, used),
+    label: label(item?.label),
+  }));
+  if (!used.has("restaurant")) invalid("قناة المطعم أساسية ولا يمكن حذفها.");
+  return channels;
+}
 
 function invalid(message) {
   throw new Error(message);
@@ -30,6 +48,7 @@ function normalizePosCatalog(input) {
     || !Array.isArray(input?.products) || input.products.length > 500) {
     invalid("هيكل منيو الكاشير غير صالح.");
   }
+  const channels = normalizePosChannels(input.channels);
   const categoryIds = new Set();
   const categories = input.categories.map((category) => ({
     id: uniqueId(category?.id, categoryIds),
@@ -49,11 +68,11 @@ function normalizePosCatalog(input) {
       id: uniqueId(variant?.id, variantIds),
       label: label(variant.label),
       prices: Object.fromEntries(channels.map((channel) => {
-        const value = variant.prices?.[channel];
+        const value = variant.prices?.[channel.id];
         if (value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 10_000_000)) {
           invalid("اكتب سعرًا صحيحًا لكل قناة أو اتركه غير مسعّر.");
         }
-        return [channel, value];
+        return [channel.id, value];
       })),
     }));
     if (typeof product.active !== "boolean" || (product.hasAddons !== undefined && typeof product.hasAddons !== "boolean")) {
@@ -62,7 +81,7 @@ function normalizePosCatalog(input) {
     return { id, name: label(product.name), category, variants, active: product.active,
       hasAddons: category !== "addons" && product.hasAddons === true };
   });
-  return { categories, products };
+  return { channels, categories, products };
 }
 
-module.exports = { normalizePosCatalog };
+module.exports = { normalizePosCatalog, normalizePosChannels, DEFAULT_CHANNELS };
