@@ -25,7 +25,7 @@ function makeCourierRowReadOnly(row) {
 }
 
 function restaurantCourierReadOnlyResponse(req, res, next) {
-  if (req.dashboardUserRole !== "restaurant") return next();
+  if (!["restaurant", "cashier"].includes(req.dashboardUserRole)) return next();
 
   const originalJson = res.json.bind(res);
   res.json = (payload) => {
