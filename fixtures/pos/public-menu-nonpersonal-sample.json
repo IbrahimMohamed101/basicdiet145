@@ -1,0 +1,64 @@
+{
+  "source": "basicdietksa.com/menu — public business catalog, not Production DB",
+  "exportedAt": "2026-11-05",
+  "products": [
+    {
+      "name": "باستا وايت صوص بالدجاج",
+      "category": "meals"
+    },
+    {
+      "name": "مسقعة باللحمة المفروم",
+      "category": "meals"
+    },
+    {
+      "name": "جمبري",
+      "category": "meals",
+      "sizes": [
+        "100 جم",
+        "150 جم",
+        "200 جم"
+      ]
+    },
+    {
+      "name": "سالمون",
+      "category": "meals",
+      "sizes": [
+        "100 جم",
+        "150 جم",
+        "200 جم"
+      ]
+    },
+    {
+      "name": "سلطة يونانية",
+      "category": "salads"
+    },
+    {
+      "name": "شكشوكة",
+      "category": "breakfast"
+    },
+    {
+      "name": "دجاج مشوي",
+      "category": "sandwiches"
+    },
+    {
+      "name": "بيض اسكرامبل",
+      "category": "breakfast"
+    },
+    {
+      "name": "كفتة بالطحينة مع ارز ابيض",
+      "category": "meals"
+    },
+    {
+      "name": "برجر لحم صحى",
+      "category": "meals"
+    },
+    {
+      "name": "وجبة تونا 100 جرام",
+      "category": "meals"
+    },
+    {
+      "name": "وجبة بيض مسلوق",
+      "category": "meals"
+    }
+  ]
+}
