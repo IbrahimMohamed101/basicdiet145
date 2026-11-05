@@ -46,6 +46,7 @@ test("adds a new POS channel without code changes while requiring every variant 
   assert.throws(() => normalizePosCatalog(copy), /سعر/);
   copy.channels[3].id = "keeta";
   assert.throws(() => normalizePosCatalog(copy), /مكرر/);
+  copy.channels[3].id = "other-app";
   copy.channels = copy.channels.filter((channel) => channel.id !== "restaurant");
   assert.throws(() => normalizePosCatalog(copy), /المطعم/);
 });
