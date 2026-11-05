@@ -4,8 +4,8 @@ const { Router } = require("express");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const asyncHandler = require("../middleware/asyncHandler");
 const errorResponse = require("../utils/errorResponse");
-const { normalizePosCatalog } = require("../services/pos/catalogValidation");
-const { getCatalog, saveDraft, publishDraft } = require("../services/pos/catalogService");
+const { normalizePosCatalog, normalizePosChannels } = require("../services/pos/catalogValidation");
+const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevision } = require("../services/pos/catalogService");
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 
 const router = Router();
@@ -23,7 +23,7 @@ router.get("/catalog", asyncHandler(async (req, res) => {
   if (!doc) return errorResponse(res, 404, "POS_CATALOG_NOT_FOUND", "منيو الكاشير غير متاح.");
   const { categories, products } = doc.published;
   return res.json({ status: true, data: {
-    revision: doc.publishedRevision, categories, products: products.filter((item) => item.active),
+    revision: doc.publishedRevision, channels: normalizePosChannels(doc.published.channels), categories, products: products.filter((item) => item.active),
   } });
 }));
 
@@ -48,6 +48,23 @@ router.get("/catalog/manage", manage, asyncHandler(async (_req, res) => {
   const doc = await getCatalog();
   if (!doc) return errorResponse(res, 404, "POS_CATALOG_NOT_FOUND", "منيو الكاشير غير متاح.");
   return res.json({ status: true, data: adminView(doc) });
+}));
+
+// Prior published prices are read-only and available only to managers.
+// A receipt can reference the exact revision hash without mutable prices.
+router.get("/catalog/revisions", manage, asyncHandler(async (_req, res) => {
+  const revisions = await getCatalogRevisions(50);
+  return res.json({ status: true, data: revisions });
+}));
+
+router.get("/catalog/revisions/:revision", manage, asyncHandler(async (req, res) => {
+  const revision = Number(req.params.revision);
+  if (!Number.isSafeInteger(revision) || revision < 1) {
+    return errorResponse(res, 400, "VALIDATION_ERROR", "نسخة المنيو غير صالحة.");
+  }
+  const history = await getCatalogRevision(revision);
+  if (!history) return errorResponse(res, 404, "POS_REVISION_NOT_FOUND", "النسخة المطلوبة غير محفوظة.");
+  return res.json({ status: true, data: history });
 }));
 
 router.put("/catalog/draft", manage, asyncHandler(async (req, res) => {

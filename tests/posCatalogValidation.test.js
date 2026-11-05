@@ -24,3 +24,42 @@ test("rejects invalid prices and references rather than writing a partial draft"
   bad.products[0].category = "app-menu-category";
   assert.throws(() => normalizePosCatalog(bad), /تصنيف/);
 });
+
+
+test("adds a new POS channel without code changes while requiring every variant price field", () => {
+  const copy = structuredClone(seed);
+  copy.channels = [
+    { id: "restaurant", label: "المطعم" },
+    { id: "hungerstation", label: "HungerStation" },
+    { id: "keeta", label: "Keeta" },
+    { id: "other-app", label: "تطبيق آخر" },
+  ];
+  for (const product of copy.products) {
+    for (const variant of product.variants) variant.prices["other-app"] = null;
+  }
+  const result = normalizePosCatalog(copy);
+  assert.equal(result.channels.length, 4);
+  assert.equal(result.products[0].variants[0].prices["other-app"], null);
+  copy.products[0].variants[0].prices["other-app"] = 3500;
+  assert.equal(normalizePosCatalog(copy).products[0].variants[0].prices["other-app"], 3500);
+  delete copy.products[0].variants[0].prices["other-app"];
+  assert.throws(() => normalizePosCatalog(copy), /سعر/);
+  copy.channels[3].id = "keeta";
+  assert.throws(() => normalizePosCatalog(copy), /مكرر/);
+  copy.channels[3].id = "other-app";
+  copy.channels = copy.channels.filter((channel) => channel.id !== "restaurant");
+  assert.throws(() => normalizePosCatalog(copy), /المطعم/);
+});
+
+
+test("product-specific add-on allowlist references only valid add-on items", () => {
+  const scoped = structuredClone(seed);
+  scoped.products[0].allowedAddonIds = ["extra-chicken"];
+  assert.deepEqual(normalizePosCatalog(scoped).products[0].allowedAddonIds, ["extra-chicken"]);
+  scoped.products[0].allowedAddonIds = ["butter"];
+  assert.throws(() => normalizePosCatalog(scoped), /إضافة/);
+  scoped.products[0].allowedAddonIds = ["missing-extra"];
+  assert.throws(() => normalizePosCatalog(scoped), /إضافة/);
+  scoped.products[0].allowedAddonIds = ["extra-chicken", "extra-chicken"];
+  assert.throws(() => normalizePosCatalog(scoped), /مكرر/);
+});

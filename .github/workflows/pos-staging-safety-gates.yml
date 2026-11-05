@@ -1,0 +1,57 @@
+name: POS Staging Safety Gates
+on:
+  push:
+    branches:
+      - codex/pos-staging-isolation
+      - codex/pos-safety-fixes-20261105
+  pull_request:
+    branches:
+      - codex/pos-staging-isolation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-staging-safety-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  isolation-and-catalog:
+    name: Staging guard / catalog / quote
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Syntax
+        run: |
+          node --check src/utils/posStagingRuntime.js
+          node --check src/services/pos/catalogService.js
+          node --check src/services/pos/catalogValidation.js
+          node --check src/services/pos/quoteService.js
+          node --check src/routes/dashboardPosCatalog.js
+          node --check src/app.js
+          node --check src/index.js
+      - name: Mandatory isolation guard
+        run: NODE_ENV=test node --test tests/posStagingRuntime.test.js
+      - name: Read-only price quote validation
+        run: NODE_ENV=test node --test tests/posQuote.test.js
+      - name: Catalog validation
+        run: NODE_ENV=test node --test tests/posCatalogValidation.test.js
+      - name: Catalog version history (pure)
+        run: NODE_ENV=test node --test tests/posCatalogHistory.test.js
+      - name: Reject unredacted Production-derived staging fixtures
+        run: NODE_ENV=test node --test tests/posStagingFixtureSanitization.test.js
+      - name: Start disposable MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh pos-ci-guard-mongo
+      - name: Atomic publish and historical price records
+        env:
+          NODE_ENV: test
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_history_ci_test?replicaSet=rs0
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posCatalogHistory.integration.test.js

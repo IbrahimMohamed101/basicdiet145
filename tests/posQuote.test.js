@@ -79,3 +79,38 @@ test("totals cannot overflow safe bounded limits", () => {
   }));
   assert.throws(() => quotePosCart(oversized, request({ items: lines })), (err) => err.code === "POS_QUOTE_LIMIT");
 });
+
+
+test("server quote accepts new configured channel with its own price", () => {
+  const expanded = structuredClone(doc);
+  expanded.published.channels = [
+    { id: "restaurant", label: "المطعم" },
+    { id: "hungerstation", label: "HungerStation" },
+    { id: "keeta", label: "Keeta" },
+    { id: "fourth-channel", label: "تطبيق رابع" },
+  ];
+  for (const item of expanded.published.products) {
+    for (const size of item.variants) size.prices["fourth-channel"] = null;
+  }
+  expanded.published.products[0].variants[1].prices["fourth-channel"] = 5200;
+  const quote = quotePosCart(expanded, request({
+    channel: "fourth-channel",
+    items: [{ productId: "butter", variantId: "150", quantity: 2, addonIds: [] }],
+  }));
+  assert.equal(quote.provisionalSubtotalHalalas, 10400);
+  assert.equal(quote.canCommit, false);
+  assert.throws(() => quotePosCart(expanded, request({ channel: "other" })), /قناة/);
+});
+
+
+test("per-product add-on allowlist prevents invalid protein combinations", () => {
+  const restricted = structuredClone(doc);
+  restricted.published.products[0].allowedAddonIds = ["extra-chicken"];
+  const good = quotePosCart(restricted, request({
+    items: [{ productId: "butter", variantId: "150", quantity: 1, addonIds: ["extra-chicken"] }],
+  }));
+  assert.equal(good.provisionalSubtotalHalalas, 3700);
+  assert.throws(() => quotePosCart(restricted, request({
+    items: [{ productId: "butter", variantId: "150", quantity: 1, addonIds: ["extra-beef"] }],
+  })), (err) => err.code === "POS_ADDON_UNAVAILABLE");
+});

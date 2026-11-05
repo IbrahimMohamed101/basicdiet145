@@ -1,6 +1,24 @@
 "use strict";
 
-const channels = ["restaurant", "hungerstation", "keeta"];
+const DEFAULT_CHANNELS = Object.freeze([
+  { id: "restaurant", label: "المطعم" },
+  { id: "hungerstation", label: "HungerStation" },
+  { id: "keeta", label: "Keeta" },
+]);
+
+function normalizePosChannels(source) {
+  const list = source === undefined ? DEFAULT_CHANNELS : source;
+  if (!Array.isArray(list) || list.length < 1 || list.length > 30) {
+    invalid("يجب إدخال قناة واحدة على الأقل وبحد أقصى 30 قناة.");
+  }
+  const used = new Set();
+  const channels = list.map((item) => ({
+    id: uniqueId(item?.id, used),
+    label: label(item?.label),
+  }));
+  if (!used.has("restaurant")) invalid("قناة المطعم أساسية ولا يمكن حذفها.");
+  return channels;
+}
 
 function invalid(message) {
   throw new Error(message);
@@ -30,6 +48,7 @@ function normalizePosCatalog(input) {
     || !Array.isArray(input?.products) || input.products.length > 500) {
     invalid("هيكل منيو الكاشير غير صالح.");
   }
+  const channels = normalizePosChannels(input.channels);
   const categoryIds = new Set();
   const categories = input.categories.map((category) => ({
     id: uniqueId(category?.id, categoryIds),
@@ -49,20 +68,38 @@ function normalizePosCatalog(input) {
       id: uniqueId(variant?.id, variantIds),
       label: label(variant.label),
       prices: Object.fromEntries(channels.map((channel) => {
-        const value = variant.prices?.[channel];
+        const value = variant.prices?.[channel.id];
         if (value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 10_000_000)) {
           invalid("اكتب سعرًا صحيحًا لكل قناة أو اتركه غير مسعّر.");
         }
-        return [channel, value];
+        return [channel.id, value];
       })),
     }));
     if (typeof product.active !== "boolean" || (product.hasAddons !== undefined && typeof product.hasAddons !== "boolean")) {
       invalid("حالة الصنف والإضافات غير صالحة.");
     }
-    return { id, name: label(product.name), category, variants, active: product.active,
-      hasAddons: category !== "addons" && product.hasAddons === true };
+    const allowedAddonIds = product.allowedAddonIds;
+    if (allowedAddonIds !== undefined) {
+      if (category === "addons" || product.hasAddons !== true
+        || !Array.isArray(allowedAddonIds) || allowedAddonIds.length > 100) {
+        invalid("قائمة الإضافات المسموحة غير صالحة.");
+      }
+      const usedAllowed = new Set();
+      for (const addonId of allowedAddonIds) uniqueId(addonId, usedAllowed);
+    }
+    return {
+      id, name: label(product.name), category, variants, active: product.active,
+      hasAddons: category !== "addons" && product.hasAddons === true,
+      ...(allowedAddonIds === undefined ? {} : { allowedAddonIds }),
+    };
   });
-  return { categories, products };
+  const addonProductIds = new Set(products.filter((p) => p.category === "addons").map((p) => p.id));
+  for (const product of products) {
+    if (product.allowedAddonIds?.some((id) => !addonProductIds.has(id))) {
+      invalid("القائمة تحتوي إضافة غير موجودة أو ليست من قسم الإضافات.");
+    }
+  }
+  return { channels, categories, products };
 }
 
-module.exports = { normalizePosCatalog };
+module.exports = { normalizePosCatalog, normalizePosChannels, DEFAULT_CHANNELS };
