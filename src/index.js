@@ -102,31 +102,31 @@ connectDb()
   .then(async () => {
     logger.info("[startup] MongoDB connected");
 
-    try {
-      const pricingMigration = await normalizeCommercialSubscriptionPricing();
-      logger.info("[startup] commercial subscription pricing normalization", pricingMigration);
-
-      const ks30PromoMigration = await ensureKs30Promo();
-      logger.info("[startup] KS30 promo normalization", ks30PromoMigration);
-
-      const ksa96PromoMigration = await ensureKsa96Promo();
-      logger.info("[startup] KSA96 promo normalization", ksa96PromoMigration);
-
-      const appAdMigration = await seedAppAd();
-      logger.info("[startup] app ad seed", appAdMigration);
-    } catch (migrationError) {
-      logger.error("[startup] commercial subscription pricing normalization failed", {
-        error: migrationError.message,
-        stack: migrationError.stack,
-      });
-      throw migrationError;
-    }
-
     if (isolatedPosStaging) {
       const { ensureDefaultDashboardUsers } = require("./services/dashboardDefaultUsersService");
       await ensureDefaultDashboardUsers();
-      logger.info("[startup] Isolated POS Staging: dashboard fixtures ready; background jobs disabled");
+      logger.info("[startup] Isolated POS Staging: dashboard fixtures ready; migrations and background jobs disabled");
     } else {
+      try {
+        const pricingMigration = await normalizeCommercialSubscriptionPricing();
+        logger.info("[startup] commercial subscription pricing normalization", pricingMigration);
+
+        const ks30PromoMigration = await ensureKs30Promo();
+        logger.info("[startup] KS30 promo normalization", ks30PromoMigration);
+
+        const ksa96PromoMigration = await ensureKsa96Promo();
+        logger.info("[startup] KSA96 promo normalization", ksa96PromoMigration);
+
+        const appAdMigration = await seedAppAd();
+        logger.info("[startup] app ad seed", appAdMigration);
+      } catch (migrationError) {
+        logger.error("[startup] commercial subscription pricing normalization failed", {
+          error: migrationError.message,
+          stack: migrationError.stack,
+        });
+        throw migrationError;
+      }
+
       logger.info("[startup] Starting background jobs");
       startJobs();
       logger.info("[startup] Background jobs started");
