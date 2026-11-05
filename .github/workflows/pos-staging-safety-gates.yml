@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - codex/pos-staging-isolation
-      - codex/pos-safety-fixes-20261105
+      - codex/cashier-restaurant-parity-staging-20261105
   pull_request:
     branches:
       - codex/pos-staging-isolation
@@ -38,6 +38,11 @@ jobs:
           node --check src/routes/dashboardPosCatalog.js
           node --check src/app.js
           node --check src/index.js
+      - name: Cashier and restaurant role parity
+        run: |
+          NODE_ENV=test node --test tests/posCashierRestaurantRoleParity.test.js
+          NODE_ENV=test node tests/dashboardRestaurantRolePolicy.test.js
+          NODE_ENV=test node tests/dashboardRestaurantExpandedCapabilities.test.js
       - name: Mandatory isolation guard
         run: NODE_ENV=test node --test tests/posStagingRuntime.test.js
       - name: Read-only price quote validation
