@@ -183,7 +183,8 @@ function normalizeActionId(actionId) {
 }
 
 function roleAllowedForActionMode(actionId, role, mode) {
-  const operationalRole = role === "restaurant" ? "kitchen" : role;
+  const branchOperator = role === "restaurant" || role === "cashier";
+  const operationalRole = branchOperator ? "kitchen" : role;
   if (actionId === "prepare" && operationalRole === "courier" && mode !== "delivery") {
     return false;
   }
