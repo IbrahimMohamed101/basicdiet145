@@ -65,11 +65,14 @@ async function seedPosStagingCatalog() {
       && current.draft === null
       && current.published.products.some((item) => item.id === "butter")) {
       const draft = buildSanitizedStagingFixture(publicMenuSample);
-      await PosCatalog.findOneAndUpdate(
+      const stagedDraft = await PosCatalog.findOneAndUpdate(
         { _id: CATALOG_ID, revision: 1, draft: null },
         { $set: { draft }, $inc: { revision: 1 } },
         { new: true }
       );
+      if (stagedDraft) {
+        console.info("[pos-staging] Review-only public menu draft prepared: 12 inactive products, no prices or personal records");
+      }
     }
   }
 }
