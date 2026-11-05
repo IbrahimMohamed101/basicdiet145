@@ -9,7 +9,9 @@ const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevi
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 
 const router = Router();
-const manage = dashboardRoleMiddleware(["admin"]);
+// POS management is an operational duty of cashier and restaurant; financial
+// admin privileges and customer-app menu publication remain separately guarded.
+const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
 const readers = new Set(["cashier", "admin", "superadmin"]);
 
@@ -50,7 +52,7 @@ router.get("/catalog/manage", manage, asyncHandler(async (_req, res) => {
   return res.json({ status: true, data: adminView(doc) });
 }));
 
-// Prior published prices are read-only and available only to managers.
+// Prior published prices are read-only and available to POS catalog operators.
 // A receipt can reference the exact revision hash without mutable prices.
 router.get("/catalog/revisions", manage, asyncHandler(async (_req, res) => {
   const revisions = await getCatalogRevisions(50);

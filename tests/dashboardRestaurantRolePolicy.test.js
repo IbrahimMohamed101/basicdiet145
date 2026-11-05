@@ -11,11 +11,11 @@ const {
 const { dashboardRoleMiddleware } = require("../src/middleware/dashboardAuth");
 const opsActionPolicy = require("../src/services/dashboard/opsActionPolicy");
 
-function invokeRoleMiddleware(allowedRoles) {
+function invokeRoleMiddleware(allowedRoles, role = "restaurant") {
   let nextCalled = false;
   let statusCode = 200;
   let body = null;
-  const req = { dashboardUserRole: "restaurant" };
+  const req = { dashboardUserRole: role };
   const res = {
     status(code) {
       statusCode = code;
@@ -51,9 +51,19 @@ function run() {
   assert.strictEqual(dashboardRoleHasPermission("restaurant", ["restaurant"]), true);
   assert.strictEqual(dashboardRoleHasPermission("restaurant", ["admin"]), false);
   assert.strictEqual(dashboardRoleHasPermission("restaurant", ["courier"]), false);
+  assert.deepStrictEqual(
+    getEffectiveDashboardRoles("cashier"),
+    getEffectiveDashboardRoles("restaurant"),
+    "cashier matches restaurant operational role inheritance"
+  );
+  assert.strictEqual(dashboardRoleHasPermission("cashier", ["restaurant"]), true);
+  assert.strictEqual(dashboardRoleHasPermission("cashier", ["kitchen"]), true);
+  assert.strictEqual(dashboardRoleHasPermission("cashier", ["admin"]), false);
+  assert.strictEqual(dashboardRoleHasPermission("cashier", ["courier"]), false);
 
   for (const allowedRoles of [["kitchen"], ["cashier"], ["restaurant"]]) {
     assert.strictEqual(invokeRoleMiddleware(allowedRoles).nextCalled, true);
+    assert.strictEqual(invokeRoleMiddleware(allowedRoles, "cashier").nextCalled, true);
   }
 
   for (const allowedRoles of [["admin"], ["courier"]]) {
@@ -61,6 +71,9 @@ function run() {
     assert.strictEqual(result.nextCalled, false);
     assert.strictEqual(result.statusCode, 403);
     assert.strictEqual(result.body.error.code, "FORBIDDEN");
+    const cashierResult = invokeRoleMiddleware(allowedRoles, "cashier");
+    assert.strictEqual(cashierResult.nextCalled, false);
+    assert.strictEqual(cashierResult.statusCode, 403);
   }
 
   const customerCredentialRoles = ["admin", "restaurant"];
@@ -76,8 +89,8 @@ function run() {
   );
   assert.strictEqual(
     dashboardRoleHasPermission("cashier", customerCredentialRoles),
-    false,
-    "legacy cashier-only accounts cannot reset customer credentials"
+    true,
+    "cashier now shares the restaurant's authorized staff capabilities"
   );
 
   const capabilitiesRouteSource = fs.readFileSync(
@@ -117,11 +130,18 @@ function run() {
       .includes("fulfill"),
     "restaurant can complete delivery through the canonical operations flow"
   );
-  assert(
-    !actionIds({ entityType: "order", status: "confirmed", mode: "pickup", role: "cashier" })
-      .includes("prepare"),
-    "legacy cashier behavior remains unchanged"
-  );
+  for (const [status, mode] of [
+    ["confirmed", "pickup"],
+    ["in_preparation", "pickup"],
+    ["ready_for_pickup", "pickup"],
+    ["out_for_delivery", "delivery"],
+  ]) {
+    assert.deepStrictEqual(
+      actionIds({ entityType: "order", status, mode, role: "cashier" }),
+      actionIds({ entityType: "order", status, mode, role: "restaurant" }),
+      "cashier and restaurant must have the same operational actions"
+    );
+  }
 
   console.log("dashboard restaurant role policy checks passed");
 }

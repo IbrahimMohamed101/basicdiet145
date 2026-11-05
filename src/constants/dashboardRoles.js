@@ -9,6 +9,9 @@ const DASHBOARD_ROLES = Object.freeze([
 
 const DASHBOARD_ROLE_INHERITANCE = Object.freeze({
   restaurant: Object.freeze(["restaurant", "kitchen", "cashier"]),
+  // Cashier is the operational owner of the branch, with the same permissions
+  // as restaurant (never admin/superadmin). Preserve cashier identity in audit.
+  cashier: Object.freeze(["restaurant", "kitchen", "cashier"]),
 });
 
 function normalizeDashboardRole(role) {

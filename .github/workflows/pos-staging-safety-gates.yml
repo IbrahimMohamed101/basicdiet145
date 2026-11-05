@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - codex/pos-staging-isolation
-      - codex/pos-safety-fixes-20261105
+      - codex/cashier-restaurant-parity-staging-20261105
   pull_request:
     branches:
       - codex/pos-staging-isolation
@@ -38,6 +38,11 @@ jobs:
           node --check src/routes/dashboardPosCatalog.js
           node --check src/app.js
           node --check src/index.js
+      - name: Cashier and restaurant role parity
+        run: |
+          NODE_ENV=test node --test tests/posCashierRestaurantRoleParity.test.js
+          NODE_ENV=test node tests/dashboardRestaurantRolePolicy.test.js
+          NODE_ENV=test node tests/dashboardRestaurantExpandedCapabilities.test.js
       - name: Mandatory isolation guard
         run: NODE_ENV=test node --test tests/posStagingRuntime.test.js
       - name: Read-only price quote validation
@@ -55,3 +60,10 @@ jobs:
           NODE_ENV: test
           MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_history_ci_test?replicaSet=rs0
         run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posCatalogHistory.integration.test.js
+      - name: Cashier and restaurant kitchen catalog read integration
+        env:
+          NODE_ENV: test
+          MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_cashier_role_ci_test?replicaSet=rs0
+          MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_cashier_role_ci_test?replicaSet=rs0
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_cashier_role_ci_test?replicaSet=rs0
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/kitchenReadOnlyPermissions.test.js
