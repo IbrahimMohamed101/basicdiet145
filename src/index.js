@@ -104,7 +104,9 @@ connectDb()
 
     if (isolatedPosStaging) {
       const { ensureDefaultDashboardUsers } = require("./services/dashboardDefaultUsersService");
+      const { seedPosStagingCatalog } = require("./services/pos/catalogService");
       await ensureDefaultDashboardUsers();
+      await seedPosStagingCatalog();
       logger.info("[startup] Isolated POS Staging: dashboard fixtures ready; migrations and background jobs disabled");
     } else {
       try {

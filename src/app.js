@@ -270,6 +270,7 @@ function createApp() {
   app.use("/api/dashboard/landing-leads", landingLeads.adminRouter);
   if (isPosStagingRuntime()) {
     app.use("/api/webhooks", (_req, res) => res.sendStatus(404));
+    app.use("/api/dashboard/pos", requestLanguageMiddleware, require("./routes/dashboardPosCatalog"));
   }
   app.use("/api", requestLanguageMiddleware, routes);
 

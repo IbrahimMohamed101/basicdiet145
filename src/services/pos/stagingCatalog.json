@@ -1,0 +1,184 @@
+{
+  "categories": [
+    {
+      "id": "meals",
+      "label": "الوجبات"
+    },
+    {
+      "id": "salads",
+      "label": "السلطات"
+    },
+    {
+      "id": "desserts",
+      "label": "الحلويات"
+    },
+    {
+      "id": "drinks",
+      "label": "المشروبات"
+    },
+    {
+      "id": "addons",
+      "label": "الإضافات"
+    }
+  ],
+  "products": [
+    {
+      "id": "butter",
+      "name": "دجاج بالزبدة",
+      "category": "meals",
+      "hasAddons": true,
+      "variants": [
+        {
+          "id": "100",
+          "label": "100 جم",
+          "prices": {
+            "restaurant": 2400,
+            "hungerstation": 2800,
+            "keeta": 2700
+          }
+        },
+        {
+          "id": "150",
+          "label": "150 جم",
+          "prices": {
+            "restaurant": 3200,
+            "hungerstation": 3600,
+            "keeta": 3500
+          }
+        },
+        {
+          "id": "200",
+          "label": "200 جم",
+          "prices": {
+            "restaurant": 3900,
+            "hungerstation": 4400,
+            "keeta": 4200
+          }
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "tikka",
+      "name": "دجاج تكا",
+      "category": "meals",
+      "hasAddons": true,
+      "variants": [
+        {
+          "id": "100",
+          "label": "100 جم",
+          "prices": {
+            "restaurant": 2400,
+            "hungerstation": 2800,
+            "keeta": 2700
+          }
+        },
+        {
+          "id": "150",
+          "label": "150 جم",
+          "prices": {
+            "restaurant": 3200,
+            "hungerstation": 3700,
+            "keeta": 3500
+          }
+        },
+        {
+          "id": "200",
+          "label": "200 جم",
+          "prices": {
+            "restaurant": 3900,
+            "hungerstation": 4500,
+            "keeta": null
+          }
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "salad",
+      "name": "سلطة بيسك",
+      "category": "salads",
+      "hasAddons": true,
+      "variants": [
+        {
+          "id": "portion",
+          "label": "حصة",
+          "prices": {
+            "restaurant": 2900,
+            "hungerstation": 3400,
+            "keeta": 3200
+          }
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "brownie",
+      "name": "براونيز",
+      "category": "desserts",
+      "variants": [
+        {
+          "id": "portion",
+          "label": "قطعة",
+          "prices": {
+            "restaurant": 1400,
+            "hungerstation": 1700,
+            "keeta": 1600
+          }
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "water",
+      "name": "مياه",
+      "category": "drinks",
+      "variants": [
+        {
+          "id": "bottle",
+          "label": "عبوة",
+          "prices": {
+            "restaurant": 300,
+            "hungerstation": 400,
+            "keeta": 400
+          }
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "extra-chicken",
+      "name": "زيادة دجاج 50 جم",
+      "category": "addons",
+      "variants": [
+        {
+          "id": "portion",
+          "label": "حصة",
+          "prices": {
+            "restaurant": 500,
+            "hungerstation": 600,
+            "keeta": 600
+          }
+        }
+      ],
+      "active": true
+    },
+    {
+      "id": "extra-beef",
+      "name": "زيادة لحم 50 جم",
+      "category": "addons",
+      "variants": [
+        {
+          "id": "portion",
+          "label": "حصة",
+          "prices": {
+            "restaurant": 600,
+            "hungerstation": 700,
+            "keeta": 700
+          }
+        }
+      ],
+      "active": true
+    }
+  ]
+}
