@@ -91,6 +91,9 @@ function quotePosCart(doc, request) {
       if (!addon || addon.category !== "addons" || addon.variants?.length !== 1) {
         invalid("POS_ADDON_UNAVAILABLE", "الإضافة غير متاحة.");
       }
+      if (Array.isArray(product.allowedAddonIds) && !product.allowedAddonIds.includes(addon.id)) {
+        invalid("POS_ADDON_UNAVAILABLE", "الإضافة غير مسموحة لهذا الصنف.");
+      }
       const amount = addon.variants[0]?.prices?.[request.channel];
       if (!validPrice(amount)) {
         invalid("POS_PRICE_UNAVAILABLE", "الإضافة غير مسعرة في القناة.");
