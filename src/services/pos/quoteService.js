@@ -73,6 +73,11 @@ function quotePosCart(doc, request) {
     if (!product || !variant) {
       invalid("POS_PRODUCT_UNAVAILABLE", "الصنف أو الحجم لم يعد متاحًا.");
     }
+    // An addition can be quoted within its parent meal, but cannot become
+    // its own invoice line unless the cashier catalog explicitly allows it.
+    if (product.category === "addons" && product.sellStandalone !== true) {
+      invalid("POS_PRODUCT_UNAVAILABLE", "هذه الإضافة متاحة مع الوجبات فقط.");
+    }
     const basePrice = variant.prices?.[request.channel];
     if (!validPrice(basePrice)) {
       invalid("POS_PRICE_UNAVAILABLE", "الصنف غير مسعر في قناة البيع الحالية.");
