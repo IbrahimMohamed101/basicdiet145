@@ -63,3 +63,18 @@ test("product-specific add-on allowlist references only valid add-on items", () 
   scoped.products[0].allowedAddonIds = ["extra-chicken", "extra-chicken"];
   assert.throws(() => normalizePosCatalog(scoped), /مكرر/);
 });
+
+
+test("standalone add-on sales require explicit manager catalog authorization", () => {
+  const input = structuredClone(seed);
+  const result = normalizePosCatalog(input);
+  const addon = result.products.find((item) => item.id === "extra-chicken");
+  assert.equal(addon.sellStandalone, false, "legacy add-ons default to attached-only");
+  input.products.find((item) => item.id === "extra-chicken").sellStandalone = true;
+  assert.equal(normalizePosCatalog(input).products.find((item) => item.id === "extra-chicken").sellStandalone, true);
+  input.products[0].sellStandalone = true;
+  assert.throws(() => normalizePosCatalog(input), /منفردة/);
+  delete input.products[0].sellStandalone;
+  input.products.find((item) => item.id === "extra-chicken").sellStandalone = "yes";
+  assert.throws(() => normalizePosCatalog(input), /منفردة/);
+});
