@@ -78,3 +78,19 @@ test("standalone add-on sales require explicit manager catalog authorization", (
   input.products.find((item) => item.id === "extra-chicken").sellStandalone = "yes";
   assert.throws(() => normalizePosCatalog(input), /منفردة/);
 });
+
+
+test("POS defaultVariantId must refer to a present variant and remains optional for older menus", () => {
+  const base = structuredClone(seed);
+  const product = base.products.find((item) => item.id === "butter");
+  const legacy = normalizePosCatalog(base).products.find((item) => item.id === "butter");
+  assert.equal(legacy.defaultVariantId, undefined);
+  product.defaultVariantId = "200";
+  assert.equal(normalizePosCatalog(base).products.find((item) => item.id === "butter").defaultVariantId, "200");
+  product.defaultVariantId = "missing";
+  assert.throws(() => normalizePosCatalog(base), /الحجم الافتراضي/);
+  product.defaultVariantId = null;
+  assert.throws(() => normalizePosCatalog(base), /الحجم الافتراضي/);
+  product.defaultVariantId = 150;
+  assert.throws(() => normalizePosCatalog(base), /الحجم الافتراضي/);
+});
