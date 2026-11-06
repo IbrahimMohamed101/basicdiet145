@@ -13,7 +13,7 @@ const router = Router();
 // admin privileges and customer-app menu publication remain separately guarded.
 const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
-const readers = new Set(["cashier", "admin", "superadmin"]);
+const readers = new Set(["cashier", "restaurant", "admin", "superadmin"]);
 
 function adminView({ revision, publishedRevision, published, draft }) {
   return { revision, publishedRevision, published, draft };
