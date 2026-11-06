@@ -78,6 +78,10 @@ function normalizePosCatalog(input) {
     if (typeof product.active !== "boolean" || (product.hasAddons !== undefined && typeof product.hasAddons !== "boolean")) {
       invalid("حالة الصنف والإضافات غير صالحة.");
     }
+    if (product.sellStandalone !== undefined
+      && (category !== "addons" || typeof product.sellStandalone !== "boolean")) {
+      invalid("إعداد بيع الإضافة منفردة غير صالح.");
+    }
     const allowedAddonIds = product.allowedAddonIds;
     if (allowedAddonIds !== undefined) {
       if (category === "addons" || product.hasAddons !== true
@@ -90,6 +94,7 @@ function normalizePosCatalog(input) {
     return {
       id, name: label(product.name), category, variants, active: product.active,
       hasAddons: category !== "addons" && product.hasAddons === true,
+      ...(category === "addons" ? { sellStandalone: product.sellStandalone === true } : {}),
       ...(allowedAddonIds === undefined ? {} : { allowedAddonIds }),
     };
   });
