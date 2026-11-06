@@ -114,3 +114,20 @@ test("per-product add-on allowlist prevents invalid protein combinations", () =>
     items: [{ productId: "butter", variantId: "150", quantity: 1, addonIds: ["extra-beef"] }],
   })), (err) => err.code === "POS_ADDON_UNAVAILABLE");
 });
+
+
+test("attached add-ons stay priceable but standalone add-ons require opt-in", () => {
+  const attached = quotePosCart(doc, request());
+  assert.equal(attached.lines[0].addons[0].productId, "extra-chicken");
+  assert.throws(() => quotePosCart(doc, request({ items: [
+    { productId: "extra-chicken", variantId: "portion", quantity: 1, addonIds: [] },
+  ] })), (err) => err.code === "POS_PRODUCT_UNAVAILABLE");
+
+  const enabled = structuredClone(doc);
+  enabled.published.products.find((item) => item.id === "extra-chicken").sellStandalone = true;
+  const result = quotePosCart(enabled, request({ items: [
+    { productId: "extra-chicken", variantId: "portion", quantity: 2, addonIds: [] },
+  ] }));
+  assert.equal(result.provisionalSubtotalHalalas, 1000);
+  assert.equal(result.canCommit, false);
+});
