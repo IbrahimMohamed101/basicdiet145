@@ -7,7 +7,8 @@ const { isPosStagingRuntime } = require("../utils/posStagingRuntime");
 const { getCatalog } = require("../services/pos/catalogService");
 const { pricePosCheckout, PosFinancialError } = require("../services/pos/financialQuoteService");
 const { requireFinancialStagingWrites, hasPosCapability } = require("../services/pos/financialRuntime");
-const { issueStagingInvoice, recordStagingRefund } = require("../services/pos/financialLedgerService");
+const { issueStagingInvoice, recordStagingRefund, verifiedActor } = require("../services/pos/financialLedgerService");
+const { readOperation, abandonOperation, findOperationForActor } = require("../services/pos/operationService");
 const PosInvoice = require("../models/PosInvoice");
 const PosRefund = require("../models/PosRefund");
 const router = Router();
@@ -29,6 +30,36 @@ function errorHandler(error, res) {
   throw error;
 }
 router.use(access);
+// Operation state is read-only evidence. Even 404 does not authorize resubmission
+// with a different key: only successful abandon settles an unknown result.
+router.get("/operations/active/:kind", asyncHandler(async (req, res) => {
+  try {
+    requireFinancialStagingWrites();
+    const actor = await verifiedActor(req);
+    const operation = await findOperationForActor(actor, req.params.kind);
+    return res.json({ status: true, data: operation });
+  } catch (error) { return errorHandler(error, res); }
+}));
+router.get("/operations/:key", asyncHandler(async (req, res) => {
+  try {
+    requireFinancialStagingWrites();
+    const actor = await verifiedActor(req);
+    const operation = await readOperation(req.params.key, actor);
+    if (!operation) return errorResponse(res, 404, "POS_OPERATION_NOT_FOUND", "المحاولة غير موجودة.");
+    return res.json({ status: true, data: operation });
+  } catch (error) { return errorHandler(error, res); }
+}));
+router.post("/operations/:key/abandon", asyncHandler(async (req, res) => {
+  try {
+    requireFinancialStagingWrites();
+    const actor = await verifiedActor(req);
+    if (req.body?.kind === "refund" && !hasPosCapability(actor.role, "pos.refund")) {
+      return errorResponse(res, 403, "FORBIDDEN", "صلاحية المرتجع غير متاحة.");
+    }
+    const operation = await abandonOperation(req.params.key, actor, req.body?.kind);
+    return res.json({ status: true, data: operation });
+  } catch (error) { return errorHandler(error, res); }
+}));
 router.post("/checkout/quote", asyncHandler(async (req, res) => {
   const doc = await getCatalog();
   try {

@@ -9,6 +9,9 @@ const PosRefund = require("../src/models/PosRefund");
 const PosAudit = require("../src/models/PosAudit");
 const PosLedger = require("../src/models/PosLedger");
 const PosRefundBalance = require("../src/models/PosRefundBalance");
+const PosOperation = require("../src/models/PosOperation");
+const { abandonOperation } = require("../src/services/pos/operationService");
+const { canonicalHash, normalizeSaleIntent } = require("../src/services/pos/financialIntent");
 const { seedPosStagingCatalog, getCatalog, saveDraft, publishDraft } =
   require("../src/services/pos/catalogService");
 const { pricePosCheckout } = require("../src/services/pos/financialQuoteService");
@@ -84,12 +87,19 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     await assert.rejects(issueStagingInvoice(actor, saleRequest(revision, {
       tender: { method: "cash", receivedHalalas: 10 },
     }), key(3), opts), /المبلغ النقدي/);
-    const concurrent = await Promise.all(
-      Array.from({ length: 4 }, (_, i) =>
-        issueStagingInvoice(i % 2 ? actor : actor2, saleRequest(revision, {
-          tender: { method: "network" },
-        }), key(10 + i), opts))
-    );
+    // Pending is unique per employee; distinct concurrent keys MUST use
+    // different employees (a second key from the same employee is rejected).
+    const concurrentActors = await Promise.all(Array.from({ length: 4 }, async (_, i) => {
+      const user = await DashboardUser.create({
+        email: "parallel-cashier-" + i + "@pos-staging.invalid",
+        passwordHash: "test-hash-not-a-real-credential",
+        role: "cashier", name: "parallel cashier " + i, isActive: true,
+      });
+      return { dashboardUserId: String(user._id), dashboardUserRole: "cashier" };
+    }));
+    const concurrent = await Promise.all(concurrentActors.map((staff, i) =>
+      issueStagingInvoice(staff, saleRequest(revision, { tender: { method: "network" } }),
+        key(10 + i), opts)));
     assert.equal(concurrent.length, 4);
     const numbers = (await PosInvoice.find({}).sort({ sequence: 1 }).lean())
       .map(invoice => invoice.sequence);
@@ -172,6 +182,145 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     const persisted = await PosInvoice.findById(pricedThree.invoice._id).lean();
     assert.equal(persisted.totals.grossHalalas, pricedThree.invoice.totals.grossHalalas);
     assert.equal(persisted.lines[0].quantity, 3);
+
+    // Every permanently rejected operation is closed; a new key succeeds.
+    const rejected = await PosOperation.findById(key(20)).lean();
+    assert.equal(rejected.status, "rejected");
+    assert.equal(rejected.errorCode, "POS_CATALOG_CONFLICT");
+    const afterReject = await issueStagingInvoice(actor, saleRequest(newRev, {
+      tender: { method: "network" },
+    }), key(50), opts);
+    assert.ok(afterReject.invoice.number);
+
+    // Abandon before an HTTP POST arrives creates a durable tombstone.
+    const ownerActor = { id: String(owner._id), role: "cashier" };
+    const beforeCount = await PosInvoice.countDocuments({});
+    const late = key(51);
+    const closed = await abandonOperation(late, ownerActor, "sale", opts);
+    assert.equal(closed.status, "abandoned");
+    await assert.rejects(issueStagingInvoice(actor, saleRequest(newRev), late, opts),
+      err => err.code === "POS_OPERATION_CLOSED");
+    assert.equal(await PosInvoice.countDocuments({}), beforeCount);
+
+    // A pending sale for this cashier blocks only NEW keys, until resolved.
+    const pendingKey = key(52);
+    await PosOperation.create({
+      _id: pendingKey, kind: "sale", operatorId: String(owner._id),
+      payloadHash: canonicalHash(normalizeSaleIntent(saleRequest(newRev))),
+      status: "pending",
+    });
+    await assert.rejects(issueStagingInvoice(actor, saleRequest(newRev), key(53), opts),
+      err => err.code === "POS_OPERATION_PENDING");
+    assert.equal((await PosOperation.findById(pendingKey)).status, "pending");
+    assert.equal((await abandonOperation(pendingKey, ownerActor, "sale", opts)).status, "abandoned");
+
+    // Commit / abandon race on one document: exactly one terminal outcome.
+    const raceKey = key(54);
+    const [saleRace, abandonRace] = await Promise.allSettled([
+      issueStagingInvoice(actor, saleRequest(newRev), raceKey, opts),
+      abandonOperation(raceKey, ownerActor, "sale", opts),
+    ]);
+    const raceState = await PosOperation.findById(raceKey).lean();
+    assert.ok(["committed", "abandoned"].includes(raceState.status));
+    if (raceState.status === "committed") {
+      assert.equal(saleRace.status, "fulfilled");
+      const final = await abandonOperation(raceKey, ownerActor, "sale", opts);
+      assert.equal(final.status, "committed");
+      assert.equal(String(final.resultId), String(saleRace.value.invoice._id));
+    } else {
+      assert.equal(saleRace.status, "rejected");
+      assert.equal(await PosInvoice.countDocuments({ idempotencyKey: raceKey }), 0);
+    }
+    assert.equal(abandonRace.status, "fulfilled");
+
+    // 20 retries of the identical key must produce a single invoice.
+    const concurrentKey = key(55);
+    const twentySame = await Promise.allSettled(Array.from({ length: 20 },
+      () => issueStagingInvoice(actor, saleRequest(newRev), concurrentKey, opts)));
+    assert.ok(twentySame.some(entry => entry.status === "fulfilled"));
+    assert.equal(await PosInvoice.countDocuments({ idempotencyKey: concurrentKey }), 1);
+
+    // 20 separate employees / keys. Sequential numbers with no gaps even
+    // with simultaneous database transactions.
+    const parallelStaff = await Promise.all(Array.from({ length: 20 }, async (_, i) => {
+      const user = await DashboardUser.create({
+        email: "load-cashier-" + i + "@pos-staging.invalid",
+        passwordHash: "test-hash-not-a-real-credential",
+        role: "cashier", name: "cashier-load-" + i, isActive: true,
+      });
+      return { dashboardUserId: String(user._id), dashboardUserRole: "cashier" };
+    }));
+    const load = await Promise.all(parallelStaff.map((staff, i) =>
+      issueStagingInvoice(staff, saleRequest(newRev, {
+        tender: { method: "network" },
+      }), key(100 + i), opts)));
+    assert.equal(load.length, 20);
+    const allSequences = (await PosInvoice.find({}).sort({ sequence: 1 }).lean())
+      .map(row => row.sequence);
+    assert.deepEqual(allSequences,
+      Array.from({ length: allSequences.length }, (_, i) => i + 1));
+    assert.equal(new Set(allSequences).size, allSequences.length);
+
+    // Refund ambiguity and race use the same operation fence.
+    const refundCase = await issueStagingInvoice(actor, saleRequest(newRev, {
+      items: [{ productId: "water", variantId: "bottle", quantity: 2, addons: [] }],
+      tender: { method: "cash", receivedHalalas: 2000 },
+    }), key(130), opts);
+    const refundBody = { invoiceId: String(refundCase.invoice._id),
+      reason: "تجربة رد جزئي آمن", method: "cash",
+      lines: [{ lineId: refundCase.invoice.lines[0].id, quantity: 1 }] };
+    const refundPending = key(131);
+    await PosOperation.create({
+      _id: refundPending, kind: "refund", operatorId: String(owner._id),
+      payloadHash: canonicalHash(refundBody), status: "pending",
+    });
+    await assert.rejects(recordStagingRefund(actor, refundBody, key(132), opts),
+      err => err.code === "POS_OPERATION_PENDING");
+    assert.equal((await abandonOperation(refundPending, ownerActor, "refund", opts)).status,
+      "abandoned");
+    await assert.rejects(recordStagingRefund(actor, refundBody, refundPending, opts),
+      err => err.code === "POS_OPERATION_CLOSED");
+
+    const refundKey = key(133);
+    const refundRace = await Promise.allSettled([
+      recordStagingRefund(actor, refundBody, refundKey, opts),
+      abandonOperation(refundKey, ownerActor, "refund", opts),
+    ]);
+    const refundFinal = await PosOperation.findById(refundKey).lean();
+    assert.ok(["committed", "abandoned"].includes(refundFinal.status));
+    if (refundFinal.status === "abandoned") {
+      assert.equal(await PosRefund.countDocuments({ idempotencyKey: refundKey }), 0);
+    } else {
+      assert.equal(await PosRefund.countDocuments({ idempotencyKey: refundKey }), 1);
+    }
+    assert.equal(refundRace[1].status, "fulfilled");
+
+    // 20 simultaneous retries of one refund key cannot issue 20 refunds.
+    const bulkSource = await issueStagingInvoice(actor, saleRequest(newRev, {
+      items: [{ productId: "water", variantId: "bottle", quantity: 25, addons: [] }],
+      tender: { method: "cash", receivedHalalas: 20000 },
+    }), key(200), opts);
+    const unitRefund = { invoiceId: String(bulkSource.invoice._id),
+      reason: "رد تجريبي للتحقق من التزامن", method: "cash",
+      lines: [{ lineId: bulkSource.invoice.lines[0].id, quantity: 1 }] };
+    const twentyRefundReplays = await Promise.allSettled(Array.from({ length: 20 },
+      () => recordStagingRefund(actor, unitRefund, key(201), opts)));
+    assert.ok(twentyRefundReplays.some(entry => entry.status === "fulfilled"));
+    assert.equal(await PosRefund.countDocuments({ idempotencyKey: key(201) }), 1);
+
+    // Distinct cashier actors and distinct keys: valid partial refunds never
+    // exceed the original invoice, and the refund number counter has no gaps.
+    const multiRefunds = await Promise.all(parallelStaff.map((staff, i) =>
+      recordStagingRefund(staff, unitRefund, key(220 + i), opts)));
+    assert.equal(multiRefunds.length, 20);
+    const bulkBalance = await PosRefundBalance.findById(
+      bulkSource.invoice._id.toString() + ":" + bulkSource.invoice.lines[0].id).lean();
+    assert.equal(bulkBalance.refundedQuantity, 21);
+    assert.ok(bulkBalance.refundedGrossHalalas <= bulkSource.invoice.lines[0].grossHalalas);
+    const refundSequences = (await PosRefund.find({}).sort({ sequence: 1 }).lean())
+      .map(row => row.sequence);
+    assert.deepEqual(refundSequences,
+      Array.from({ length: refundSequences.length }, (_, i) => i + 1));
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
