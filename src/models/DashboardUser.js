@@ -4,6 +4,7 @@ const { DASHBOARD_ROLES } = require("../constants/dashboardRoles");
 const DashboardUserSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    name: { type: String, trim: true, maxlength: 100, default: null }, // Optional trusted staff name; never supplied by POS sale body
     passwordHash: { type: String, required: true },
     role: { type: String, enum: DASHBOARD_ROLES, required: true },
     isActive: { type: Boolean, default: true },

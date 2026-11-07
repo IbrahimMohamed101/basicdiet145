@@ -8,6 +8,7 @@ const schema = new mongoose.Schema({
   catalogId: { type: String, required: true, immutable: true },
   revision: { type: Number, required: true, immutable: true },
   publishedAt: { type: Date, required: true, immutable: true },
+  publishedBy: { type: mongoose.Schema.Types.Mixed, default: null, immutable: true },
   contentSha256: { type: String, required: true, immutable: true },
   catalog: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true },
 }, {
