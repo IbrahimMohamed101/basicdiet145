@@ -7,6 +7,7 @@ const errorResponse = require("../utils/errorResponse");
 const { normalizePosCatalog, normalizePosChannels } = require("../services/pos/catalogValidation");
 const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevision } = require("../services/pos/catalogService");
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
+const { verifiedActor } = require("../services/pos/financialLedgerService");
 
 const router = Router();
 // POS management is an operational duty of cashier and restaurant; financial
@@ -15,8 +16,8 @@ const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
 const readers = new Set(["cashier", "restaurant", "admin", "superadmin"]);
 
-function adminView({ revision, publishedRevision, published, draft }) {
-  return { revision, publishedRevision, published, draft };
+function adminView({ revision, publishedRevision, published, draft, draftSavedBy, draftSavedAt, publishedBy, publishedAt }) {
+  return { revision, publishedRevision, published, draft, draftSavedBy, draftSavedAt, publishedBy, publishedAt };
 }
 
 router.get("/catalog", asyncHandler(async (req, res) => {
@@ -80,7 +81,8 @@ router.put("/catalog/draft", manage, asyncHandler(async (req, res) => {
   } catch (error) {
     return errorResponse(res, 400, "VALIDATION_ERROR", error.message);
   }
-  const doc = await saveDraft(revision, draft);
+  const actor = await verifiedActor(req);
+  const doc = await saveDraft(revision, draft, actor);
   if (!doc) return errorResponse(res, 409, "POS_CATALOG_CONFLICT", "المنيو اتغير. حمّل آخر نسخة وحاول مرة أخرى.");
   return res.json({ status: true, data: adminView(doc) });
 }));
@@ -90,7 +92,8 @@ router.post("/catalog/publish", manage, asyncHandler(async (req, res) => {
   if (!Number.isSafeInteger(revision) || revision < 1) {
     return errorResponse(res, 400, "VALIDATION_ERROR", "نسخة المنيو غير صالحة.");
   }
-  const doc = await publishDraft(revision);
+  const actor = await verifiedActor(req);
+  const doc = await publishDraft(revision, actor);
   if (!doc) return errorResponse(res, 409, "POS_CATALOG_CONFLICT", "لا توجد مسودة مطابقة. حمّل آخر نسخة.");
   return res.json({ status: true, data: adminView(doc) });
 }));
