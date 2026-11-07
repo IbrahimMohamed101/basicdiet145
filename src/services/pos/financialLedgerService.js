@@ -83,10 +83,20 @@ async function afterUnknownOutcome(Model, key, hash, originalError) {
 async function issueStagingInvoice(req, body, key, options = {}) {
   requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
-  const intent = normalizeSaleIntent(body);
-  const hash = canonicalHash(intent);
   const actor = await verifiedActor(req);
   await ensureFinancialIndexes();
+  let intent, hash;
+  try {
+    intent = normalizeSaleIntent(body);
+    hash = canonicalHash(intent);
+  } catch (error) {
+    if (error instanceof PosFinancialError && error.status >= 400 && error.status < 500) {
+      const registered = await beginOperation(actor, "sale", key, canonicalHash(body));
+      if (registered.replayed) return { invoice: registered.result, replayed: true };
+      await rejectOperation(key, error.code);
+    }
+    throw error;
+  }
   const registered = await beginOperation(actor, "sale", key, hash);
   if (registered.replayed) return { invoice: registered.result, replayed: true };
   const session = await mongoose.startSession();
@@ -228,13 +238,23 @@ function proportionalRefund(line, balance, quantity) {
 async function recordStagingRefund(req, body, key, options = {}) {
   requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
-  const intent = normalizeRefundIntent(body);
-  const hash = canonicalHash(intent);
   const actor = await verifiedActor(req);
   if (!hasPosCapability(actor.role, "pos.refund")) {
     throw new PosFinancialError("FORBIDDEN", "الموظف ليس لديه صلاحية pos.refund.", 403);
   }
   await ensureFinancialIndexes();
+  let intent, hash;
+  try {
+    intent = normalizeRefundIntent(body);
+    hash = canonicalHash(intent);
+  } catch (error) {
+    if (error instanceof PosFinancialError && error.status >= 400 && error.status < 500) {
+      const registered = await beginOperation(actor, "refund", key, canonicalHash(body));
+      if (registered.replayed) return { refund: registered.result, replayed: true };
+      await rejectOperation(key, error.code);
+    }
+    throw error;
+  }
   const registered = await beginOperation(actor, "refund", key, hash);
   if (registered.replayed) return { refund: registered.result, replayed: true };
   const session = await mongoose.startSession();
