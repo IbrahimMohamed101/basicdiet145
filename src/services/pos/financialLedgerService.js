@@ -24,7 +24,14 @@ function ensureFinancialIndexes() {
   if (!readyPromise) readyPromise = Promise.all([
     PosInvoice.createIndexes(), PosRefund.createIndexes(),
     PosRefundBalance.createIndexes(), PosLedger.createIndexes(),
-  ]).catch(error => { readyPromise = null; throw error; });
+  ]).then(async () => {
+    // Preseed counters before transactions so the very first concurrent
+    // issue cannot race two transactional counter upserts.
+    for (const kind of ["sale", "refund"]) {
+      await PosCounter.updateOne({ _id: kind },
+        { $setOnInsert: { sequence: 0 } }, { upsert: true });
+    }
+  }).catch(error => { readyPromise = null; throw error; });
   return readyPromise;
 }
 async function verifiedActor(req) {
