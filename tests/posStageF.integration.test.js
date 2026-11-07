@@ -154,6 +154,13 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
       line.grossHalalas);
     assert.equal(returns.reduce((sum, r) => sum + r.refund.totals.vatHalalas, 0),
       line.vatHalalas);
+    const journal = await PosLedger.findOne({ invoiceId: pricedThree.invoice._id }).lean();
+    assert.equal(journal.refunds.length, 3, "every refund is appended to the same POS ledger in its transaction");
+    assert.ok(journal.refunds.every(r => r.type === "refund" && r.amountHalalas <= 0));
+    assert.equal(journal.refunds.reduce((sum, r) => sum - r.amountHalalas, 0),
+      line.grossHalalas);
+    assert.match(String(pricedThree.invoice.businessDate), /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(returns.every(r => r.refund.businessDate === pricedThree.invoice.businessDate));
     const refundReplay = await recordStagingRefund(actor, rr(0), key(30), opts);
     assert.equal(refundReplay.replayed, true);
     assert.equal(String(refundReplay.refund._id), String(returns[0].refund._id));
