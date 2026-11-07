@@ -49,7 +49,7 @@ function normalizeSaleIntent(body) {
     deny("نوع طلب المطعم غير صالح.");
   }
   const externalOrderNumber = restaurant ? null : (body.externalOrderNumber ?? "");
-  if (typeof externalOrderNumber !== "string" || externalOrderNumber.length > 60) {
+  if (!restaurant && (typeof externalOrderNumber !== "string" || externalOrderNumber.length > 60)) {
     deny("رقم طلب التطبيق غير صالح.");
   }
   return {
