@@ -8,6 +8,8 @@ const PosRefundBalance = require("../../models/PosRefundBalance");
 const PosCounter = require("../../models/PosCounter");
 const PosAudit = require("../../models/PosAudit");
 const PosLedger = require("../../models/PosLedger");
+const PosOperation = require("../../models/PosOperation");
+const { beginOperation, commitOperation, rejectOperation } = require("./operationService");
 const { PosFinancialError, pricePosCheckout } = require("./financialQuoteService");
 const { requireFinancialStagingWrites, hasPosCapability } = require("./financialRuntime");
 const { canonicalHash, validateIdempotencyKey, normalizeSaleIntent, normalizeRefundIntent } = require("./financialIntent");
@@ -23,7 +25,7 @@ let readyPromise;
 function ensureFinancialIndexes() {
   if (!readyPromise) readyPromise = Promise.all([
     PosInvoice.createIndexes(), PosRefund.createIndexes(),
-    PosRefundBalance.createIndexes(), PosLedger.createIndexes(),
+    PosRefundBalance.createIndexes(), PosLedger.createIndexes(), PosOperation.createIndexes(),
   ]).then(async () => {
     // Preseed counters before transactions so the very first concurrent
     // issue cannot race two transactional counter upserts.
@@ -83,17 +85,26 @@ async function issueStagingInvoice(req, body, key, options = {}) {
   validateIdempotencyKey(key);
   const intent = normalizeSaleIntent(body);
   const hash = canonicalHash(intent);
-  const replay = await PosInvoice.findOne({ idempotencyKey: key }).lean();
-  if (replay) return { invoice: samePayload(replay, hash), replayed: true };
   const actor = await verifiedActor(req);
   await ensureFinancialIndexes();
+  const registered = await beginOperation(actor, "sale", key, hash);
+  if (registered.replayed) return { invoice: registered.result, replayed: true };
   const session = await mongoose.startSession();
   let saved = null;
   try {
     try {
       await session.withTransaction(async () => {
+        saved = null;
+        const operation = await PosOperation.findById(key).session(session).lean();
+        if (!operation || operation.status !== "pending" || operation.kind !== "sale") {
+          conflict("تم إغلاق محاولة البيع قبل إصدار الفاتورة.");
+        }
         const existing = await PosInvoice.findOne({ idempotencyKey: key }).session(session).lean();
-        if (existing) { saved = samePayload(existing, hash); return; }
+        if (existing) {
+          saved = samePayload(existing, hash);
+          await commitOperation(session, key, "sale", existing);
+          return;
+        }
         // The write fence serializes any concurrent menu publication against
         // this sale's catalog read. It does not bump the published revision.
         const catalog = await PosCatalog.findOneAndUpdate(
@@ -169,6 +180,7 @@ async function issueStagingInvoice(req, body, key, options = {}) {
             valueHalalas: priced.totals.invoiceDiscountHalalas },
         });
         await PosAudit.insertMany(audit, { session });
+        await commitOperation(session, key, "sale", invoice);
         saved = receiptView(invoice);
       }, TRANSACTION_OPTIONS);
     } catch (error) {
@@ -179,6 +191,11 @@ async function issueStagingInvoice(req, body, key, options = {}) {
       }
       throw error;
     }
+  } catch (error) {
+    if (error instanceof PosFinancialError && [400, 404, 409].includes(error.status)) {
+      await rejectOperation(key, error.code);
+    }
+    throw error;
   } finally {
     await session.endSession();
   }
@@ -213,20 +230,29 @@ async function recordStagingRefund(req, body, key, options = {}) {
   validateIdempotencyKey(key);
   const intent = normalizeRefundIntent(body);
   const hash = canonicalHash(intent);
-  const replay = await PosRefund.findOne({ idempotencyKey: key }).lean();
-  if (replay) return { refund: samePayload(replay, hash), replayed: true };
   const actor = await verifiedActor(req);
   if (!hasPosCapability(actor.role, "pos.refund")) {
     throw new PosFinancialError("FORBIDDEN", "الموظف ليس لديه صلاحية pos.refund.", 403);
   }
   await ensureFinancialIndexes();
+  const registered = await beginOperation(actor, "refund", key, hash);
+  if (registered.replayed) return { refund: registered.result, replayed: true };
   const session = await mongoose.startSession();
   let saved = null;
   try {
     try {
       await session.withTransaction(async () => {
+        saved = null;
+        const operation = await PosOperation.findById(key).session(session).lean();
+        if (!operation || operation.status !== "pending" || operation.kind !== "refund") {
+          conflict("تم إغلاق محاولة المرتجع قبل تسجيله.");
+        }
         const existing = await PosRefund.findOne({ idempotencyKey: key }).session(session).lean();
-        if (existing) { saved = samePayload(existing, hash); return; }
+        if (existing) {
+          saved = samePayload(existing, hash);
+          await commitOperation(session, key, "refund", existing);
+          return;
+        }
         const invoice = await PosInvoice.findById(intent.invoiceId).session(session).lean();
         if (!invoice) {
           throw new PosFinancialError("POS_INVOICE_NOT_FOUND", "الفاتورة غير موجودة.", 404);
@@ -279,6 +305,7 @@ async function recordStagingRefund(req, body, key, options = {}) {
             reason: intent.reason, method: intent.method,
             amountHalalas: totals.grossHalalas, externalOnly: true },
         }], { session });
+        await commitOperation(session, key, "refund", docs[0]);
         saved = receiptView(docs[0]);
       }, TRANSACTION_OPTIONS);
     } catch (error) {
@@ -289,6 +316,11 @@ async function recordStagingRefund(req, body, key, options = {}) {
       }
       throw error;
     }
+  } catch (error) {
+    if (error instanceof PosFinancialError && [400, 404, 409].includes(error.status)) {
+      await rejectOperation(key, error.code);
+    }
+    throw error;
   } finally {
     await session.endSession();
   }
