@@ -59,9 +59,11 @@ function pricePosCheckout(doc, request, options = {}) {
     }
     const used = new Set();
     for (const [addonIndex, row] of additions.entries()) {
-      if (!validId(row?.productId) || used.has(row.productId)
-        || !Number.isSafeInteger(row.quantity) || row.quantity < 1 || row.quantity > 10) {
-        fail("POS_ADDON_INVALID", "الإضافة مكررة أو كميتها خارج الحد 1 إلى 10.");
+      if (!validId(row?.productId) || used.has(row.productId)) {
+        fail("POS_ADDON_INVALID", "الإضافة مكررة أو معرّفها غير صحيح.");
+      }
+      if (!Number.isSafeInteger(row.quantity) || row.quantity < 1 || row.quantity > 10) {
+        fail("POS_ADDON_INVALID", "كمية الإضافة يجب أن تكون بين 1 و10.");
       }
       used.add(row.productId);
       const addon = products.get(row.productId);
