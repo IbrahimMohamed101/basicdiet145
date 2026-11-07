@@ -3,6 +3,7 @@ on:
   pull_request:
     branches:
       - codex/pos-staging-isolation
+      - codex/pos-f-operations-safety-staging-20261107
   push:
     branches:
       - codex/pos-staging-isolation
@@ -33,6 +34,8 @@ jobs:
           node --check src/services/pos/financialQuoteService.js
           node --check src/services/pos/financialIntent.js
           node --check src/services/pos/financialRuntime.js
+          node --check src/models/PosOperation.js
+          node --check src/services/pos/operationService.js
           node --check src/services/pos/financialLedgerService.js
           node --check src/routes/dashboardPosFinancial.js
       - name: Seven approved VAT vectors and financial intent/property tests
