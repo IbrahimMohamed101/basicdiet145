@@ -264,6 +264,7 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     // Refund ambiguity and race use the same operation fence.
     const refundCase = await issueStagingInvoice(actor, saleRequest(newRev, {
       items: [{ productId: "water", variantId: "bottle", quantity: 2, addons: [] }],
+      tender: { method: "cash", receivedHalalas: 2000 },
     }), key(130), opts);
     const refundBody = { invoiceId: String(refundCase.invoice._id),
       reason: "تجربة رد جزئي آمن", method: "cash",
