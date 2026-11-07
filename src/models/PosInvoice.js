@@ -1,5 +1,6 @@
 "use strict";
 const mongoose = require("mongoose");
+const { businessDateAt } = require("../services/pos/businessDate");
 const schema = new mongoose.Schema({
   sequence: { type: Number, required: true, immutable: true },
   number: { type: String, required: true, unique: true, immutable: true },
@@ -18,6 +19,8 @@ const schema = new mongoose.Schema({
   documentKind: { type: String, required: true, enum: ["STAGING_TEST_NON_TAX"], immutable: true },
   note: { type: String, required: true, default: "فاتورة تجريبية — غير ضريبية", immutable: true },
   issuedAt: { type: Date, required: true, immutable: true },
+  businessDate: { type: String, default: () => businessDateAt(), required: true, immutable: true },
 }, { collection: "pos_invoices", strict: "throw", versionKey: false });
 schema.index({ channel: 1, issuedAt: -1 });
+schema.index({ businessDate: 1, channel: 1 });
 module.exports = mongoose.model("PosInvoice", schema);
