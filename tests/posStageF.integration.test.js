@@ -196,7 +196,7 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     const ownerActor = { id: String(owner._id), role: "cashier" };
     const beforeCount = await PosInvoice.countDocuments({});
     const late = key(51);
-    const closed = await abandonOperation(late, ownerActor, "sale");
+    const closed = await abandonOperation(late, ownerActor, "sale", opts);
     assert.equal(closed.status, "abandoned");
     await assert.rejects(issueStagingInvoice(actor, saleRequest(newRev), late, opts),
       err => err.code === "POS_OPERATION_CLOSED");
@@ -212,19 +212,19 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     await assert.rejects(issueStagingInvoice(actor, saleRequest(newRev), key(53), opts),
       err => err.code === "POS_OPERATION_PENDING");
     assert.equal((await PosOperation.findById(pendingKey)).status, "pending");
-    assert.equal((await abandonOperation(pendingKey, ownerActor, "sale")).status, "abandoned");
+    assert.equal((await abandonOperation(pendingKey, ownerActor, "sale", opts)).status, "abandoned");
 
     // Commit / abandon race on one document: exactly one terminal outcome.
     const raceKey = key(54);
     const [saleRace, abandonRace] = await Promise.allSettled([
       issueStagingInvoice(actor, saleRequest(newRev), raceKey, opts),
-      abandonOperation(raceKey, ownerActor, "sale"),
+      abandonOperation(raceKey, ownerActor, "sale", opts),
     ]);
     const raceState = await PosOperation.findById(raceKey).lean();
     assert.ok(["committed", "abandoned"].includes(raceState.status));
     if (raceState.status === "committed") {
       assert.equal(saleRace.status, "fulfilled");
-      const final = await abandonOperation(raceKey, ownerActor, "sale");
+      const final = await abandonOperation(raceKey, ownerActor, "sale", opts);
       assert.equal(final.status, "committed");
       assert.equal(String(final.resultId), String(saleRace.value.invoice._id));
     } else {
@@ -275,7 +275,7 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     });
     await assert.rejects(recordStagingRefund(actor, refundBody, key(132), opts),
       err => err.code === "POS_OPERATION_PENDING");
-    assert.equal((await abandonOperation(refundPending, ownerActor, "refund")).status,
+    assert.equal((await abandonOperation(refundPending, ownerActor, "refund", opts)).status,
       "abandoned");
     await assert.rejects(recordStagingRefund(actor, refundBody, refundPending, opts),
       err => err.code === "POS_OPERATION_CLOSED");
@@ -283,7 +283,7 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
     const refundKey = key(133);
     const refundRace = await Promise.allSettled([
       recordStagingRefund(actor, refundBody, refundKey, opts),
-      abandonOperation(refundKey, ownerActor, "refund"),
+      abandonOperation(refundKey, ownerActor, "refund", opts),
     ]);
     const refundFinal = await PosOperation.findById(refundKey).lean();
     assert.ok(["committed", "abandoned"].includes(refundFinal.status));
