@@ -23,6 +23,7 @@ function normalizeDiscount(discount) {
     return { type: "fixed", value: assertAmount(discount.value, "قيمة الخصم غير صالحة.") };
   }
   // Hundredths of one percent, e.g. 10.25% = 1025 bps.
+  if (typeof discount.value !== "number") invalid("نسبة الخصم يجب أن تكون رقمًا.");
   const scaled = discount.value * 100;
   if (!Number.isFinite(scaled) || !Number.isSafeInteger(Math.round(scaled))
     || Math.abs(scaled - Math.round(scaled)) > 1e-8 || scaled < 0 || scaled > 10000) {
@@ -44,7 +45,7 @@ function vatOnInclusiveGross(gross) {
 }
 function pricePosInvoice(input, options = {}) {
   const { lines, invoiceDiscount } = input || {};
-  if (!Array.isArray(lines) || !lines.length || lines.length > 100) invalid("سطور الفاتورة غير صالحة.");
+  if (!Array.isArray(lines) || !lines.length || lines.length > 550) invalid("سطور الفاتورة غير صالحة.");
   const cap = options.cashierDiscountCapHalalas ?? null;
   if (cap !== null) assertAmount(cap, "إعداد سقف خصم الكاشير غير صالح.");
   const prepared = lines.map((line, index) => {
@@ -66,13 +67,17 @@ function pricePosInvoice(input, options = {}) {
   const allocation = prepared.map(() => 0);
   if (invoiceDiscountHalalas > 0 && base > 0) {
     const fractions = prepared.map((line, index) => {
-      const numerator = invoiceDiscountHalalas * line.afterLineDiscountHalalas;
-      const quotient = Math.floor(numerator / base);
+      // BigInt keeps the largest-remainder ordering exact near the safe
+      // halala total; JS Number multiplication would lose precision here.
+      const numerator = BigInt(invoiceDiscountHalalas) * BigInt(line.afterLineDiscountHalalas);
+      const quotient = Number(numerator / BigInt(base));
       allocation[index] = quotient;
-      return { index, remainder: numerator % base, amount: line.afterLineDiscountHalalas };
+      return { index, remainder: numerator % BigInt(base), amount: line.afterLineDiscountHalalas };
     });
     let remaining = invoiceDiscountHalalas - allocation.reduce((a, b) => a + b, 0);
-    fractions.sort((a, b) => b.remainder - a.remainder || b.amount - a.amount || a.index - b.index);
+    fractions.sort((a, b) => a.remainder === b.remainder
+      ? b.amount - a.amount || a.index - b.index
+      : a.remainder > b.remainder ? -1 : 1);
     for (const f of fractions) {
       if (remaining-- <= 0) break;
       allocation[f.index] += 1;
