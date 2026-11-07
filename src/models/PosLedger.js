@@ -16,7 +16,7 @@ const schema = new mongoose.Schema({
     refundId: { type: mongoose.Schema.Types.ObjectId, required: true },
     refundNumber: { type: String, required: true },
     type: { type: String, enum: ["refund"], required: true },
-    amountHalalas: { type: Number, required: true, max: -1, validate: Number.isSafeInteger },
+    amountHalalas: { type: Number, required: true, max: 0, validate: Number.isSafeInteger },
     method: { type: String, required: true },
     businessDate: { type: String, required: true },
     recordedAt: { type: Date, required: true },
