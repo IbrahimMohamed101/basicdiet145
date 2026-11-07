@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Tajawal } from "next/font/google";
 import { MotionRuntime } from "@/components/MotionRuntime";
+import { MetaPixel } from "@/components/MetaPixel";
 import "./globals.css";
 
 const tajawal = Tajawal({
@@ -23,6 +24,9 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  other: {
+    "facebook-domain-verification": "3b52rqmckolpiqw6r0dkqrnfuwgovn",
   },
   openGraph: {
     siteName: "بيسك دايت - Basic Diet",
@@ -47,6 +51,7 @@ export default function RootLayout({
       </head>
       <body>
         <MotionRuntime />
+        <MetaPixel />
         {children}
       </body>
     </html>
