@@ -95,4 +95,7 @@ router.post("/catalog/publish", manage, asyncHandler(async (req, res) => {
   return res.json({ status: true, data: adminView(doc) });
 }));
 
+// Financial endpoints are additionally guarded by exact isolated Staging runtime.
+router.use("/", require("./dashboardPosFinancial"));
+
 module.exports = router;
