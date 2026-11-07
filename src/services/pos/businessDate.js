@@ -14,7 +14,7 @@ function businessDateAt(instant = new Date()) {
 }
 
 function boundsForBusinessDate(value) {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new TypeError("Invalid Asia/Riyadh businessDate");
   }
   const start = new Date(value + "T00:00:00+03:00");
