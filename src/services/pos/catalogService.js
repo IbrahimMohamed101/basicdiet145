@@ -130,7 +130,12 @@ async function publishDraft(revision, actor = null) {
       await PosCatalogRevision.create([nextSnapshot], { session });
       if (actor) await PosAudit.create([{
         event: "POS_CATALOG_PUBLISHED", actor, at: nextPublishedAt,
-        details: { publishedRevision: nextRevision, contentSha256: nextSnapshot.contentSha256 },
+        details: {
+          sourceRevision: current.publishedRevision,
+          sourceContentSha256: previous.contentSha256,
+          publishedRevision: nextRevision,
+          contentSha256: nextSnapshot.contentSha256,
+        },
       }], { session });
       result = updated;
     }, {
@@ -146,7 +151,7 @@ async function publishDraft(revision, actor = null) {
 async function getCatalogRevisions(limit = 30) {
   const capped = Math.max(1, Math.min(Number(limit) || 30, 50));
   return PosCatalogRevision.find({ catalogId: CATALOG_ID })
-    .select("revision publishedAt contentSha256")
+    .select("revision publishedAt publishedBy contentSha256")
     .sort({ revision: -1 })
     .limit(capped)
     .lean();
