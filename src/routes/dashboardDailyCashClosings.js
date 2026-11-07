@@ -117,10 +117,14 @@ router.post("/:date/submit", handle(async (req, res) => {
   const automatic = await closingService.subscriptionPaymentsForDate(date);
   const inputs = closingService.inputSnapshot(existing);
   const summary = closingService.calculateClosing(inputs.channels, inputs.collections, automatic, inputs.confirmedSubscriptionCount);
-  if ((summary.subscriptionCountDifference !== 0 || summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0 || summary.unknownSubscriptionHalala !== 0 || automatic.reviewPaymentsCount > 0 || automatic.refundsHalala > 0)
+  // Freeze a server-side financial snapshot at submit time. The same snapshot
+  // is then displayed at approval; later sales never rewrite approved totals.
+  const expectedTotals = await closingService.expectedTotals(date);
+  const reconciliation = closingService.reconcileCountedWithServer(inputs.collections, expectedTotals);
+  if ((summary.subscriptionCountDifference !== 0 || summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0 || summary.unknownSubscriptionHalala !== 0 || automatic.reviewPaymentsCount > 0 || automatic.refundsHalala > 0 || reconciliation.localDifferenceHalala !== 0)
       && !inputs.discrepancyReason.trim())
     throw fail(400, "DISCREPANCY_REASON_REQUIRED", "وضح سبب اختلاف الاشتراكات أو المبالغ قبل الإرسال");
-  const snapshot = { ...inputs, automatic, summary, takenAt: new Date() };
+  const snapshot = { ...inputs, automatic, summary, expectedTotals, reconciliation, takenAt: new Date() };
   const closing = await DailyCashClosing.findOneAndUpdate(
     { _id: existing._id, status: "draft", updatedAt: existing.updatedAt },
     { $set: { status: "submitted", snapshot, submittedBy: req.dashboardUserId, submittedAt: new Date() },
