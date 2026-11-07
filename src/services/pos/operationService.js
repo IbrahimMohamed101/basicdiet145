@@ -67,6 +67,20 @@ async function beginOperation(actor, kind, key, hash) {
     if (operation.status === "rejected" || operation.status === "abandoned") {
       throw error("POS_OPERATION_CLOSED", "هذه المحاولة انتهت. ابدأ محاولة جديدة.");
     }
+    // Same key and payload is a safe retry. Briefly await the first request;
+    // no new operation or invoice can be created by this caller.
+    for (let i = 0; i < 40; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 125));
+      const latest = await PosOperation.findById(key).lean();
+      if (!latest) continue;
+      assertOwner(latest, actor);
+      if (latest.status === "committed") {
+        return { replayed: true, result: await getResult(latest) };
+      }
+      if (latest.status === "rejected" || latest.status === "abandoned") {
+        throw error("POS_OPERATION_CLOSED", "هذه المحاولة انتهت. ابدأ محاولة جديدة.");
+      }
+    }
     throw error("POS_OPERATION_PENDING",
       "المحاولة السابقة قيد المعالجة. تحقق من نتيجتها أو ألغها أولًا.");
   }
@@ -88,6 +102,7 @@ async function abandonOperation(key, actor, kind) {
   requireFinancialStagingWrites();
   validateIdempotencyKey(key);
   assertKind(kind);
+  await PosOperation.createIndexes();
   // Every attempt is transactional. A concurrent commit updates the exact same
   // operation document, ensuring one of abandon / commit loses by write conflict.
   for (let attempt = 0; attempt < 5; attempt += 1) {
