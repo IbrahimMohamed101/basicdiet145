@@ -131,3 +131,18 @@ test("attached add-ons stay priceable but standalone add-ons require opt-in", ()
   assert.equal(result.provisionalSubtotalHalalas, 1000);
   assert.equal(result.canCommit, false);
 });
+
+
+test("D-086 add-on quantity 3 changes the safe read-only quote without duplicate IDs", () => {
+  const quote = quotePosCart(doc, request({
+    items: [{ productId: "butter", variantId: "150", quantity: 2,
+      addons: [{ productId: "extra-chicken", quantity: 3 }] }],
+  }));
+  assert.equal(quote.lines[0].unitPriceHalalas, 4700);
+  assert.equal(quote.provisionalSubtotalHalalas, 9400);
+  assert.equal(quote.lines[0].addons[0].quantity, 3);
+  assert.throws(() => quotePosCart(doc, request({
+    items: [{ productId: "butter", variantId: "150", quantity: 1,
+      addons: [{ productId: "extra-chicken", quantity: 11 }] }],
+  })), /كمية الإضافة/);
+});
