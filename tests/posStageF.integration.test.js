@@ -294,6 +294,33 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
       assert.equal(await PosRefund.countDocuments({ idempotencyKey: refundKey }), 1);
     }
     assert.equal(refundRace[1].status, "fulfilled");
+
+    // 20 simultaneous retries of one refund key cannot issue 20 refunds.
+    const bulkSource = await issueStagingInvoice(actor, saleRequest(newRev, {
+      items: [{ productId: "water", variantId: "bottle", quantity: 25, addons: [] }],
+      tender: { method: "cash", receivedHalalas: 20000 },
+    }), key(200), opts);
+    const unitRefund = { invoiceId: String(bulkSource.invoice._id),
+      reason: "رد تجريبي للتحقق من التزامن", method: "cash",
+      lines: [{ lineId: bulkSource.invoice.lines[0].id, quantity: 1 }] };
+    const twentyRefundReplays = await Promise.allSettled(Array.from({ length: 20 },
+      () => recordStagingRefund(actor, unitRefund, key(201), opts)));
+    assert.ok(twentyRefundReplays.some(entry => entry.status === "fulfilled"));
+    assert.equal(await PosRefund.countDocuments({ idempotencyKey: key(201) }), 1);
+
+    // Distinct cashier actors and distinct keys: valid partial refunds never
+    // exceed the original invoice, and the refund number counter has no gaps.
+    const multiRefunds = await Promise.all(parallelStaff.map((staff, i) =>
+      recordStagingRefund(staff, unitRefund, key(220 + i), opts)));
+    assert.equal(multiRefunds.length, 20);
+    const bulkBalance = await PosRefundBalance.findById(
+      bulkSource.invoice._id.toString() + ":" + bulkSource.invoice.lines[0].id).lean();
+    assert.equal(bulkBalance.refundedQuantity, 21);
+    assert.ok(bulkBalance.refundedGrossHalalas <= bulkSource.invoice.lines[0].grossHalalas);
+    const refundSequences = (await PosRefund.find({}).sort({ sequence: 1 }).lean())
+      .map(row => row.sequence);
+    assert.deepEqual(refundSequences,
+      Array.from({ length: refundSequences.length }, (_, i) => i + 1));
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
