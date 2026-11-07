@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { MetaPixelSettingsButton } from "@/components/MetaPixel";
 
 export const metadata: Metadata = {
   title: "خصوصية طلب التواصل | Basic Diet",
@@ -38,6 +39,21 @@ export default function LandingPrivacyPage() {
             <p>الأشخاص المصرّح لهم بمتابعة طلبات العملاء في لوحة تحكم المطعم.
               يعمل الموقع والخادم وقاعدة البيانات من خلال مزوّدي تشغيل تقنيين.
               لا تظهر بيانات الجوال والاسم في تقارير الزيارات العامة.</p>
+          </section>
+          <section>
+            <h2 className="mb-2 text-xl font-bold">قياس أداء الإعلانات وملفات الارتباط</h2>
+            <p>
+              بعد موافقتك الاختيارية، يستخدم الموقع Meta Pixel لقياس زيارات الصفحات،
+              وطلبات التواصل الناجحة، والضغط على روابط تحميل التطبيق والاتصال، وتحسين أداء الإعلانات.
+              قد تصل إلى Meta بيانات تقنية مثل عنوان IP ومعلومات الجهاز ومعرفات ملفات الارتباط والصفحات التي زرتها.
+              لا نرسل اسمك أو رقم جوالك ضمن معلمات أحداث Pixel.
+              ويمكنك رفض التتبع أو سحب موافقتك في أي وقت دون أن يؤثر ذلك على استخدام الموقع أو إرسال طلب الاشتراك.
+              للتفاصيل عن معالجة Meta للبيانات راجع{" "}
+              <a className="font-bold underline" href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener noreferrer" style={{ color: "#108055" }}>
+                سياسة خصوصية Meta
+              </a>.
+            </p>
+            <div className="mt-3"><MetaPixelSettingsButton /></div>
           </section>
           <section>
             <h2 className="mb-2 text-xl font-bold">مدة الاحتفاظ</h2>
