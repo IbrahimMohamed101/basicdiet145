@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const crypto = require("node:crypto");
 const PosCatalog = require("../../models/PosCatalog");
 const PosCatalogRevision = require("../../models/PosCatalogRevision");
+const PosAudit = require("../../models/PosAudit");
 const { normalizePosCatalog } = require("./catalogValidation");
 const stagingCatalog = require("./stagingCatalog.json");
 const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
@@ -12,7 +13,7 @@ const publicMenuSample = require("../../../fixtures/pos/public-menu-nonpersonal-
 
 const CATALOG_ID = "pos-menu";
 
-function makeSnapshot(revision, published, publishedAt = new Date()) {
+function makeSnapshot(revision, published, publishedAt = new Date(), publishedBy = null) {
   if (!Number.isSafeInteger(revision) || revision < 1
     || !published || !Array.isArray(published.products) || !Array.isArray(published.categories)) {
     throw new Error("Cannot snapshot an invalid published POS catalogue.");
@@ -23,7 +24,7 @@ function makeSnapshot(revision, published, publishedAt = new Date()) {
     _id: CATALOG_ID + ":" + revision,
     catalogId: CATALOG_ID,
     revision,
-    publishedAt,
+    publishedAt, publishedBy,
     contentSha256: crypto.createHash("sha256").update(JSON.stringify(copy)).digest("hex"),
     catalog: copy,
   };
@@ -42,7 +43,7 @@ async function seedPosStagingCatalog() {
   const current = await getCatalog();
   if (current?.published) {
     const snapshot = makeSnapshot(
-      current.publishedRevision, current.published, current.updatedAt || new Date()
+      current.publishedRevision, current.published, current.publishedAt || current.updatedAt || new Date(), current.publishedBy || null
     );
     const existing = await PosCatalogRevision.findById(snapshot._id).lean();
     if (existing && existing.contentSha256 !== snapshot.contentSha256) {
@@ -81,14 +82,14 @@ function getCatalog() {
   return PosCatalog.findById(CATALOG_ID).lean();
 }
 
-function saveDraft(revision, draft) {
+function saveDraft(revision, draft, actor = null) {
   return PosCatalog.findOneAndUpdate({ _id: CATALOG_ID, revision }, {
-    $set: { draft },
+    $set: { draft, draftSavedBy: actor, draftSavedAt: new Date() },
     $inc: { revision: 1 },
   }, { new: true }).lean();
 }
 
-async function publishDraft(revision) {
+async function publishDraft(revision, actor = null) {
   const session = await mongoose.startSession();
   let result = null;
   try {
@@ -99,7 +100,7 @@ async function publishDraft(revision) {
       if (!current) return;
 
       const previous = makeSnapshot(
-        current.publishedRevision, current.published, current.updatedAt || new Date()
+        current.publishedRevision, current.published, current.publishedAt || current.updatedAt || new Date(), current.publishedBy || null
       );
       const existingPrevious = await PosCatalogRevision
         .findById(previous._id).session(session).lean();
@@ -107,14 +108,16 @@ async function publishDraft(revision) {
         throw new Error("POS previous published catalog history does not match its source.");
       }
       const nextRevision = revision + 1;
-      const nextSnapshot = makeSnapshot(nextRevision, current.draft);
+      const nextPublishedAt = new Date();
+      const nextSnapshot = makeSnapshot(nextRevision, current.draft, nextPublishedAt, actor);
 
       // Publishing and history inserts are one transaction. If any write fails,
       // the catalog and its revision history both roll back.
       const updated = await PosCatalog.findOneAndUpdate(
         { _id: CATALOG_ID, revision, draft: { $ne: null } },
         {
-          $set: { published: current.draft, draft: null, publishedRevision: nextRevision },
+          $set: { published: current.draft, draft: null,
+            publishedRevision: nextRevision, publishedBy: actor, publishedAt: nextPublishedAt },
           $inc: { revision: 1 },
         },
         { session, new: true }
@@ -125,6 +128,10 @@ async function publishDraft(revision) {
         { upsert: true, session }
       );
       await PosCatalogRevision.create([nextSnapshot], { session });
+      if (actor) await PosAudit.create([{
+        event: "POS_CATALOG_PUBLISHED", actor, at: nextPublishedAt,
+        details: { publishedRevision: nextRevision, contentSha256: nextSnapshot.contentSha256 },
+      }], { session });
       result = updated;
     }, {
       readConcern: { level: "snapshot" },
