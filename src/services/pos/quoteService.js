@@ -83,16 +83,22 @@ function quotePosCart(doc, request) {
       invalid("POS_PRICE_UNAVAILABLE", "الصنف غير مسعر في قناة البيع الحالية.");
     }
 
-    const addonIds = line.addonIds === undefined ? [] : line.addonIds;
-    if (!Array.isArray(addonIds) || addonIds.length > 10 || new Set(addonIds).size !== addonIds.length
-      || addonIds.some((id) => !validId(id))) {
-      invalid("POS_QUOTE_INVALID", "الإضافات غير صحيحة أو مكررة.");
+    if (line.addons !== undefined && line.addonIds !== undefined) {
+      invalid("POS_QUOTE_INVALID", "اختر صيغة واحدة للإضافات.");
     }
-    if (addonIds.length && (!product.hasAddons || product.category === "addons")) {
+    const addonRows = line.addons !== undefined ? line.addons
+      : (line.addonIds === undefined ? [] : line.addonIds.map(id => ({ productId: id, quantity: 1 })));
+    if (!Array.isArray(addonRows) || addonRows.length > 10
+      || addonRows.some(row => !validId(row?.productId)
+        || !Number.isSafeInteger(row.quantity) || row.quantity < 1 || row.quantity > 10)
+      || new Set(addonRows.map(row => row.productId)).size !== addonRows.length) {
+      invalid("POS_QUOTE_INVALID", "الإضافات غير صحيحة أو مكررة أو كمية الإضافة خارج 1 إلى 10.");
+    }
+    if (addonRows.length && (!product.hasAddons || product.category === "addons")) {
       invalid("POS_ADDON_UNAVAILABLE", "الإضافات غير متاحة للصنف.");
     }
-    const addons = addonIds.map((id) => {
-      const addon = products.get(id);
+    const addons = addonRows.map(row => {
+      const addon = products.get(row.productId);
       if (!addon || addon.category !== "addons" || addon.variants?.length !== 1) {
         invalid("POS_ADDON_UNAVAILABLE", "الإضافة غير متاحة.");
       }
@@ -103,10 +109,11 @@ function quotePosCart(doc, request) {
       if (!validPrice(amount)) {
         invalid("POS_PRICE_UNAVAILABLE", "الإضافة غير مسعرة في القناة.");
       }
-      return { productId: addon.id, name: addon.name, priceHalalas: amount };
+      return { productId: addon.id, name: addon.name, priceHalalas: amount, quantity: row.quantity };
     });
 
-    const addonsHalalas = validAmount(addons.reduce((sum, addon) => sum + addon.priceHalalas, 0));
+    const addonsHalalas = validAmount(addons.reduce((sum, addon) =>
+      sum + addon.priceHalalas * addon.quantity, 0));
     const unitPriceHalalas = validAmount(basePrice + addonsHalalas);
     const lineTotalHalalas = validAmount(unitPriceHalalas * line.quantity);
     provisionalSubtotalHalalas = validAmount(provisionalSubtotalHalalas + lineTotalHalalas);
