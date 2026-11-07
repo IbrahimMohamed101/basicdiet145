@@ -14,6 +14,8 @@ const dateUtils = require("../../utils/date");
 const { normalizeHalala, normalizeStoredVatBreakdown } = require("../../utils/pricing");
 const { VAT_PERCENTAGE } = require("../../config/vat");
 const { buildSectionedCsv } = require("../../utils/csvExport");
+const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
+const { expectedTotals } = require("../pos/expectedTotals");
 
 const MANUAL_DEDUCTION_ACTION = "manual_subscription_meal_deduction";
 const PAID_STATUS = "paid";
@@ -498,6 +500,10 @@ async function buildDailyReport({
       addonDeductionMap.set(addon.addonId, current);
     }
   }
+  // Keep POS sales separate from legacy Order/Payment so one payment is never
+  // counted twice. Only the dedicated isolated POS Staging runtime reads this.
+  const posFinancial = isPosStagingRuntime()
+    ? await expectedTotals(period.businessDate) : null;
   const normalizedSummary = {
     grossRevenueHalala: null,
     netRevenueHalala: resolvedNetSalesHalala,
@@ -530,6 +536,9 @@ async function buildDailyReport({
     },
     summary: {
       ...normalizedSummary,
+      posInvoiceCount: posFinancial?.pos.invoiceCount ?? null,
+      posRefundCount: posFinancial?.pos.refundCount ?? null,
+      posNetSalesHalala: posFinancial?.pos.netHalalas ?? null,
       grossSalesHalala,
       netSalesHalala: resolvedNetSalesHalala,
       vatHalala,
@@ -560,6 +569,8 @@ async function buildDailyReport({
       byPaymentStatus: bucketsToArray(byPaymentStatus, "paymentStatus"),
       byPaymentMethod: bucketsToArray(byPaymentMethod, "method"),
     },
+    posSales: posFinancial?.pos ?? null,
+    posSubscriptionsCollected: posFinancial?.subscriptions ?? null,
     oneTimeOrders: {
       summary: {
         createdCount: orders.length,
@@ -615,6 +626,7 @@ async function buildDailyReport({
     },
     dataSources: {
       oneTimeOrders: "Order",
+      posSales: posFinancial ? "PosInvoice + PosRefund; separated from Order and Payment" : null,
       payments: "Payment when linked; Order.paymentStatus remains the paid-status gate",
       subscriptionRevenue: null,
       refunds: null,
@@ -712,6 +724,8 @@ function reportToCsv(report) {
       ],
     },
     { title: "Summary", headers: ["metric", "value"], rows: summaryRows },
+    { title: "POS Staging Sales", headers: ["metric", "value"],
+      rows: report.posSales ? Object.entries(report.posSales).filter(([, value]) => typeof value !== "object") : [] },
     { title: "Money", headers: ["metric", "value"], rows: moneyRows },
     {
       title: "One-Time Orders",
