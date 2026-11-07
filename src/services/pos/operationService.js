@@ -98,8 +98,8 @@ async function rejectOperation(key, code) {
   await PosOperation.updateOne({ _id: key, status: "pending" },
     { $set: { status: "rejected", errorCode: code } }, { writeConcern: { w: "majority" } });
 }
-async function abandonOperation(key, actor, kind) {
-  requireFinancialStagingWrites();
+async function abandonOperation(key, actor, kind, options = {}) {
+  requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   assertKind(kind);
   await PosOperation.createIndexes();
