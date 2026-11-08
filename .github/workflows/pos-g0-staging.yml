@@ -25,7 +25,8 @@ jobs:
           node --test tests/posG0SeedSafety.test.js
 
   mongo8-restored-synthetic-rehearsal:
-    runs-on: ubuntu-24.04
+    # MongoDB 8.0 currently refuses Linux kernel >= 6.19 on ubuntu-24.04 GitHub runners.
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
