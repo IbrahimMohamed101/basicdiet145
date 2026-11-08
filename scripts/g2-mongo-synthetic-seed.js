@@ -11,8 +11,8 @@ async function main() {
   try {
     const db = client.db(name);
     await db.collection("subscriptions").insertMany([
-      { _id: "fixture-sub-001", durationDays: 7, mealsRemaining: 3 },
-      { _id: "fixture-sub-002", durationDays: 26, mealsRemaining: 11 },
+      { _id: "fixture-sub-001", subscriptionKey: "fixture-sub-001", durationDays: 7, mealsRemaining: 3 },
+      { _id: "fixture-sub-002", subscriptionKey: "fixture-sub-002", durationDays: 26, mealsRemaining: 11 },
     ]);
     await db.collection("subscriptions").createIndex({ subscriptionKey: 1 }, { unique: true });
     await db.collection("payments").insertMany([
@@ -20,7 +20,7 @@ async function main() {
       { _id: "fixture-pay-002", providerPaymentId: "fixture-provider-002", amountHalala: 25200 },
     ]);
     await db.collection("payments").createIndex({ providerPaymentId: 1 }, { unique: true });
-    await db.collection("pos_invoices").insertOne({ _id: "fixture-invoice-001", grossHalala: 12500 });
+    await db.collection("pos_invoices").insertOne({ _id: "fixture-invoice-001", invoiceKey: "fixture-invoice-001", grossHalala: 12500 });
     await db.collection("pos_invoices").createIndex({ invoiceKey: 1 }, { unique: true });
     await assert.rejects(() => db.collection("payments").insertOne({
       _id: "fixture-pay-duplicate", providerPaymentId: "fixture-provider-001",
