@@ -99,7 +99,7 @@ test("D-091 closing boundaries and subscription paidAt agree on isolated Mongo t
       assert.equal((await PosInvoice.findById(invoice._id)).businessDate, "2026-11-08");
     } else {
       await assert.rejects(() => scheduleBusinessDayCutoff(change, { testOnly: true }),
-        /Staging/);
+        /rs0 transactions/);
     }
 
   } finally {
