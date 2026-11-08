@@ -45,7 +45,7 @@ function parsePayload(body, version) {
     return { name, reference, amountHalala: money(item?.amountHalala, "other channel amount") };
   });
   if (version === POS && ["restaurantHalala", "hungerstationHalala", "keetaHalala"].some(key =>
-    Object.hasOwn(c, key) && c[key] !== 0)) {
+    Object.hasOwn(c, key))) {
     throw fail(400, "MANUAL_CHANNEL_RECORDED_IN_POS", "POS-recorded channel totals cannot be submitted manually");
   }
   if (version === POS && new Set(other.map(row => row.reference)).size !== other.length) {
