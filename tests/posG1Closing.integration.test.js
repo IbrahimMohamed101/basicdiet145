@@ -9,8 +9,9 @@ const { issueDashboardAccessToken } = require("../src/services/dashboardTokenSer
 const DashboardUser = require("../src/models/DashboardUser");
 const DailyCashClosing = require("../src/models/DailyCashClosing");
 const Setting = require("../src/models/Setting");
+const ActivityLog = require("../src/models/ActivityLog");
 const PosInvoice = require("../src/models/PosInvoice");
-const { resolveClosingVersion, versionAt } = require("../src/services/pos/posClosingSetting");
+const { resolveClosingVersion, versionAt, scheduleStartDate } = require("../src/services/pos/posClosingSetting");
 const { reasonCodesFor, calculateClosing, addOtherReceivables } = require("../src/services/dashboard/dailyCashClosingService");
 const router = require("../src/routes/dashboardDailyCashClosings");
 const { dashboardRoleHasPermission } = require("../src/constants/dashboardRoles");
@@ -67,14 +68,23 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     assert.equal(hello.setName, "rs0");
     await mongoose.connection.dropDatabase();
     assert.equal(await resolveClosingVersion("2026-11-08"), "LEGACY_V1");
-    await Setting.create({ key: "posClosingStartDate",
-      value: { baselineStartDate: null, changes: [{ effectiveFrom: "2026-11-08", startDate: "2026-11-08" }] } });
     const users = {};
     for (const role of ["cashier", "restaurant", "admin", "kitchen", "courier"]) {
       const user = await DashboardUser.create({ email: role + "@g1-ci.invalid",
         name: role, passwordHash: "not-a-production-credential", role, isActive: true });
       users[role] = issueDashboardAccessToken(user);
     }
+    const adminActor = await DashboardUser.findOne({ role: "admin" });
+    const scheduled = await scheduleStartDate({ startDate: "2026-11-08",
+      effectiveFrom: "2026-11-08", actorId: adminActor._id, actorRole: "admin" }, { testOnly: true });
+    assert.equal(scheduled.startDate, "2026-11-08");
+    assert.equal(await resolveClosingVersion("2026-11-07"), "LEGACY_V1");
+    assert.equal(await resolveClosingVersion("2026-11-08"), "POS_V2");
+    const audit = await ActivityLog.findOne({ action: "pos_closing_start_date_scheduled" }).lean();
+    assert.equal(audit.meta.startDate, "2026-11-08");
+    await assert.rejects(() => scheduleStartDate({ startDate: "2026-11-09",
+      effectiveFrom: "2026-11-09", actorId: adminActor._id, actorRole: "cashier" }, { testOnly: true }),
+      /Admin actor required/);
     // Purely synthetic POS finance fixtures; no actual customer or prices.
     await PosInvoice.collection.insertMany([
       { number: "STG-G1-000001", idempotencyKey: "g1-synthetic-000001", channel: "restaurant", tender: { method: "cash" },
@@ -105,6 +115,11 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
       channels: { restaurantHalala: 1, other: [] } });
     assert.equal(forged.status, 400);
     assert.equal(forged.json.code, "MANUAL_CHANNEL_RECORDED_IN_POS");
+    const zeroManual = await call("cashier", "PUT", date, "", {
+      ...body(), channels: { keetaHalala: 0, other: [] },
+    });
+    assert.equal(zeroManual.status, 400);
+    assert.equal(zeroManual.json.code, "MANUAL_CHANNEL_RECORDED_IN_POS");
     assert.equal((await call("restaurant", "PUT", date, "", body())).status, 201);
     let view = await call("cashier", "GET", date);
     assert.equal(view.json.data.requiresReason, false);
