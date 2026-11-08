@@ -237,13 +237,18 @@ function reasonCodesFor({ version, summary, reconciliation, automatic }) {
     if (reconciliation.cashDifferenceHalala !== 0) codes.push("CASH_DIFFERENCE");
     if (reconciliation.networkDifferenceHalala !== 0) codes.push("NETWORK_DIFFERENCE");
   } else {
+    // LEGACY_V1 must exactly follow main@a4ca1bc submit conditions.
+    // POS reconciliation is informational for historical/manual closings.
     if (summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0) codes.push("LEGACY_AMOUNT_DIFFERENCE");
-    if (reconciliation.localDifferenceHalala !== 0) codes.push("LEGACY_RECONCILIATION_DIFFERENCE");
   }
   if (summary.subscriptionCountDifference !== 0) codes.push("SUBSCRIPTION_COUNT_DIFFERENCE");
   if (summary.unknownSubscriptionHalala !== 0) codes.push("UNKNOWN_SUBSCRIPTION_HALALA");
   if (automatic.reviewPaymentsCount > 0) codes.push("SUBSCRIPTION_PAYMENTS_REVIEW");
-  if ((automatic.refundCount || 0) > 0 || (automatic.refundsHalala || 0) > 0) codes.push("SUBSCRIPTION_REFUNDS");
+  // Legacy main requires refundsHalala > 0 ONLY; POS_V2 also flags
+  // a recorded refund entry, even when its amount is zero.
+  if (version === POS
+    ? (automatic.refundCount || 0) > 0 || (automatic.refundsHalala || 0) > 0
+    : automatic.refundsHalala > 0) codes.push("SUBSCRIPTION_REFUNDS");
   return codes;
 }
 async function closingCalculations(date, closing, inputs, { useFrozen = false } = {}) {
