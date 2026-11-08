@@ -1,0 +1,45 @@
+name: POS G1 Versioned Closing Gate (Disposable rs0)
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "src/models/DailyCashClosing.js"
+      - "src/routes/dashboardDailyCashClosings.js"
+      - "src/services/dashboard/dailyCashClosingService.js"
+      - "src/services/dashboard/accountingDailyReportService.js"
+      - "src/services/pos/posClosingSetting.js"
+      - "scripts/pos-g1-seed-closing-date-staging.js"
+      - "tests/posG1Closing.integration.test.js"
+      - ".github/workflows/pos-g1-closing.yml"
+permissions:
+  contents: read
+jobs:
+  replica-rs0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      DASHBOARD_JWT_SECRET: isolated-g1-ci-secret
+      JWT_SECRET: isolated-g1-ci-secret
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: G1 syntax checks
+        run: |
+          node --check src/models/DailyCashClosing.js
+          node --check src/services/dashboard/dailyCashClosingService.js
+          node --check src/services/dashboard/accountingDailyReportService.js
+          node --check src/services/pos/posClosingSetting.js
+          node --check src/routes/dashboardDailyCashClosings.js
+          node --check scripts/pos-g1-seed-closing-date-staging.js
+      - name: Start local-only disposable rs0
+        run: bash scripts/ci/start-mongo-replset.sh pos-g1-ci-mongo
+      - name: G1 real HTTP + rs0 integration, golden legacy and role checks
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posG1Closing.integration.test.js
+      - name: Existing daily closing regression
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/dailyCashClosing.test.js tests/posG2ExpectedTotals.test.js
