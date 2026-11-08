@@ -32,7 +32,7 @@ The following is a **priority register, not a claim that every transaction calle
 | Daily cash closing — `dashboardDailyCashClosings.js` | New/draft/submit/approve and immutable snapshot | Single unique businessDate + status-conditional updates and optimistic concurrency. Expected server totals frozen at submit; admin-only approve. |
 | Customer account merge and manual compensation | Two account/balance identities may diverge | Operation lock/idempotency + explicit compensation, never rely on no-op transaction. Staging fault injection required. |
 
-**Release gate:** create a machine-generated call-site inventory for `startSafeSession`, `startSession`, `withTransaction`, `startTransaction` and any `session` use in dynamically installed routers. Mark every financial path PASS/FAIL on both replica and standalone with crash/fault injection. Anything unknown is a blocker.
+**Release gate:** the read-only `scripts/pos-g0-transaction-inventory.js` now scans all `src/` JavaScript/TypeScript transaction API calls; CI uploads `pos-g0-transaction-callsites` JSON for manual sign-off. This is a syntax call-site inventory, **not proof that every financial flow has safe CAS/idempotency**, and it does not statically resolve dynamic wrappers or plain `session` options. Independently inspect dynamically installed routers and session writes; mark every financial path PASS/FAIL on both replica and standalone with crash/fault injection. Anything unknown is a blocker.
 
 ## Production single-node rs0 runbook — **DO NOT EXECUTE WITHOUT EXPLICIT OWNER APPROVAL**
 
