@@ -110,7 +110,7 @@ function assertSafeStagingCutoffMutation(options = {}) {
 }
 async function scheduleBusinessDayCutoff({ newCutoff, actorId, actorRole, at = new Date() }, options = {}) {
   assertSafeStagingCutoffMutation(options);
-  if (typeof newCutoff !== "string" || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(newCutoff)) {
+  if (typeof newCutoff !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(newCutoff)) {
     throw new TypeError("New businessDayCutoff must be provided as HH:mm Asia/Riyadh");
   }
   const cutoff = parseBusinessDayCutoff(newCutoff);
