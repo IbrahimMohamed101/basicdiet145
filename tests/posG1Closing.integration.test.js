@@ -159,12 +159,14 @@ test("G1 rs0: version pin, zero reason, short cash, audit, legacy goldens and ro
     assert.equal(latest.snapshot.discrepancyReason, "عجز تجريبي ريال واحد");
     assert.equal(latest.snapshot.differences.cashDifferenceHalala, -100);
     assert.equal(latest.returnedSnapshots.length, 1);
-    const approved = await post(DATE, "approve", {}, "admin");
-    assert.equal(approved.status, 200, JSON.stringify(approved.body));
-    assert.equal(approved.body.data.status, "approved");
+    // A sale arriving AFTER submit but BEFORE approval must not rewrite the frozen snapshot.
     await PosInvoice.collection.insertOne({ number: "STG-G1-LATER", idempotencyKey: "g1-later",
       businessDate: DATE, issuedAt: instant, channel: "restaurant",
       tender: { method: "cash" }, totals: { grossHalalas: 99 } });
+    const approved = await post(DATE, "approve", {}, "admin");
+    assert.equal(approved.status, 200, JSON.stringify(approved.body));
+    assert.equal(approved.body.data.status, "approved");
+    assert.equal(approved.body.data.expectedTotals.expected.totalHalalas, 493805);
     const frozen = (await get(DATE, "admin")).body.data;
     assert.equal(frozen.expectedTotals.expected.totalHalalas, 493805);
     assert.equal(frozen.reconciliation.cashDifferenceHalala, -100);
