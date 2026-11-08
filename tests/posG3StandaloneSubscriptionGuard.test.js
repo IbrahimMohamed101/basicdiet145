@@ -69,6 +69,33 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
         "rejected payment must not leave any entitlement on standalone");
       assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
     }
+
+    // Forged source, whether at top level or nested, never reaches payment or
+    // subscription creation and must return SOURCE_NOT_ALLOWED, even if it
+    // happens to name a real supported source.
+    for (const extra of [
+      { source: "dashboard_subscription_visa" },
+      { source: "arbitrary-source" },
+      { payment: { method: "cash", status: "paid", collectedAmountHalala: total,
+        source: "dashboard_subscription_visa" } },
+    ]) {
+      const payment = extra.payment || { method: "cash", status: "paid",
+        collectedAmountHalala: total };
+      for (const endpoint of ["/api/dashboard/subscriptions", "/api/admin/subscriptions"]) {
+        const rejected = await request(app).post(endpoint).set(authorization)
+          .send({ ...payload, ...extra, payment });
+        assert.equal(rejected.status, 400, endpoint + " " + JSON.stringify(rejected.body));
+        assert.equal(rejected.body.error.code, "SOURCE_NOT_ALLOWED");
+      }
+    }
+    assert.equal(await Subscription.countDocuments({ userId: customer._id }), 0);
+    assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
+    const adminVisa = await request(app).post("/api/admin/subscriptions")
+      .set(authorization).send({ ...payload,
+        payment: { method: "visa", status: "paid", collectedAmountHalala: total } });
+    assert.equal(adminVisa.status, 400);
+    assert.equal(await Subscription.countDocuments({ userId: customer._id }), 0);
+
     const closeDate = businessDateAt(new Date());
     const closingBeforeRejectedBackdate = await expectedTotals(closeDate);
     const backdated = await request(app).post("/api/dashboard/subscriptions")
@@ -105,6 +132,24 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
     assert.equal(visaPayment.source, Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE);
     assert.equal(visaPayment.method, "visa");
     assert.equal(visaPayment.amount, total);
+    assert.equal(visaPayment.provider, "manual");
+    assert.equal(payments[0].source, Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE);
+    const directCustomer = await User.create({
+      phone: "+966000000103", name: "G3 synthetic direct cash", role: "client", isActive: true,
+    });
+    const direct = await request(app).post("/api/admin/subscriptions").set(authorization)
+      .send({ ...payload, userId: directCustomer._id,
+        payment: { method: "cash", status: "paid", collectedAmountHalala: total } });
+    assert.equal(direct.status, 201, JSON.stringify(direct.body).slice(0, 750));
+    const directPayment = await Payment.findOne({ userId: directCustomer._id, status: "paid" }).lean();
+    assert.equal(directPayment.source, "dashboard_cashier");
+    assert.equal(directPayment.provider, "cash");
+    assert.equal(directPayment.method, "cash");
+    const closeForDay = await expectedTotals(await require("../src/services/pos/businessDaySetting").getBusinessDateAt());
+    assert.equal(closeForDay.subscriptions.cashHalalas, 2 * total);
+    assert.equal(closeForDay.subscriptions.visaHalalas, total);
+    assert.equal(closeForDay.subscriptions.cashHalalas + closeForDay.subscriptions.visaHalalas, 3 * total);
+    assert.equal(closeForDay.expected.cashHalalas + closeForDay.expected.networkHalalas, 3 * total);
     assert.equal(await Payment.countDocuments({ userId: secondCustomer._id }), 1);
     assert.equal(await Subscription.countDocuments({ userId: secondCustomer._id }), 1);
     // Role parity: the actual authenticated customer-create route and audit,
@@ -117,8 +162,8 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
           phone: number, fullName: "G3 synthetic " + role,
           password: "StagingD091Pass!1",
         });
-      if (["kitchen", "courier"].includes(role)) {
-        assert.equal(response.status, 403, role + " may not create customers");
+      if (role === "courier") {
+        assert.equal(response.status, 403, role + " may not create customers (kitchen remains authorized)");
         assert.equal(await User.countDocuments({ phone: number }), 0);
       } else {
         assert.equal(response.status, 201, role + ": " + JSON.stringify(response.body).slice(0, 550));
