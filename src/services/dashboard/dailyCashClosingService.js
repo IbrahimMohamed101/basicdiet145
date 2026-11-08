@@ -9,6 +9,7 @@ const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const { getBusinessDayBounds } = require("../pos/businessDaySetting");
 const { expectedTotals } = require("../pos/expectedTotals");
+const { POS_V2, getClosingVersion, calculationMode } = require("../pos/closingVersionService");
 
 function safeHalala(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -194,6 +195,94 @@ function reconcileCountedWithServer(collections, serverExpected) {
   };
 }
 
+
+function posClosingError(message) {
+  const error = new Error(message);
+  error.status = 400; error.code = "MANUAL_CHANNEL_RECORDED_IN_POS";
+  return error;
+}
+// Only external, non-POS channels may be entered manually. Each reference is unique.
+function applyPosOtherReceivables(serverExpected, channels = {}) {
+  const other = channels.other || [];
+  const existing = new Set(["restaurant", "hungerstation", "keeta",
+    ...Object.keys(serverExpected.pos?.appReceivableByChannelHalalas || {})].map(s => String(s).trim().toLowerCase()));
+  const references = new Set();
+  let manualHalalas = 0;
+  for (const item of other) {
+    const name = String(item.name || "").trim(), reference = String(item.reference || "").trim();
+    if (!name || !reference || existing.has(name.toLowerCase()) ||
+        references.has(reference.toLowerCase()) ||
+        !Number.isSafeInteger(item.amountHalala) || item.amountHalala < 0) {
+      throw posClosingError("القناة اليدوية يجب أن تكون خارج POS وبمرجع فريد");
+    }
+    references.add(reference.toLowerCase());
+    manualHalalas += item.amountHalala;
+    if (!Number.isSafeInteger(manualHalalas)) throw posClosingError("Invalid other channel total");
+  }
+  const app = serverExpected.expected.appReceivableHalalas + manualHalalas;
+  const total = serverExpected.expected.totalHalalas + manualHalalas;
+  if (![app, total].every(Number.isSafeInteger)) throw posClosingError("Invalid POS closing total");
+  return {
+    ...serverExpected,
+    manualOther: other.map(item => ({ name: item.name, reference: item.reference, amountHalala: item.amountHalala })),
+    expected: { ...serverExpected.expected, appReceivableHalalas: app, totalHalalas: total },
+  };
+}
+function posClosingSummary(inputs, automatic, totals, reconciliation) {
+  const { channels, collections, confirmedSubscriptionCount } = inputs;
+  const difference = reconciliation.localDifferenceHalala;
+  return {
+    restaurantHalala: totals.pos.restaurantCashHalalas + totals.pos.restaurantNetworkHalalas,
+    appReceivablesHalala: totals.expected.appReceivableHalalas,
+    subscriptionHalala: automatic.amountHalala,
+    accountingRefundsHalala: safeHalala(automatic.refundsHalala),
+    accountingNetSalesHalala: totals.expected.totalHalalas - safeHalala(automatic.refundsHalala),
+    totalSalesHalala: totals.expected.totalHalalas,
+    localExpectedHalala: totals.expected.cashHalalas + totals.expected.networkHalalas,
+    localRecordedHalala: collections.cashHalala + collections.cardHalala,
+    cashHalala: collections.cashHalala, cardHalala: collections.cardHalala,
+    moyasarHalala: safeHalala(automatic.moyasarHalala),
+    unknownSubscriptionHalala: safeHalala(automatic.unknownHalala),
+    localDifferenceHalala: difference, overallDifferenceHalala: difference,
+    recordedPlusReceivablesHalala: totals.expected.totalHalalas + difference,
+    subscriptionCountDifference: confirmedSubscriptionCount == null ? 0 : confirmedSubscriptionCount - automatic.count,
+  };
+}
+const REASON_CODES = Object.freeze({
+  CASH_DIFFERENCE: "CASH_DIFFERENCE",
+  NETWORK_DIFFERENCE: "NETWORK_DIFFERENCE",
+  SUBSCRIPTION_COUNT_DIFFERENCE: "SUBSCRIPTION_COUNT_DIFFERENCE",
+  UNKNOWN_SUBSCRIPTION_HALALA: "UNKNOWN_SUBSCRIPTION_HALALA",
+  SUBSCRIPTION_PAYMENTS_REVIEW: "SUBSCRIPTION_PAYMENTS_REVIEW",
+  SUBSCRIPTION_REFUNDS: "SUBSCRIPTION_REFUNDS",
+});
+function reasonCodesFor(version, summary, automatic, reconciliation) {
+  const codes = [];
+  if (version === POS_V2) {
+    if (reconciliation.cashDifferenceHalala !== 0) codes.push(REASON_CODES.CASH_DIFFERENCE);
+    if (reconciliation.networkDifferenceHalala !== 0) codes.push(REASON_CODES.NETWORK_DIFFERENCE);
+  } else if (summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0 ||
+      reconciliation.localDifferenceHalala !== 0) codes.push("LEGACY_AMOUNT_DIFFERENCE");
+  if (summary.subscriptionCountDifference !== 0) codes.push(REASON_CODES.SUBSCRIPTION_COUNT_DIFFERENCE);
+  if (safeHalala(summary.unknownSubscriptionHalala) !== 0) codes.push(REASON_CODES.UNKNOWN_SUBSCRIPTION_HALALA);
+  if ((automatic.reviewPaymentsCount || 0) > 0) codes.push(REASON_CODES.SUBSCRIPTION_PAYMENTS_REVIEW);
+  if ((automatic.refundsHalala || 0) > 0) codes.push(REASON_CODES.SUBSCRIPTION_REFUNDS);
+  return codes;
+}
+async function calculateForVersion(date, version, values, provided = {}) {
+  const automatic = provided.automatic || await subscriptionPaymentsForDate(date);
+  // Preserve previous LEGACY_V1 read representation and calculations.
+  const raw = provided.expectedTotals || await expectedTotals(date);
+  const totals = version === POS_V2 ? applyPosOtherReceivables(raw, values.channels) : raw;
+  const reconciliation = reconcileCountedWithServer(values.collections, totals);
+  const summary = version === POS_V2
+    ? posClosingSummary(values, automatic, totals, reconciliation)
+    : calculateClosing(values.channels, values.collections, automatic, values.confirmedSubscriptionCount);
+  const reasonCodes = reasonCodesFor(version, summary, automatic, reconciliation);
+  return { automatic, summary, expectedTotals: totals, reconciliation,
+    requiresReason: reasonCodes.length > 0, reasonCodes };
+}
+
 function inputSnapshot(closing) {
   return {
     channels: closing.channels,
@@ -204,38 +293,30 @@ function inputSnapshot(closing) {
   };
 }
 
-async function buildClosingView(closing, date) {
-  // After submission, financial evidence must remain fixed for approval/audit.
-  const automatic = closing && closing.status !== "draft" && closing.snapshot
-    ? closing.snapshot.automatic
-    : await subscriptionPaymentsForDate(date);
+async function buildClosingView(closing, date, viewerRole = null) {
+  const version = await getClosingVersion(date, closing);
   const values = closing ? inputSnapshot(closing) : {
     channels: { restaurantHalala: 0, hungerstationHalala: 0, keetaHalala: 0, other: [] },
     collections: { cashHalala: 0, cardHalala: 0 },
     confirmedSubscriptionCount: null, discrepancyReason: "", notes: "",
   };
-  const summary = closing && closing.status !== "draft" && closing.snapshot
-    ? closing.snapshot.summary
-    : calculateClosing(values.channels, values.collections, automatic, values.confirmedSubscriptionCount);
-  const serverExpected = closing && closing.status !== "draft" && closing.snapshot?.expectedTotals
-    ? closing.snapshot.expectedTotals
-    : await expectedTotals(date);
-  const reconciliation = closing && closing.status !== "draft" && closing.snapshot?.reconciliation
-    ? closing.snapshot.reconciliation
-    : reconcileCountedWithServer(values.collections, serverExpected);
+  const frozen = closing && closing.status !== "draft" && closing.snapshot ? closing.snapshot : null;
+  const calculated = frozen ? {
+    automatic: frozen.automatic, summary: frozen.summary,
+    expectedTotals: frozen.expectedTotals, reconciliation: frozen.reconciliation,
+    reasonCodes: frozen.reasonCodes || reasonCodesFor(version, frozen.summary, frozen.automatic, frozen.reconciliation),
+    requiresReason: frozen.requiresReason ??
+      (frozen.reasonCodes || reasonCodesFor(version, frozen.summary, frozen.automatic, frozen.reconciliation)).length > 0,
+  } : await calculateForVersion(date, version, values);
   return {
-    businessDate: date,
-    currency: "SAR",
-    moneyUnit: "halala",
+    businessDate: date, currency: "SAR", moneyUnit: "halala",
     status: closing ? closing.status : "new",
-    ...values,
-    automatic,
-    summary,
-    expectedTotals: serverExpected,
-    reconciliation,
+    closingVersion: version, calculationMode: closing?.calculationMode || calculationMode(version),
+    ...values, ...calculated,
     submittedAt: closing?.submittedAt || null,
     approvedAt: closing?.approvedAt || null,
     history: closing?.history || [],
+    ...(["admin", "superadmin"].includes(viewerRole) ? { returnedSnapshots: closing?.returnedSnapshots || [] } : {}),
   };
 }
 
@@ -249,4 +330,5 @@ module.exports = {
   buildClosingView,
   expectedTotals,
   reconcileCountedWithServer,
+  calculateForVersion, applyPosOtherReceivables, posClosingSummary, reasonCodesFor, REASON_CODES, POS_V2,
 };
