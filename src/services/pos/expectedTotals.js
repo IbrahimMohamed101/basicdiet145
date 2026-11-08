@@ -3,8 +3,7 @@
 const PosInvoice = require("../../models/PosInvoice");
 const PosRefund = require("../../models/PosRefund");
 const Payment = require("../../models/Payment");
-const { boundsForBusinessDate } = require("./businessDate");
-const { getBusinessDayCutoff } = require("./businessDaySetting");
+const { getBusinessDayBounds } = require("./businessDaySetting");
 
 function amount(value) {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -131,8 +130,7 @@ function summarizeExpectedTotals({ businessDate, invoices, refunds, relatedInvoi
 }
 
 async function expectedTotals(businessDate) {
-  const cutoff = await getBusinessDayCutoff();
-  const { start, end } = boundsForBusinessDate(businessDate, cutoff);
+  const { start, end } = await getBusinessDayBounds(businessDate);
   const invoices = await PosInvoice.find({ $or: [
     { businessDate },
     { businessDate: { $exists: false }, issuedAt: { $gte: start, $lt: end } },
