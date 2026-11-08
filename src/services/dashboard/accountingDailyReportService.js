@@ -510,9 +510,11 @@ async function buildDailyReport({
   return {
     date: period.businessDate,
     businessDate: period.businessDate,
-    closingVersion,
-    calculationMode: closingVersion === POS ? "pos_expected_totals" : "legacy_calculate_closing",
-    posClosingExpectedTotals: closingVersion === POS ? posFinancial : null,
+    ...(closingVersion === POS ? {
+      closingVersion,
+      calculationMode: "pos_expected_totals",
+      posClosingExpectedTotals: posFinancial,
+    } : {}),
     filters: {
       date: period.businessDate,
       fromDate: null,
