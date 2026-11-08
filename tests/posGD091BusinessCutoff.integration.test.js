@@ -27,9 +27,9 @@ test("D-091 closing boundaries and subscription paidAt agree on isolated Mongo t
     assert.equal(businessDateAt(one, "04:00"), "2026-11-08");
     assert.equal(businessDateAt(two, "04:00"), "2026-11-09");
     await PosInvoice.collection.insertMany([
-      { channel: "restaurant", tender: { method: "cash" }, totals: { grossHalalas: 150, vatHalalas: 20 },
+      { idempotencyKey: "d091-sale-1", number: "STG-D091-1", channel: "restaurant", tender: { method: "cash" }, totals: { grossHalalas: 150, vatHalalas: 20 },
         businessDate: "2026-11-08", issuedAt: one },
-      { channel: "restaurant", tender: { method: "network" }, totals: { grossHalalas: 250, vatHalalas: 33 },
+      { idempotencyKey: "d091-sale-2", number: "STG-D091-2", channel: "restaurant", tender: { method: "network" }, totals: { grossHalalas: 250, vatHalalas: 33 },
         businessDate: "2026-11-09", issuedAt: two },
     ]);
     await Payment.collection.insertMany([
