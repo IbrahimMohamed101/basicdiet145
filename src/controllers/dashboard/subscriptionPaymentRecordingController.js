@@ -266,6 +266,10 @@ async function quoteSubscriptionAdmin(req, res, next) {
 }
 
 async function createSubscriptionAdmin(req, res, next) {
+  if (Object.hasOwn(req.body || {}, "source") || Object.hasOwn(req.body?.payment || {}, "source")) {
+    return res.status(400).json({ status: false,
+      error: { code: "SOURCE_NOT_ALLOWED", message: "Payment source is assigned by the server" } });
+  }
   let selection;
   try {
     selection = normalizeDashboardPaymentMethod(req.body || {});
@@ -347,7 +351,11 @@ async function createSubscriptionAdmin(req, res, next) {
       status: "paid",
       collectedAmountHalala: totalHalala,
     },
-    source: recordingSource,
+  });
+  // Trusted server-only context, not a field in req.body. Only this adapter
+  // can authorize manual Visa/Mada for POST /dashboard/subscriptions.
+  coreRequest.verifiedDashboardSubscriptionPayment = Object.freeze({
+    method: selection.method, source: recordingSource,
   });
 
   const createCaptured = await invokeCaptured(subscriptionCreationController.createSubscriptionAdmin, coreRequest, next);
