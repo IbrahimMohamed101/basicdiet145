@@ -12,7 +12,7 @@ on:
       - "docs/pos-g3-test-matrix.md"
 jobs:
   standalone-subscription-and-deduction:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 18
     services:
       mongodb:
@@ -46,7 +46,7 @@ jobs:
       - name: Two concurrent meal deductions must result in exactly one success
         run: node tests/subscriptionBalanceConcurrency.test.js
   replica-financial-fixtures:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
