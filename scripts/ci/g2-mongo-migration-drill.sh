@@ -77,7 +77,7 @@ prepare_keyfile_once() {
   # startCommand. Does not use a repository-built image or RAILWAY_RUN_UID.
   docker run --rm --network none -v "$volume:/data/db" \
     -e G2_RS0_KEYFILE --entrypoint /bin/sh mongo:8.0 -ec \
-    'set -eu; umask 077; test -d /data/db; test -n "$G2_RS0_KEYFILE"; test ! -e /data/db/rs0-keyfile; t=$(mktemp /data/db/.rs0-keyfile.XXXXXXXX); trap "rm -f \\"$t\\"" EXIT; printf "%s" "$G2_RS0_KEYFILE" > "$t"; chown mongodb:mongodb "$t"; chmod 0400 "$t"; mv "$t" /data/db/rs0-keyfile; test "$(stat -c %a /data/db/rs0-keyfile)" = 400; test "$(stat -c %U /data/db/rs0-keyfile)" = mongodb' >/dev/null
+    'set -eu; umask 077; test -d /data/db; test -n "$G2_RS0_KEYFILE"; test ! -e /data/db/rs0-keyfile; t=$(mktemp /data/db/.rs0-keyfile.XXXXXXXX); trap "rm -f $t" EXIT; printf "%s" "$G2_RS0_KEYFILE" > "$t"; chown mongodb:mongodb "$t"; chmod 0400 "$t"; mv "$t" /data/db/rs0-keyfile; test "$(stat -c %a /data/db/rs0-keyfile)" = 400; test "$(stat -c %U /data/db/rs0-keyfile)" = mongodb' >/dev/null
 }
 start_rs0() {
   local name="$1" volume="$2" port="$3" alias="$4"
