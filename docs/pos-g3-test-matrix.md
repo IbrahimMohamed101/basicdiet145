@@ -3,10 +3,10 @@
 **Scope:** Staging only. Reported 2026-11-08 Claude browser run used role=cashier, per owner-provided results; these observations are recorded as **owner-supplied evidence, not independently reverified in this PR**. G3 is NOT accepted while G1 and retries are pending. Do not commit customer details or secrets.
 
 ## Preconditions
-- G0 Staging-only synthetic/config fixture applied on a **separate isolated replica-set clone**, after owner approval for any config export (allowlisted collections only). Do not export or restore customer/phone/subscription/payment records from Production.
+- Previous G0 preparatory approach allowed synthetic/config-only fixtures. D-096 records the owner's 2026-11-08 approval of a full Production copy on Staging, but the copy, access controls and data retention are not independently verified; G1 authorises **no new data export or import**.
 - G1 and G2 PRs merged, both Staging services SUCCESS on pinned SHAs; all CI green. Verify `POS_REFUND_ROLES` permits `cashier`; Production never changed.
 - D-091/D-092 now allow the same cashier/restaurant branch operator to record cash and Visa/Mada subscriptions through the authorized dashboard path; the previous cash-only note is superseded.
-- Actual one-day tests use customer fixtures with *synthetic* phone numbers and no SMS, PII, gateway charge or external API calls.
+- For subsequent G1 acceptance tests, use only synthetic test accounts/identifiers; do not send real SMS, charge gateways or disclose Production-derived PII. The source data used in the owner-reported 2026-11-08 browser run has not been independently verified.
 - Record invoice and refund counters before starting, UUID/idempotency keys, timestamps in `Asia/Riyadh`, tester role and no cross-environment traffic.
 
 ## Real cashier acceptance checklist
@@ -47,7 +47,7 @@ The numbers are test fixtures already exercised in `tests/posG2ExpectedTotals.te
 - `pos-g3-ci.yml`: isolated GitHub Actions standalone `mongo:8.0` service runs the **current targeted cash-subscription financial guard test** (`posG3StandaloneSubscriptionGuard.test.js`) and concurrent balance-consumption test (`subscriptionBalanceConcurrency.test.js`). A failed check is a blocker, not an invitation to bypass transaction logic.
 - The pre-existing broad `dashboardCashSubscriptionContract.test.js` returned **6 passed / 19 failed** against standalone Mongo, including outdated premium fixture expectations and the real mismatched-amount bug. The real financial mismatch was fixed and covered independently in PR #207, but the legacy suite has **NOT been repaired or declared green**; its other assertions require separate review before full G3 sign-off. It is not used as an authoritative Stage G release gate until reconciled, and must not be represented as passing.
 - `G3` cannot be declared **PASS** until a real authenticated cashier executes the matrix against an approved Staging fixture and an admin separately approves the daily closing. Browser synthetic tests alone are insufficient.
-- **No full-Production backup or PII may enter Staging.** Config exports require explicit owner approval and a scrubbed allowlisted artifact. A clone restore drill must use synthetic/config-only backup.
+- Prior synthetic-only restriction was the G0 safety baseline. D-096 now records owner approval for a full Production copy on Staging (2026-11-08), **without proving safe controls are in place**. This Draft PR does not itself transfer data. Staging access, test keys and retention stay an OPEN security gate.
 
 ## Result record template
 Record date/role, head SHAs, three invoice numbers, two subscription Payment IDs, one refund ID, meal deduction audit ID, cashier/manager closing IDs, expected/counted cash & network in halalas, per-channel receivables, and each HTTP failure/response. Sanitized output only: no names, phone numbers, raw tokens, email addresses or addresses.
