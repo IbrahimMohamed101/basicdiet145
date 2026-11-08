@@ -11,6 +11,8 @@ const Subscription = require("../models/Subscription");
 const { withSubscriptionOrigins } = require("../services/subscriptionAcquisitionReadService");
 const Order = require("../models/Order");
 const Payment = require("../models/Payment");
+const { isBranchOperator } = require("../constants/dashboardRoles");
+
 const CheckoutDraft = require("../models/CheckoutDraft");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionAuditLog = require("../models/SubscriptionAuditLog");
@@ -2035,9 +2037,15 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
   if (dashboardRecordPath && verified.source !== recordingSource) {
     return errorResponse(res, 403, "PAYMENT_CONTEXT_INVALID", "Untrusted recording source");
   }
-  // Preserve the pre-existing admin/restaurant ability to create a subscription
-  // without recording a collection. Only an actual payment is cash-only here.
-  // The dashboard recording adapter always supplies a verified paid payment.
+  // D-092: a branch operator must ALWAYS record a real paid cash/Visa payment.
+  // Only admin or superadmin can intentionally issue an unpaid/free subscription.
+  // The original authenticated role is kept unchanged for audit.
+  if (!body.payment && (isBranchOperator(req.dashboardUserRole)
+      || !["admin", "superadmin"].includes(String(req.dashboardUserRole || "")))) {
+    return errorResponse(res, 400, "PAYMENT_REQUIRED", "Branch operator subscription requires paid payment");
+  }
+  // No payment is allowed exclusively for admin or superadmin; the recording
+  // adapter always supplies a paid and fully quoted payment before activation.
   if (body.payment && body.payment.method !== "cash") {
     return errorResponse(res, 400, "INVALID_PAYMENT_METHOD",
       "Direct admin subscription creation accepts cash only; use dashboard recording for Visa/Mada");
