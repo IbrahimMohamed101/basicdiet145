@@ -16,6 +16,8 @@ const Setting = require("../src/models/Setting");
 const Subscription = require("../src/models/Subscription");
 const Payment = require("../src/models/Payment");
 const ActivityLog = require("../src/models/ActivityLog");
+const { expectedTotals } = require("../src/services/pos/expectedTotals");
+const { businessDateAt } = require("../src/services/pos/businessDate");
 const { hasPosCapability } = require("../src/services/pos/financialRuntime");
 const { dashboardRoleHasPermission } = require("../src/constants/dashboardRoles");
 
@@ -67,6 +69,8 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
         "rejected payment must not leave any entitlement on standalone");
       assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
     }
+    const closeDate = businessDateAt(new Date());
+    const closingBeforeRejectedBackdate = await expectedTotals(closeDate);
     const backdated = await request(app).post("/api/dashboard/subscriptions")
       .set(authorization).send({ ...payload,
         payment: { method: "cash", status: "paid", collectedAmountHalala: total,
@@ -75,6 +79,9 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
     assert.equal(backdated.body.error.code, "PAID_AT_NOT_ALLOWED");
     assert.equal(await Subscription.countDocuments({ userId: customer._id }), 0);
     assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
+    const closingAfterRejectedBackdate = await expectedTotals(closeDate);
+    assert.deepEqual(closingAfterRejectedBackdate.expected, closingBeforeRejectedBackdate.expected,
+      "rejected past paidAt must not change business closing expected totals");
     const paid = await request(app).post("/api/dashboard/subscriptions")
       .set(authorization).send({ ...payload,
         payment: { method: "cash", status: "paid", collectedAmountHalala: total } });
