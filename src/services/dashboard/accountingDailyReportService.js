@@ -17,6 +17,9 @@ const { VAT_PERCENTAGE } = require("../../config/vat");
 const { buildSectionedCsv } = require("../../utils/csvExport");
 const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
 const { expectedTotals } = require("../pos/expectedTotals");
+const DailyCashClosing = require("../../models/DailyCashClosing");
+const { resolveClosingVersion, POS } = require("../pos/posClosingSetting");
+const { addOtherReceivables } = require("./dailyCashClosingService");
 
 const MANUAL_DEDUCTION_ACTION = "manual_subscription_meal_deduction";
 const PAID_STATUS = "paid";
@@ -481,10 +484,16 @@ async function buildDailyReport({
       addonDeductionMap.set(addon.addonId, current);
     }
   }
-  // Keep POS sales separate from legacy Order/Payment so one payment is never
-  // counted twice. Only the dedicated isolated POS Staging runtime reads this.
-  const posFinancial = isPosStagingRuntime()
-    ? await expectedTotals(period.businessDate) : null;
+  // Preserve legacy report output exactly, including its historical Staging
+  // read-only POS fields. POS_V2 uses the very same closing snapshot/reducer,
+  // never a second aggregation of POS sales through Order/Payment.
+  const closing = await DailyCashClosing.findOne({ businessDate: period.businessDate }).lean();
+  const closingVersion = await resolveClosingVersion(period.businessDate, closing);
+  const frozen = closingVersion === POS && closing &&
+    ["submitted", "approved"].includes(closing.status) ? closing.snapshot?.expectedTotals : null;
+  const posFinancial = frozen || (closingVersion === POS
+    ? addOtherReceivables(await expectedTotals(period.businessDate), closing?.channels)
+    : isPosStagingRuntime() ? await expectedTotals(period.businessDate) : null);
   const normalizedSummary = {
     grossRevenueHalala: null,
     netRevenueHalala: resolvedNetSalesHalala,
@@ -501,6 +510,9 @@ async function buildDailyReport({
   return {
     date: period.businessDate,
     businessDate: period.businessDate,
+    closingVersion,
+    calculationMode: closingVersion === POS ? "pos_expected_totals" : "legacy_calculate_closing",
+    posClosingExpectedTotals: closingVersion === POS ? posFinancial : null,
     filters: {
       date: period.businessDate,
       fromDate: null,
