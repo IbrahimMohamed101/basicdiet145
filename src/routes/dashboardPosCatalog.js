@@ -9,24 +9,12 @@ const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevi
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 const { verifiedActor } = require("../services/pos/financialLedgerService");
 const { getPosRuntimeStatus } = require("../services/pos/financialRuntime");
-const { isPosStagingRuntime } = require("../utils/posStagingRuntime");
-
 const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
-// POS management is an operational duty of cashier and restaurant; financial
-// admin privileges and customer-app menu publication remain separately guarded.
-const stagingManage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
-function manage(req, res, next) {
-  // Full POS production activation separately requires NODE_ENV=production.
-  // Preserve the existing synchronous Staging role middleware and tests.
-  if (process.env.NODE_ENV === "production" && !isPosStagingRuntime()) {
-    if (!["admin", "superadmin"].includes(req.dashboardUserRole)) {
-      return errorResponse(res, 403, "FORBIDDEN", "تعديل منيو الكاشير على Production للإدارة فقط.");
-    }
-    return next();
-  }
-  return stagingManage(req, res, next);
-}
+// D-098: catalog management is the same for admin, superadmin and both
+// branch-operator roles in Staging and in explicitly enabled Production.
+// Runtime activation is still enforced by getPosRuntimeStatus above the routes.
+const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
 router.get("/status", asyncHandler(async (req, res) => {
   if (!isBranchOperator(req.dashboardUserRole) && !["admin", "superadmin"].includes(req.dashboardUserRole)) {
