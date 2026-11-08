@@ -4,6 +4,12 @@ on:
     branches: [codex/pos-staging-isolation]
     paths:
       - "src/controllers/adminController.js"
+      - "src/constants/dashboardRoles.js"
+      - "src/middleware/dashboardAuth.js"
+      - "src/services/dashboard/opsActionPolicy.js"
+      - "src/routes/dashboardPosCatalog.js"
+      - "src/routes/dashboardPosFinancial.js"
+      - "tests/posD092BranchOperatorParity.test.js"
       - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
       - "src/routes/admin.js"
       - "src/services/pos/**"
@@ -49,6 +55,8 @@ jobs:
           node --check src/services/pos/businessDaySetting.js
       - name: Business day and role unit contracts
         run: NODE_ENV=test node --test tests/posG2ExpectedTotals.test.js tests/posCashierRestaurantRoleParity.test.js tests/posStageFGuards.test.js
+      - name: D-092 exhaustive Express route permissions parity
+        run: NODE_ENV=test node --test tests/posD092BranchOperatorParity.test.js
       - name: Real role and payment authorization against standalone
         run: NODE_ENV=test node --test tests/posG3StandaloneSubscriptionGuard.test.js
       - name: Closing reconciliation against standalone
