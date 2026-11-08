@@ -10,6 +10,7 @@ on:
       - "src/services/pos/posClosingSetting.js"
       - "scripts/pos-g1-seed-closing-date-staging.js"
       - "tests/posG1Closing.integration.test.js"
+      - "tests/posG1SeedSubprocess.integration.test.js"
       - ".github/workflows/pos-g1-closing.yml"
 permissions:
   contents: read
@@ -41,5 +42,19 @@ jobs:
         run: bash scripts/ci/start-mongo-replset.sh pos-g1-ci-mongo
       - name: G1 real HTTP + rs0 integration, golden legacy and role checks
         run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posG1Closing.integration.test.js
+      - name: Start separate local-only standalone Mongo for NOT_RS0 negative check
+        run: |
+          docker run -d --name pos-g1-ci-standalone -p 27018:27017 mongo:7 --bind_ip_all
+          for attempt in $(seq 1 40); do
+            if docker exec pos-g1-ci-standalone mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -q '1'; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec pos-g1-ci-standalone mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q '1'
+      - name: G1 real CLI subprocess dry-run, commit and re-run + error codes
+        env:
+          CI: "true"
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posG1SeedSubprocess.integration.test.js
       - name: Existing daily closing regression
         run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/dailyCashClosing.test.js tests/posG2ExpectedTotals.test.js
