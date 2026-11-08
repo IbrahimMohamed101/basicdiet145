@@ -2044,6 +2044,15 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       || !["admin", "superadmin"].includes(String(req.dashboardUserRole || "")))) {
     return errorResponse(res, 400, "PAYMENT_REQUIRED", "Branch operator subscription requires paid payment");
   }
+  // Complimentary subscriptions are an explicitly justified admin action.
+  // Validate before activating any entitlement, including on standalone Mongo.
+  const isComplimentary = !body.payment;
+  const complimentaryReason = typeof body.complimentaryReason === "string"
+    ? body.complimentaryReason.trim() : "";
+  if (isComplimentary && (complimentaryReason.length < 5 || complimentaryReason.length > 500)) {
+    return errorResponse(res, 400, "COMPLIMENTARY_REASON_REQUIRED",
+      "A complimentary subscription requires a reason of 5 to 500 characters");
+  }
   // No payment is allowed exclusively for admin or superadmin; the recording
   // adapter always supplies a paid and fully quoted payment before activation.
   if (body.payment && body.payment.method !== "cash") {
@@ -2215,6 +2224,24 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
 
       subscription.status = "active";
       await subscription.save({ session });
+    }
+
+    if (isComplimentary) {
+      // Required audit is NOT best-effort: write in the same Mongo session as
+      // entitlement creation. A failed audit aborts the transaction on rs0.
+      await ActivityLog.create([{
+        entityType: "subscription",
+        entityId: subscription._id,
+        action: "complimentary_subscription_created",
+        byUserId: req.dashboardUserId,
+        byRole: req.dashboardUserRole,
+        meta: {
+          subscriptionId: String(subscription._id),
+          complimentaryReason,
+          actorId: String(req.dashboardUserId),
+          actorRole: req.dashboardUserRole,
+        },
+      }], { session });
     }
 
     if (typeof session.commitTransaction === "function") await session.commitTransaction();
