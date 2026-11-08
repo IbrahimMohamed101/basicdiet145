@@ -72,7 +72,7 @@ test("Production guard default rejects writes as HTTP 403 POS_DISABLED", async (
 });
 
 
-test("Production catalog first draft is admin-only, created empty and unpublished, no seed", async (t) => {
+test("D-098: Production enabled catalog draft/publish/history permissions match Staging, without seeding", async (t) => {
   const router = require("../src/routes/dashboardPosCatalog");
   const PosCatalog = require("../src/models/PosCatalog");
   const { saveDraft } = require("../src/services/pos/catalogService");
@@ -80,21 +80,32 @@ test("Production catalog first draft is admin-only, created empty and unpublishe
   process.env.NODE_ENV = "production";
   process.env.POS_PRODUCTION_ENABLED = "true";
   try {
-    const layer = router.stack.find(({ route }) =>
-      route?.path === "/catalog/draft" && route.methods.put)?.route.stack[0];
-    assert.ok(layer);
-    const invoke = (role) => {
-      let status = 200, payload = null, allowed = false;
-      layer.handle({ dashboardUserRole: role }, {
-        status(code) { status = code; return this; },
-        json(x) { payload = x; return this; },
-      }, () => { allowed = true; });
-      return { status, payload, allowed };
-    };
-    assert.equal(invoke("cashier").status, 403);
-    assert.equal(invoke("restaurant").status, 403);
-    assert.equal(invoke("admin").allowed, true);
-    assert.equal(invoke("superadmin").allowed, true);
+    const managementEndpoints = [
+      ["get", "/catalog/manage"],
+      ["get", "/catalog/revisions"],
+      ["get", "/catalog/revisions/:revision"],
+      ["put", "/catalog/draft"],
+      ["post", "/catalog/publish"],
+    ];
+    for (const [method, endpoint] of managementEndpoints) {
+      const layer = router.stack.find(({ route }) =>
+        route?.path === endpoint && route.methods[method])?.route.stack[0];
+      assert.ok(layer, `missing management route ${method} ${endpoint}`);
+      for (const role of ["admin", "superadmin", "restaurant", "cashier", "kitchen", "courier"]) {
+        let status = 200, allowed = false, payload;
+        layer.handle({ dashboardUserRole: role, method: method.toUpperCase() }, {
+          status(code) { status = code; return this; },
+          json(x) { payload = x; return this; },
+        }, () => { allowed = true; });
+        if (["kitchen", "courier"].includes(role)) {
+          assert.equal(status, 403, `${method} ${endpoint}: ${role}`);
+          assert.equal(payload.error.code, "FORBIDDEN");
+          assert.equal(allowed, false);
+        } else {
+          assert.equal(allowed, true, `${method} ${endpoint}: ${role}`);
+        }
+      }
+    }
     let inserted = null;
     t.mock.method(PosCatalog, "create", async (payload) => {
       inserted = payload;
