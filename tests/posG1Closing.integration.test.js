@@ -176,6 +176,11 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     const approved = await call("cashier", "GET", date);
     assert.equal(approved.json.data.expectedTotals.expected.totalHalalas, 493805);
     assert.equal(approved.json.data.reconciliation.cashDifferenceHalala, -100);
+    const accounting = await buildDailyReport({ date, includeDetails: false });
+    assert.equal(accounting.closingVersion, "POS_V2");
+    assert.equal(accounting.posClosingExpectedTotals.expected.totalHalalas, 493805);
+    assert.equal(accounting.posSales.invoiceCount, 3,
+      "accounting uses the frozen three-invoice snapshot, not the later fourth sale");
     assert.equal((await call("admin", "POST", date, "/return", { reason: "Cannot" })).status, 409);
 
     // Golden Legacy fixture remains without version; GET/approval cannot reclassify it.
