@@ -125,3 +125,77 @@ test("D-098: Production enabled catalog draft/publish/history permissions match 
     else process.env.POS_PRODUCTION_ENABLED = oldFlag;
   }
 });
+
+
+test("D-098: both branch operator roles can persist a first Production draft and publish an immutable revision", async (t) => {
+  const mongoose = require("mongoose");
+  const PosCatalog = require("../src/models/PosCatalog");
+  const PosCatalogRevision = require("../src/models/PosCatalogRevision");
+  const PosAudit = require("../src/models/PosAudit");
+  const { saveDraft, publishDraft } = require("../src/services/pos/catalogService");
+  const savedActors = [], publishedActors = [], snapshots = [];
+  const prevNode = process.env.NODE_ENV, prevFlag = process.env.POS_PRODUCTION_ENABLED;
+  process.env.NODE_ENV = "production";
+  process.env.POS_PRODUCTION_ENABLED = "true";
+  t.after(() => {
+    if (prevNode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevNode;
+    if (prevFlag === undefined) delete process.env.POS_PRODUCTION_ENABLED;
+    else process.env.POS_PRODUCTION_ENABLED = prevFlag;
+  });
+
+  let currentDraft;
+  t.mock.method(PosCatalog, "create", async (data) => {
+    savedActors.push(data.draftSavedBy);
+    currentDraft = data.draft;
+    return { toObject: () => data };
+  });
+  t.mock.method(mongoose, "startSession", async () => ({
+    withTransaction: async (callback) => callback(),
+    endSession: async () => {},
+  }));
+  t.mock.method(PosCatalog, "findOne", () => ({
+    session: () => ({
+      lean: async () => ({
+        revision: 1, publishedRevision: 0, draft: currentDraft,
+        published: { channels: [], categories: [], products: [] },
+      }),
+    }),
+  }));
+  t.mock.method(PosCatalog, "findOneAndUpdate", (_query, update) => ({
+    lean: async () => ({
+      revision: 2, publishedRevision: 2, published: update.$set.published,
+      draft: null, publishedBy: update.$set.publishedBy,
+    }),
+  }));
+  t.mock.method(PosCatalogRevision, "create", async (docs) => {
+    snapshots.push(...docs);
+    return docs;
+  });
+  t.mock.method(PosAudit, "create", async (docs) => {
+    publishedActors.push(...docs.map(doc => doc.actor));
+    return docs;
+  });
+
+  for (const role of ["cashier", "restaurant"]) {
+    const draft = { channels: [{ id: "restaurant", label: "مطعم" }],
+      categories: [{ id: "meal", label: "وجبات" }], products: [] };
+    const saved = await saveDraft(0, draft, role);
+    assert.equal(saved.revision, 1);
+    assert.equal(saved.publishedRevision, 0);
+    assert.deepEqual(saved.draft, draft);
+    const published = await publishDraft(1, role);
+    assert.equal(published.revision, 2);
+    assert.equal(published.publishedRevision, 2);
+    assert.equal(published.publishedBy, role);
+    assert.deepEqual(published.published, draft);
+  }
+  assert.deepEqual(savedActors, ["cashier", "restaurant"]);
+  assert.deepEqual(publishedActors, ["cashier", "restaurant"]);
+  assert.equal(snapshots.length, 2);
+  for (const snapshot of snapshots) {
+    assert.equal(snapshot.revision, 2);
+    assert.equal(typeof snapshot.contentSha256, "string");
+    assert.equal(snapshot.contentSha256.length, 64);
+  }
+});
