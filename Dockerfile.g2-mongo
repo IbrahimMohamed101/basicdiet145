@@ -1,0 +1,5 @@
+# G2 isolated rehearsal image only. Changing Production image requires separate approval.
+FROM mongo:8.0
+COPY scripts/g2-mongo-start-rs0.sh /usr/local/bin/g2-mongo-start-rs0
+RUN chmod 0755 /usr/local/bin/g2-mongo-start-rs0
+CMD ["/usr/local/bin/g2-mongo-start-rs0"]
