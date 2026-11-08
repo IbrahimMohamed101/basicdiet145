@@ -15,6 +15,7 @@ const { resolveClosingVersion, versionAt, scheduleStartDate } = require("../src/
 const { reasonCodesFor, calculateClosing, addOtherReceivables } = require("../src/services/dashboard/dailyCashClosingService");
 const router = require("../src/routes/dashboardDailyCashClosings");
 const { dashboardRoleHasPermission } = require("../src/constants/dashboardRoles");
+const { buildDailyReport } = require("../src/services/dashboard/accountingDailyReportService");
 const start = async () => {
   const app = express();
   app.use(express.json());
@@ -180,6 +181,19 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     assert.deepEqual(golden.json.data.summary, summary);
     const inDb = await DailyCashClosing.collection.findOne({ businessDate: legacy });
     assert.equal(Object.hasOwn(inDb, "closingVersion"), false);
+    // Golden accounting comparison for the exact same legacy day with the
+    // feature setting present and absent; only generatedAt is volatile.
+    const stable = (report) => {
+      const copy = structuredClone(report);
+      delete copy.generatedAt;
+      return copy;
+    };
+    const reportWithSetting = stable(await buildDailyReport({ date: legacy, includeDetails: false }));
+    assert.equal(reportWithSetting.posSales, null);
+    await Setting.deleteOne({ key: "posClosingStartDate" }); // only disposable CI database
+    const reportWithoutSetting = stable(await buildDailyReport({ date: legacy, includeDetails: false }));
+    assert.deepEqual(reportWithSetting, reportWithoutSetting);
+    assert.equal(await resolveClosingVersion(date, null), "LEGACY_V1");
     assert.equal(dashboardRoleHasPermission("cashier", ["admin"]), false);
   } finally {
     if (server) await server.close();
