@@ -57,9 +57,9 @@ function parsePayload(body, version) {
     throw fail(400, "INVALID_COUNT", "Invalid confirmed subscription count");
   return {
     channels: {
-      restaurantHalala: money(c.restaurantHalala, "restaurant"),
-      hungerstationHalala: money(c.hungerstationHalala, "hungerstation"),
-      keetaHalala: money(c.keetaHalala, "keeta"),
+      restaurantHalala: money(version === POS ? 0 : c.restaurantHalala, "restaurant"),
+      hungerstationHalala: money(version === POS ? 0 : c.hungerstationHalala, "hungerstation"),
+      keetaHalala: money(version === POS ? 0 : c.keetaHalala, "keeta"),
       other,
     },
     collections: {
