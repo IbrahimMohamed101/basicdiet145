@@ -9,6 +9,7 @@ const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const { getBusinessDayBounds } = require("../pos/businessDaySetting");
 const { expectedTotals } = require("../pos/expectedTotals");
+const { LEGACY, POS, resolveClosingVersion, calculationMode } = require("../pos/posClosingSetting");
 
 function safeHalala(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -194,6 +195,94 @@ function reconcileCountedWithServer(collections, serverExpected) {
   };
 }
 
+
+const FORMULA_VERSION = "G1-2026-11-08";
+function addOtherReceivables(serverTotals, channels) {
+  const other = channels?.other || [];
+  const seen = new Set();
+  let additionalHalala = 0;
+  for (const item of other) {
+    const name = String(item.name || "").trim();
+    const reference = String(item.reference || "").trim();
+    const normalized = name.toLowerCase().replace(/\s+/gu, "");
+    const key = normalized + ":" + reference;
+    if (!name || !reference || seen.has(key) ||
+        ["restaurant", "therestaurant", "hungerstation", "keeta",
+          "المطعم", "مطعم", "هنجرستيشن", "كيتا"].includes(normalized) ||
+        !Number.isSafeInteger(item.amountHalala) || item.amountHalala < 0) {
+      throw new TypeError("Invalid, duplicate, or POS-owned manual other-channel record");
+    }
+    seen.add(key);
+    additionalHalala += item.amountHalala;
+  }
+  if (!Number.isSafeInteger(additionalHalala) ||
+      !Number.isSafeInteger(serverTotals.expected.totalHalalas + additionalHalala) ||
+      !Number.isSafeInteger(serverTotals.expected.appReceivableHalalas + additionalHalala)) {
+    throw new RangeError("Unsafe manual other-channel aggregation");
+  }
+  return {
+    ...serverTotals,
+    otherReceivablesHalalas: additionalHalala,
+    otherReceivables: other.map(item => ({ name: item.name, reference: item.reference, amountHalala: item.amountHalala })),
+    expected: {
+      ...serverTotals.expected,
+      appReceivableHalalas: serverTotals.expected.appReceivableHalalas + additionalHalala,
+      totalHalalas: serverTotals.expected.totalHalalas + additionalHalala,
+    },
+  };
+}
+function reasonCodesFor({ version, summary, reconciliation, automatic }) {
+  const codes = [];
+  if (version === POS) {
+    if (reconciliation.cashDifferenceHalala !== 0) codes.push("CASH_DIFFERENCE");
+    if (reconciliation.networkDifferenceHalala !== 0) codes.push("NETWORK_DIFFERENCE");
+  } else {
+    // LEGACY_V1 must exactly follow main@a4ca1bc submit conditions.
+    // POS reconciliation is informational for historical/manual closings.
+    if (summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0) codes.push("LEGACY_AMOUNT_DIFFERENCE");
+  }
+  if (summary.subscriptionCountDifference !== 0) codes.push("SUBSCRIPTION_COUNT_DIFFERENCE");
+  if (summary.unknownSubscriptionHalala !== 0) codes.push("UNKNOWN_SUBSCRIPTION_HALALA");
+  if (automatic.reviewPaymentsCount > 0) codes.push("SUBSCRIPTION_PAYMENTS_REVIEW");
+  // Legacy main requires refundsHalala > 0 ONLY; POS_V2 also flags
+  // a recorded refund entry, even when its amount is zero.
+  if (version === POS
+    ? (automatic.refundCount || 0) > 0 || (automatic.refundsHalala || 0) > 0
+    : automatic.refundsHalala > 0) codes.push("SUBSCRIPTION_REFUNDS");
+  return codes;
+}
+async function closingCalculations(date, closing, inputs, { useFrozen = false } = {}) {
+  const snapshot = useFrozen ? closing?.snapshot : null;
+  const version = snapshot?.closingVersion || await resolveClosingVersion(date, closing);
+  const automatic = snapshot?.automatic || await subscriptionPaymentsForDate(date);
+  const serverExpected = snapshot?.expectedTotals ||
+    (version === POS ? addOtherReceivables(await expectedTotals(date), inputs.channels) : await expectedTotals(date));
+  const reconciliation = snapshot?.reconciliation ||
+    reconcileCountedWithServer(inputs.collections, serverExpected);
+  // POS_V2 must not call the legacy sales calculator or expose its fictitious
+  // manual-channel totals. The server-owned cash/network/apps expected values
+  // are the only closing money basis; legacy retains its exact old calculator.
+  const summary = snapshot?.summary || (version === POS ? {
+    totalSalesHalala: serverExpected.expected.totalHalalas,
+    appReceivablesHalala: serverExpected.expected.appReceivableHalalas,
+    localExpectedHalala: serverExpected.expected.cashHalalas + serverExpected.expected.networkHalalas,
+    localRecordedHalala: inputs.collections.cashHalala + inputs.collections.cardHalala,
+    localDifferenceHalala: reconciliation.localDifferenceHalala,
+    overallDifferenceHalala: reconciliation.localDifferenceHalala,
+    subscriptionCountDifference: inputs.confirmedSubscriptionCount == null ? 0 :
+      inputs.confirmedSubscriptionCount - automatic.count,
+    unknownSubscriptionHalala: safeHalala(automatic.unknownHalala),
+    accountingRefundsHalala: safeHalala(automatic.refundsHalala),
+  } : calculateClosing(inputs.channels, inputs.collections, automatic, inputs.confirmedSubscriptionCount));
+  const reasonCodes = snapshot?.reasonCodes ||
+    reasonCodesFor({ version, summary, reconciliation, automatic });
+  const businessDayBounds = snapshot?.businessDayBounds || await getBusinessDayBounds(date);
+  return { closingVersion: version, calculationMode: calculationMode(version), automatic,
+    summary, expectedTotals: serverExpected, reconciliation,
+    reasonCodes, requiresReason: reasonCodes.length > 0, businessDayBounds,
+    formulaVersion: snapshot?.formulaVersion || (version === POS ? FORMULA_VERSION : "legacy-v1") };
+}
+
 function inputSnapshot(closing) {
   return {
     channels: closing.channels,
@@ -205,37 +294,25 @@ function inputSnapshot(closing) {
 }
 
 async function buildClosingView(closing, date) {
-  // After submission, financial evidence must remain fixed for approval/audit.
-  const automatic = closing && closing.status !== "draft" && closing.snapshot
-    ? closing.snapshot.automatic
-    : await subscriptionPaymentsForDate(date);
   const values = closing ? inputSnapshot(closing) : {
     channels: { restaurantHalala: 0, hungerstationHalala: 0, keetaHalala: 0, other: [] },
     collections: { cashHalala: 0, cardHalala: 0 },
     confirmedSubscriptionCount: null, discrepancyReason: "", notes: "",
   };
-  const summary = closing && closing.status !== "draft" && closing.snapshot
-    ? closing.snapshot.summary
-    : calculateClosing(values.channels, values.collections, automatic, values.confirmedSubscriptionCount);
-  const serverExpected = closing && closing.status !== "draft" && closing.snapshot?.expectedTotals
-    ? closing.snapshot.expectedTotals
-    : await expectedTotals(date);
-  const reconciliation = closing && closing.status !== "draft" && closing.snapshot?.reconciliation
-    ? closing.snapshot.reconciliation
-    : reconcileCountedWithServer(values.collections, serverExpected);
+  const calculations = await closingCalculations(date, closing, values, {
+    useFrozen: Boolean(closing && closing.status !== "draft" && closing.snapshot),
+  });
   return {
     businessDate: date,
     currency: "SAR",
     moneyUnit: "halala",
     status: closing ? closing.status : "new",
     ...values,
-    automatic,
-    summary,
-    expectedTotals: serverExpected,
-    reconciliation,
+    ...calculations,
     submittedAt: closing?.submittedAt || null,
     approvedAt: closing?.approvedAt || null,
     history: closing?.history || [],
+    returnedSnapshots: closing?.returnedSnapshots || [],
   };
 }
 
@@ -249,4 +326,7 @@ module.exports = {
   buildClosingView,
   expectedTotals,
   reconcileCountedWithServer,
+  addOtherReceivables,
+  reasonCodesFor,
+  closingCalculations,
 };

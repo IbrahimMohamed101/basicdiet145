@@ -6,6 +6,8 @@ const money = { type: Number, min: 0, default: 0, validate: Number.isSafeInteger
 const DailyCashClosingSchema = new mongoose.Schema({
   businessDate: { type: String, required: true, unique: true, match: /^\d{4}-\d{2}-\d{2}$/ },
   status: { type: String, enum: ["draft", "submitted", "approved"], default: "draft" },
+  closingVersion: { type: String, enum: ["LEGACY_V1", "POS_V2"], immutable: true },
+  calculationMode: { type: String, enum: ["legacy_calculate_closing", "pos_expected_totals"], immutable: true },
   channels: {
     restaurantHalala: { ...money },
     hungerstationHalala: { ...money },
@@ -13,6 +15,7 @@ const DailyCashClosingSchema = new mongoose.Schema({
     other: [{
       name: { type: String, required: true, trim: true, maxlength: 80 },
       amountHalala: { ...money },
+      reference: { type: String, trim: true, maxlength: 120, default: "" },
       _id: false,
     }],
   },
@@ -24,6 +27,13 @@ const DailyCashClosingSchema = new mongoose.Schema({
   discrepancyReason: { type: String, trim: true, maxlength: 1000, default: "" },
   notes: { type: String, trim: true, maxlength: 1500, default: "" },
   snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+  returnedSnapshots: [{
+    actor: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", required: true },
+    reason: { type: String, required: true },
+    at: { type: Date, required: true },
+    snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+    _id: false,
+  }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser" },
   submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser" },
