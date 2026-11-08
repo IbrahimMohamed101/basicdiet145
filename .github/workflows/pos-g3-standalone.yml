@@ -11,7 +11,8 @@ permissions:
   contents: read
 jobs:
   standalone-mongo8:
-    runs-on: ubuntu-24.04
+    # MongoDB 8.0 is incompatible with the 6.19 kernel on ubuntu-24.04 runners.
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
       NODE_ENV: test
