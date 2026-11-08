@@ -72,12 +72,13 @@ router.get(
   asyncHandler(builderPremiumMealController.getBuilderPremiumMealAdmin)
 );
 
+// D-091 customer creation: admin and restaurant, inherited by cashier (not kitchen/courier).
 // Dashboard-created customers are phone-authenticated. Email is intentionally
 // ignored here so stale/default dashboard values cannot block a new phone.
 router.post(
   "/users",
   dashboardAuthMiddleware,
-  dashboardRoleMiddleware(["admin", "restaurant", "kitchen"]),
+  dashboardRoleMiddleware(["admin", "restaurant"]),
   ignoreDashboardCustomerEmail,
   asyncHandler(adminController.createAppUserAdmin)
 );
