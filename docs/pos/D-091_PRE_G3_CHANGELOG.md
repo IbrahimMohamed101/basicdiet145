@@ -76,7 +76,8 @@ for both. No existing permission is revoked from kitchen, courier or admin.
 | Daily cash closing approve/return | — | — | — | — | ✓ |
 | Accounting daily report / payment finance report | — | — | — | — | ✓ |
 | Change versioned business day cutoff | — | — | — | — | ✓ |
-| Staff dashboard user administration | — | — | — | — | — |
+| Dedicated staff API (`/dashboard/staff-users`, superadmin-only) | — | — | — | — | — |
+| Legacy admin dashboard-user management (`/admin/dashboard-users`) | — | — | — | — | ✓ |
 | Full all-operations screen group (kitchen/pickup/courier) | ✓ | ✓ | — | — | ✓ |
 | Dashboard branch UI pages (same route list) | ✓ | ✓ | — | — | ✓ |
 
