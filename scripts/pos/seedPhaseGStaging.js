@@ -96,8 +96,7 @@ function validateSeedBundle(raw) {
 function assertStagingDatabaseEnvironment(env) {
   if (env.RAILWAY_ENVIRONMENT_ID !== STAGING_ENV
     || env.RAILWAY_SERVICE_ID !== STAGING_SERVICE
-    || env.POS_STAGING_ISOLATED !== "true"
-    || env.NODE_ENV === "production") {
+    || env.POS_STAGING_ISOLATED !== "true") {
     throw new Error("Refusing to seed outside dedicated POS Staging backend");
   }
   if (!env.POS_STAGING_MONGO_URL) throw new Error("Missing POS_STAGING_MONGO_URL");
