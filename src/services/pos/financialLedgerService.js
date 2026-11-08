@@ -83,7 +83,7 @@ async function afterUnknownOutcome(Model, key, hash, originalError) {
 }
 
 async function issueStagingInvoice(req, body, key, options = {}) {
-  requireFinancialStagingWrites(options);
+  await requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   const actor = await verifiedActor(req);
   await ensureFinancialIndexes();
@@ -240,7 +240,7 @@ function proportionalRefund(line, balance, quantity) {
   return { grossHalalas, vatHalalas, netHalalas };
 }
 async function recordStagingRefund(req, body, key, options = {}) {
-  requireFinancialStagingWrites(options);
+  await requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   const actor = await verifiedActor(req);
   if (!hasPosCapability(actor.role, "pos.refund")) {
