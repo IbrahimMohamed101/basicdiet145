@@ -26,6 +26,17 @@ jobs:
           cache: npm
       - name: Install backend dependencies without lifecycle writes
         run: npm ci --ignore-scripts
+      - name: Install database-tools binaries from pinned mongo:8.0 image (CI only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker create --name g2-ci-dbtools mongo:8.0 >/dev/null
+          docker cp g2-ci-dbtools:/usr/bin/mongodump /tmp/g2-mongodump
+          docker cp g2-ci-dbtools:/usr/bin/mongorestore /tmp/g2-mongorestore
+          docker rm g2-ci-dbtools >/dev/null
+          sudo install -m 0755 /tmp/g2-mongodump /usr/local/bin/mongodump
+          sudo install -m 0755 /tmp/g2-mongorestore /usr/local/bin/mongorestore
+          mongodump --version | head -n 1
       - name: Parse all G2 scripts and workflow execution guards
         run: |
           set -euo pipefail
