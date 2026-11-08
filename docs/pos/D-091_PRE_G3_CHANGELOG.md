@@ -11,6 +11,7 @@ Cashier has all `restaurant` operational permissions without exception, includin
 | `src/controllers/adminController.js` | Remove cash-only role check; reject client-supplied `paidAt`, assign server time in payment row, write authenticated customer-creator actor to ActivityLog |
 | `src/controllers/dashboard/subscriptionPaymentRecordingController.js` | Stop cashier Visa/quote filter; reject `paidAt` before activation, keep #207 paid-state and exact-halalas checks |
 | `src/routes/admin.js` | Replace temporary #205 cashier-only route exception with permission-based `POST /admin/users` for admin/restaurant (cashier inherits restaurant), leave other mutations behind original guards |
+| `src/routes/dashboardRestaurantCapabilities.js` | Block kitchen on the earlier `/admin/users` route, which otherwise takes precedence over admin router, while preserving normal admin/restaurant/cashier access |
 | `src/services/pos/financialRuntime.js` | Refund entitlement uses inherited dashboard roles, with optional `POS_REFUND_ROLES` policy |
 | `src/services/pos/financialLedgerService.js` | POS sale/refund actor permissions through effective roles; invoice, refund and ledger date use server Setting cutoff |
 | `src/services/pos/businessDate.js` | HH:mm Riyadh rollover (default 00:00); exact half-open business date bounds |
