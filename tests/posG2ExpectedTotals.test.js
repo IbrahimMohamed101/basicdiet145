@@ -77,3 +77,21 @@ test("POS G2: no POS/Payment double count and orphaned refunds are flagged", () 
   assert.equal(totals.subscriptions.cashHalalas, 1000);
   assert.equal(totals.subscriptions.paymentCount, 2);
 });
+
+test("D-091: 23:59, 00:01, 03:59 and 04:00 Riyadh with 04:00 cutoff and default 00:00", () => {
+  const times = [
+    ["2026-11-08T20:59:00.000Z", "2026-11-08", "2026-11-08"], // 23:59
+    ["2026-11-08T21:01:00.000Z", "2026-11-08", "2026-11-09"], // 00:01
+    ["2026-11-09T00:59:00.000Z", "2026-11-08", "2026-11-09"], // 03:59
+    ["2026-11-09T01:00:00.000Z", "2026-11-09", "2026-11-09"], // 04:00
+  ];
+  for (const [instant, cutoff04, midnight] of times) {
+    assert.equal(businessDateAt(new Date(instant), "04:00"), cutoff04, instant);
+    assert.equal(businessDateAt(new Date(instant)), midnight, instant);
+  }
+  const day = boundsForBusinessDate("2026-11-08", "04:00");
+  assert.equal(day.start.toISOString(), "2026-11-08T01:00:00.000Z");
+  assert.equal(day.end.toISOString(), "2026-11-09T01:00:00.000Z");
+  assert.throws(() => boundsForBusinessDate("2026-11-08", "24:00"), /Invalid/);
+  assert.throws(() => businessDateAt(new Date(), "4:00"), /Invalid/);
+});
