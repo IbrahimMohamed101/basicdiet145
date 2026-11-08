@@ -7,12 +7,16 @@ const DASHBOARD_ROLES = Object.freeze([
   "cashier",
 ]);
 
-const DASHBOARD_ROLE_INHERITANCE = Object.freeze({
-  restaurant: Object.freeze(["restaurant", "kitchen", "cashier"]),
-  // Cashier is the operational owner of the branch, with the same permissions
-  // as restaurant (never admin/superadmin). Preserve cashier identity in audit.
-  cashier: Object.freeze(["restaurant", "kitchen", "cashier"]),
-});
+// D-092: branch operators are one operational principal, but their original
+// role remains unchanged in JWT, dashboard state and audit events.
+const BRANCH_OPERATOR_ROLES = Object.freeze(["restaurant", "cashier"]);
+const BRANCH_OPERATOR_INHERITANCE = Object.freeze(["restaurant", "kitchen", "cashier"]);
+const DASHBOARD_ROLE_INHERITANCE = Object.freeze(
+  Object.fromEntries(BRANCH_OPERATOR_ROLES.map((role) => [role, BRANCH_OPERATOR_INHERITANCE]))
+);
+function isBranchOperator(role) {
+  return BRANCH_OPERATOR_ROLES.includes(normalizeDashboardRole(role));
+}
 
 function normalizeDashboardRole(role) {
   return String(role || "").trim().toLowerCase();
@@ -38,6 +42,8 @@ const DASHBOARD_ROLE_LABEL = DASHBOARD_ROLES.join(", ");
 
 module.exports = {
   DASHBOARD_ROLES,
+  BRANCH_OPERATOR_ROLES,
+  isBranchOperator,
   DASHBOARD_ROLE_INHERITANCE,
   DASHBOARD_ROLE_LABEL,
   dashboardRoleHasPermission,

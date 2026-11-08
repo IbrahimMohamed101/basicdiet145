@@ -3,7 +3,7 @@
 const PosInvoice = require("../../models/PosInvoice");
 const PosRefund = require("../../models/PosRefund");
 const Payment = require("../../models/Payment");
-const { boundsForBusinessDate } = require("./businessDate");
+const { getBusinessDayBounds } = require("./businessDaySetting");
 
 function amount(value) {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -83,7 +83,7 @@ function summarizeExpectedTotals({ businessDate, invoices, refunds, relatedInvoi
   for (const payment of payments) {
     const gross = amount(payment.amount);
     const source = String(payment.source || "");
-    if (source === "dashboard_subscription_cash") {
+    if (source === "dashboard_subscription_cash" || source === "dashboard_cashier") {
       subscriptionCashHalalas = checkedAdd(subscriptionCashHalalas, gross);
     } else if (source === "dashboard_subscription_visa") {
       subscriptionVisaHalalas = checkedAdd(subscriptionVisaHalalas, gross);
@@ -94,7 +94,7 @@ function summarizeExpectedTotals({ businessDate, invoices, refunds, relatedInvoi
     const collector = payment.collectedBy ? String(payment.collectedBy) : "unattributed";
     if (!byCollector[collector]) byCollector[collector] = { cashHalalas: 0, visaHalalas: 0, paymentCount: 0 };
     byCollector[collector].paymentCount += 1;
-    if (source === "dashboard_subscription_cash")
+    if (source === "dashboard_subscription_cash" || source === "dashboard_cashier")
       byCollector[collector].cashHalalas = checkedAdd(byCollector[collector].cashHalalas, gross);
     else byCollector[collector].visaHalalas = checkedAdd(byCollector[collector].visaHalalas, gross);
   }
@@ -130,7 +130,7 @@ function summarizeExpectedTotals({ businessDate, invoices, refunds, relatedInvoi
 }
 
 async function expectedTotals(businessDate) {
-  const { start, end } = boundsForBusinessDate(businessDate);
+  const { start, end } = await getBusinessDayBounds(businessDate);
   const invoices = await PosInvoice.find({ $or: [
     { businessDate },
     { businessDate: { $exists: false }, issuedAt: { $gte: start, $lt: end } },
@@ -147,7 +147,7 @@ async function expectedTotals(businessDate) {
   const payments = await Payment.find({
     type: { $in: ["subscription_activation", "subscription_renewal"] },
     status: "paid",
-    source: { $in: ["dashboard_subscription_cash", "dashboard_subscription_visa"] },
+    source: { $in: ["dashboard_subscription_cash", "dashboard_subscription_visa", "dashboard_cashier"] },
     paidAt: { $gte: start, $lt: end },
   }).select("_id amount source collectedBy paidAt").lean();
   const result = summarizeExpectedTotals({ businessDate, invoices, refunds, relatedInvoices, payments });

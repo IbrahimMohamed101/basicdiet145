@@ -56,7 +56,7 @@ function paymentMethodOptions() {
   ];
 }
 
-function decorateQuotePayload(payload, role = null) {
+function decorateQuotePayload(payload) {
   if (!payload || payload.status !== true || !payload.data || typeof payload.data !== "object") {
     return payload;
   }
@@ -64,9 +64,8 @@ function decorateQuotePayload(payload, role = null) {
     ...payload,
     data: {
       ...payload.data,
-      allowedPaymentMethods: role === "cashier" ? ["cash"] : [...PAYMENT_METHODS],
-      paymentMethodOptions: paymentMethodOptions().filter(item =>
-        role !== "cashier" || item.method === "cash"),
+      allowedPaymentMethods: [...PAYMENT_METHODS],
+      paymentMethodOptions: paymentMethodOptions(),
       paymentGatewayRequired: false,
       paymentRecordingMode: "dashboard_manual",
     },
@@ -261,12 +260,16 @@ async function linkPromoUsagePaymentBestEffort({ subscriptionId, payment }) {
 
 async function quoteSubscriptionAdmin(req, res, next) {
   const captured = await invokeCaptured(subscriptionCreationController.quoteSubscriptionAdmin, req, next);
-  const withPayment = decorateQuotePayload(captured.payload, req.dashboardUserRole);
+  const withPayment = decorateQuotePayload(captured.payload);
   const payload = await decoratePromoQuotePayload(withPayment, req.body || {});
   return res.status(captured.statusCode).json(payload);
 }
 
 async function createSubscriptionAdmin(req, res, next) {
+  if (Object.hasOwn(req.body || {}, "source") || Object.hasOwn(req.body?.payment || {}, "source")) {
+    return res.status(400).json({ status: false,
+      error: { code: "SOURCE_NOT_ALLOWED", message: "Payment source is assigned by the server" } });
+  }
   let selection;
   try {
     selection = normalizeDashboardPaymentMethod(req.body || {});
@@ -279,14 +282,12 @@ async function createSubscriptionAdmin(req, res, next) {
     });
   }
 
-  // The core activation controller treats the recording adapter's internal
-  // method as cash. Reject a cashier's Visa selection BEFORE that translation;
-  // otherwise the source rewrite can bypass the existing cashier cash-only rule.
-  if (req.dashboardUserRole === "cashier" && selection.method !== "cash") {
-    return res.status(403).json({
-      status: false,
-      error: { code: "FORBIDDEN", message: "Cashier role can only create cash subscriptions" },
-    });
+  // No client may backdate a dashboard payment. This must be rejected before
+  // quoting or activating entitlements, including on standalone Mongo.
+  if (Object.hasOwn(req.body || {}, "paidAt") ||
+    Object.hasOwn(req.body?.payment || {}, "paidAt")) {
+    return res.status(400).json({ status: false,
+      error: { code: "PAID_AT_NOT_ALLOWED", message: "Payment date is assigned by the server" } });
   }
 
   const quoteRequest = cloneRequestWithBody(req, { ...(req.body || {}) });
@@ -349,9 +350,12 @@ async function createSubscriptionAdmin(req, res, next) {
       method: "cash",
       status: "paid",
       collectedAmountHalala: totalHalala,
-      paidAt: originalPayment.paidAt || new Date().toISOString(),
     },
-    source: recordingSource,
+  });
+  // Trusted server-only context, not a field in req.body. Only this adapter
+  // can authorize manual Visa/Mada for POST /dashboard/subscriptions.
+  coreRequest.verifiedDashboardSubscriptionPayment = Object.freeze({
+    method: selection.method, source: recordingSource,
   });
 
   const createCaptured = await invokeCaptured(subscriptionCreationController.createSubscriptionAdmin, coreRequest, next);

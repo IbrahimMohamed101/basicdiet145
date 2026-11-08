@@ -59,26 +59,9 @@ PaymentSchema.pre("validate", function normalizeProviderIdentifiersBeforeValidat
   this.providerInvoiceId = normalizeOptionalProviderIdentifier(this.providerInvoiceId);
   this.providerPaymentId = normalizeOptionalProviderIdentifier(this.providerPaymentId);
 
-  const source = String(this.source || "").trim().toLowerCase();
-  if (this.type === "subscription_activation" && source === DASHBOARD_SUBSCRIPTION_VISA_SOURCE) {
-    this.provider = "manual";
-    this.method = "visa";
-    this.metadata = {
-      ...(this.metadata && typeof this.metadata === "object" ? this.metadata : {}),
-      paymentMethod: "visa",
-      recordingMode: "dashboard_manual",
-      gatewayUsed: false,
-    };
-  } else if (this.type === "subscription_activation" && source === DASHBOARD_SUBSCRIPTION_CASH_SOURCE) {
-    this.provider = "cash";
-    this.method = "cash";
-    this.metadata = {
-      ...(this.metadata && typeof this.metadata === "object" ? this.metadata : {}),
-      paymentMethod: "cash",
-      recordingMode: "dashboard_manual",
-      gatewayUsed: false,
-    };
-  }
+  // D-091: a source label is not proof of server authority. Neither method
+  // nor provider is rewritten from a potentially user-controlled source here.
+  // The authenticated recording controller sets source/method/provider together.
 
   next();
 });

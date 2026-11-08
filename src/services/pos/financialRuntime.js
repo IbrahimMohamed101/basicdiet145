@@ -2,6 +2,7 @@
 const mongoose = require("mongoose");
 const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
 const { PosFinancialError } = require("./financialQuoteService");
+const { dashboardRoleHasPermission } = require("../../constants/dashboardRoles");
 const STAGING_DB = "basicdiet_pos_staging_test";
 function requireFinancialStagingWrites(options = {}) {
   if (options.testOnly === true && process.env.NODE_ENV === "test"
@@ -20,6 +21,6 @@ function hasPosCapability(role, capability, env = process.env) {
   // An explicit empty value revokes every role without changing code.
   const roles = env.POS_REFUND_ROLES === undefined ? DEFAULT_REFUND_ROLES
     : String(env.POS_REFUND_ROLES).split(",").map(s => s.trim()).filter(Boolean);
-  return roles.includes(role);
+  return roles.some(allowed => dashboardRoleHasPermission(role, [allowed]));
 }
 module.exports = { requireFinancialStagingWrites, hasPosCapability };

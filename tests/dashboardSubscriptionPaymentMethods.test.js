@@ -122,37 +122,29 @@ function read(relativePath) {
     assert(providerEnum.includes("manual"));
   });
 
-  await test("visa method is persisted by validation inside the activation transaction", async () => {
-    const payment = new Payment({
-      provider: "cash",
-      type: "subscription_activation",
-      status: "paid",
-      amount: 254200,
-      currency: "SAR",
-      source: Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE,
-    });
-    await payment.validate();
-    assert.strictEqual(payment.provider, "manual");
-    assert.strictEqual(payment.method, "visa");
-    assert.strictEqual(payment.metadata.paymentMethod, "visa");
-    assert.strictEqual(payment.metadata.recordingMode, "dashboard_manual");
-    assert.strictEqual(payment.metadata.gatewayUsed, false);
+  await test("untrusted Payment.source cannot switch the payment provider/method", async () => {
+    for (const source of [Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE, Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE]) {
+      const payment = new Payment({
+        provider: "cash", method: "cash", type: "subscription_activation",
+        status: "paid", amount: 254200, currency: "SAR", source,
+      });
+      await payment.validate();
+      assert.strictEqual(payment.provider, "cash", "source alone must not force manual provider");
+      assert.strictEqual(payment.method, "cash", "source alone must not switch tender");
+    }
   });
 
-  await test("cash method is persisted with the same manual-recording metadata", async () => {
+  await test("server-controlled manual Visa fields survive Payment validation", async () => {
     const payment = new Payment({
-      provider: "cash",
-      type: "subscription_activation",
-      status: "paid",
-      amount: 254200,
-      currency: "SAR",
-      source: Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE,
+      provider: "manual", method: "visa", type: "subscription_activation",
+      status: "paid", amount: 254200,
+      source: Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE,
+      metadata: { paymentMethod: "visa", recordingMode: "dashboard_manual", gatewayUsed: false },
     });
     await payment.validate();
-    assert.strictEqual(payment.provider, "cash");
-    assert.strictEqual(payment.method, "cash");
-    assert.strictEqual(payment.metadata.paymentMethod, "cash");
-    assert.strictEqual(payment.metadata.gatewayUsed, false);
+    assert.equal(payment.provider, "manual");
+    assert.equal(payment.method, "visa");
+    assert.equal(payment.metadata.paymentMethod, "visa");
   });
 
   await test("canonical dashboard routes use payment recording and expose the daily report", async () => {
