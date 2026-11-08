@@ -68,6 +68,50 @@ test("G1 POS_V2 six independent mandatory-reason triggers are server-derived", (
     assert.deepEqual(reasonCodesFor({ ...base, ...overrides }), [expected]);
   }
 });
+// Verbatim main@a4ca1bc submit condition from src/routes/dashboardDailyCashClosings.js:120.
+// Keep this independent from reasonCodesFor to detect future LEGACY parity drift.
+function mainLegacyRequiresReason(summary, automatic) {
+  return (
+    summary.subscriptionCountDifference !== 0 ||
+    summary.localDifferenceHalala !== 0 ||
+    summary.overallDifferenceHalala !== 0 ||
+    summary.unknownSubscriptionHalala !== 0 ||
+    automatic.reviewPaymentsCount > 0 ||
+    automatic.refundsHalala > 0
+  );
+}
+test("G1 LEGACY_V1 requiresReason exactly matches main@a4ca1bc for old fixtures", () => {
+  const zeroSummary = {
+    subscriptionCountDifference: 0, localDifferenceHalala: 0,
+    overallDifferenceHalala: 0, unknownSubscriptionHalala: 0,
+  };
+  const zeroAutomatic = { reviewPaymentsCount: 0, refundsHalala: 0, refundCount: 0 };
+  const fixtures = [
+    { title: "no POS/no payments; reconciliation is merely informational",
+      reconciliation: { localDifferenceHalala: 10000, cashDifferenceHalala: 10000, networkDifferenceHalala: 0 } },
+    { title: "legacy all zero", reconciliation: { localDifferenceHalala: 0 } },
+    { title: "legacy count discrepancy", summary: { subscriptionCountDifference: -1 } },
+    { title: "legacy local amount discrepancy", summary: { localDifferenceHalala: -100 } },
+    { title: "legacy overall amount discrepancy", summary: { overallDifferenceHalala: 100 } },
+    { title: "legacy unknown subscription amount", summary: { unknownSubscriptionHalala: 1 } },
+    { title: "legacy payment requires review", automatic: { reviewPaymentsCount: 1 } },
+    { title: "legacy subscription refund amount positive", automatic: { refundsHalala: 1 } },
+    { title: "refundCount positive but refundsHalala zero is NOT legacy trigger",
+      automatic: { refundCount: 2 }, reconciliation: { localDifferenceHalala: -50000 } },
+    { title: "multiple legacy causes", summary: { subscriptionCountDifference: 1, overallDifferenceHalala: -200 },
+      automatic: { reviewPaymentsCount: 1, refundsHalala: 200 } },
+  ];
+  for (const fixture of fixtures) {
+    const summary = { ...zeroSummary, ...(fixture.summary || {}) };
+    const automatic = { ...zeroAutomatic, ...(fixture.automatic || {}) };
+    const reconciliation = { localDifferenceHalala: 0, cashDifferenceHalala: 0, networkDifferenceHalala: 0,
+      ...(fixture.reconciliation || {}) };
+    const codes = reasonCodesFor({ version: "LEGACY_V1", summary, automatic, reconciliation });
+    assert.equal(codes.length > 0, mainLegacyRequiresReason(summary, automatic), fixture.title);
+    assert.equal(codes.includes("LEGACY_RECONCILIATION_DIFFERENCE"), false, fixture.title);
+    if (fixture.title.startsWith("refundCount")) assert.deepEqual(codes, []);
+  }
+});
 test("G1 absent start date is legacy and changes are effective dated", () => {
   assert.equal(versionAt("2026-11-08", null), "LEGACY_V1");
   const policy = { baselineStartDate: null, changes: [
@@ -182,6 +226,33 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     assert.equal(accounting.posSales.invoiceCount, 3,
       "accounting uses the frozen three-invoice snapshot, not the later fourth sale");
     assert.equal((await call("admin", "POST", date, "/return", { reason: "Cannot" })).status, 409);
+
+    // Main@a4ca1bc parity regression: no POS/no subscriptions on two LEGACY days.
+    // On the previous code, zero expected POS cash makes reconciliation +10000,
+    // incorrectly requiring a reason despite a balanced manual legacy closing.
+    const legacyBalanced = "2026-11-05";
+    const legacyShort = "2026-11-06";
+    const legacyInput = (cash) => ({
+      channels: { restaurantHalala: 10000, hungerstationHalala: 0, keetaHalala: 0, other: [] },
+      collections: { cashHalala: cash, cardHalala: 0 },
+      confirmedSubscriptionCount: null, discrepancyReason: "", notes: "",
+    });
+    let legacyResponse = await call("cashier", "PUT", legacyBalanced, "", legacyInput(10000));
+    assert.equal(legacyResponse.status, 201);
+    assert.equal(legacyResponse.json.data.closingVersion, "LEGACY_V1");
+    assert.equal(legacyResponse.json.data.requiresReason, false, "balanced LEGACY must NOT use POS reconciliation");
+    assert.deepEqual(legacyResponse.json.data.reasonCodes, []);
+    legacyResponse = await call("cashier", "POST", legacyBalanced, "/submit", {});
+    assert.equal(legacyResponse.status, 200, "balanced LEGACY submits without discrepancy reason");
+    assert.equal(legacyResponse.json.data.snapshot, undefined, "GET does not expose raw snapshot");
+    legacyResponse = await call("restaurant", "PUT", legacyShort, "", legacyInput(9900));
+    assert.equal(legacyResponse.status, 201);
+    assert.equal(legacyResponse.json.data.closingVersion, "LEGACY_V1");
+    assert.equal(legacyResponse.json.data.requiresReason, true);
+    assert.deepEqual(legacyResponse.json.data.reasonCodes, ["LEGACY_AMOUNT_DIFFERENCE"]);
+    legacyResponse = await call("restaurant", "POST", legacyShort, "/submit", {});
+    assert.equal(legacyResponse.status, 400);
+    assert.equal(legacyResponse.json.code, "DISCREPANCY_REASON_REQUIRED");
 
     // Golden Legacy fixture remains without version; GET/approval cannot reclassify it.
     const legacy = "2026-11-07";
