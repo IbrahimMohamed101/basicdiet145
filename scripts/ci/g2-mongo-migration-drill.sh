@@ -88,10 +88,10 @@ start_rs0() {
   '
 }
 node_init_rs0() {
-  local alias="$1" port="$2"
+  local alias="$1" port="$2" baseline="$3"
   local_uri "$port" no
   export G2_OWNER_APPROVED=true G2_RS0_MEMBER_HOST="$alias"
-  node scripts/g2-rs0-init-and-verify.js
+  G2_BASELINE_MANIFEST_B64="$(base64 -w0 "$baseline")" node scripts/g2-rs0-init-and-verify.js
 }
 restart_without_secret_and_assert_inode() {
   local name="$1" volume="$2" port="$3" alias="$4"
@@ -140,7 +140,7 @@ docker rm "$SOURCE" >/dev/null
 timed source_rs0_first_boot_create_keyfile start_rs0 "$SOURCE" "$SOURCE_VOL" 27017 "$SOURCE_ALIAS" with-secret
 unset G2_RS0_KEYFILE
 timed source_restart_without_keyfile_variable restart_without_secret_and_assert_inode "$SOURCE" "$SOURCE_VOL" 27017 "$SOURCE_ALIAS"
-timed source_node_initiate_primary node_init_rs0 "$SOURCE_ALIAS" 27017
+timed source_node_initiate_primary node_init_rs0 "$SOURCE_ALIAS" 27017 "$G2_BACKUP_DIR/collections-indexes.json"
 timed source_node_initiate_idempotent node_init_rs0 "$SOURCE_ALIAS" 27017
 local_uri 27017 yes
 timed source_counts_indexes node scripts/g2-mongo-manifest.js --compare "$G2_BACKUP_DIR/collections-indexes.json"
@@ -153,13 +153,15 @@ timed pos_financial_regressions node --test \
 # Separate destination volume; first bootstrap an authenticated standalone user,
 # then switch that SAME new volume to rs0/keyfile/auth, then restore.
 timed target_empty_standalone_start start_standalone "$TARGET" "$TARGET_VOL" 27018 "$TARGET_ALIAS"
+local_uri 27018 no
+timed target_standalone_manifest node scripts/g2-mongo-manifest.js --out "$G2_BACKUP_DIR/target-collections-before-rs0.json"
 timed target_graceful_stop docker stop --time 20 "$TARGET"
 docker rm "$TARGET" >/dev/null
 export G2_RS0_KEYFILE="$(openssl rand -base64 512 | tr -d '\n')"
 timed target_rs0_first_boot_create_keyfile start_rs0 "$TARGET" "$TARGET_VOL" 27018 "$TARGET_ALIAS" with-secret
 unset G2_RS0_KEYFILE
 timed target_restart_without_keyfile_variable restart_without_secret_and_assert_inode "$TARGET" "$TARGET_VOL" 27018 "$TARGET_ALIAS"
-timed target_node_initiate_primary node_init_rs0 "$TARGET_ALIAS" 27018
+timed target_node_initiate_primary node_init_rs0 "$TARGET_ALIAS" 27018 "$G2_BACKUP_DIR/target-collections-before-rs0.json"
 local_uri 27018 yes
 export G2_RESTORE_EMPTY_TARGET=true
 timed restore_archive_counts_indexes bash scripts/g2-mongo-restore.sh
