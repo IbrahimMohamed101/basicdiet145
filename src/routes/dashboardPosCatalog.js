@@ -9,19 +9,21 @@ const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevi
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 const { verifiedActor } = require("../services/pos/financialLedgerService");
 
+const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
 // POS management is an operational duty of cashier and restaurant; financial
 // admin privileges and customer-app menu publication remain separately guarded.
 const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
-const readers = new Set(["cashier", "restaurant", "admin", "superadmin"]);
+const readers = new Set(["admin", "superadmin"]);
+const canReadPos = (role) => isBranchOperator(role) || readers.has(role);
 
 function adminView({ revision, publishedRevision, published, draft, draftSavedBy, draftSavedAt, publishedBy, publishedAt }) {
   return { revision, publishedRevision, published, draft, draftSavedBy, draftSavedAt, publishedBy, publishedAt };
 }
 
 router.get("/catalog", asyncHandler(async (req, res) => {
-  if (!readers.has(req.dashboardUserRole)) return errorResponse(res, 403, "FORBIDDEN", "منيو الكاشير غير متاح لهذا الدور.");
+  if (!canReadPos(req.dashboardUserRole)) return errorResponse(res, 403, "FORBIDDEN", "منيو الكاشير غير متاح لهذا الدور.");
   const doc = await getCatalog();
   if (!doc) return errorResponse(res, 404, "POS_CATALOG_NOT_FOUND", "منيو الكاشير غير متاح.");
   const { categories, products } = doc.published;
@@ -32,7 +34,7 @@ router.get("/catalog", asyncHandler(async (req, res) => {
 
 // Deliberately read-only. A quote has no payment or invoice authority.
 router.post("/quote", asyncHandler(async (req, res) => {
-  if (!readers.has(req.dashboardUserRole)) {
+  if (!canReadPos(req.dashboardUserRole)) {
     return errorResponse(res, 403, "FORBIDDEN", "تسعير الكاشير غير متاح لهذا الدور.");
   }
   const doc = await getCatalog();
