@@ -167,24 +167,71 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
       assert.equal(await Subscription.countDocuments({ userId: branchCustomer._id }), 0);
       assert.equal(await Payment.countDocuments({ userId: branchCustomer._id }), 0);
     }
-    // Retain the original administrator creation path even without recording
-    // a collection; this must not be reclassified as a paid cashier transaction.
+    // Only admins may create complimentary subscriptions, and a nonempty
+    // reason is required before any entitlement or payment is written.
     const adminActor = await dashboardAuth("admin", "pos-g-legacy-admin");
     const existingPrivilegeCustomer = await User.create({
       phone: "+966000000104", name: "legacy-admin-create fixture", role: "client", isActive: true,
     });
-    const legacy = await request(app).post("/api/admin/subscriptions")
-      .set(adminActor.headers).send({ ...payload, userId: existingPrivilegeCustomer._id });
-    assert.equal(legacy.status, 201, JSON.stringify(legacy.body).slice(0, 600));
-    assert.equal(await Payment.countDocuments({ userId: existingPrivilegeCustomer._id }), 0);
     const superActor = await dashboardAuth("superadmin", "pos-d092-free");
     const superCustomer = await User.create({
       phone: "+966000000219", name: "D092 superadmin free", role: "client", isActive: true,
     });
+    for (const [role, actor, customer] of [
+      ["admin", adminActor, existingPrivilegeCustomer],
+      ["superadmin", superActor, superCustomer],
+    ]) {
+      for (const invalidReason of [undefined, "", "   ", "abcd", "x".repeat(501), 123]) {
+        const invalid = await request(app).post("/api/admin/subscriptions")
+          .set(actor.headers).send({
+            ...payload, userId: customer._id,
+            ...(invalidReason !== undefined ? { complimentaryReason: invalidReason } : {}),
+          });
+        assert.equal(invalid.status, 400, role + ": " + JSON.stringify(invalid.body));
+        assert.equal(invalid.body.error.code, "COMPLIMENTARY_REASON_REQUIRED");
+        assert.equal(await Subscription.countDocuments({ userId: customer._id }), 0);
+        assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
+        assert.equal(await ActivityLog.countDocuments({
+          action: "complimentary_subscription_created",
+          "meta.actorId": String(actor.user._id),
+        }), 0);
+      }
+    }
+    // Boundary lengths of 5 and 500 characters are accepted.
+    const adminReason = "x".repeat(500);
+    const legacy = await request(app).post("/api/admin/subscriptions")
+      .set(adminActor.headers).send({
+        ...payload, userId: existingPrivilegeCustomer._id,
+        complimentaryReason: adminReason,
+      });
+    assert.equal(legacy.status, 201, JSON.stringify(legacy.body).slice(0, 600));
+    assert.equal(await Payment.countDocuments({ userId: existingPrivilegeCustomer._id }), 0);
+    const superReason = "Gift!";
     const superUnpaid = await request(app).post("/api/admin/subscriptions")
-      .set(superActor.headers).send({ ...payload, userId: superCustomer._id });
+      .set(superActor.headers).send({
+        ...payload, userId: superCustomer._id,
+        complimentaryReason: superReason,
+      });
     assert.equal(superUnpaid.status, 201, JSON.stringify(superUnpaid.body).slice(0, 750));
     assert.equal(await Payment.countDocuments({ userId: superCustomer._id }), 0);
+    for (const [role, actor, customer, reason] of [
+      ["admin", adminActor, existingPrivilegeCustomer, adminReason],
+      ["superadmin", superActor, superCustomer, superReason],
+    ]) {
+      const created = await Subscription.findOne({ userId: customer._id }).lean();
+      assert.ok(created, role + " complimentary entitlement created");
+      const audit = await ActivityLog.findOne({
+        entityType: "subscription", entityId: created._id,
+        action: "complimentary_subscription_created",
+      }).lean();
+      assert.ok(audit, role + " complimentary audit must persist");
+      assert.equal(audit.meta.subscriptionId, String(created._id));
+      assert.equal(audit.meta.complimentaryReason, reason);
+      assert.equal(audit.meta.actorId, String(actor.user._id));
+      assert.equal(audit.meta.actorRole, role);
+      assert.equal(String(audit.byUserId), String(actor.user._id));
+      assert.equal(audit.byRole, role);
+    }
     const afterLegacy = await expectedTotals(await require("../src/services/pos/businessDaySetting").getBusinessDateAt());
     assert.equal(afterLegacy.expected.cashHalalas + afterLegacy.expected.networkHalalas, 3 * total);
 
