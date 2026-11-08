@@ -121,19 +121,10 @@ router.post(
   asyncHandler(promoCodeController.validatePromoCodeAdmin)
 );
 
-// G1 POS-only reuse of the existing /admin/users controller. The cashier
-// exception is impossible outside the dedicated isolated POS Staging runtime;
-// all other roles and all Production requests continue through the existing
-// admin-only middleware and unchanged create route below.
-router.post("/users", (req, res, next) => {
-  if (req.dashboardUserRole !== "cashier") return next();
-  const mongoose = require("mongoose");
-  const { canPosStagingCashierCreateUser } = require("../utils/posG1CashierAccess");
-  if (!canPosStagingCashierCreateUser(process.env, mongoose.connection.name)) {
-    return res.status(403).json({ status: false, error: { code: "POS_STAGING_ONLY" } });
-  }
-  return asyncHandler(controller.createAppUserAdmin)(req, res, next);
-});
+// D-091: app customer creation is a normal restaurant operation. Cashier
+// inherits restaurant permissions; all other customer mutations stay gated.
+router.post("/users", dashboardRoleMiddleware(["admin", "restaurant"]),
+  asyncHandler(controller.createAppUserAdmin));
 
 router.use(dashboardRoleMiddleware(["admin"]));
 
@@ -477,7 +468,6 @@ router.get("/users", asyncHandler(controller.listAppUsers));
  *       409:
  *         description: USER_ALREADY_EXISTS or CONFLICT
  */
-router.post("/users", asyncHandler(controller.createAppUserAdmin));
 router.get("/users/:id/subscriptions", asyncHandler(controller.listAppUserSubscriptions));
 router.post("/users/:id/reset-password", dashboardAdminOnly, adminPasswordResetLimiter, asyncHandler(controller.resetAppUserPassword));
 router.get("/users/:id", asyncHandler(controller.getAppUser));
