@@ -27,3 +27,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node --check scripts/pos-g0-seed-isolated-staging.js
       - run: NODE_ENV=test node --test tests/posG0SeedGuard.test.js
+      - name: Inventory transaction call sites (read-only)
+        run: |
+          node scripts/pos-g0-transaction-inventory.js > /tmp/pos-g0-transaction-inventory.json
+          node -e "const x=require('/tmp/pos-g0-transaction-inventory.json'); console.log('Source files:', x.scannedFiles, 'transaction call sites:', x.callsites)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pos-g0-transaction-callsites
+          path: /tmp/pos-g0-transaction-inventory.json
