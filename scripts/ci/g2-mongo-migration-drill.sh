@@ -114,12 +114,12 @@ backend_from_peer_container() {
   fi
   # The real backend db.js / URI resolver runs in another container on the same
   # Docker bridge as MongoDB. No host-port shortcut and no localhost rs0 member.
-  docker run --rm --network "$NETWORK" -v "$PWD:/work:ro" -w /work \
+  docker run --rm --network "$NETWORK" -v "$PWD:/work:ro" -w /tmp \
     -e "CI=true" -e "GITHUB_ACTIONS=true" \
     -e "G2_EXECUTION_SCOPE=ci-disposable" -e "G2_CI_PEER_CONTAINER=true" \
     -e "NODE_ENV=production" -e "MONGO_URI=$uri" \
     -e "G2_EXPECTED_CLIENT_TOPOLOGY=$topology" \
-    node:20-bookworm node scripts/g2-mongo-backend-capability.js
+    node:20-bookworm node /work/scripts/g2-mongo-backend-capability.js
 }
 local_uri() {
   local port="$1" replica="$2"
