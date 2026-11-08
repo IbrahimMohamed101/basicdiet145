@@ -5,7 +5,7 @@ on:
     paths:
       - "scripts/g2-mongo-*"
       - "scripts/ci/g2-mongo-migration-drill.sh"
-      - "Dockerfile.g2-mongo"
+      - "scripts/g2-mongo-final-start-command.txt"
       - ".github/workflows/g2-mongo-replica-ci.yml"
       - "docs/pos-g0-mongo-replica-runbook.md"
 permissions:
@@ -26,7 +26,7 @@ jobs:
           cache: npm
       - name: Install backend dependencies without lifecycle writes
         run: npm ci --ignore-scripts
-      - name: Install database-tools binaries from pinned mongo:8.0 image (CI only)
+      - name: Install database-tools binaries from mongo:8.0 image (CI only)
         shell: bash
         run: |
           set -euo pipefail
@@ -37,12 +37,13 @@ jobs:
           sudo install -m 0755 /tmp/g2-mongodump /usr/local/bin/mongodump
           sudo install -m 0755 /tmp/g2-mongorestore /usr/local/bin/mongorestore
           mongodump --version | head -n 1
-      - name: Parse all G2 scripts and workflow execution guards
+      - name: Validate G2 scripts and exact Railway image start command
         run: |
           set -euo pipefail
           for file in scripts/g2-mongo-*.js; do node --check "$file"; done
           for file in scripts/g2-mongo-*.sh scripts/ci/g2-mongo-migration-drill.sh; do bash -n "$file"; done
           node -e 'if(process.env.G2_EXECUTION_SCOPE!=="ci-disposable"||process.env.CI!=="true")process.exit(1)'
+          grep -Fxq 'docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false --replSet rs0 --keyFile /data/db/rs0-keyfile --auth' scripts/g2-mongo-final-start-command.txt
       - name: Synthetic mongo:8.0 authenticated standalone to same-volume rs0 to archive restore
         shell: bash
         run: |
