@@ -3,7 +3,7 @@
 **Scope:** Staging only. Real cashier browser actions require an authenticated Staging cashier session. The synthetic CI suites do **not** constitute real Staging cashier acceptance. Never use Production customers or data in tests.
 
 ## Preconditions
-- G0 Staging-only synthetic/config fixture applied on a **separate isolated replica-set clone**, after owner approval for any config export (allowlisted collections only). Do not export or restore customer/phone/subscription/payment records from Production.
+- Previous G0 requirement: synthetic/config fixture on isolated rs0 only. Owner decision D-096 (2026-11-08) approved a full Production copy to Staging; **security gates remain OPEN** for Staging access, test-only Moyasar/Twilio credentials, and PII retention. This document does not perform or reauthorize a copy.
 - G1 and G2 PRs merged, both Staging services SUCCESS on pinned SHAs; all CI green. Verify `POS_REFUND_ROLES` permits `cashier`; Production never changed.
 - D-092 approved cashier/restaurant parity, including cashier Visa/Mada recording. The obsolete cashier cash-only restriction is removed.
 - Actual one-day tests use customer fixtures with *synthetic* phone numbers and no SMS, PII, gateway charge or external API calls.
@@ -47,7 +47,7 @@ The numbers are test fixtures already exercised in `tests/posG2ExpectedTotals.te
 - `pos-g3-ci.yml`: isolated GitHub Actions standalone `mongo:8.0` service runs the **current targeted cash-subscription financial guard test** (`posG3StandaloneSubscriptionGuard.test.js`) and concurrent balance-consumption test (`subscriptionBalanceConcurrency.test.js`). A failed check is a blocker, not an invitation to bypass transaction logic.
 - The pre-existing broad `dashboardCashSubscriptionContract.test.js` returned **6 passed / 19 failed** against standalone Mongo, including outdated premium fixture expectations and the real mismatched-amount bug. The real financial mismatch was fixed and covered independently in PR #207, but the legacy suite has **NOT been repaired or declared green**; its other assertions require separate review before full G3 sign-off. It is not used as an authoritative Stage G release gate until reconciled, and must not be represented as passing.
 - `G3` cannot be declared **PASS** until a real authenticated cashier executes the matrix against an approved Staging fixture and an admin separately approves the daily closing. Browser synthetic tests alone are insufficient.
-- **No full-Production backup or PII may enter Staging.** Config exports require explicit owner approval and a scrubbed allowlisted artifact. A clone restore drill must use synthetic/config-only backup.
+- Former synthetic-only constraint is superseded by owner decision D-096 on full Production copy, while access restriction, sandbox credentials, retention and secure cleanup must be verified before G3 closure. No Production data, credentials or identifiers appear in this file.
 
 ## Result record template
 Record date/role, head SHAs, three invoice numbers, two subscription Payment IDs, one refund ID, meal deduction audit ID, cashier/manager closing IDs, expected/counted cash & network in halalas, per-channel receivables, and each HTTP failure/response. Sanitized output only: no names, phone numbers, raw tokens, email addresses or addresses.
