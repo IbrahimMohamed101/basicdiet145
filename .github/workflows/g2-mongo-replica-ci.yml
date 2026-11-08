@@ -4,6 +4,7 @@ on:
     branches: [codex/pos-staging-isolation]
     paths:
       - "scripts/g2-mongo-*"
+      - "scripts/g2-rs0-init-and-verify.js"
       - "scripts/ci/g2-mongo-migration-drill.sh"
       - "scripts/g2-mongo-final-start-command.txt"
       - ".github/workflows/g2-mongo-replica-ci.yml"
