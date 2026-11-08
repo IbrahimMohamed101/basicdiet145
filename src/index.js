@@ -102,7 +102,10 @@ connectDb()
   .then(async () => {
     logger.info("[startup] MongoDB connected");
 
-    if (isolatedPosStaging) {
+    if (process.env.MAINTENANCE_MODE === "true") {
+      // Never seed, migrate, clean up payment state, or start jobs while writes are frozen.
+      logger.warn("[startup] G2 maintenance active: startup mutations and background jobs disabled");
+    } else if (isolatedPosStaging) {
       const { ensureDefaultDashboardUsers } = require("./services/dashboardDefaultUsersService");
       const { seedPosStagingCatalog } = require("./services/pos/catalogService");
       await ensureDefaultDashboardUsers();
