@@ -6,7 +6,7 @@
 const mongoose = require("mongoose");
 const Setting = require("../../models/Setting");
 const ActivityLog = require("../../models/ActivityLog");
-const { ZONE, businessDateAt, boundsForBusinessDate, parseBusinessDayCutoff } = require("./businessDate");
+const { ZONE, boundsForBusinessDate, parseBusinessDayCutoff } = require("./businessDate");
 const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
 const DAY_MS = 86400000;
 const RIYADH_MS = 10800000;
@@ -93,7 +93,14 @@ async function getBusinessDayCutoff(instant = new Date()) {
   const policy = await loadBusinessDayPolicy();
   return cutoffForBusinessDate(businessDateAtWithPolicy(instant, policy), policy);
 }
-function assertSafeStagingCutoffMutation() {
+function assertSafeStagingCutoffMutation(options = {}) {
+  const disposableCiRs0 = options.testOnly === true
+    && process.env.NODE_ENV === "test"
+    && process.env.MONGO_URI_TEST ===
+      "mongodb://127.0.0.1:27017/basicdiet_pos_g_d091_ci_test?directConnection=true"
+    && mongoose.connection.name === "basicdiet_pos_g_d091_ci_test"
+    && mongoose.connection.host === "127.0.0.1";
+  if (disposableCiRs0) return;
   if (!isPosStagingRuntime() ||
       mongoose.connection.name !== "basicdiet_pos_staging_test" ||
       mongoose.connection.host !== "mongodb-qxhu.railway.internal") {
@@ -101,8 +108,8 @@ function assertSafeStagingCutoffMutation() {
     error.status = 403; error.code = "POS_STAGING_ONLY"; throw error;
   }
 }
-async function scheduleBusinessDayCutoff({ newCutoff, actorId, actorRole, at = new Date() }) {
-  assertSafeStagingCutoffMutation();
+async function scheduleBusinessDayCutoff({ newCutoff, actorId, actorRole, at = new Date() }, options = {}) {
+  assertSafeStagingCutoffMutation(options);
   const cutoff = parseBusinessDayCutoff(newCutoff);
   if (!actorId || !actorRole) {
     const error = new Error("Authenticated actor required");
