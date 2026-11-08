@@ -44,7 +44,8 @@ The numbers are test fixtures already exercised in `tests/posG2ExpectedTotals.te
 
 ## CI environments / limitations
 - `pos-stage-f-validation.yml` and `tests/posStageF.integration.test.js`: replica-set transactions, sale+refund idempotency and G2 ledger/total reconciliation on disposable local Mongo.
-- `pos-g3-ci.yml`: isolated GitHub Actions standalone `mongo:8.0` service runs the **existing cash-subscription and concurrent meal-deduction tests** to identify missing compare-and-set or idempotency guarantees. A failed check is a blocker, not an invitation to bypass transaction logic.
+- `pos-g3-ci.yml`: isolated GitHub Actions standalone `mongo:8.0` service runs the **current targeted cash-subscription financial guard test** (`posG3StandaloneSubscriptionGuard.test.js`) and concurrent balance-consumption test (`subscriptionBalanceConcurrency.test.js`). A failed check is a blocker, not an invitation to bypass transaction logic.
+- The pre-existing broad `dashboardCashSubscriptionContract.test.js` returned **6 passed / 19 failed** against standalone Mongo, including outdated premium fixture expectations and the real mismatched-amount bug. The real financial mismatch was fixed and covered independently in PR #207, but the legacy suite has **NOT been repaired or declared green**; its other assertions require separate review before full G3 sign-off. It is not used as an authoritative Stage G release gate until reconciled, and must not be represented as passing.
 - `G3` cannot be declared **PASS** until a real authenticated cashier executes the matrix against an approved Staging fixture and an admin separately approves the daily closing. Browser synthetic tests alone are insufficient.
 - **No full-Production backup or PII may enter Staging.** Config exports require explicit owner approval and a scrubbed allowlisted artifact. A clone restore drill must use synthetic/config-only backup.
 
