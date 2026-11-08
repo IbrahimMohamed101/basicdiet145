@@ -1,0 +1,49 @@
+name: G2 Mongo 8 Standalone-to-rs0 and Restore Drill (Disposable)
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "scripts/g2-mongo-*"
+      - "scripts/ci/g2-mongo-migration-drill.sh"
+      - "Dockerfile.g2-mongo"
+      - ".github/workflows/g2-mongo-replica-ci.yml"
+      - "docs/pos-g0-mongo-replica-runbook.md"
+permissions:
+  contents: read
+jobs:
+  mongo8-drill:
+    name: mongo8-auth-standalone-rs0-restore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: "true"
+      G2_EXECUTION_SCOPE: ci-disposable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install backend dependencies without lifecycle writes
+        run: npm ci --ignore-scripts
+      - name: Parse all G2 scripts and workflow execution guards
+        run: |
+          set -euo pipefail
+          for file in scripts/g2-mongo-*.js; do node --check "$file"; done
+          for file in scripts/g2-mongo-*.sh scripts/ci/g2-mongo-migration-drill.sh; do bash -n "$file"; done
+          node -e 'if(process.env.G2_EXECUTION_SCOPE!=="ci-disposable"||process.env.CI!=="true")process.exit(1)'
+      - name: Synthetic mongo:8.0 authenticated standalone to same-volume rs0 to archive restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci/g2-mongo-migration-drill.sh 2>&1 | tee g2-ci-timing.log
+          grep -qx 'G2_SYNTHETIC_STANDALONE_TO_RS0_RESTORE_DRILL_PASS' g2-ci-timing.log
+      - name: Timing summary (no secrets, no database rows)
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### G2 synthetic CI timing (not a Production duration forecast)'
+            echo '---'
+            grep '^G2_TIMING ' g2-ci-timing.log || true
+          } >> "$GITHUB_STEP_SUMMARY"
