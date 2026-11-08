@@ -9,6 +9,7 @@ umask 077
 export G2_EXECUTION_SCOPE=ci-disposable
 export G2_MONGO_DB=basicdiet_g2_ci_test
 export NODE_ENV=test
+export MAINTENANCE_MODE=true
 RUN_TOKEN="${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}"
 SOURCE="g2-ci-source-$RUN_TOKEN"
 TARGET="g2-ci-restore-$RUN_TOKEN"
@@ -134,7 +135,22 @@ docker volume create "$TARGET_VOL" >/dev/null
 timed source_standalone_start start_standalone "$SOURCE" "$SOURCE_VOL" 27017 "$SOURCE_ALIAS"
 local_uri 27017 no
 timed synthetic_seed node scripts/g2-mongo-synthetic-seed.js
+# Simulate the same owner-approved Node preDeploy read-only baseline on standalone.
+export G2_OWNER_APPROVED=true
+G2_BASELINE_LINE="$(node scripts/g2-rs0-init-and-verify.js --baseline)"
+[[ "$G2_BASELINE_LINE" == G2_BASELINE=* ]] || { echo "G2_BASELINE_MISSING" >&2; exit 72; }
+printf "%s" "${G2_BASELINE_LINE#G2_BASELINE=}" | base64 -d > "$G2_BACKUP_DIR/predeploy-baseline.json"
+unset G2_OWNER_APPROVED
 timed backup_archive_sha256_manifest bash scripts/g2-mongo-backup.sh
+node - "$G2_BACKUP_DIR/predeploy-baseline.json" "$G2_BACKUP_DIR/collections-indexes.json" <<'NODE'
+const fs = require("node:fs");
+const assert = require("node:assert/strict");
+const [baselinePath, backupPath] = process.argv.slice(2);
+const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+const backedUp = JSON.parse(fs.readFileSync(backupPath, "utf8"));
+assert.deepEqual(baseline, backedUp, "Node preDeploy baseline must equal frozen archive manifest");
+console.log("G2_NODE_PREDEPLOY_BASELINE_PARITY_PASS");
+NODE
 timed source_graceful_stop docker stop --time 20 "$SOURCE"
 docker rm "$SOURCE" >/dev/null
 timed source_rs0_first_boot_create_keyfile start_rs0 "$SOURCE" "$SOURCE_VOL" 27017 "$SOURCE_ALIAS" with-secret
