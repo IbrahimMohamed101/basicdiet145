@@ -7,7 +7,8 @@ const Payment = require("../../models/Payment");
 const PaymentRefund = require("../../models/PaymentRefund");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
-const accounting = require("./accountingDailyReportService");
+const { ZONE, boundsForBusinessDate } = require("../pos/businessDate");
+const { getBusinessDayCutoff } = require("../pos/businessDaySetting");
 const { expectedTotals } = require("../pos/expectedTotals");
 
 function safeHalala(value) {
@@ -91,13 +92,14 @@ function buildPaidSubscriptionSummary(payments = [], subscriptions = [], users =
 }
 
 async function subscriptionPaymentsForDate(date) {
-  const period = await accounting.resolveBusinessPeriod(date);
+  const cutoff = await getBusinessDayCutoff();
+  const period = { ...boundsForBusinessDate(date, cutoff), timezone: ZONE, cutoff };
   const payments = await Payment.find({
     type: { $in: ["subscription_activation", "subscription_renewal"] },
     status: { $in: ["paid", "refunded"] },
     $or: [
-      { paidAt: { $gte: period.start, $lte: period.end } },
-      { paidAt: null, createdAt: { $gte: period.start, $lte: period.end } },
+      { paidAt: { $gte: period.start, $lt: period.end } },
+      { paidAt: null, createdAt: { $gte: period.start, $lt: period.end } },
     ],
   }).sort({ paidAt: 1, createdAt: 1, _id: 1 })
     .select("_id userId subscriptionId type status amount provider method source metadata providerPaymentId providerInvoiceId paidAt createdAt").lean();
@@ -115,7 +117,7 @@ async function subscriptionPaymentsForDate(date) {
     : [];
   const refunds = await PaymentRefund.find({
     status: "confirmed",
-    refundedAt: { $gte: period.start, $lte: period.end },
+    refundedAt: { $gte: period.start, $lt: period.end },
   }).select("_id paymentId amountHalala refundedAt executionMode settlement.status settlement.settledAmountHalala").lean();
   const knownPayments = new Map(payments.map(p => [String(p._id), p]));
   const otherPaymentIds = [...new Set(refunds.map(r => String(r.paymentId)).filter(id => !knownPayments.has(id)))];
