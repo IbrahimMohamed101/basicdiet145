@@ -152,6 +152,21 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
     assert.equal(closeForDay.expected.cashHalalas + closeForDay.expected.networkHalalas, 3 * total);
     assert.equal(await Payment.countDocuments({ userId: secondCustomer._id }), 1);
     assert.equal(await Subscription.countDocuments({ userId: secondCustomer._id }), 1);
+    // D-092: unpaid/free creation belongs only to admin and superadmin.
+    // Both branch operator labels must reject it before entitlement creation.
+    for (const [i, role] of ["cashier", "restaurant"].entries()) {
+      const branchActor = await dashboardAuth(role, "pos-d092-paid");
+      const branchCustomer = await User.create({
+        phone: "+96600000021" + String(i), name: "D092 unpaid " + role,
+        role: "client", isActive: true,
+      });
+      const unpaid = await request(app).post("/api/admin/subscriptions")
+        .set(branchActor.headers).send({ ...payload, userId: branchCustomer._id });
+      assert.equal(unpaid.status, 400, role + ": " + JSON.stringify(unpaid.body));
+      assert.equal(unpaid.body.error.code, "PAYMENT_REQUIRED");
+      assert.equal(await Subscription.countDocuments({ userId: branchCustomer._id }), 0);
+      assert.equal(await Payment.countDocuments({ userId: branchCustomer._id }), 0);
+    }
     // Retain the original administrator creation path even without recording
     // a collection; this must not be reclassified as a paid cashier transaction.
     const adminActor = await dashboardAuth("admin", "pos-g-legacy-admin");
@@ -162,6 +177,14 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
       .set(adminActor.headers).send({ ...payload, userId: existingPrivilegeCustomer._id });
     assert.equal(legacy.status, 201, JSON.stringify(legacy.body).slice(0, 600));
     assert.equal(await Payment.countDocuments({ userId: existingPrivilegeCustomer._id }), 0);
+    const superActor = await dashboardAuth("superadmin", "pos-d092-free");
+    const superCustomer = await User.create({
+      phone: "+966000000219", name: "D092 superadmin free", role: "client", isActive: true,
+    });
+    const superUnpaid = await request(app).post("/api/admin/subscriptions")
+      .set(superActor.headers).send({ ...payload, userId: superCustomer._id });
+    assert.equal(superUnpaid.status, 201, JSON.stringify(superUnpaid.body).slice(0, 750));
+    assert.equal(await Payment.countDocuments({ userId: superCustomer._id }), 0);
     const afterLegacy = await expectedTotals(await require("../src/services/pos/businessDaySetting").getBusinessDateAt());
     assert.equal(afterLegacy.expected.cashHalalas + afterLegacy.expected.networkHalalas, 3 * total);
 
