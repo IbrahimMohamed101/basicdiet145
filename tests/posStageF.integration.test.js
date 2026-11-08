@@ -10,6 +10,9 @@ const PosAudit = require("../src/models/PosAudit");
 const PosLedger = require("../src/models/PosLedger");
 const PosRefundBalance = require("../src/models/PosRefundBalance");
 const PosOperation = require("../src/models/PosOperation");
+const Payment = require("../src/models/Payment");
+const { expectedTotals } = require("../src/services/pos/expectedTotals");
+const { boundsForBusinessDate } = require("../src/services/pos/businessDate");
 const { abandonOperation } = require("../src/services/pos/operationService");
 const { canonicalHash, normalizeSaleIntent } = require("../src/services/pos/financialIntent");
 const { seedPosStagingCatalog, getCatalog, saveDraft, publishDraft } =
@@ -328,6 +331,33 @@ test("F replica: real Mongo transactions and idempotent sale/refund lifecycle", 
       .map(row => row.sequence);
     assert.deepEqual(refundSequences,
       Array.from({ length: refundSequences.length }, (_, i) => i + 1));
+
+    // Full G2 server-query integration: two subscription Payment records
+    // coexist with real POS invoices/refunds and are each counted once.
+    const day = created.invoice.businessDate;
+    const paidAt = new Date(boundsForBusinessDate(day).start.getTime() + 3600000);
+    await Payment.create([
+      { provider: "cash", method: "cash", type: "subscription_activation",
+        source: "dashboard_subscription_cash", status: "paid", amount: 12000,
+        collectedBy: owner._id, paidAt },
+      { provider: "manual", method: "visa", type: "subscription_renewal",
+        source: "dashboard_subscription_visa", status: "paid", amount: 23000,
+        collectedBy: owner._id, paidAt },
+      // A gateway payment is deliberately excluded from cashier collections.
+      { provider: "moyasar", method: "visa", type: "subscription_activation",
+        source: "app_subscription", status: "paid", amount: 9900, paidAt },
+    ]);
+    const totals = await expectedTotals(day);
+    assert.equal(totals.subscriptions.cashHalalas, 12000);
+    assert.equal(totals.subscriptions.visaHalalas, 23000);
+    assert.equal(totals.subscriptions.paymentCount, 2);
+    assert.equal(totals.subscriptions.byCollector[String(owner._id)].paymentCount, 2);
+    assert.equal(totals.pos.invoiceCount, await PosInvoice.countDocuments({ businessDate: day }));
+    assert.equal(totals.pos.refundCount, await PosRefund.countDocuments({ businessDate: day }));
+    assert.equal(totals.expected.cashHalalas,
+      totals.pos.restaurantCashHalalas + totals.subscriptions.cashHalalas);
+    assert.equal(totals.expected.networkHalalas,
+      totals.pos.restaurantNetworkHalalas + totals.subscriptions.visaHalalas);
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
