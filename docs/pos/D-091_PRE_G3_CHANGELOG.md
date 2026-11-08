@@ -35,7 +35,7 @@ Cashier and restaurant retain equal operational rights (D-087/D-091), including 
 | cashier | POS refund (D-090) | Allowed | Allowed, unchanged |
 | restaurant | Cash/Visa subscriptions, customers, POS refund | Allowed | Allowed, unchanged |
 | kitchen | Create customers | Allowed | Allowed, **restored**, unchanged |
-| kitchen | POS refund / subscriptions sales | Not granted | Not granted, unchanged |
+| kitchen | POS refund / direct admin subscription sales | Not granted | Not granted, unchanged; pre-existing paid dashboard recording remains allowed |
 | courier | Create customer, POS refund, payment recording | Not granted | Not granted, unchanged |
 | admin | Operational changes and permitted settings | Allowed | Allowed, unchanged |
 | superadmin | Existing administrative operations | Allowed | Allowed, unchanged |
@@ -43,6 +43,63 @@ Cashier and restaurant retain equal operational rights (D-087/D-091), including 
 **Payment sources are server-only**: `/dashboard/subscriptions` creates `dashboard_subscription_cash` or `dashboard_subscription_visa` based on the verified payment method; `/admin/subscriptions` is cash-only with `dashboard_cashier`. Both routes reject `body.source` or `payment.source` (400 `SOURCE_NOT_ALLOWED`). Payment pre-validation never changes provider/method from source alone.
 
 **Cutoff transitions**: `businessDayCutoff` is stored in `Setting` as baseline + ordered revisions. Each update has the authenticated actor, timestamp, previous and new HH:mm and `effectiveFrom` next business date, written with its audit in one MongoDB rs0 transaction. The transition day starts at the previous cutoff and ends at the new cutoff, preventing overlap or gaps. Earlier dates remain fixed. `expectedTotals`, all subscription `paidAt` reports, `accountingDailyReportService`, and POS issue/refund stamps use the same historical boundaries.
+
+## D-092 — branch operator role parity (owner decision, Staging only)
+
+**Rule:** `cashier` and `restaurant` are one operational permission group
+(`BRANCH_OPERATOR_ROLES` / `isBranchOperator`) in both codebases; only the
+displayed name and the *original authenticated role in audit* can differ.
+`DASHBOARD_ROLE_INHERITANCE` references the same frozen effective-role array
+for both. No existing permission is revoked from kitchen, courier or admin.
+
+### Effective permission matrix (registered backend capabilities)
+
+| Permission / action | cashier | restaurant | kitchen | courier | admin |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| View customer list and subscription details | ✓ | ✓ | ✓ | — | ✓ |
+| Create app customer (`POST /admin/users`) | ✓ | ✓ | ✓ | — | ✓ |
+| Reset app customer's temporary password | ✓ | ✓ | — | — | ✓ |
+| Quote a new subscription (`/dashboard/subscriptions/quote`) | ✓ | ✓ | ✓ | — | ✓ |
+| Record paid cash subscription (`/dashboard/subscriptions`) | ✓ | ✓ | ✓ | — | ✓ |
+| Record paid Visa/Mada subscription (`/dashboard/subscriptions`) | ✓ | ✓ | ✓ | — | ✓ |
+| Cash-only direct subscription (`/admin/subscriptions`) | ✓ | ✓ | — | — | ✓ |
+| Create subscription without recording payment | — | — | — | — | ✓ |
+| Manual subscription meal deduction | ✓ | ✓ | — | — | ✓ |
+| Cashier customer lookup/consumption (`/dashboard/ops/cashier/*`) | ✓ | ✓ | — | — | ✓ |
+| Operations board list/search | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Operations board commands (action/type-specific) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| POS catalog read/quote (isolated Staging only) | ✓ | ✓ | — | — | ✓ |
+| POS catalog draft/publish (isolated Staging only) | ✓ | ✓ | — | — | ✓ |
+| POS sales/invoices (isolated Staging only) | ✓ | ✓ | — | — | ✓ |
+| POS refund (D-090, isolated Staging only) | ✓ | ✓ | — | — | ✓ |
+| Daily cash closing create/edit/submit | ✓ | ✓ | — | — | ✓ |
+| Daily cash closing approve/return | — | — | — | — | ✓ |
+| Accounting daily report / payment finance report | — | — | — | — | ✓ |
+| Change versioned business day cutoff | — | — | — | — | ✓ |
+| Staff dashboard user administration | — | — | — | — | — |
+| Full all-operations screen group (kitchen/pickup/courier) | ✓ | ✓ | — | — | ✓ |
+| Dashboard branch UI pages (same route list) | ✓ | ✓ | — | — | ✓ |
+
+*✓ means the role may enter this backend/API capability. The operations board
+still validates each action's current state, delivery/pickup mode and entity;
+staff administration remains superadmin-only, and superadmin retains its
+existing admin+superadmin privileges. Staging-only POS rows remain protected
+by the runtime/isolated database guard. The kitchen's pre-existing
+subscription-create and customer-create access stays intact; D-092 does not
+grant it free subscription creation.*
+
+**D-092 paid rule:** both branch roles must send a verified, paid cash/Visa
+payment. The admin-only no-payment pathway is preserved exclusively for
+`admin` and `superadmin`. Server-controlled source and `paidAt`
+protections from D-091 still apply.
+
+**CI contract:** `tests/posD092BranchOperatorParity.test.js` enumerates
+every nested registered Express route (including the separately staged POS
+router), evaluates every role guard with both role labels, checks ops actions,
+and rejects direct role permission forks. The dashboard's
+`tests/posD092BranchOperatorParity.test.ts` checks the whole route map,
+operation screens, POS access, subscription methods and unpaid privilege,
+alongside the POS shell render test. Any cashier/restaurant difference fails CI.
 
 ## #204 seed dependency
 
