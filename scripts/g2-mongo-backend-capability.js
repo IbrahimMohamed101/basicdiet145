@@ -3,6 +3,7 @@
 const mongoose = require("mongoose");
 const { checkMongoTransactionSupport, startSafeSession } = require("../src/utils/mongoTransactionSupport");
 const { resolveMongoUri } = require("../src/utils/mongoUriResolver");
+const { connectDb } = require("../src/db");
 async function main() {
   if (process.env.G2_EXECUTION_SCOPE !== "ci-disposable"
     || process.env.NODE_ENV !== "test"
