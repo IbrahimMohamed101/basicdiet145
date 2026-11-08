@@ -70,3 +70,47 @@ test("Production guard default rejects writes as HTTP 403 POS_DISABLED", async (
     else process.env.POS_PRODUCTION_ENABLED = original;
   }
 });
+
+
+test("Production catalog first draft is admin-only, created empty and unpublished, no seed", async (t) => {
+  const router = require("../src/routes/dashboardPosCatalog");
+  const PosCatalog = require("../src/models/PosCatalog");
+  const { saveDraft } = require("../src/services/pos/catalogService");
+  const oldNode = process.env.NODE_ENV, oldFlag = process.env.POS_PRODUCTION_ENABLED;
+  process.env.NODE_ENV = "production";
+  process.env.POS_PRODUCTION_ENABLED = "true";
+  try {
+    const layer = router.stack.find(({ route }) =>
+      route?.path === "/catalog/draft" && route.methods.put)?.route.stack[0];
+    assert.ok(layer);
+    const invoke = (role) => {
+      let status = 200, payload = null, allowed = false;
+      layer.handle({ dashboardUserRole: role }, {
+        status(code) { status = code; return this; },
+        json(x) { payload = x; return this; },
+      }, () => { allowed = true; });
+      return { status, payload, allowed };
+    };
+    assert.equal(invoke("cashier").status, 403);
+    assert.equal(invoke("restaurant").status, 403);
+    assert.equal(invoke("admin").allowed, true);
+    assert.equal(invoke("superadmin").allowed, true);
+    let inserted = null;
+    t.mock.method(PosCatalog, "create", async (payload) => {
+      inserted = payload;
+      return { toObject: () => payload };
+    });
+    const draft = { channels: [{ id: "restaurant", label: "مطعم" }],
+      categories: [{ id: "meal", label: "وجبات" }], products: [] };
+    const result = await saveDraft(0, draft, "admin-id");
+    assert.equal(result.revision, 1);
+    assert.equal(result.publishedRevision, 0);
+    assert.deepEqual(inserted.published.products, []);
+    assert.deepEqual(inserted.published.categories, []);
+    assert.deepEqual(inserted.draft, draft);
+  } finally {
+    if (oldNode === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNode;
+    if (oldFlag === undefined) delete process.env.POS_PRODUCTION_ENABLED;
+    else process.env.POS_PRODUCTION_ENABLED = oldFlag;
+  }
+});
