@@ -11,13 +11,15 @@ const { issueStagingInvoice, recordStagingRefund, verifiedActor } = require("../
 const { readOperation, abandonOperation, findOperationForActor } = require("../services/pos/operationService");
 const PosInvoice = require("../models/PosInvoice");
 const PosRefund = require("../models/PosRefund");
+const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
-const readers = new Set(["cashier", "restaurant", "admin", "superadmin"]);
+const readers = new Set(["admin", "superadmin"]);
+const canReadPos = (role) => isBranchOperator(role) || readers.has(role);
 function access(req, res, next) {
   if (!isPosStagingRuntime() || mongoose.connection.name !== "basicdiet_pos_staging_test") {
     return errorResponse(res, 403, "POS_STAGING_ONLY", "خدمات فواتير الكاشير متاحة في بيئة Staging المعزولة فقط.");
   }
-  if (!readers.has(req.dashboardUserRole)) {
+  if (!canReadPos(req.dashboardUserRole)) {
     return errorResponse(res, 403, "FORBIDDEN", "صلاحية نقطة البيع غير متاحة.");
   }
   return next();
