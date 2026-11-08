@@ -1,0 +1,41 @@
+name: POS G1 Versioned Closing — Isolated rs0 CI
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+  push:
+    branches: [codex/pos-g1-closing-versioned-20261108]
+permissions:
+  contents: read
+jobs:
+  closing-rs0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      DASHBOARD_JWT_SECRET: synthetic-g1-ci-jwt-secret
+      JWT_SECRET: synthetic-g1-ci-secret
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?directConnection=true
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?directConnection=true
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?directConnection=true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Check modified source syntax
+        run: |
+          node --check src/models/DailyCashClosing.js
+          node --check src/services/pos/closingVersionService.js
+          node --check scripts/pos-g1-seed-closing-start-date.js
+          node --check src/services/dashboard/dailyCashClosingService.js
+          node --check src/services/dashboard/accountingDailyReportService.js
+          node --check src/routes/dashboardDailyCashClosings.js
+          node --check tests/posG1Closing.integration.test.js
+      - name: Pure reason policy and legacy unit contracts
+        run: node --test tests/posG1Closing.unit.test.js tests/dailyCashClosing.test.js
+      - name: Start isolated MongoDB replica set
+        run: bash scripts/ci/start-mongo-replset.sh pos-g1-closing-mongo
+      - name: Real HTTP lifecycle, accountant golden and rs0 atomic audit
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posG1Closing.integration.test.js
