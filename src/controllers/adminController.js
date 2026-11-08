@@ -1945,6 +1945,12 @@ async function createAppUserAdmin(req, res) {
         { session }
       );
 
+      await ActivityLog.create([{
+        entityType: "app_user", entityId: createdCoreUser[0]._id,
+        action: "app_customer_created_by_dashboard",
+        byUserId: req.dashboardUserId, byRole: req.dashboardUserRole,
+        meta: { appUserId: String(createdAppUser[0]._id), source: "dashboard" },
+      }], { session });
       if (typeof session.commitTransaction === "function") await session.commitTransaction();
     } catch (err) {
       await session.abortTransaction();
@@ -1985,6 +1991,11 @@ async function createAppUserAdmin(req, res) {
   }
 }
 
+function hasClientSuppliedPaidAt(body) {
+  return Object.hasOwn(body || {}, "paidAt") ||
+    Object.hasOwn(body?.payment || {}, "paidAt");
+}
+
 async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, explicitRuntimeOverrides = null) {
   const runtime = resolveAdminRuntimeOverrides(
     sliceCAdminRuntime,
@@ -1997,10 +2008,8 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return undefined;
   }
 
-  if (req.dashboardUserRole === "cashier") {
-    if (!body.payment || body.payment.method !== "cash") {
-      return errorResponse(res, 403, "FORBIDDEN", "Cashier role is only allowed to create cash-paid subscriptions");
-    }
+  if (hasClientSuppliedPaidAt(req.body)) {
+    return errorResponse(res, 400, "PAID_AT_NOT_ALLOWED", "Payment date is assigned by the server");
   }
 
   const user = await runtime.findClientUserById(userId);
@@ -2137,7 +2146,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         currency: quote.breakdown.currency || "SAR",
         userId: user._id,
         subscriptionId: subscription._id,
-        paidAt: body.payment.paidAt ? new Date(body.payment.paidAt) : new Date(),
+        paidAt: new Date(),
         method: "cash",
         source: body.source || "dashboard_cashier",
         collectedBy: req.dashboardUserId,
