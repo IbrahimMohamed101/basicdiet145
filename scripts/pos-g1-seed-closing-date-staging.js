@@ -2,8 +2,14 @@
 // G1 explicit Staging-only activation. Never run from application startup.
 // CI subprocess mode is restricted to one local disposable database.
 require("dotenv").config();
-const mongoose = require("mongoose");
 const { preparePosStagingRuntime, isPosStagingRuntime } = require("../src/utils/posStagingRuntime");
+// Match src/index.js: normalize the Staging process environment BEFORE loading
+// Mongoose models/services or attempting any database connection.
+const boot = (() => {
+  try { return { isolated: preparePosStagingRuntime(), failed: false }; }
+  catch { return { isolated: false, failed: true }; }
+})();
+const mongoose = require("mongoose");
 const DashboardUser = require("../src/models/DashboardUser");
 const DailyCashClosing = require("../src/models/DailyCashClosing");
 const { KEY, loadPolicy, scheduleStartDate } = require("../src/services/pos/posClosingSetting");
@@ -62,13 +68,9 @@ function assertMongoTarget(uri, localCI) {
   return parsed;
 }
 function prepareRuntime(argv) {
-  let isolated = false;
-  try {
-    // EXACT startup normalization call from src/index.js, before any DB use.
-    isolated = preparePosStagingRuntime();
-  } catch {
-    // The common runtime normalizer deliberately gives generic errors. Convert
-    // to codes without ever printing a URI, credential or variable value.
+  if (boot.failed) {
+    // The canonical normalizer's errors are classified without printing its
+    // message (which may be derived from secret-bearing connection settings).
     if (!ciLocalOnly(argv)) {
       const missing = RUNTIME_VARIABLES.filter(key => !process.env[key]);
       if (missing.length) throw coded("STAGING_RUNTIME_MISMATCH", missing);
@@ -78,7 +80,7 @@ function prepareRuntime(argv) {
     }
     throw runtimeMismatch();
   }
-  if (isolated && isPosStagingRuntime()) return { localCI: false };
+  if (boot.isolated && isPosStagingRuntime()) return { localCI: false };
   // A second, exact-match path only for the GitHub runner's disposable MongoDB.
   // Neither Railway's Staging nor Production can enable this by accident:
   // it needs CLI opt-in, NODE_ENV=test, CI=true, and localhost+fixed CI db.
@@ -116,7 +118,7 @@ async function loadActor() {
 }
 async function readPolicyState() {
   const policy = await loadPolicy();
-  const matching = policy.changes.some(item =>
+  const matching = policy.baselineStartDate === DATE || policy.changes.some(item =>
     item.effectiveFrom === DATE && item.startDate === DATE);
   if (matching) throw coded("ALREADY_SCHEDULED");
   const closingExists = await DailyCashClosing.exists({
