@@ -9,15 +9,17 @@ const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevi
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 const { verifiedActor } = require("../services/pos/financialLedgerService");
 const { getPosRuntimeStatus } = require("../services/pos/financialRuntime");
+const { isPosStagingRuntime } = require("../utils/posStagingRuntime");
 
 const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
 // POS management is an operational duty of cashier and restaurant; financial
 // admin privileges and customer-app menu publication remain separately guarded.
 const stagingManage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
-async function manage(req, res, next) {
-  const state = await getPosRuntimeStatus();
-  if (state.environment === "production") {
+function manage(req, res, next) {
+  // Full POS production activation separately requires NODE_ENV=production.
+  // Preserve the existing synchronous Staging role middleware and tests.
+  if (process.env.NODE_ENV === "production" && !isPosStagingRuntime()) {
     if (!["admin", "superadmin"].includes(req.dashboardUserRole)) {
       return errorResponse(res, 403, "FORBIDDEN", "تعديل منيو الكاشير على Production للإدارة فقط.");
     }
