@@ -2035,11 +2035,17 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
   if (dashboardRecordPath && verified.source !== recordingSource) {
     return errorResponse(res, 403, "PAYMENT_CONTEXT_INVALID", "Untrusted recording source");
   }
-  if (!body.payment || body.payment.method !== "cash") {
+  // Preserve the pre-existing admin/restaurant ability to create a subscription
+  // without recording a collection. Only an actual payment is cash-only here.
+  // The dashboard recording adapter always supplies a verified paid payment.
+  if (body.payment && body.payment.method !== "cash") {
     return errorResponse(res, 400, "INVALID_PAYMENT_METHOD",
       "Direct admin subscription creation accepts cash only; use dashboard recording for Visa/Mada");
   }
-  if (body.payment.status !== "paid") {
+  if (dashboardRecordPath && !body.payment) {
+    return errorResponse(res, 400, "PAYMENT_REQUIRED", "Recorded dashboard subscriptions require payment");
+  }
+  if (body.payment && body.payment.status !== "paid") {
     return errorResponse(res, 400, "PAYMENT_STATUS_INVALID", "Subscription payment must be paid");
   }
 
@@ -2072,8 +2078,8 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 
-  if (!Number.isSafeInteger(Number(body.payment.collectedAmountHalala)) ||
-      Number(body.payment.collectedAmountHalala) !== Number(quote.breakdown.totalHalala)) {
+  if (body.payment && (!Number.isSafeInteger(Number(body.payment.collectedAmountHalala)) ||
+      Number(body.payment.collectedAmountHalala) !== Number(quote.breakdown.totalHalala))) {
     return errorResponse(res, 400, "PAYMENT_AMOUNT_MISMATCH", "Collected amount must match the server quote");
   }
   const session = await startSafeSession();
