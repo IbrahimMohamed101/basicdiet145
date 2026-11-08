@@ -2086,6 +2086,12 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 
+  if (isBranchOperator(req.dashboardUserRole)
+      && (!Number.isSafeInteger(Number(quote.breakdown.totalHalala))
+        || Number(quote.breakdown.totalHalala) <= 0)) {
+    return errorResponse(res, 400, "PAYMENT_REQUIRED",
+      "Free or zero-valued subscriptions require admin/superadmin approval");
+  }
   if (body.payment && (!Number.isSafeInteger(Number(body.payment.collectedAmountHalala)) ||
       Number(body.payment.collectedAmountHalala) !== Number(quote.breakdown.totalHalala))) {
     return errorResponse(res, 400, "PAYMENT_AMOUNT_MISMATCH", "Collected amount must match the server quote");
