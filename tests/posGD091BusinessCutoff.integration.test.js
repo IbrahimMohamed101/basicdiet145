@@ -9,6 +9,11 @@ const PosInvoice = require("../src/models/PosInvoice");
 const { expectedTotals } = require("../src/services/pos/expectedTotals");
 const { subscriptionPaymentsForDate } = require("../src/services/dashboard/dailyCashClosingService");
 const { businessDateAt } = require("../src/services/pos/businessDate");
+const { resolveBusinessPeriod } = require("../src/services/dashboard/accountingDailyReportService");
+const ActivityLog = require("../src/models/ActivityLog");
+const {
+  getBusinessDayBounds, getBusinessDateAt, scheduleBusinessDayCutoff,
+} = require("../src/services/pos/businessDaySetting");
 
 test("D-091 closing boundaries and subscription paidAt agree on isolated Mongo topology", async () => {
   const uri = process.env.MONGO_URI_TEST || "";
@@ -54,6 +59,49 @@ test("D-091 closing boundaries and subscription paidAt agree on isolated Mongo t
       "recorded invoice businessDate must be immutable");
     const invoice = await PosInvoice.findOne({ businessDate: "2026-11-08" });
     assert.equal(invoice.businessDate, "2026-11-08");
+    const historical = await resolveBusinessPeriod("2026-11-08");
+    assert.deepEqual([historical.start, historical.end],
+      [(await getBusinessDayBounds("2026-11-08")).start,
+        (await getBusinessDayBounds("2026-11-08")).end]);
+    // Only rs0 has transactional cutoff changes. A standalone cannot mutate
+    // the protected setting; both topologies still use historical read bounds.
+    const actorId = new mongoose.Types.ObjectId();
+    const change = {
+      newCutoff: "00:00", actorId, actorRole: "admin",
+      at: new Date("2026-11-09T09:00:00.000Z"),
+    };
+    if (hello.setName === "rs0") {
+      const result = await scheduleBusinessDayCutoff(change, { testOnly: true });
+      assert.equal(result.previousCutoff, "04:00");
+      assert.equal(result.newCutoff, "00:00");
+      assert.equal(result.effectiveFrom, "2026-11-10");
+      const audit = await ActivityLog.findOne({
+        action: "business_day_cutoff_scheduled", byUserId: actorId,
+      }).lean();
+      assert.ok(audit);
+      assert.equal(audit.meta.previousCutoff, "04:00");
+      assert.equal(audit.meta.newCutoff, "00:00");
+      assert.equal(audit.meta.effectiveFrom, "2026-11-10");
+      assert.equal(audit.byRole, "admin");
+      const oldPeriod = await getBusinessDayBounds("2026-11-09");
+      const effectivePeriod = await getBusinessDayBounds("2026-11-10");
+      const followingPeriod = await getBusinessDayBounds("2026-11-11");
+      assert.equal(oldPeriod.end.toISOString(), "2026-11-10T01:00:00.000Z");
+      assert.equal(effectivePeriod.start.toISOString(), oldPeriod.end.toISOString());
+      assert.equal(effectivePeriod.end.toISOString(), "2026-11-10T21:00:00.000Z");
+      assert.equal(followingPeriod.start.toISOString(), effectivePeriod.end.toISOString());
+      assert.equal(await getBusinessDateAt(new Date("2026-11-10T00:59:00.000Z")), "2026-11-09");
+      assert.equal(await getBusinessDateAt(new Date("2026-11-10T01:00:00.000Z")), "2026-11-10");
+      assert.equal((await resolveBusinessPeriod("2026-11-10")).end.toISOString(),
+        effectivePeriod.end.toISOString());
+      assert.equal((await expectedTotals("2026-11-08")).expected.cashHalalas, 350,
+        "cutoff update may not move historical paidAt or POS invoices");
+      assert.equal((await PosInvoice.findById(invoice._id)).businessDate, "2026-11-08");
+    } else {
+      await assert.rejects(() => scheduleBusinessDayCutoff(change, { testOnly: true }),
+        /Staging/);
+    }
+
   } finally {
     if (mongoose.connection.readyState) {
       await mongoose.connection.dropDatabase().catch(() => {});
