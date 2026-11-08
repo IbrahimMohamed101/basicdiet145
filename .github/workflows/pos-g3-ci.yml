@@ -45,8 +45,8 @@ jobs:
       - name: Confirm standalone topology before testing
         run: |
           test "$(docker exec $(docker ps -q --filter ancestor=mongo:8.0 | head -1) mongosh --quiet --eval 'db.adminCommand({hello:1}).setName || "standalone"' | tr -d '\r')" = "standalone"
-      - name: Cashier cash subscription API contracts on standalone MongoDB
-        run: node tests/dashboardCashSubscriptionContract.test.js
+      - name: Cashier cash/visa/amount invariants on standalone MongoDB
+        run: NODE_ENV=test node --test tests/posG3StandaloneSubscriptionGuard.test.js
       - name: Two concurrent meal deductions must result in exactly one success
         run: node tests/subscriptionBalanceConcurrency.test.js
   replica-financial-fixtures:
