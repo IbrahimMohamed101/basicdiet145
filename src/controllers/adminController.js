@@ -2184,6 +2184,11 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         paidAt: new Date(),
         method: recordedPaymentMethod,
         source: recordingSource,
+        metadata: {
+          paymentMethod: recordedPaymentMethod,
+          recordingMode: "dashboard_manual",
+          gatewayUsed: false,
+        },
         collectedBy: req.dashboardUserId,
         applied: true
       }], { session });
