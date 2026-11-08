@@ -16,7 +16,7 @@ const Setting = require("../src/models/Setting");
 const Subscription = require("../src/models/Subscription");
 const Payment = require("../src/models/Payment");
 
-test("G3 standalone cashier: mismatched/partial amount & Visa cannot create paid entitlement", async () => {
+test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated payments never create entitlements", async () => {
   const uri = process.env.MONGO_URI_TEST;
   if (!uri || !/^mongodb:\/\/127\.0\.0\.1:27017\/basicdiet_pos_g3_ci_test\?/.test(uri)) {
     throw new Error("Standalone test requires disposable local basicdiet_pos_g3_ci_test");
@@ -50,7 +50,7 @@ test("G3 standalone cashier: mismatched/partial amount & Visa cannot create paid
     };
     const quoted = await request(app).post("/api/dashboard/subscriptions/quote").set(authorization).send(payload);
     assert.equal(quoted.status, 200, JSON.stringify(quoted.body).slice(0, 600));
-    assert.deepEqual(quoted.body.data.allowedPaymentMethods, ["cash"]);
+    assert.deepEqual(quoted.body.data.allowedPaymentMethods, ["cash", "visa"]);
     const total = quoted.body.data.totalHalala;
     assert.ok(Number.isSafeInteger(total) && total > 0);
 
@@ -64,11 +64,14 @@ test("G3 standalone cashier: mismatched/partial amount & Visa cannot create paid
         "rejected payment must not leave any entitlement on standalone");
       assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
     }
-    const visa = await request(app).post("/api/dashboard/subscriptions")
+    const backdated = await request(app).post("/api/dashboard/subscriptions")
       .set(authorization).send({ ...payload,
-        payment: { method: "visa", status: "paid", collectedAmountHalala: total } });
-    assert.equal(visa.status, 403);
+        payment: { method: "cash", status: "paid", collectedAmountHalala: total,
+          paidAt: new Date(Date.now() - 86400000).toISOString() } });
+    assert.equal(backdated.status, 400, JSON.stringify(backdated.body));
+    assert.equal(backdated.body.error.code, "PAID_AT_NOT_ALLOWED");
     assert.equal(await Subscription.countDocuments({ userId: customer._id }), 0);
+    assert.equal(await Payment.countDocuments({ userId: customer._id }), 0);
     const paid = await request(app).post("/api/dashboard/subscriptions")
       .set(authorization).send({ ...payload,
         payment: { method: "cash", status: "paid", collectedAmountHalala: total } });
@@ -79,6 +82,21 @@ test("G3 standalone cashier: mismatched/partial amount & Visa cannot create paid
     assert.equal(payments.length, 1);
     assert.equal(payments[0].amount, total);
     assert.equal(String(payments[0].collectedBy), String(actor.user._id));
+    assert.ok(Math.abs(payments[0].paidAt.getTime() - Date.now()) < 60000);
+    const secondCustomer = await User.create({
+      phone: "+966000000102", name: "G3 synthetic Visa", role: "client", isActive: true,
+    });
+    const visa = await request(app).post("/api/dashboard/subscriptions")
+      .set(authorization).send({ ...payload, userId: secondCustomer._id,
+        payment: { method: "mada", status: "paid", collectedAmountHalala: total } });
+    assert.equal(visa.status, 201, JSON.stringify(visa.body).slice(0, 900));
+    const visaPayment = await Payment.findOne({ userId: secondCustomer._id, status: "paid" }).lean();
+    assert.ok(visaPayment);
+    assert.equal(visaPayment.source, Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE);
+    assert.equal(visaPayment.method, "visa");
+    assert.equal(visaPayment.amount, total);
+    assert.equal(await Payment.countDocuments({ userId: secondCustomer._id }), 1);
+    assert.equal(await Subscription.countDocuments({ userId: secondCustomer._id }), 1);
   } finally {
     if (mongoose.connection.readyState) {
       await mongoose.connection.dropDatabase().catch(() => {});
