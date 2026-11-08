@@ -57,15 +57,22 @@ async function resolveClosingVersion(date, closing = null) {
   return versionAt(date, await loadPolicy());
 }
 function calculationMode(version) { return MODES[version] || MODES[LEGACY]; }
-function assertStagingSeedRuntime() {
+function assertStagingSeedRuntime(options = {}) {
+  const localDisposableRs0 = options.testOnly === true &&
+    process.env.NODE_ENV === "test" &&
+    process.env.MONGO_URI_TEST ===
+      "mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0" &&
+    mongoose.connection.name === "basicdiet_pos_g1_ci_test" &&
+    mongoose.connection.host === "127.0.0.1";
+  if (localDisposableRs0) return;
   if (!isPosStagingRuntime() || mongoose.connection.name !== "basicdiet_pos_staging_test"
     || mongoose.connection.host !== "mongodb-qxhu.railway.internal") {
     const error = new Error("POS closing date writes are restricted to isolated Staging");
     error.status = 403; error.code = "POS_STAGING_ONLY"; throw error;
   }
 }
-async function scheduleStartDate({ startDate, effectiveFrom, actorId, actorRole }) {
-  assertStagingSeedRuntime();
+async function scheduleStartDate({ startDate, effectiveFrom, actorId, actorRole }, options = {}) {
+  assertStagingSeedRuntime(options);
   validDate(startDate); validDate(effectiveFrom);
   if (!actorId || !["admin", "superadmin"].includes(actorRole)) throw new Error("Admin actor required");
   // Never retroactively reclassify an already existing closing.
