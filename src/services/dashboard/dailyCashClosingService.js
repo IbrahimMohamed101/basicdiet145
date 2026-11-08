@@ -245,12 +245,25 @@ async function closingCalculations(date, closing, inputs, { useFrozen = false } 
   const snapshot = useFrozen ? closing?.snapshot : null;
   const version = snapshot?.closingVersion || await resolveClosingVersion(date, closing);
   const automatic = snapshot?.automatic || await subscriptionPaymentsForDate(date);
-  const legacySummary = calculateClosing(inputs.channels, inputs.collections, automatic, inputs.confirmedSubscriptionCount);
-  const summary = snapshot?.summary || legacySummary;
   const serverExpected = snapshot?.expectedTotals ||
     (version === POS ? addOtherReceivables(await expectedTotals(date), inputs.channels) : await expectedTotals(date));
   const reconciliation = snapshot?.reconciliation ||
     reconcileCountedWithServer(inputs.collections, serverExpected);
+  // POS_V2 must not call the legacy sales calculator or expose its fictitious
+  // manual-channel totals. The server-owned cash/network/apps expected values
+  // are the only closing money basis; legacy retains its exact old calculator.
+  const summary = snapshot?.summary || (version === POS ? {
+    totalSalesHalala: serverExpected.expected.totalHalalas,
+    appReceivablesHalala: serverExpected.expected.appReceivableHalalas,
+    localExpectedHalala: serverExpected.expected.cashHalalas + serverExpected.expected.networkHalalas,
+    localRecordedHalala: inputs.collections.cashHalala + inputs.collections.cardHalala,
+    localDifferenceHalala: reconciliation.localDifferenceHalala,
+    overallDifferenceHalala: reconciliation.localDifferenceHalala,
+    subscriptionCountDifference: inputs.confirmedSubscriptionCount == null ? 0 :
+      inputs.confirmedSubscriptionCount - automatic.count,
+    unknownSubscriptionHalala: safeHalala(automatic.unknownHalala),
+    accountingRefundsHalala: safeHalala(automatic.refundsHalala),
+  } : calculateClosing(inputs.channels, inputs.collections, automatic, inputs.confirmedSubscriptionCount));
   const reasonCodes = snapshot?.reasonCodes ||
     reasonCodesFor({ version, summary, reconciliation, automatic });
   const businessDayBounds = snapshot?.businessDayBounds || await getBusinessDayBounds(date);
