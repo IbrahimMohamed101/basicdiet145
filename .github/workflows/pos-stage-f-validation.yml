@@ -4,6 +4,7 @@ on:
     branches:
       - codex/pos-staging-isolation
       - codex/pos-f-operations-safety-staging-20261107
+      - codex/pos-g2-ledger-closing-staging-20261108
   push:
     branches:
       - codex/pos-staging-isolation
@@ -38,9 +39,14 @@ jobs:
           node --check src/services/pos/operationService.js
           node --check src/services/pos/financialLedgerService.js
           node --check src/routes/dashboardPosFinancial.js
+          node --check src/services/pos/businessDate.js
+          node --check src/services/pos/expectedTotals.js
+          node --check src/services/dashboard/dailyCashClosingService.js
+          node --check src/routes/dashboardDailyCashClosings.js
+          node --check src/services/dashboard/accountingDailyReportService.js
       - name: Seven approved VAT vectors and financial intent/property tests
         run: |
-          NODE_ENV=test node --test tests/posInvoiceMath.test.js tests/posFinancialQuote.test.js tests/posStageFGuards.test.js
+          NODE_ENV=test node --test tests/posInvoiceMath.test.js tests/posFinancialQuote.test.js tests/posStageFGuards.test.js tests/posG2ExpectedTotals.test.js tests/dailyCashClosing.test.js
       - name: POS Staging isolation and catalog safety
         run: |
           NODE_ENV=test node --test tests/posStagingRuntime.test.js tests/posQuote.test.js tests/posCatalogHistory.test.js

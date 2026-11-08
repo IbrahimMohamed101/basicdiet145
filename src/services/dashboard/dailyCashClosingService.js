@@ -8,6 +8,7 @@ const PaymentRefund = require("../../models/PaymentRefund");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const accounting = require("./accountingDailyReportService");
+const { expectedTotals } = require("../pos/expectedTotals");
 
 function safeHalala(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -177,6 +178,22 @@ function calculateClosing(channels, collections, automatic, confirmedCount) {
   };
 }
 
+function reconcileCountedWithServer(collections, serverExpected) {
+  const cashHalala = safeHalala(collections.cashHalala);
+  const cardHalala = safeHalala(collections.cardHalala);
+  const cashDifferenceHalala = cashHalala - serverExpected.expected.cashHalalas;
+  const networkDifferenceHalala = cardHalala - serverExpected.expected.networkHalalas;
+  return {
+    countedCashHalala: cashHalala,
+    countedNetworkHalala: cardHalala,
+    expectedCashHalala: serverExpected.expected.cashHalalas,
+    expectedNetworkHalala: serverExpected.expected.networkHalalas,
+    expectedAppReceivableHalala: serverExpected.expected.appReceivableHalalas,
+    cashDifferenceHalala, networkDifferenceHalala,
+    localDifferenceHalala: cashDifferenceHalala + networkDifferenceHalala,
+  };
+}
+
 function inputSnapshot(closing) {
   return {
     channels: closing.channels,
@@ -200,6 +217,12 @@ async function buildClosingView(closing, date) {
   const summary = closing && closing.status !== "draft" && closing.snapshot
     ? closing.snapshot.summary
     : calculateClosing(values.channels, values.collections, automatic, values.confirmedSubscriptionCount);
+  const serverExpected = closing && closing.status !== "draft" && closing.snapshot?.expectedTotals
+    ? closing.snapshot.expectedTotals
+    : await expectedTotals(date);
+  const reconciliation = closing && closing.status !== "draft" && closing.snapshot?.reconciliation
+    ? closing.snapshot.reconciliation
+    : reconcileCountedWithServer(values.collections, serverExpected);
   return {
     businessDate: date,
     currency: "SAR",
@@ -208,6 +231,8 @@ async function buildClosingView(closing, date) {
     ...values,
     automatic,
     summary,
+    expectedTotals: serverExpected,
+    reconciliation,
     submittedAt: closing?.submittedAt || null,
     approvedAt: closing?.approvedAt || null,
     history: closing?.history || [],
@@ -222,4 +247,6 @@ module.exports = {
   calculateClosing,
   inputSnapshot,
   buildClosingView,
+  expectedTotals,
+  reconcileCountedWithServer,
 };
