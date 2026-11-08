@@ -42,8 +42,12 @@ function parsePayload(body, version) {
     if (!name) throw fail(400, "INVALID_INPUT", `Other channel ${index + 1} needs a name`);
     const reference = version === POS ? text(item?.reference, 120, "other channel reference") : (typeof item?.reference === "string" ? text(item.reference, 120, "other channel reference") : "");
     if (version === POS && !reference) throw fail(400, "OTHER_CHANNEL_REFERENCE_REQUIRED", "Other POS channels require a reference");
-    if (version === POS && /^(restaurant|the restaurant|hunger\\s*station|hungerstation|keeta|المطعم|مطعم|هنجر\\s*استيشن|هنجرستيشن|كيتا)$/iu.test(name.trim())) {
-      throw fail(400, "MANUAL_CHANNEL_RECORDED_IN_POS", "POS-managed channels cannot be entered as other channels");
+    if (version === POS) {
+      const normalized = name.toLowerCase().replace(/\s+/gu, "");
+      if (["restaurant", "therestaurant", "hungerstation", "keeta", "المطعم",
+        "مطعم", "هنجرستيشن", "كيتا"].includes(normalized)) {
+        throw fail(400, "MANUAL_CHANNEL_RECORDED_IN_POS", "POS-managed channels cannot be entered as other channels");
+      }
     }
     return { name, reference, amountHalala: money(item?.amountHalala, "other channel amount") };
   });
