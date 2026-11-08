@@ -1,6 +1,6 @@
 "use strict";
 
-const { dashboardRoleHasPermission } = require("../../constants/dashboardRoles");
+const { dashboardRoleHasPermission, isBranchOperator } = require("../../constants/dashboardRoles");
 const {
   canTransitionStatus,
   normalizeOperationalStatus,
@@ -183,7 +183,7 @@ function normalizeActionId(actionId) {
 }
 
 function roleAllowedForActionMode(actionId, role, mode) {
-  const branchOperator = role === "restaurant" || role === "cashier";
+  const branchOperator = isBranchOperator(role);
   const operationalRole = branchOperator ? "kitchen" : role;
   if (actionId === "prepare" && operationalRole === "courier" && mode !== "delivery") {
     return false;
