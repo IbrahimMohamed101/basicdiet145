@@ -1991,6 +1991,10 @@ async function createAppUserAdmin(req, res) {
   }
 }
 
+function hasClientSuppliedSource(body) {
+  return Object.hasOwn(body || {}, "source") || Object.hasOwn(body?.payment || {}, "source");
+}
+
 function hasClientSuppliedPaidAt(body) {
   return Object.hasOwn(body || {}, "paidAt") ||
     Object.hasOwn(body?.payment || {}, "paidAt");
@@ -2002,14 +2006,41 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     nextOrRuntimeOverrides,
     explicitRuntimeOverrides
   );
-  const body = normalizeDashboardQuotePayload(req.body || {});
-  const { userId } = body;
-  if (!validateObjectIdOrRespond(res, userId, "userId")) {
-    return undefined;
+  if (hasClientSuppliedSource(req.body)) {
+    return errorResponse(res, 400, "SOURCE_NOT_ALLOWED", "Payment source is assigned by the server");
   }
-
   if (hasClientSuppliedPaidAt(req.body)) {
     return errorResponse(res, 400, "PAID_AT_NOT_ALLOWED", "Payment date is assigned by the server");
+  }
+
+  const body = normalizeDashboardQuotePayload(req.body || {});
+  const { userId } = body;
+  if (!validateObjectIdOrRespond(res, userId, "userId")) return undefined;
+
+  // The recording adapter attaches a server-only verified context to POST /dashboard/subscriptions.
+  // Direct /admin/subscriptions requests must be cash, never Visa/Mada.
+  const dashboardRecordPath = /^\/api\/dashboard\/subscriptions\/?$/.test(
+    String(req.originalUrl || "").split("?")[0]
+  );
+  const verified = req.verifiedDashboardSubscriptionPayment;
+  if ((dashboardRecordPath && (!verified || !["cash", "visa"].includes(verified.method))) ||
+      (!dashboardRecordPath && verified)) {
+    return errorResponse(res, 403, "PAYMENT_CONTEXT_INVALID", "Payment must use its authorized recording route");
+  }
+  const recordedPaymentMethod = dashboardRecordPath ? verified.method : "cash";
+  const recordingSource = dashboardRecordPath
+    ? (recordedPaymentMethod === "visa" ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
+      : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE)
+    : "dashboard_cashier";
+  if (dashboardRecordPath && verified.source !== recordingSource) {
+    return errorResponse(res, 403, "PAYMENT_CONTEXT_INVALID", "Untrusted recording source");
+  }
+  if (!body.payment || body.payment.method !== "cash") {
+    return errorResponse(res, 400, "INVALID_PAYMENT_METHOD",
+      "Direct admin subscription creation accepts cash only; use dashboard recording for Visa/Mada");
+  }
+  if (body.payment.status !== "paid") {
+    return errorResponse(res, 400, "PAYMENT_STATUS_INVALID", "Subscription payment must be paid");
   }
 
   const user = await runtime.findClientUserById(userId);
@@ -2041,6 +2072,10 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 
+  if (!Number.isSafeInteger(Number(body.payment.collectedAmountHalala)) ||
+      Number(body.payment.collectedAmountHalala) !== Number(quote.breakdown.totalHalala)) {
+    return errorResponse(res, 400, "PAYMENT_AMOUNT_MISMATCH", "Collected amount must match the server quote");
+  }
   const session = await startSafeSession();
 
   try {
@@ -2139,7 +2174,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       }
 
       await Payment.create([{
-        provider: "cash",
+        provider: recordedPaymentMethod === "visa" ? "manual" : "cash",
         type: "subscription_activation",
         status: "paid",
         amount: Number(body.payment.collectedAmountHalala),
@@ -2147,8 +2182,8 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
         userId: user._id,
         subscriptionId: subscription._id,
         paidAt: new Date(),
-        method: "cash",
-        source: body.source || "dashboard_cashier",
+        method: recordedPaymentMethod,
+        source: recordingSource,
         collectedBy: req.dashboardUserId,
         applied: true
       }], { session });
@@ -2198,8 +2233,8 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
           paymentId: paymentDoc ? String(paymentDoc._id) : null,
           quoteTotal: quote.breakdown.totalHalala,
           collectedAmount: body.payment.collectedAmountHalala,
-          paymentMethod: "cash",
-          source: body.source || "dashboard_cashier",
+          paymentMethod: recordedPaymentMethod,
+          source: recordingSource,
           premiumItems: body.premiumItems || [],
           addons: body.addons || [],
           fulfillmentMethod: body.fulfillmentMethod || body.deliveryMode || "pickup",
