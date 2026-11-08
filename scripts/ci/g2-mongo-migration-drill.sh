@@ -40,7 +40,10 @@ wait_auth() {
     fi
     sleep 1
   done
-  echo "G2_MONGO_READINESS_TIMEOUT" >&2
+  # Docker state and exit code ONLY; never print Mongo logs, URI or environment.
+  local state
+  state="$(docker inspect --format '{{.State.Status}} exit={{.State.ExitCode}}' "$container" 2>/dev/null || echo missing)"
+  echo "G2_MONGO_READINESS_TIMEOUT state=$state" >&2
   return 1
 }
 start_standalone() {
@@ -50,8 +53,7 @@ start_standalone() {
     -v "$volume:/data/db" \
     -e "MONGO_INITDB_ROOT_USERNAME=$G2_CI_ROOT_USER" \
     -e "MONGO_INITDB_ROOT_PASSWORD=$G2_CI_ROOT_PASSWORD" \
-    mongo:8.0 mongod --ipv6 --bind_ip ::,0.0.0.0 --auth \
-    --setParameter diagnosticDataCollectionEnabled=false >/dev/null
+    mongo:8.0 mongod --auth --bind_ip_all >/dev/null
   wait_auth "$name"
 }
 start_rs0() {
