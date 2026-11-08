@@ -17,6 +17,10 @@ jobs:
     services:
       mongodb:
         image: mongo:8.0
+        # GitHub runner kernels expose an rseq incompatibility with Mongo 8's
+        # per-CPU allocator; disable that cache mode only for disposable CI.
+        env:
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
         ports: ["27017:27017"]
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
