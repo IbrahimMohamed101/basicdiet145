@@ -2086,7 +2086,7 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 
-  if (isBranchOperator(req.dashboardUserRole)
+  if (!["admin", "superadmin"].includes(String(req.dashboardUserRole || ""))
       && (!Number.isSafeInteger(Number(quote.breakdown.totalHalala))
         || Number(quote.breakdown.totalHalala) <= 0)) {
     return errorResponse(res, 400, "PAYMENT_REQUIRED",
