@@ -1,11 +1,11 @@
-# POS G3 — Full-day Staging acceptance matrix (not yet accepted)
+# POS G3 — Full-day Staging acceptance matrix (partially verified, G1 blocked)
 
-**Scope:** Staging only. Real cashier browser actions require an authenticated Staging cashier session. The synthetic CI suites do **not** constitute real Staging cashier acceptance. Never use Production customers or data in tests.
+**Scope:** Staging only. Reported 2026-11-08 Claude browser run used role=cashier, per owner-provided results; these observations are recorded as **owner-supplied evidence, not independently reverified in this PR**. G3 is NOT accepted while G1 and retries are pending. Do not commit customer details or secrets.
 
 ## Preconditions
 - G0 Staging-only synthetic/config fixture applied on a **separate isolated replica-set clone**, after owner approval for any config export (allowlisted collections only). Do not export or restore customer/phone/subscription/payment records from Production.
 - G1 and G2 PRs merged, both Staging services SUCCESS on pinned SHAs; all CI green. Verify `POS_REFUND_ROLES` permits `cashier`; Production never changed.
-- Existing role restriction: cashier subscription creation **cash-only** in `src/controllers/adminController.js`. Visa by a cashier is currently **forbidden**. Do not override the controller silently. An owner-authorized role decision is required before G3's strict "same cashier buys cash and visa" scenario can pass; otherwise test visa with authorized restaurant/admin role and mark strict G3 **BLOCKED**.
+- D-091/D-092 now allow the same cashier/restaurant branch operator to record cash and Visa/Mada subscriptions through the authorized dashboard path; the previous cash-only note is superseded.
 - Actual one-day tests use customer fixtures with *synthetic* phone numbers and no SMS, PII, gateway charge or external API calls.
 - Record invoice and refund counters before starting, UUID/idempotency keys, timestamps in `Asia/Riyadh`, tester role and no cross-environment traffic.
 
@@ -52,4 +52,30 @@ The numbers are test fixtures already exercised in `tests/posG2ExpectedTotals.te
 ## Result record template
 Record date/role, head SHAs, three invoice numbers, two subscription Payment IDs, one refund ID, meal deduction audit ID, cashier/manager closing IDs, expected/counted cash & network in halalas, per-channel receivables, and each HTTP failure/response. Sanitized output only: no names, phone numbers, raw tokens, email addresses or addresses.
 
-Current actual G3 result: **NOT EXECUTED**. All reported amounts above are synthetic examples; do not report them as live achievements.
+## Owner-reported Claude Staging cashier G3 run — 2026-11-08
+
+Status: **PARTIAL / NOT ACCEPTED**. The following is a transcript summary supplied by the owner, not independent GitHub CI or database evidence.
+
+| Checklist items | Reported result | Evidence summary (halalas) |
+|---|---|---|
+| 1–3 | PASS | Cash subscription 17,400; Visa subscription 17,400, both by cashier |
+| 4 | PASS | Cash sale 3,700; VAT 482 per stated line, add-on as distinct line |
+| 5 | PASS | Network sale 7,800 less 10% invoice discount = 7,020; VAT 915 |
+| 6 | PASS | HungerStation sale 3,800 recorded as app receivable |
+| 7 | PASS | Partial network refund STG-R-000002 = 2,880. Excess refund blocked by UI and API with 409 POS_CONFLICT |
+| 8 | PASS | Meal deduction reduced 7 → 6 |
+| 9 | **BLOCKED** | Old backend closing submit reason calculation conflicts with POS expectedTotals (G1 remediation) |
+| 10 | **NOT RUN** | Uncertain network response/retry/idempotency not confirmed |
+| 11 | PASS | Invoice sequence STG-000009 through STG-000011 has no gaps; independent expectedTotals difference 0 halalas |
+
+The run above is *not* the full G1 acceptance fixture of cash 150,965, network 335,240, applications 7,600 and total 493,805 halalas; do not conflate these scenarios.
+
+## Production-derived data on Staging — D-096 unresolved protection gate
+
+The owner states on 2026-11-08 that a **full Production copy on Staging** was authorized. Execution status, access restrictions, key safety and retention are **not independently verified**. This changes the assumption in earlier synthetic-only notes and needs an explicit security reconciliation before further Staging tests:
+- Restrict who can access Staging, its backups, network and test accounts.
+- Verify Moyasar and Twilio Staging credentials are *test-only*, without printing tokens.
+- Approve data retention, deletion, and incident response for Production-derived customer records.
+- No new Production export, PII transfer, seed with customer data or deployment is performed by this Draft PR.
+
+**Current G3 overall status: BLOCKED / NOT ACCEPTED** until G1 submit/approve, retries, security and owner gates pass.
