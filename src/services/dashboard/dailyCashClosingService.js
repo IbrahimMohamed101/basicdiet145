@@ -9,6 +9,7 @@ const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
 const { getBusinessDayBounds } = require("../pos/businessDaySetting");
 const { expectedTotals } = require("../pos/expectedTotals");
+const { LEGACY, POS, resolveClosingVersion, calculationMode } = require("../pos/posClosingSetting");
 
 function safeHalala(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -194,6 +195,71 @@ function reconcileCountedWithServer(collections, serverExpected) {
   };
 }
 
+
+const FORMULA_VERSION = "G1-2026-11-08";
+function addOtherReceivables(serverTotals, channels) {
+  const other = channels?.other || [];
+  const seen = new Set();
+  let additionalHalala = 0;
+  for (const item of other) {
+    const key = String(item.reference || "").trim();
+    if (!key || seen.has(key) || !String(item.name || "").trim() ||
+        !Number.isSafeInteger(item.amountHalala) || item.amountHalala < 0) {
+      throw new TypeError("Invalid or duplicated manual other-channel reference");
+    }
+    seen.add(key);
+    additionalHalala += item.amountHalala;
+  }
+  if (!Number.isSafeInteger(additionalHalala) ||
+      !Number.isSafeInteger(serverTotals.expected.totalHalalas + additionalHalala) ||
+      !Number.isSafeInteger(serverTotals.expected.appReceivableHalalas + additionalHalala)) {
+    throw new RangeError("Unsafe manual other-channel aggregation");
+  }
+  return {
+    ...serverTotals,
+    otherReceivablesHalalas: additionalHalala,
+    otherReceivables: other.map(item => ({ name: item.name, reference: item.reference, amountHalala: item.amountHalala })),
+    expected: {
+      ...serverTotals.expected,
+      appReceivableHalalas: serverTotals.expected.appReceivableHalalas + additionalHalala,
+      totalHalalas: serverTotals.expected.totalHalalas + additionalHalala,
+    },
+  };
+}
+function reasonCodesFor({ version, summary, reconciliation, automatic }) {
+  const codes = [];
+  if (version === POS) {
+    if (reconciliation.cashDifferenceHalala !== 0) codes.push("CASH_DIFFERENCE");
+    if (reconciliation.networkDifferenceHalala !== 0) codes.push("NETWORK_DIFFERENCE");
+  } else {
+    if (summary.localDifferenceHalala !== 0 || summary.overallDifferenceHalala !== 0) codes.push("LEGACY_AMOUNT_DIFFERENCE");
+    if (reconciliation.localDifferenceHalala !== 0) codes.push("LEGACY_RECONCILIATION_DIFFERENCE");
+  }
+  if (summary.subscriptionCountDifference !== 0) codes.push("SUBSCRIPTION_COUNT_DIFFERENCE");
+  if (summary.unknownSubscriptionHalala !== 0) codes.push("UNKNOWN_SUBSCRIPTION_HALALA");
+  if (automatic.reviewPaymentsCount > 0) codes.push("SUBSCRIPTION_PAYMENTS_REVIEW");
+  if (automatic.refundsHalala > 0) codes.push("SUBSCRIPTION_REFUNDS");
+  return codes;
+}
+async function closingCalculations(date, closing, inputs, { useFrozen = false } = {}) {
+  const snapshot = useFrozen ? closing?.snapshot : null;
+  const version = snapshot?.closingVersion || await resolveClosingVersion(date, closing);
+  const automatic = snapshot?.automatic || await subscriptionPaymentsForDate(date);
+  const legacySummary = calculateClosing(inputs.channels, inputs.collections, automatic, inputs.confirmedSubscriptionCount);
+  const summary = snapshot?.summary || legacySummary;
+  const serverExpected = snapshot?.expectedTotals ||
+    (version === POS ? addOtherReceivables(await expectedTotals(date), inputs.channels) : await expectedTotals(date));
+  const reconciliation = snapshot?.reconciliation ||
+    reconcileCountedWithServer(inputs.collections, serverExpected);
+  const reasonCodes = snapshot?.reasonCodes ||
+    reasonCodesFor({ version, summary, reconciliation, automatic });
+  const businessDayBounds = snapshot?.businessDayBounds || await getBusinessDayBounds(date);
+  return { closingVersion: version, calculationMode: calculationMode(version), automatic,
+    summary, expectedTotals: serverExpected, reconciliation,
+    reasonCodes, requiresReason: reasonCodes.length > 0, businessDayBounds,
+    formulaVersion: snapshot?.formulaVersion || (version === POS ? FORMULA_VERSION : "legacy-v1") };
+}
+
 function inputSnapshot(closing) {
   return {
     channels: closing.channels,
@@ -205,37 +271,25 @@ function inputSnapshot(closing) {
 }
 
 async function buildClosingView(closing, date) {
-  // After submission, financial evidence must remain fixed for approval/audit.
-  const automatic = closing && closing.status !== "draft" && closing.snapshot
-    ? closing.snapshot.automatic
-    : await subscriptionPaymentsForDate(date);
   const values = closing ? inputSnapshot(closing) : {
     channels: { restaurantHalala: 0, hungerstationHalala: 0, keetaHalala: 0, other: [] },
     collections: { cashHalala: 0, cardHalala: 0 },
     confirmedSubscriptionCount: null, discrepancyReason: "", notes: "",
   };
-  const summary = closing && closing.status !== "draft" && closing.snapshot
-    ? closing.snapshot.summary
-    : calculateClosing(values.channels, values.collections, automatic, values.confirmedSubscriptionCount);
-  const serverExpected = closing && closing.status !== "draft" && closing.snapshot?.expectedTotals
-    ? closing.snapshot.expectedTotals
-    : await expectedTotals(date);
-  const reconciliation = closing && closing.status !== "draft" && closing.snapshot?.reconciliation
-    ? closing.snapshot.reconciliation
-    : reconcileCountedWithServer(values.collections, serverExpected);
+  const calculations = await closingCalculations(date, closing, values, {
+    useFrozen: Boolean(closing && closing.status !== "draft" && closing.snapshot),
+  });
   return {
     businessDate: date,
     currency: "SAR",
     moneyUnit: "halala",
     status: closing ? closing.status : "new",
     ...values,
-    automatic,
-    summary,
-    expectedTotals: serverExpected,
-    reconciliation,
+    ...calculations,
     submittedAt: closing?.submittedAt || null,
     approvedAt: closing?.approvedAt || null,
     history: closing?.history || [],
+    returnedSnapshots: closing?.returnedSnapshots || [],
   };
 }
 
@@ -249,4 +303,7 @@ module.exports = {
   buildClosingView,
   expectedTotals,
   reconcileCountedWithServer,
+  addOtherReceivables,
+  reasonCodesFor,
+  closingCalculations,
 };
