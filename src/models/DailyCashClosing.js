@@ -12,6 +12,7 @@ const DailyCashClosingSchema = new mongoose.Schema({
     keetaHalala: { ...money },
     other: [{
       name: { type: String, required: true, trim: true, maxlength: 80 },
+    reference: { type: String, trim: true, maxlength: 120 },
       amountHalala: { ...money },
       _id: false,
     }],
@@ -23,7 +24,10 @@ const DailyCashClosingSchema = new mongoose.Schema({
   confirmedSubscriptionCount: { type: Number, default: null, min: 0, validate: { validator: v => v === null || Number.isSafeInteger(v), message: "Invalid confirmed count" } },
   discrepancyReason: { type: String, trim: true, maxlength: 1000, default: "" },
   notes: { type: String, trim: true, maxlength: 1500, default: "" },
+  closingVersion: { type: String, enum: ["LEGACY_V1", "POS_V2"], default: undefined, immutable: true },
+  calculationMode: { type: String, enum: ["legacy_calculate_closing", "pos_expected_totals"], default: undefined, immutable: true },
   snapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+  returnedSnapshots: { type: [mongoose.Schema.Types.Mixed], default: [] },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser", required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser" },
   submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "DashboardUser" },
