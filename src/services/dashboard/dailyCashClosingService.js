@@ -7,8 +7,7 @@ const Payment = require("../../models/Payment");
 const PaymentRefund = require("../../models/PaymentRefund");
 const Subscription = require("../../models/Subscription");
 const User = require("../../models/User");
-const { ZONE, boundsForBusinessDate } = require("../pos/businessDate");
-const { getBusinessDayCutoff } = require("../pos/businessDaySetting");
+const { getBusinessDayBounds } = require("../pos/businessDaySetting");
 const { expectedTotals } = require("../pos/expectedTotals");
 
 function safeHalala(value) {
@@ -92,8 +91,7 @@ function buildPaidSubscriptionSummary(payments = [], subscriptions = [], users =
 }
 
 async function subscriptionPaymentsForDate(date) {
-  const cutoff = await getBusinessDayCutoff();
-  const period = { ...boundsForBusinessDate(date, cutoff), timezone: ZONE, cutoff };
+  const period = await getBusinessDayBounds(date);
   const payments = await Payment.find({
     type: { $in: ["subscription_activation", "subscription_renewal"] },
     status: { $in: ["paid", "refunded"] },
