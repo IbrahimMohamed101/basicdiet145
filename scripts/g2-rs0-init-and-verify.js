@@ -5,6 +5,7 @@ const { collect } = require("./g2-mongo-manifest");
 
 const CODES = Object.freeze({
   G2_OWNER_APPROVAL_REQUIRED: 64,
+  G2_MANIFEST_REQUIRED: 71,
   G2_UNSAFE_TARGET: 65,
   G2_INIT_FAILED: 66,
   G2_PRIMARY_TIMEOUT: 67,
@@ -105,9 +106,25 @@ async function main() {
   try {
     await client.connect();
     const db = client.db(config.dbName);
-    const before = await collect(db);
     const admin = client.db("admin");
     const hello = await admin.command({ hello: 1 });
+    // An uninitialized --replSet mongod rejects collection reads. The baseline
+    // MUST be captured during write freeze on the last standalone deployment,
+    // then passed privately to preDeploy; never substitute a post-init snapshot.
+    const rawBaseline = process.env.G2_BASELINE_MANIFEST_B64;
+    let before;
+    if (rawBaseline) {
+      try {
+        const b = JSON.parse(Buffer.from(rawBaseline, "base64").toString("utf8"));
+        if (b.format !== "G2_COUNTS_INDEXES_V1" || b.db !== config.dbName ||
+            !b.collections || Array.isArray(b.collections)) fail("G2_MANIFEST_REQUIRED");
+        before = b.collections;
+      } catch { fail("G2_MANIFEST_REQUIRED"); }
+    } else if (hello.setName === "rs0" && hello.isWritablePrimary === true) {
+      before = await collect(db);
+    } else {
+      fail("G2_MANIFEST_REQUIRED");
+    }
     if (hello.setName && hello.setName !== "rs0") fail("G2_INIT_FAILED");
     if (hello.setName !== "rs0") {
       let initiated;
