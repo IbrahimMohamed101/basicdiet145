@@ -133,7 +133,7 @@ async function main(argv = new Set(process.argv.slice(2))) {
   const mongoURI = process.env.MONGO_URI;
   assertMongoTarget(mongoURI, localCI);
   try {
-    await mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 7000 });
+    await mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 7000, autoIndex: false, autoCreate: false });
   } catch {
     // No connection details leak into application logs.
     throw coded("NOT_RS0");
