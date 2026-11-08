@@ -8,22 +8,22 @@ const PROD_DB = "test";
 const PROD_HOST = "mongodb.railway.internal";
 
 // D-097: server-side switch only. The UI cannot authorize POS by a VITE variable.
-async function getPosRuntimeStatus() {
-  if (isPosStagingRuntime()) {
-    const isolated = mongoose.connection.name === STAGING_DB &&
-      mongoose.connection.host === "mongodb-qxhu.railway.internal";
+async function getPosRuntimeStatus({ env = process.env, connection = mongoose.connection } = {}) {
+  if (isPosStagingRuntime(env)) {
+    const isolated = connection.name === STAGING_DB &&
+      connection.host === "mongodb-qxhu.railway.internal";
     return { enabled: isolated, environment: "staging", financialWritesEnabled:
-      isolated && process.env.POS_STAGE_F_WRITES_ENABLED === "true", documentType: "STAGING_TEST_NON_TAX" };
+      isolated && env.POS_STAGE_F_WRITES_ENABLED === "true", documentType: "STAGING_TEST_NON_TAX" };
   }
-  if (process.env.POS_PRODUCTION_ENABLED !== "true") {
+  if (env.POS_PRODUCTION_ENABLED !== "true") {
     return { enabled: false, environment: "production", financialWritesEnabled: false, reason: "POS_DISABLED" };
   }
-  if (process.env.NODE_ENV !== "production" || mongoose.connection.readyState !== 1 ||
-      mongoose.connection.name !== PROD_DB || mongoose.connection.host !== PROD_HOST) {
+  if (env.NODE_ENV !== "production" || connection.readyState !== 1 ||
+      connection.name !== PROD_DB || connection.host !== PROD_HOST) {
     return { enabled: false, environment: "production", financialWritesEnabled: false, reason: "POS_DISABLED" };
   }
   try {
-    const hello = await mongoose.connection.db.admin().command({ hello: 1 });
+    const hello = await connection.db.admin().command({ hello: 1 });
     if (hello.setName !== "rs0" || hello.isWritablePrimary !== true) {
       return { enabled: false, environment: "production", financialWritesEnabled: false, reason: "POS_DISABLED" };
     }
