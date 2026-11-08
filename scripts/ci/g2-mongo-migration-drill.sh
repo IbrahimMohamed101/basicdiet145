@@ -141,7 +141,7 @@ timed source_rs0_first_boot_create_keyfile start_rs0 "$SOURCE" "$SOURCE_VOL" 270
 unset G2_RS0_KEYFILE
 timed source_restart_without_keyfile_variable restart_without_secret_and_assert_inode "$SOURCE" "$SOURCE_VOL" 27017 "$SOURCE_ALIAS"
 timed source_node_initiate_primary node_init_rs0 "$SOURCE_ALIAS" 27017 "$G2_BACKUP_DIR/collections-indexes.json"
-timed source_node_initiate_idempotent node_init_rs0 "$SOURCE_ALIAS" 27017
+timed source_node_initiate_idempotent node_init_rs0 "$SOURCE_ALIAS" 27017 "$G2_BACKUP_DIR/collections-indexes.json"
 local_uri 27017 yes
 timed source_counts_indexes node scripts/g2-mongo-manifest.js --compare "$G2_BACKUP_DIR/collections-indexes.json"
 timed source_commit_abort node scripts/g2-mongo-verify.js "$G2_BACKUP_DIR/collections-indexes.json"
