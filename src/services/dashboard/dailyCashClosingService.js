@@ -266,7 +266,7 @@ function reasonCodesFor(version, summary, automatic, reconciliation) {
   if (summary.subscriptionCountDifference !== 0) codes.push(REASON_CODES.SUBSCRIPTION_COUNT_DIFFERENCE);
   if (safeHalala(summary.unknownSubscriptionHalala) !== 0) codes.push(REASON_CODES.UNKNOWN_SUBSCRIPTION_HALALA);
   if ((automatic.reviewPaymentsCount || 0) > 0) codes.push(REASON_CODES.SUBSCRIPTION_PAYMENTS_REVIEW);
-  if ((automatic.refundsHalala || 0) > 0) codes.push(REASON_CODES.SUBSCRIPTION_REFUNDS);
+  if ((automatic.refundCount || 0) > 0 || (automatic.refundsHalala || 0) > 0) codes.push(REASON_CODES.SUBSCRIPTION_REFUNDS);
   return codes;
 }
 async function calculateForVersion(date, version, values, provided = {}) {
