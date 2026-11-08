@@ -38,7 +38,7 @@ function run(flags = [], overrides = {}) {
 }
 function code(result, expected, expectedExit = 1) {
   assert.equal(result.status, expectedExit, [expected, result.stdout, result.stderr].join(" "));
-  assert.match(result.stdout + result.stderr, new RegExp("(?:^|\\n)" + expected + "(?:\\n|$)"));
+  assert.match(result.stdout + result.stderr, new RegExp("(?:^|\\n)" + expected + "(?: missing=[A-Z_,]+)?(?:\\n|$)"));
 }
 test("G1 seed subprocess: dry-run is read-only, once-only transaction, safe re-run and every error code", async () => {
   if (process.env.MONGO_URI_TEST !== RS0 || process.env.NODE_ENV !== "test") {
