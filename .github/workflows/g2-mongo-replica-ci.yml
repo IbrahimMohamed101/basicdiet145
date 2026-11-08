@@ -8,6 +8,12 @@ on:
       - "scripts/g2-mongo-final-start-command.txt"
       - ".github/workflows/g2-mongo-replica-ci.yml"
       - "docs/pos-g0-mongo-replica-runbook.md"
+      - "src/app.js"
+      - "src/index.js"
+      - "src/jobs/index.js"
+      - "src/middleware/maintenanceMode.js"
+      - "src/routes/webhooks.js"
+      - "tests/g2MaintenanceMode.test.js"
 permissions:
   contents: read
 jobs:
@@ -50,6 +56,12 @@ jobs:
           const expected = "/bin/sh -ec 'set -eu; if [ ! -e /data/db/rs0-keyfile ]; then test \"$(id -u)\" = 0; test -d /data/db; test -n \"${G2_RS0_KEYFILE:-}\"; umask 077; t=$(mktemp /data/db/.rs0-keyfile.XXXXXXXX); trap \"rm -f $t\" EXIT; printf \"%s\" \"$G2_RS0_KEYFILE\" > \"$t\"; chown mongodb:mongodb \"$t\"; chmod 0400 \"$t\"; mv \"$t\" /data/db/rs0-keyfile; fi; test \"$(stat -c %a /data/db/rs0-keyfile)\" = 400; test \"$(stat -c %U /data/db/rs0-keyfile)\" = mongodb; exec docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false --replSet rs0 --keyFile /data/db/rs0-keyfile --auth'";
           assert.equal(actual,expected,'Exact approved Railway start command changed');
           NODE
+      - name: Maintenance 503 webhook, GET/health, jobs and baseline owner gates
+        env:
+          NODE_ENV: test
+        run: |
+          set -euo pipefail
+          node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/g2MaintenanceMode.test.js
       - name: Synthetic mongo:8.0 authenticated standalone to same-volume rs0 to archive restore
         shell: bash
         run: |
