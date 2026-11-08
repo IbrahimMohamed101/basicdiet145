@@ -14,7 +14,17 @@ const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
 // POS management is an operational duty of cashier and restaurant; financial
 // admin privileges and customer-app menu publication remain separately guarded.
-const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
+const stagingManage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
+async function manage(req, res, next) {
+  const state = await getPosRuntimeStatus();
+  if (state.environment === "production") {
+    if (!["admin", "superadmin"].includes(req.dashboardUserRole)) {
+      return errorResponse(res, 403, "FORBIDDEN", "تعديل منيو الكاشير على Production للإدارة فقط.");
+    }
+    return next();
+  }
+  return stagingManage(req, res, next);
+}
 router.use(dashboardAuthMiddleware);
 router.get("/status", asyncHandler(async (req, res) => {
   if (!isBranchOperator(req.dashboardUserRole) && !["admin", "superadmin"].includes(req.dashboardUserRole)) {
