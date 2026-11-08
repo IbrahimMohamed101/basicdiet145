@@ -80,8 +80,10 @@ test("G1 rs0: version pin, zero reason, short cash, audit, legacy goldens and ro
     assert.equal(await getClosingVersion(oldDate), "LEGACY_V1");
     assert.equal(await getClosingVersion(DATE), "POS_V2");
     assert.deepEqual((await get(oldDate)).body.data, goldenView, "legacy JSON remains unchanged");
-    assert.deepEqual(await buildDailyReport({ date: oldDate, includeDetails: false }),
-      goldenReport, "legacy accounting report remains identical");
+    const afterReport = await buildDailyReport({ date: oldDate, includeDetails: false });
+    // generatedAt is intentionally a fresh report timestamp, not a stored golden.
+    assert.deepEqual({ ...afterReport, generatedAt: null },
+      { ...goldenReport, generatedAt: null }, "legacy accounting content remains identical");
     // The synthetic acceptance fixture contains no customer names, phones or real prices.
     const instant = new Date("2026-11-08T11:00:00.000Z");
     await PosInvoice.collection.insertMany([
