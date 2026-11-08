@@ -1,0 +1,25 @@
+name: POS G0 Staging privacy and seed gates
+on:
+  pull_request:
+    branches:
+      - codex/pos-staging-isolation
+  push:
+    branches:
+      - codex/pos-g0-mongo-runbook-seed-staging-20261108
+permissions:
+  contents: read
+jobs:
+  privacy-seed-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Refuse Production and PII fixture import
+        run: |
+          node --check scripts/pos/seedPhaseGStaging.js
+          node --test tests/posG0SeedSafety.test.js
