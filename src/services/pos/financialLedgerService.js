@@ -17,6 +17,7 @@ const { requireFinancialStagingWrites, hasPosCapability } = require("./financial
 const { canonicalHash, validateIdempotencyKey, normalizeSaleIntent, normalizeRefundIntent } = require("./financialIntent");
 const { buildLocalTaxQrPayload } = require("../../utils/taxQr");
 const { BUSINESS_TAX_IDENTITY } = require("../../config/businessTaxIdentity");
+const { formatPosDocumentNumber } = require("./posDocumentNumber");
 
 const TRANSACTION_OPTIONS = {
   readConcern: { level: "snapshot" },
@@ -87,7 +88,7 @@ async function nextNumber(session, kind) {
   if (!Number.isSafeInteger(counter.sequence) || counter.sequence < 1
     || counter.sequence > 999999999) malformed("عداد الفواتير تجاوز الحد الآمن.");
   return { sequence: counter.sequence,
-    number: (production ? (kind === "sale" ? "POS-" : "POS-R-") : (kind === "sale" ? "STG-" : "STG-R-")) + String(counter.sequence).padStart(6, "0") };
+    number: formatPosDocumentNumber(kind, counter.sequence, production) };
 }
 function receiptView(doc) {
   // Expose original immutable snapshot; caller strips no money data.
