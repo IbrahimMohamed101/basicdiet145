@@ -23,3 +23,11 @@ jobs:
         run: |
           node --check scripts/pos/seedPhaseGStaging.js
           node --test tests/posG0SeedSafety.test.js
+
+  mongo8-restored-synthetic-rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: MongoDB 8 standalone -> restore -> rs0 keyfile/auth -> verified transaction rollback -> standalone
+        run: bash scripts/ci/pos-g0-rehearsal.sh
