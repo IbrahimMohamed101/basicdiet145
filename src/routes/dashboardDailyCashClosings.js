@@ -42,13 +42,17 @@ function parsePayload(body, version) {
     if (!name) throw fail(400, "INVALID_INPUT", `Other channel ${index + 1} needs a name`);
     const reference = version === POS ? text(item?.reference, 120, "other channel reference") : (typeof item?.reference === "string" ? text(item.reference, 120, "other channel reference") : "");
     if (version === POS && !reference) throw fail(400, "OTHER_CHANNEL_REFERENCE_REQUIRED", "Other POS channels require a reference");
+    if (version === POS && /^(restaurant|the restaurant|hunger\\s*station|hungerstation|keeta|المطعم|مطعم|هنجر\\s*استيشن|هنجرستيشن|كيتا)$/iu.test(name.trim())) {
+      throw fail(400, "MANUAL_CHANNEL_RECORDED_IN_POS", "POS-managed channels cannot be entered as other channels");
+    }
     return { name, reference, amountHalala: money(item?.amountHalala, "other channel amount") };
   });
   if (version === POS && ["restaurantHalala", "hungerstationHalala", "keetaHalala"].some(key =>
     Object.hasOwn(c, key))) {
     throw fail(400, "MANUAL_CHANNEL_RECORDED_IN_POS", "POS-recorded channel totals cannot be submitted manually");
   }
-  if (version === POS && new Set(other.map(row => row.reference)).size !== other.length) {
+  if (version === POS && new Set(other.map(row =>
+    row.name.trim().toLowerCase() + ":" + row.reference)).size !== other.length) {
     throw fail(400, "OTHER_CHANNEL_REFERENCE_DUPLICATE", "Other-channel references must be unique");
   }
   const confirmed = body.confirmedSubscriptionCount === null || body.confirmedSubscriptionCount === undefined
