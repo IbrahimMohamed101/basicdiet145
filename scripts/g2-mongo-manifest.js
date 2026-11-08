@@ -22,8 +22,10 @@ function safety() {
   return { db, uri };
 }
 async function collect(db) {
-  const names = (await db.listCollections({}, { nameOnly: true }).toArray())
-    .map(c => c.name).filter(n => !n.startsWith("system.")).sort();
+  // Include EVERY real collection, including internal system collections; exclude
+  // views because they do not own separate documents or collection indexes.
+  const names = (await db.listCollections({}).toArray())
+    .filter(c => c.type === "collection").map(c => c.name).sort();
   const result = {};
   for (const name of names) {
     const collection = db.collection(name);
