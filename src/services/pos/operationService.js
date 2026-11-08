@@ -27,7 +27,7 @@ async function getResult(operation) {
   return value;
 }
 async function readOperation(key, actor) {
-  requireFinancialStagingWrites();
+  await requireFinancialStagingWrites();
   validateIdempotencyKey(key);
   const operation = await PosOperation.findById(key).lean();
   if (!operation) return null; // For display only; 404 never authorizes a new attempt.
@@ -36,7 +36,7 @@ async function readOperation(key, actor) {
     errorCode: operation.errorCode, kind: operation.kind };
 }
 async function findOperationForActor(actor, kind) {
-  requireFinancialStagingWrites();
+  await requireFinancialStagingWrites();
   assertKind(kind);
   const operation = await PosOperation.findOne({
     kind, operatorId: String(actor.id), status: "pending",
@@ -99,7 +99,7 @@ async function rejectOperation(key, code) {
     { $set: { status: "rejected", errorCode: code } }, { writeConcern: { w: "majority" } });
 }
 async function abandonOperation(key, actor, kind, options = {}) {
-  requireFinancialStagingWrites(options);
+  await requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   assertKind(kind);
   await PosOperation.createIndexes();
