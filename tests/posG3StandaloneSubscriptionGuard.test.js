@@ -152,6 +152,19 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
     assert.equal(closeForDay.expected.cashHalalas + closeForDay.expected.networkHalalas, 3 * total);
     assert.equal(await Payment.countDocuments({ userId: secondCustomer._id }), 1);
     assert.equal(await Subscription.countDocuments({ userId: secondCustomer._id }), 1);
+    // Retain the original administrator creation path even without recording
+    // a collection; this must not be reclassified as a paid cashier transaction.
+    const adminActor = await dashboardAuth("admin", "pos-g-legacy-admin");
+    const existingPrivilegeCustomer = await User.create({
+      phone: "+966000000104", name: "legacy-admin-create fixture", role: "client", isActive: true,
+    });
+    const legacy = await request(app).post("/api/admin/subscriptions")
+      .set(adminActor.headers).send({ ...payload, userId: existingPrivilegeCustomer._id });
+    assert.equal(legacy.status, 201, JSON.stringify(legacy.body).slice(0, 600));
+    assert.equal(await Payment.countDocuments({ userId: existingPrivilegeCustomer._id }), 0);
+    const afterLegacy = await expectedTotals(await require("../src/services/pos/businessDaySetting").getBusinessDateAt());
+    assert.equal(afterLegacy.expected.cashHalalas + afterLegacy.expected.networkHalalas, 3 * total);
+
     // Role parity: the actual authenticated customer-create route and audit,
     // not a temporary Staging-only cashier exception.
     for (const [i, role] of ["cashier", "restaurant", "admin", "superadmin", "kitchen", "courier"].entries()) {
