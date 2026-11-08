@@ -15,6 +15,9 @@ const Plan = require("../src/models/Plan");
 const Setting = require("../src/models/Setting");
 const Subscription = require("../src/models/Subscription");
 const Payment = require("../src/models/Payment");
+const ActivityLog = require("../src/models/ActivityLog");
+const { hasPosCapability } = require("../src/services/pos/financialRuntime");
+const { dashboardRoleHasPermission } = require("../src/constants/dashboardRoles");
 
 test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated payments never create entitlements", async () => {
   const uri = process.env.MONGO_URI_TEST;
@@ -97,6 +100,41 @@ test("D-091 G3 standalone cashier: cash and Visa work, mismatched/backdated paym
     assert.equal(visaPayment.amount, total);
     assert.equal(await Payment.countDocuments({ userId: secondCustomer._id }), 1);
     assert.equal(await Subscription.countDocuments({ userId: secondCustomer._id }), 1);
+    // Role parity: the actual authenticated customer-create route and audit,
+    // not a temporary Staging-only cashier exception.
+    for (const [i, role] of ["cashier", "restaurant", "admin", "superadmin", "kitchen", "courier"].entries()) {
+      const roleActor = await dashboardAuth(role, "pos-g-d091");
+      const number = "+966500000" + String(i + 10).padStart(3, "0");
+      const response = await request(app).post("/api/admin/users")
+        .set(roleActor.headers).send({
+          phone: number, fullName: "G3 synthetic " + role,
+          password: "StagingD091Pass!1",
+        });
+      if (["kitchen", "courier"].includes(role)) {
+        assert.equal(response.status, 403, role + " may not create customers");
+        assert.equal(await User.countDocuments({ phone: number }), 0);
+      } else {
+        assert.equal(response.status, 201, role + ": " + JSON.stringify(response.body).slice(0, 550));
+        const created = await User.findOne({ phone: number }).lean();
+        assert.equal(String(created.createdByAdminId), String(roleActor.user._id));
+        const audit = await ActivityLog.findOne({
+          entityType: "app_user", entityId: created._id,
+          action: "app_customer_created_by_dashboard",
+        }).lean();
+        assert.ok(audit, role + " creates a recorded audit event");
+        assert.equal(String(audit.byUserId), String(roleActor.user._id));
+        assert.equal(audit.byRole, role);
+      }
+    }
+    for (const role of ["cashier", "restaurant"]) {
+      assert.equal(dashboardRoleHasPermission(role, ["restaurant"]), true);
+      assert.equal(hasPosCapability(role, "pos.refund"), true);
+    }
+    for (const role of ["kitchen", "courier"]) {
+      assert.equal(dashboardRoleHasPermission(role, ["restaurant"]), false);
+      assert.equal(hasPosCapability(role, "pos.refund"), false);
+    }
+    assert.equal(hasPosCapability("superadmin", "pos.refund"), true);
   } finally {
     if (mongoose.connection.readyState) {
       await mongoose.connection.dropDatabase().catch(() => {});
