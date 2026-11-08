@@ -6,6 +6,7 @@ const { collect } = require("./g2-mongo-manifest");
 const CODES = Object.freeze({
   G2_OWNER_APPROVAL_REQUIRED: 64,
   G2_MANIFEST_REQUIRED: 71,
+  G2_MAINTENANCE_REQUIRED: 72,
   G2_UNSAFE_TARGET: 65,
   G2_INIT_FAILED: 66,
   G2_PRIMARY_TIMEOUT: 67,
@@ -101,6 +102,10 @@ async function transactionProbe(client, db, original) {
 }
 
 async function main() {
+  const baselineOnly = process.argv.length === 3 && process.argv[2] === "--baseline";
+  if (process.argv.length > 2 && !baselineOnly) fail("G2_UNSAFE_TARGET");
+  // Both the capture and the one-time initializer must run under frozen writes.
+  if (process.env.MAINTENANCE_MODE !== "true") fail("G2_MAINTENANCE_REQUIRED");
   const config = configuration();
   const client = new MongoClient(config.uri, { serverSelectionTimeoutMS: 10000 });
   try {
@@ -108,6 +113,19 @@ async function main() {
     const db = client.db(config.dbName);
     const admin = client.db("admin");
     const hello = await admin.command({ hello: 1 });
+    if (baselineOnly) {
+      // Run as the backend preDeploy command BEFORE the Mongo start-command change.
+      // This is intentionally read-only and never returns document bodies or URIs.
+      if (hello.setName || hello.msg === "isdbgrid") fail("G2_UNSAFE_TARGET");
+      const snapshot = {
+        format: "G2_COUNTS_INDEXES_V1",
+        db: config.dbName,
+        collections: await collect(db),
+      };
+      process.stdout.write("G2_BASELINE=" +
+        Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64") + "\n");
+      return;
+    }
     // An uninitialized --replSet mongod rejects collection reads. The baseline
     // MUST be captured during write freeze on the last standalone deployment,
     // then passed privately to preDeploy; never substitute a post-init snapshot.
