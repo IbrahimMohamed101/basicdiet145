@@ -41,3 +41,17 @@ test("G0 seed cannot --apply to Production even with allowlisted config", () => 
   assert.equal(p.status, 1);
   assert.match(p.stderr, /MONGODB_URI required|Seed blocked/);
 });
+
+test("D-091 seed targets the existing isolated POS Staging rs0 only, with no direct subscription creation", () => {
+  const source = require("node:fs").readFileSync(SCRIPT, "utf8");
+  assert.match(source, /basicdiet_pos_staging_test/);
+  assert.match(source, /mongodb-qxhu\.railway\.internal/);
+  assert.match(source, /RAILWAY_ENVIRONMENT_ID/);
+  assert.match(source, /RAILWAY_SERVICE_ID/);
+  assert.match(source, /hello\.setName !== "rs0"/);
+  assert.doesNotMatch(source, /Subscription\.create\s*\(/);
+  assert.doesNotMatch(source, /const Subscription = require/);
+  const result = run({});
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).syntheticSubscriptions, 0);
+});
