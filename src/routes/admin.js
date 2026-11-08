@@ -436,6 +436,30 @@ router.put("/settings/restaurant-hours", asyncHandler(controller.updateRestauran
 router.get("/restaurant-hours", asyncHandler(controller.getRestaurantHours));
 router.put("/restaurant-hours", asyncHandler(controller.updateRestaurantHours));
 router.patch("/restaurant-hours/toggle-open", asyncHandler(controller.toggleRestaurantOpen));
+// Staging-only setting. The update is atomically audited with old/new values
+// and takes effect on the next business date; never rewrites past invoices.
+router.put("/settings/business-day-cutoff", asyncHandler(async (req, res) => {
+  const { scheduleBusinessDayCutoff } = require("../services/pos/businessDaySetting");
+  try {
+    const value = req.body?.businessDayCutoff ?? req.body?.cutoff;
+    const updated = await scheduleBusinessDayCutoff({
+      newCutoff: value,
+      actorId: req.dashboardUserId,
+      actorRole: req.dashboardUserRole,
+    });
+    return res.status(200).json({ status: true, data: updated });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      return res.status(400).json({ status: false,
+        error: { code: "INVALID_BUSINESS_DAY_CUTOFF", message: err.message } });
+    }
+    if (err.status && err.code) {
+      return res.status(err.status).json({ status: false,
+        error: { code: err.code, message: err.message } });
+    }
+    throw err;
+  }
+}));
 router.put("/settings/cutoff", asyncHandler(controller.updateCutoff));
 router.put("/settings/delivery-windows", asyncHandler(controller.updateDeliveryWindows));
 router.put("/settings/skip-allowance", asyncHandler(controller.updateSkipAllowance));
