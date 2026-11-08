@@ -202,10 +202,15 @@ function addOtherReceivables(serverTotals, channels) {
   const seen = new Set();
   let additionalHalala = 0;
   for (const item of other) {
-    const key = String(item.reference || "").trim();
-    if (!key || seen.has(key) || !String(item.name || "").trim() ||
+    const name = String(item.name || "").trim();
+    const reference = String(item.reference || "").trim();
+    const normalized = name.toLowerCase().replace(/\s+/gu, "");
+    const key = normalized + ":" + reference;
+    if (!name || !reference || seen.has(key) ||
+        ["restaurant", "therestaurant", "hungerstation", "keeta",
+          "المطعم", "مطعم", "هنجرستيشن", "كيتا"].includes(normalized) ||
         !Number.isSafeInteger(item.amountHalala) || item.amountHalala < 0) {
-      throw new TypeError("Invalid or duplicated manual other-channel reference");
+      throw new TypeError("Invalid, duplicate, or POS-owned manual other-channel record");
     }
     seen.add(key);
     additionalHalala += item.amountHalala;
