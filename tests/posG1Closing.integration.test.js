@@ -96,7 +96,8 @@ test("G1 rs0: version pin, zero reason, short cash, audit, legacy goldens and ro
     ]);
     const subCash = new mongoose.Types.ObjectId(), subVisa = new mongoose.Types.ObjectId();
     await mongoose.connection.db.collection("subscriptions").insertMany([
-      { _id: subCash, status: "active" }, { _id: subVisa, status: "active" },
+      { _id: subCash, userId: new mongoose.Types.ObjectId(), status: "active" },
+      { _id: subVisa, userId: new mongoose.Types.ObjectId(), status: "active" },
     ]);
     await Payment.collection.insertMany([
       { subscriptionId: subCash, type: "subscription_activation", status: "paid",
