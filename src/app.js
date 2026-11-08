@@ -14,6 +14,7 @@ const { getAccountDeletionPage } = require("./controllers/accountDeletionControl
 const requestLanguageMiddleware = require("./middleware/requestLanguage");
 const { hideCanceledSubscriptionsFromClientList } = require("./middleware/clientSubscriptionVisibility");
 const errorResponse = require("./utils/errorResponse");
+const { maintenanceWriteGuard } = require("./middleware/maintenanceMode");
 const { logger } = require("./utils/logger");
 const { isPosStagingRuntime } = require("./utils/posStagingRuntime");
 const { validateAndFixResponse } = require("./utils/encoding");
@@ -167,6 +168,10 @@ function createApp() {
 
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
+
+  // G2: reject all mutation methods before body parsing, payment webhooks and API routes.
+  // CORS preflight, GET and health checks remain available during maintenance.
+  app.use(maintenanceWriteGuard);
 
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
