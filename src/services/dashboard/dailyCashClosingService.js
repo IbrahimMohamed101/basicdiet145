@@ -238,7 +238,7 @@ function reasonCodesFor({ version, summary, reconciliation, automatic }) {
   if (summary.subscriptionCountDifference !== 0) codes.push("SUBSCRIPTION_COUNT_DIFFERENCE");
   if (summary.unknownSubscriptionHalala !== 0) codes.push("UNKNOWN_SUBSCRIPTION_HALALA");
   if (automatic.reviewPaymentsCount > 0) codes.push("SUBSCRIPTION_PAYMENTS_REVIEW");
-  if (automatic.refundsHalala > 0) codes.push("SUBSCRIPTION_REFUNDS");
+  if ((automatic.refundCount || 0) > 0 || (automatic.refundsHalala || 0) > 0) codes.push("SUBSCRIPTION_REFUNDS");
   return codes;
 }
 async function closingCalculations(date, closing, inputs, { useFrozen = false } = {}) {
