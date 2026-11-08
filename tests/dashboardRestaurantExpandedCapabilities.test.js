@@ -41,8 +41,8 @@ function run() {
 
   assertIncludes(
     capabilities,
-    'dashboardRoleMiddleware(["admin", "restaurant", "kitchen"])',
-    "restaurant and kitchen customer creation authorization"
+    'dashboardRoleMiddleware(["admin", "restaurant"])',
+    "D-091 restaurant/cashier customer creation authorization excludes kitchen"
   );
   assertIncludes(
     capabilities,
