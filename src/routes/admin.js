@@ -121,6 +121,20 @@ router.post(
   asyncHandler(promoCodeController.validatePromoCodeAdmin)
 );
 
+// G1 POS-only reuse of the existing /admin/users controller. The cashier
+// exception is impossible outside the dedicated isolated POS Staging runtime;
+// all other roles and all Production requests continue through the existing
+// admin-only middleware and unchanged create route below.
+router.post("/users", (req, res, next) => {
+  if (req.dashboardUserRole !== "cashier") return next();
+  const mongoose = require("mongoose");
+  const { isPosStagingRuntime } = require("../utils/posStagingRuntime");
+  if (!isPosStagingRuntime() || mongoose.connection.name !== "basicdiet_pos_staging_test") {
+    return res.status(403).json({ status: false, error: { code: "POS_STAGING_ONLY" } });
+  }
+  return asyncHandler(controller.createAppUserAdmin)(req, res, next);
+});
+
 router.use(dashboardRoleMiddleware(["admin"]));
 
 /**
