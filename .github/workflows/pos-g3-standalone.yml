@@ -1,0 +1,39 @@
+name: POS G3 Standalone Regression (Synthetic Only)
+on:
+  pull_request:
+    branches:
+      - codex/pos-g2-ledger-closing-staging-20261108
+      - codex/pos-staging-isolation
+  push:
+    branches:
+      - codex/pos-g3-staging-reconciliation-qa-20261108
+permissions:
+  contents: read
+jobs:
+  standalone-mongo8:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      MONGO_URI_TEST: mongodb://127.0.0.1:27018/basicdiet_g3_standalone_ci_test?directConnection=true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Run disposable MongoDB 8 standalone (not replica set)
+        run: |
+          docker run -d --name pos-g3-standalone -p 127.0.0.1:27018:27017 mongo:8.0 --bind_ip_all
+          for i in $(seq 1 60); do
+            if docker exec pos-g3-standalone mongosh --quiet --eval 'db.runCommand({ping:1}).ok' 2>/dev/null | grep -q 1; then exit 0; fi
+            sleep 2
+          done
+          docker logs pos-g3-standalone
+          exit 1
+      - name: Synthetic subscriptions, payment idempotency, meal CAS and no-rollback contract
+        run: node --test tests/posG3StandaloneMechanisms.integration.test.js
+      - name: Clean up local fixture
+        if: always()
+        run: docker rm -f pos-g3-standalone || true
