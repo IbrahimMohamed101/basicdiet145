@@ -1,0 +1,86 @@
+name: POS G D-091 Pre-G3 Safety Gates (Staging Only)
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "src/controllers/adminController.js"
+      - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
+      - "src/routes/admin.js"
+      - "src/services/pos/**"
+      - "src/services/dashboard/dailyCashClosingService.js"
+      - "tests/posGD091BusinessCutoff.integration.test.js"
+      - "tests/posG3StandaloneSubscriptionGuard.test.js"
+      - ".github/workflows/pos-g-d091-ci.yml"
+jobs:
+  standalone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mongodb:
+        image: mongo:8.0
+        env:
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DASHBOARD_JWT_SECRET: isolated-d091-dashboard-ci-secret
+      JWT_SECRET: isolated-d091-ci-secret
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGO_URL: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check src/controllers/adminController.js
+          node --check src/controllers/dashboard/subscriptionPaymentRecordingController.js
+          node --check src/services/pos/businessDate.js
+          node --check src/services/pos/businessDaySetting.js
+      - name: Business day and role unit contracts
+        run: NODE_ENV=test node --test tests/posG2ExpectedTotals.test.js tests/posCashierRestaurantRoleParity.test.js tests/posStageFGuards.test.js
+      - name: Real role and payment authorization against standalone
+        run: NODE_ENV=test node --test tests/posG3StandaloneSubscriptionGuard.test.js
+      - name: Closing reconciliation against standalone
+        env:
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g_d091_ci_test?directConnection=true
+          EXPECT_MONGO_TOPOLOGY: standalone
+        run: NODE_ENV=test node --test tests/posGD091BusinessCutoff.integration.test.js
+  replica-rs0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      NODE_ENV: test
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g_d091_ci_test?directConnection=true
+      EXPECT_MONGO_TOPOLOGY: rs0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Launch disposable isolated rs0, never Railway
+        run: |
+          docker run -d --name pos-d091-rs0 --network host -e GLIBC_TUNABLES=glibc.pthread.rseq=1 mongo:8.0 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 40); do
+            if docker exec pos-d091-rs0 mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -q '1'; then break; fi
+            sleep 1
+          done
+          docker exec pos-d091-rs0 mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          for i in $(seq 1 40); do
+            if docker exec pos-d091-rs0 mongosh --quiet --eval 'db.hello().isWritablePrimary' 2>/dev/null | grep -q 'true'; then break; fi
+            sleep 1
+          done
+      - name: Assert isolated replica topology and closing reconciliation
+        run: NODE_ENV=test node --test tests/posGD091BusinessCutoff.integration.test.js
