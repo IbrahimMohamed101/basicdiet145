@@ -1,0 +1,46 @@
+name: POS G3 Standalone Cashier Payment Guard
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
+      - "tests/posG3StandaloneSubscriptionGuard.test.js"
+      - ".github/workflows/pos-g3-cashier-guard.yml"
+  push:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "src/controllers/dashboard/subscriptionPaymentRecordingController.js"
+      - "tests/posG3StandaloneSubscriptionGuard.test.js"
+      - ".github/workflows/pos-g3-cashier-guard.yml"
+jobs:
+  standalone-cashier-payment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    services:
+      mongodb:
+        image: mongo:8.0
+        env:
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGO_URL: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      DASHBOARD_JWT_SECRET: isolated-ci-dashboard-jwt-not-a-prod-key
+      JWT_SECRET: isolated-ci-jwt-not-a-prod-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --check src/controllers/dashboard/subscriptionPaymentRecordingController.js
+      - run: NODE_ENV=test node --test tests/posG3StandaloneSubscriptionGuard.test.js

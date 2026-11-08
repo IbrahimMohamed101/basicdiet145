@@ -56,7 +56,7 @@ function paymentMethodOptions() {
   ];
 }
 
-function decorateQuotePayload(payload) {
+function decorateQuotePayload(payload, role = null) {
   if (!payload || payload.status !== true || !payload.data || typeof payload.data !== "object") {
     return payload;
   }
@@ -64,8 +64,9 @@ function decorateQuotePayload(payload) {
     ...payload,
     data: {
       ...payload.data,
-      allowedPaymentMethods: [...PAYMENT_METHODS],
-      paymentMethodOptions: paymentMethodOptions(),
+      allowedPaymentMethods: role === "cashier" ? ["cash"] : [...PAYMENT_METHODS],
+      paymentMethodOptions: paymentMethodOptions().filter(item =>
+        role !== "cashier" || item.method === "cash"),
       paymentGatewayRequired: false,
       paymentRecordingMode: "dashboard_manual",
     },
@@ -260,7 +261,7 @@ async function linkPromoUsagePaymentBestEffort({ subscriptionId, payment }) {
 
 async function quoteSubscriptionAdmin(req, res, next) {
   const captured = await invokeCaptured(subscriptionCreationController.quoteSubscriptionAdmin, req, next);
-  const withPayment = decorateQuotePayload(captured.payload);
+  const withPayment = decorateQuotePayload(captured.payload, req.dashboardUserRole);
   const payload = await decoratePromoQuotePayload(withPayment, req.body || {});
   return res.status(captured.statusCode).json(payload);
 }
@@ -275,6 +276,16 @@ async function createSubscriptionAdmin(req, res, next) {
       message: err.message,
       messageAr: "طريقة الدفع يجب أن تكون كاش أو فيزا",
       error: { code: err.code || "INVALID_PAYMENT_METHOD", message: err.message },
+    });
+  }
+
+  // The core activation controller treats the recording adapter's internal
+  // method as cash. Reject a cashier's Visa selection BEFORE that translation;
+  // otherwise the source rewrite can bypass the existing cashier cash-only rule.
+  if (req.dashboardUserRole === "cashier" && selection.method !== "cash") {
+    return res.status(403).json({
+      status: false,
+      error: { code: "FORBIDDEN", message: "Cashier role can only create cash subscriptions" },
     });
   }
 
@@ -304,6 +315,27 @@ async function createSubscriptionAdmin(req, res, next) {
   const originalPayment = req.body && req.body.payment && typeof req.body.payment === "object"
     ? req.body.payment
     : {};
+  // An explicit collected amount is a cashier statement, not a suggestion.
+  // Never silently replace it with the quote total. On standalone Mongo,
+  // failing after entitlement activation has no rollback.
+  const claimedAmount = originalPayment.collectedAmountHalala;
+  if (claimedAmount !== undefined && claimedAmount !== null &&
+      (!Number.isSafeInteger(Number(claimedAmount))
+        || Number(claimedAmount) < 0
+        || Number(claimedAmount) !== totalHalala)) {
+    return res.status(400).json({
+      status: false,
+      error: { code: "PAYMENT_AMOUNT_MISMATCH",
+        message: "Collected amount does not match the server quote" },
+    });
+  }
+  if (originalPayment.status && originalPayment.status !== "paid") {
+    return res.status(400).json({
+      status: false,
+      error: { code: "PAYMENT_STATUS_INVALID",
+        message: "Manual subscription payment must be marked paid" },
+    });
+  }
   const recordingSource = selection.method === "visa"
     ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
     : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE;
