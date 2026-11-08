@@ -2,6 +2,7 @@
 
 const { addDays } = require("date-fns");
 const { fromZonedTime } = require("date-fns-tz");
+const { getBusinessDayBounds } = require("../pos/businessDaySetting");
 const ActivityLog = require("../../models/ActivityLog");
 const Addon = require("../../models/Addon");
 const DashboardUser = require("../../models/DashboardUser");
@@ -72,29 +73,9 @@ async function getSettingValue(key, fallback) {
 
 async function resolveBusinessPeriod(businessDate) {
   assertBusinessDate(businessDate);
-  const [openValue, closeValue] = await Promise.all([
-    getSettingValue("restaurant_open_time", "00:00"),
-    getSettingValue("restaurant_close_time", "23:59"),
-  ]);
-  const openTime = parseTime(openValue, "00:00");
-  const closeTime = parseTime(closeValue, "23:59");
-  const timezone = dateUtils.KSA_TIMEZONE;
-  const start = fromZonedTime(`${businessDate}T${openTime}:00`, timezone);
-  const openMinutes = dateUtils.toMinutes(openTime);
-  const closeMinutes = dateUtils.toMinutes(closeTime);
-  const closeDate = closeMinutes > openMinutes
-    ? businessDate
-    : dateUtils.addDaysToKSADateString(businessDate, 1);
-  const closeInstant = fromZonedTime(`${closeDate}T${closeTime}:00`, timezone);
-  const end = new Date(closeInstant.getTime() + 59999);
-
-  if (openMinutes === closeMinutes) {
-    const fullDayEnd = addDays(start, 1);
-    fullDayEnd.setMilliseconds(fullDayEnd.getMilliseconds() - 1);
-    return { businessDate, timezone, start, end: fullDayEnd, openTime, closeTime };
-  }
-
-  return { businessDate, timezone, start, end, openTime, closeTime };
+  // Financial reporting must use precisely the same historical half-open
+  // bounds as POS invoices, paidAt, refunds and cashier closing.
+  return getBusinessDayBounds(businessDate);
 }
 
 function resolveFullDayPeriod(businessDate) {
@@ -307,7 +288,7 @@ async function buildDailyReport({
   const fallbackVatPercentage = VAT_PERCENTAGE;
 
   const orderMatch = {
-    createdAt: { $gte: period.start, $lte: period.end },
+    createdAt: { $gte: period.start, $lt: period.end },
   };
   if (selectedFulfillment !== "all") {
     orderMatch.$or = [
@@ -327,7 +308,7 @@ async function buildDailyReport({
 
   const activeSubscriptionMatch = {
     status: "active",
-    createdAt: { $lte: period.end },
+    createdAt: { $lt: period.end },
     $or: [
       { validityEndDate: { $gte: period.start } },
       { endDate: { $gte: period.start } },
