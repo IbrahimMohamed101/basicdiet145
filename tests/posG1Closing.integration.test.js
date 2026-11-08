@@ -77,11 +77,11 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     }
     // Purely synthetic POS finance fixtures; no actual customer or prices.
     await PosInvoice.collection.insertMany([
-      { number: "STG-G1-000001", channel: "restaurant", tender: { method: "cash" },
+      { number: "STG-G1-000001", idempotencyKey: "g1-synthetic-000001", channel: "restaurant", tender: { method: "cash" },
         totals: { grossHalalas: 150965, vatHalalas: 0 }, businessDate: "2026-11-08", issuedAt: new Date("2026-11-08T09:00:00Z") },
-      { number: "STG-G1-000002", channel: "restaurant", tender: { method: "network" },
+      { number: "STG-G1-000002", idempotencyKey: "g1-synthetic-000002", channel: "restaurant", tender: { method: "network" },
         totals: { grossHalalas: 335240, vatHalalas: 0 }, businessDate: "2026-11-08", issuedAt: new Date("2026-11-08T09:01:00Z") },
-      { number: "STG-G1-000003", channel: "hungerstation", tender: { method: "app_receivable" },
+      { number: "STG-G1-000003", idempotencyKey: "g1-synthetic-000003", channel: "hungerstation", tender: { method: "app_receivable" },
         totals: { grossHalalas: 7600, vatHalalas: 0 }, businessDate: "2026-11-08", issuedAt: new Date("2026-11-08T09:02:00Z") },
     ]);
     server = await start();
@@ -135,7 +135,7 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     assert.equal(frozen.snapshot.reconciliation.cashDifferenceHalala, -100);
     assert.equal(frozen.snapshot.discrepancyReason, "Counted one SAR shortage");
     assert.equal((await call("admin", "POST", date, "/approve", {})).status, 200);
-    await PosInvoice.collection.insertOne({ number: "STG-G1-000004", channel: "restaurant",
+    await PosInvoice.collection.insertOne({ number: "STG-G1-000004", idempotencyKey: "g1-synthetic-000004", channel: "restaurant",
       tender: { method: "cash" }, totals: { grossHalalas: 50, vatHalalas: 0 },
       businessDate: date, issuedAt: new Date("2026-11-08T10:00:00Z") });
     const approved = await call("cashier", "GET", date);
