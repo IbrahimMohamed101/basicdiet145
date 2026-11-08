@@ -125,7 +125,7 @@ async function dashboardOptionalAuthMiddleware(req, _res, next) {
 }
 
 function dashboardRoleMiddleware(allowedRoles) {
-  return (req, res, next) => {
+  const authorize = (req, res, next) => {
     const role = req.dashboardUserRole;
     if (!role) {
       return errorResponse(res, 401, "UNAUTHORIZED", { messageKey: "errors.dashboardAuth.missingRole" });
@@ -138,16 +138,23 @@ function dashboardRoleMiddleware(allowedRoles) {
     }
     return next();
   };
+  // D-092 introspection marker: CI can enumerate and evaluate every
+  // registered Express route's authorization layers without hitting the DB.
+  authorize.d092AllowedRoles = Object.freeze([...allowedRoles]);
+  return authorize;
 }
 
 function dashboardMutationRoleMiddleware(allowedRoles) {
   const authorizeMutation = dashboardRoleMiddleware(allowedRoles);
-  return (req, res, next) => {
+  const authorize = (req, res, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(String(req.method || "").toUpperCase())) {
       return next();
     }
     return authorizeMutation(req, res, next);
   };
+  authorize.d092AllowedRoles = Object.freeze([...allowedRoles]);
+  authorize.d092MutationOnly = true;
+  return authorize;
 }
 
 module.exports = {
