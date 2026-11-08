@@ -63,7 +63,13 @@ router.post("/quote", asyncHandler(async (req, res) => {
 
 router.get("/catalog/manage", manage, asyncHandler(async (_req, res) => {
   const doc = await getCatalog();
-  if (!doc) return errorResponse(res, 404, "POS_CATALOG_NOT_FOUND", "منيو الكاشير غير متاح.");
+  if (!doc) {
+    return res.json({ status: true, data: adminView({
+      revision: 0, publishedRevision: 0,
+      published: { channels: normalizePosChannels(), categories: [], products: [] },
+      draft: null, draftSavedBy: null, draftSavedAt: null, publishedBy: null, publishedAt: null,
+    }) });
+  }
   return res.json({ status: true, data: adminView(doc) });
 }));
 
@@ -86,7 +92,7 @@ router.get("/catalog/revisions/:revision", manage, asyncHandler(async (req, res)
 
 router.put("/catalog/draft", manage, asyncHandler(async (req, res) => {
   const { revision, catalog } = req.body || {};
-  if (!Number.isSafeInteger(revision) || revision < 1) {
+  if (!Number.isSafeInteger(revision) || revision < 0) {
     return errorResponse(res, 400, "VALIDATION_ERROR", "نسخة المنيو غير صالحة.");
   }
   let draft;
