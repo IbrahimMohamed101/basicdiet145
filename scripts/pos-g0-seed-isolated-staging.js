@@ -7,6 +7,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const mongoose = require("mongoose");
+const { BSON } = require("mongodb");
 const User = require("../src/models/User");
 const Subscription = require("../src/models/Subscription");
 const Plan = require("../src/models/Plan");
@@ -53,7 +54,8 @@ function assertNoPii(value, location = "config") {
 }
 function loadConfig(file) {
   if (!file) return {};
-  const input = JSON.parse(fs.readFileSync(path.resolve(file), "utf8"));
+  // Extended JSON preserves ObjectIds and dates across allowlisted config references.
+  const input = BSON.EJSON.parse(fs.readFileSync(path.resolve(file), "utf8"), { relaxed: false });
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Config must be an object");
   for (const [key, rows] of Object.entries(input)) {
     if (!Object.hasOwn(ALLOWED, key)) throw new Error("Unapproved collection: " + key);
