@@ -18,10 +18,12 @@ const fail = (code) => { throw Object.assign(new Error(code), { code }); };
 function configuration() {
   if (process.env.G2_OWNER_APPROVED !== "true") fail("G2_OWNER_APPROVAL_REQUIRED");
   const ci = process.env.G2_EXECUTION_SCOPE === "ci-disposable";
+  const staging = process.env.G2_EXECUTION_SCOPE === "staging-isolated";
+  if (staging && process.env.G2_STAGING_REHEARSAL_APPROVED !== "true") fail("G2_OWNER_APPROVAL_REQUIRED");
   if (ci && !(process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true")) {
     fail("G2_UNSAFE_TARGET");
   }
-  if (!ci && process.env.G2_EXECUTION_SCOPE === "ci-disposable") fail("G2_UNSAFE_TARGET");
+  if (!ci && !staging && !["", "owner-approved"].includes(process.env.G2_EXECUTION_SCOPE || "")) fail("G2_UNSAFE_TARGET");
   const raw = process.env.G2_MONGO_URI || process.env.MONGO_URI ||
     process.env.MONGODB_URI || process.env.MONGO_URL;
   if (!raw) fail("G2_UNSAFE_TARGET");
@@ -35,12 +37,14 @@ function configuration() {
   } catch { fail("G2_UNSAFE_TARGET"); }
   const expectedHost = ci
     ? (process.env.G2_RS0_MEMBER_HOST || "mongodb.railway.internal")
-    : "mongodb.railway.internal";
+    : staging ? "g2-mongo-restore-drill.railway.internal" : "mongodb.railway.internal";
   if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]+$/.test(expectedHost)) fail("G2_UNSAFE_TARGET");
   const targetHost = uri.hostname;
   if (ci) {
     if (!["127.0.0.1", "localhost"].includes(targetHost) ||
         uri.pathname !== "/basicdiet_g2_ci_test") fail("G2_UNSAFE_TARGET");
+  } else if (staging) {
+    if (targetHost !== expectedHost || uri.pathname !== "/basicdiet_g2_staging_synthetic") fail("G2_UNSAFE_TARGET");
   } else if (targetHost !== "mongodb.railway.internal" || uri.pathname !== "/test" ||
              process.env.NODE_ENV === "test") {
     fail("G2_UNSAFE_TARGET");
