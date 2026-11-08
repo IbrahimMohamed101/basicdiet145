@@ -47,6 +47,12 @@ test("G2 maintenance preserves GET, /health, /live and CORS OPTIONS", async (t) 
   const notFound = await supertest(app).get("/api/does-not-exist");
   assert.equal(notFound.status, 404);
   assert.equal((await supertest(app).options("/api/webhooks/moyasar")).status, 204);
+  // Financial "GET" redirects are not read-only: they settle Moyasar payments.
+  for (const url of ["/api/payments/verify", "/payments/success", "/payment-success"]) {
+    const response = await supertest(app).get(url);
+    assert.equal(response.status, 503, url);
+    assert.equal(response.body.error?.code, "MAINTENANCE");
+  }
 });
 
 test("G2 maintenance disabled preserves ordinary mutation routing", async (t) => {
