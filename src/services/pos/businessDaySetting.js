@@ -115,6 +115,13 @@ async function scheduleBusinessDayCutoff({ newCutoff, actorId, actorRole, at = n
     const error = new Error("Authenticated actor required");
     error.status = 403; error.code = "FORBIDDEN"; throw error;
   }
+  // Changes and audit must commit atomically. Fail closed on standalone:
+  // otherwise Settings may move without a matching immutable audit event.
+  const topology = await mongoose.connection.db.admin().command({ hello: 1 });
+  if (topology.setName !== "rs0") {
+    const error = new Error("Business cutoff changes require rs0 transactions");
+    error.status = 409; error.code = "BUSINESS_CUTOFF_REQUIRES_RS0"; throw error;
+  }
   const session = await mongoose.startSession();
   try {
     let result;
