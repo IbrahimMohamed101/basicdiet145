@@ -231,7 +231,6 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     // On the previous code, zero expected POS cash makes reconciliation +10000,
     // incorrectly requiring a reason despite a balanced manual legacy closing.
     const legacyBalanced = "2026-11-05";
-    const legacyShort = "2026-11-06";
     const legacyInput = (cash) => ({
       channels: { restaurantHalala: 10000, hungerstationHalala: 0, keetaHalala: 0, other: [] },
       collections: { cashHalala: cash, cardHalala: 0 },
@@ -245,12 +244,14 @@ test("G1 real isolated rs0: POS submit/return/approve, frozen snapshots, legacy 
     legacyResponse = await call("cashier", "POST", legacyBalanced, "/submit", {});
     assert.equal(legacyResponse.status, 200, "balanced LEGACY submits without discrepancy reason");
     assert.equal(legacyResponse.json.data.snapshot, undefined, "GET does not expose raw snapshot");
-    legacyResponse = await call("restaurant", "PUT", legacyShort, "", legacyInput(9900));
-    assert.equal(legacyResponse.status, 201);
+    legacyResponse = await call("admin", "POST", legacyBalanced, "/return", { reason: "Synthetic legacy edit" });
+    assert.equal(legacyResponse.status, 200, "same legacy date may be returned for revision");
+    legacyResponse = await call("restaurant", "PUT", legacyBalanced, "", legacyInput(9900));
+    assert.equal(legacyResponse.status, 200);
     assert.equal(legacyResponse.json.data.closingVersion, "LEGACY_V1");
     assert.equal(legacyResponse.json.data.requiresReason, true);
     assert.deepEqual(legacyResponse.json.data.reasonCodes, ["LEGACY_AMOUNT_DIFFERENCE"]);
-    legacyResponse = await call("restaurant", "POST", legacyShort, "/submit", {});
+    legacyResponse = await call("restaurant", "POST", legacyBalanced, "/submit", {});
     assert.equal(legacyResponse.status, 400);
     assert.equal(legacyResponse.json.code, "DISCREPANCY_REASON_REQUIRED");
 
