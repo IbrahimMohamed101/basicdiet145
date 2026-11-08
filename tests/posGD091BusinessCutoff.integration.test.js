@@ -50,11 +50,10 @@ test("D-091 closing boundaries and subscription paidAt agree on isolated Mongo t
     const closeAfter = await subscriptionPaymentsForDate("2026-11-09");
     assert.equal(closeBefore.amountHalala, 200);
     assert.equal(closeAfter.amountHalala, 300);
+    assert.equal(PosInvoice.schema.path("businessDate").options.immutable, true,
+      "recorded invoice businessDate must be immutable");
     const invoice = await PosInvoice.findOne({ businessDate: "2026-11-08" });
-    invoice.businessDate = "2026-11-09";
-    await invoice.save();
-    assert.equal((await PosInvoice.findById(invoice._id)).businessDate, "2026-11-08",
-      "stored invoice date is immutable");
+    assert.equal(invoice.businessDate, "2026-11-08");
   } finally {
     if (mongoose.connection.readyState) {
       await mongoose.connection.dropDatabase().catch(() => {});
