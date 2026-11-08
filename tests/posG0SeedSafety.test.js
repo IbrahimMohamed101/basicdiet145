@@ -42,5 +42,11 @@ test("G0 seed: refuses Production hostname or environment even with staging swit
   });
   const url = new URL(ok);
   assert.equal(url.pathname, "/basicdiet_pos_staging_test");
+  // Railway Staging may use NODE_ENV=production for optimized builds;
+  // actual environment/service IDs and private mongo host are the authority.
+  assert.equal(assertStagingDatabaseEnvironment({
+    ...env, NODE_ENV: "production",
+    POS_STAGING_MONGO_URL: "mongodb://tester:secret@mongodb-qxhu.railway.internal:27017/admin",
+  }), ok);
   assert.equal(url.searchParams.get("replicaSet"), "rs0");
 });
