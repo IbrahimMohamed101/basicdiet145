@@ -9,6 +9,8 @@ const PosCounter = require("../../models/PosCounter");
 const PosAudit = require("../../models/PosAudit");
 const PosLedger = require("../../models/PosLedger");
 const { businessDateAt } = require("./businessDate");
+const { getBusinessDayCutoff } = require("./businessDaySetting");
+const { dashboardRoleHasPermission } = require("../../constants/dashboardRoles");
 const PosOperation = require("../../models/PosOperation");
 const { beginOperation, commitOperation, rejectOperation } = require("./operationService");
 const { PosFinancialError, pricePosCheckout } = require("./financialQuoteService");
@@ -46,7 +48,7 @@ async function verifiedActor(req) {
   if (!user || !user.isActive) {
     throw new PosFinancialError("UNAUTHORIZED", "حساب الموظف غير نشط.", 403);
   }
-  if (!["cashier", "restaurant", "admin", "superadmin"].includes(user.role)) {
+  if (user.role !== "superadmin" && !dashboardRoleHasPermission(user.role, ["restaurant", "admin"])) {
     throw new PosFinancialError("FORBIDDEN", "صلاحية نقطة البيع غير متاحة.", 403);
   }
   return {
@@ -85,6 +87,7 @@ async function issueStagingInvoice(req, body, key, options = {}) {
   requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   const actor = await verifiedActor(req);
+  const cutoff = await getBusinessDayCutoff();
   await ensureFinancialIndexes();
   let intent, hash;
   try {
@@ -156,7 +159,7 @@ async function issueStagingInvoice(req, body, key, options = {}) {
           actor, lines: priced.lines, totals: priced.totals,
           invoiceDiscount: intent.invoiceDiscount, tender,
           documentKind: "STAGING_TEST_NON_TAX", issuedAt: now,
-          businessDate: businessDateAt(now),
+          businessDate: businessDateAt(now, cutoff),
         }], { session });
         const invoice = docs[0];
         await PosLedger.create([{
@@ -164,7 +167,7 @@ async function issueStagingInvoice(req, body, key, options = {}) {
           type: ledgerType, amountHalalas: due,
           amountReceivedHalalas: received, cashChangeHalalas: change,
           channel: intent.channel, externalPaymentStatus: intent.appPaymentStatus ?? null,
-          recordedAt: now, businessDate: businessDateAt(now),
+          recordedAt: now, businessDate: businessDateAt(now, cutoff),
         }], { session });
         // Pre-allocate balances transactionally so concurrent first refunds
         // can safely update one existing row instead of racing on upsert.
@@ -244,6 +247,7 @@ async function recordStagingRefund(req, body, key, options = {}) {
   if (!hasPosCapability(actor.role, "pos.refund")) {
     throw new PosFinancialError("FORBIDDEN", "الموظف ليس لديه صلاحية pos.refund.", 403);
   }
+  const cutoff = await getBusinessDayCutoff();
   await ensureFinancialIndexes();
   let intent, hash;
   try {
@@ -318,7 +322,7 @@ async function recordStagingRefund(req, body, key, options = {}) {
           invoiceId: invoice._id, invoiceNumber: invoice.number,
           actor, reason: intent.reason, method: intent.method,
           lines: resultLines, totals, documentKind: "STAGING_TEST_NON_TAX",
-          recordedAt: now, businessDate: businessDateAt(now),
+          recordedAt: now, businessDate: businessDateAt(now, cutoff),
         }], { session });
         // Append the refund to the original invoice's ledger atomically.
         // Keeping one ledger document per invoice preserves the pre-existing
@@ -328,7 +332,7 @@ async function recordStagingRefund(req, body, key, options = {}) {
           { $push: { refunds: {
             refundId: docs[0]._id, refundNumber: docs[0].number,
             type: "refund", amountHalalas: -totals.grossHalalas,
-            method: intent.method, recordedAt: now, businessDate: businessDateAt(now),
+            method: intent.method, recordedAt: now, businessDate: businessDateAt(now, cutoff),
           } } }, { session }
         );
         if (ledger.modifiedCount !== 1) conflict("دفتر الفاتورة لم يقبل تسجيل المرتجع.");
