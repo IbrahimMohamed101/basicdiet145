@@ -12,7 +12,16 @@ async function main() {
   const u = new URL(uri);
   if (!["127.0.0.1", "localhost"].includes(u.hostname)
     || u.pathname !== "/basicdiet_g2_ci_test") throw Error("G2_CI_ONLY");
-  await mongoose.connect(uri, { autoIndex: false, serverSelectionTimeoutMS: 10000 });
+  // Exercise the real backend DB bootstrap / index policy, but suppress its
+  // pre-existing maskedUri log: G2 forbids printing ANY URI representation.
+  const originalLog = console.log;
+  try {
+    console.log = (...values) => {
+      if (String(values[0] || "").startsWith("[railway-startup]")) return;
+      return originalLog(...values);
+    };
+    await connectDb();
+  } finally { console.log = originalLog; }
   try {
     const supports = await checkMongoTransactionSupport();
     const session = await startSafeSession();
