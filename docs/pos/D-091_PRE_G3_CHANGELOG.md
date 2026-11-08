@@ -2,7 +2,7 @@
 
 **Authority:** owner request 2026-11-08. **Status:** implementation under isolated staging CI review; **not approved for main or Production**.
 
-Cashier has all `restaurant` operational permissions without exception, including creating a subscription with **cash** or **Visa/Mada**, creating a new customer, and POS refund (existing D-090). **D-087 parity is bidirectional**: new cashier operations automatically apply to restaurant. No extra administrator/superadmin permissions are conferred.
+Cashier and restaurant retain equal operational rights (D-087/D-091), including manual cash/Visa-Mada dashboard recording, customer creation and POS refunds. Legacy kitchen customer creation remains allowed. No existing permissions are revoked and no admin-only actions are conferred on cashier.
 
 ## Exact modification register
 
@@ -11,19 +11,38 @@ Cashier has all `restaurant` operational permissions without exception, includin
 | `src/controllers/adminController.js` | Remove cash-only role check; reject client-supplied `paidAt`, assign server time in payment row, write authenticated customer-creator actor to ActivityLog |
 | `src/controllers/dashboard/subscriptionPaymentRecordingController.js` | Stop cashier Visa/quote filter; reject `paidAt` before activation, keep #207 paid-state and exact-halalas checks |
 | `src/routes/admin.js` | Replace temporary #205 cashier-only route exception with permission-based `POST /admin/users` for admin/restaurant (cashier inherits restaurant), leave other mutations behind original guards |
-| `src/routes/dashboardRestaurantCapabilities.js` | Block kitchen on the earlier `/admin/users` route, which otherwise takes precedence over admin router, while preserving normal admin/restaurant/cashier access |
+| `src/routes/dashboardRestaurantCapabilities.js` | Restore kitchen on original `/users` route `["admin","restaurant","kitchen"]`; cashier inherits restaurant. No role loses previously granted access |
 | `src/services/pos/financialRuntime.js` | Refund entitlement uses inherited dashboard roles, with optional `POS_REFUND_ROLES` policy |
-| `src/services/pos/financialLedgerService.js` | POS sale/refund actor permissions through effective roles; invoice, refund and ledger date use server Setting cutoff |
+| `src/services/pos/financialLedgerService.js` | POS sale/refund permissions through effective roles; use versioned policy to stamp immutable businessDate |
 | `src/services/pos/businessDate.js` | HH:mm Riyadh rollover (default 00:00); exact half-open business date bounds |
-| `src/services/pos/businessDaySetting.js` | Read `Setting.key=businessDayCutoff`, validate HH:mm fail-closed |
-| `src/services/pos/expectedTotals.js` | Use same configured bounds, include legacy dashboard_cashier and both dashboard_subscription_* sources |
-| `src/services/dashboard/dailyCashClosingService.js` | Align paid payments and refunds with POS start inclusive/end exclusive; don't use restaurant opening hours for financial date |
+| `src/services/pos/businessDaySetting.js` | Versioned daily cutoff policy and transactionally audited changes (`previousCutoff`, `newCutoff`, actor, timestamp, `effectiveFrom` next business day) |
+| `src/services/pos/expectedTotals.js` | Use historical versioned cutoff bounds; include dashboard_cashier and both dashboard_subscription_* sources |
+| `src/services/dashboard/dailyCashClosingService.js` | Use historical versioned cutoff for payments and refunds, start-inclusive/end-exclusive |
 | `tests/posG2ExpectedTotals.test.js` | Test 23:59, 00:01, 03:59, 04:00 with 04:00 and default 00:00 |
 | `tests/posG3StandaloneSubscriptionGuard.test.js` | Real HTTP role/payment/paidAt/customer-audit checks on isolated standalone Mongo |
 | `tests/posGD091BusinessCutoff.integration.test.js` | Verify cutoff, payment/closing matching, immutable invoice date on disposable standalone and rs0 |
 | `.github/workflows/pos-g-d091-ci.yml` | Run isolated safety gates on both Mongo topologies |
 
 **Frontend** (separate staging-only PR): `src/lib/rolePermissions.ts`; `src/features/pos/PosOperationsShell.tsx`; `src/features/pos/PosOperationsShell.test.tsx`; `src/components/pages/subscriptions/create/CreateSubscriptionFormContent.tsx`.
+
+## Permissions before and after PR #208 (no permission removals)
+
+| Role | Capability | Before PR #208 | After corrected PR #208 |
+| --- | --- | --- | --- |
+| cashier | Dashboard cash subscription | Allowed, plus temporary G1 guard | Allowed, permanent inherited restaurant permission |
+| cashier | Dashboard Visa/Mada subscription | Denied by direct role/cash-only checks | Allowed through verified `POST /dashboard/subscriptions` |
+| cashier | New customer `POST /admin/users` | Temporary Staging-only exception | Allowed through inherited restaurant permission |
+| cashier | POS refund (D-090) | Allowed | Allowed, unchanged |
+| restaurant | Cash/Visa subscriptions, customers, POS refund | Allowed | Allowed, unchanged |
+| kitchen | Create customers | Allowed | Allowed, **restored**, unchanged |
+| kitchen | POS refund / subscriptions sales | Not granted | Not granted, unchanged |
+| courier | Create customer, POS refund, payment recording | Not granted | Not granted, unchanged |
+| admin | Operational changes and permitted settings | Allowed | Allowed, unchanged |
+| superadmin | Existing administrative operations | Allowed | Allowed, unchanged |
+
+**Payment sources are server-only**: `/dashboard/subscriptions` creates `dashboard_subscription_cash` or `dashboard_subscription_visa` based on the verified payment method; `/admin/subscriptions` is cash-only with `dashboard_cashier`. Both routes reject `body.source` or `payment.source` (400 `SOURCE_NOT_ALLOWED`). Payment pre-validation never changes provider/method from source alone.
+
+**Cutoff transitions**: `businessDayCutoff` is stored in `Setting` as baseline + ordered revisions. Each update has the authenticated actor, timestamp, previous and new HH:mm and `effectiveFrom` next business date, written with its audit in one MongoDB rs0 transaction. The transition day starts at the previous cutoff and ends at the new cutoff, preventing overlap or gaps. Earlier dates remain fixed. `expectedTotals`, all subscription `paidAt` reports, `accountingDailyReportService`, and POS issue/refund stamps use the same historical boundaries.
 
 ## #204 seed dependency
 
