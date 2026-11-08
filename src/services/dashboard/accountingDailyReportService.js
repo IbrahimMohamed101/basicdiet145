@@ -17,6 +17,9 @@ const { VAT_PERCENTAGE } = require("../../config/vat");
 const { buildSectionedCsv } = require("../../utils/csvExport");
 const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
 const { expectedTotals } = require("../pos/expectedTotals");
+const DailyCashClosing = require("../../models/DailyCashClosing");
+const { getClosingVersion, POS_V2 } = require("../pos/closingVersionService");
+const { applyPosOtherReceivables, reconcileCountedWithServer } = require("./dailyCashClosingService");
 
 const MANUAL_DEDUCTION_ACTION = "manual_subscription_meal_deduction";
 const PAID_STATUS = "paid";
@@ -483,8 +486,25 @@ async function buildDailyReport({
   }
   // Keep POS sales separate from legacy Order/Payment so one payment is never
   // counted twice. Only the dedicated isolated POS Staging runtime reads this.
-  const posFinancial = isPosStagingRuntime()
-    ? await expectedTotals(period.businessDate) : null;
+  const closing = await DailyCashClosing.findOne({ businessDate: period.businessDate }).lean();
+  const closingVersion = await getClosingVersion(period.businessDate, closing);
+  const posClosing = closingVersion === POS_V2;
+  // V1 preserves the previously returned report (including its Staging POS sidecar).
+  // V2 uses precisely the same frozen/sourced totals as the cashier closing.
+  const posFinancial = posClosing
+    ? (closing && closing.status !== "draft" && closing.snapshot?.expectedTotals
+      ? closing.snapshot.expectedTotals
+      : applyPosOtherReceivables(await expectedTotals(period.businessDate),
+        closing?.channels || { other: [] }))
+    : (isPosStagingRuntime() ? await expectedTotals(period.businessDate) : null);
+  const financialClosing = posClosing ? {
+    closingVersion, calculationMode: "pos_expected_totals",
+    businessDayBounds: { start: period.start, end: period.end, timezone: period.timezone },
+    expectedTotals: posFinancial,
+    reconciliation: closing && closing.status !== "draft" && closing.snapshot?.reconciliation
+      ? closing.snapshot.reconciliation
+      : closing ? reconcileCountedWithServer(closing.collections, posFinancial) : null,
+  } : null;
   const normalizedSummary = {
     grossRevenueHalala: null,
     netRevenueHalala: resolvedNetSalesHalala,
@@ -501,6 +521,7 @@ async function buildDailyReport({
   return {
     date: period.businessDate,
     businessDate: period.businessDate,
+    ...(posClosing ? { financialClosing } : {}),
     filters: {
       date: period.businessDate,
       fromDate: null,
