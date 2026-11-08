@@ -8,6 +8,7 @@ const { normalizePosCatalog, normalizePosChannels } = require("../services/pos/c
 const { getCatalog, saveDraft, publishDraft, getCatalogRevisions, getCatalogRevision } = require("../services/pos/catalogService");
 const { quotePosCart, PosQuoteError } = require("../services/pos/quoteService");
 const { verifiedActor } = require("../services/pos/financialLedgerService");
+const { getPosRuntimeStatus } = require("../services/pos/financialRuntime");
 
 const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
@@ -15,6 +16,17 @@ const router = Router();
 // admin privileges and customer-app menu publication remain separately guarded.
 const manage = dashboardRoleMiddleware(["admin", "restaurant", "cashier"]);
 router.use(dashboardAuthMiddleware);
+router.get("/status", asyncHandler(async (req, res) => {
+  if (!isBranchOperator(req.dashboardUserRole) && !["admin", "superadmin"].includes(req.dashboardUserRole)) {
+    return errorResponse(res, 403, "FORBIDDEN", "صلاحية الكاشير غير متاحة.");
+  }
+  return res.json({ status: true, data: await getPosRuntimeStatus() });
+}));
+router.use(asyncHandler(async (_req, res, next) => {
+  const state = await getPosRuntimeStatus();
+  if (!state.enabled) return errorResponse(res, 403, "POS_DISABLED", "نقطة البيع غير مفعلة.");
+  return next();
+}));
 const readers = new Set(["admin", "superadmin"]);
 const canReadPos = (role) => isBranchOperator(role) || readers.has(role);
 
