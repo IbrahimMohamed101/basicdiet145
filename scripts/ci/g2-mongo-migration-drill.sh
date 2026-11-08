@@ -43,7 +43,13 @@ wait_auth() {
   # Docker state and exit code ONLY; never print Mongo logs, URI or environment.
   local state
   state="$(docker inspect --format '{{.State.Status}} exit={{.State.ExitCode}}' "$container" 2>/dev/null || echo missing)"
-  echo "G2_MONGO_READINESS_TIMEOUT state=$state" >&2
+  local diagnostic="UNKNOWN"
+  if docker logs "$container" 2>&1 | grep -Eqi 'AVX|Illegal instruction'; then diagnostic="CPU_INSTRUCTION"; fi
+  if docker logs "$container" 2>&1 | grep -Eqi 'rseq|pthread'; then diagnostic="RSEQ_RUNTIME"; fi
+  if docker logs "$container" 2>&1 | grep -Eqi 'unrecognized option|unknown option'; then diagnostic="MONGO_OPTION"; fi
+  if docker logs "$container" 2>&1 | grep -Eqi 'cannot assign requested address|address already in use|failed to set up listener'; then diagnostic="BIND"; fi
+  if docker logs "$container" 2>&1 | grep -Eqi 'permission denied|access denied'; then diagnostic="PERMISSIONS"; fi
+  echo "G2_MONGO_READINESS_TIMEOUT state=$state diagnostic=$diagnostic" >&2
   return 1
 }
 start_standalone() {
@@ -51,6 +57,7 @@ start_standalone() {
   docker run -d --name "$name" --hostname g2-internal \
     -p "127.0.0.1:$port:27017" \
     -v "$volume:/data/db" \
+    -e "GLIBC_TUNABLES=glibc.pthread.rseq=1" \
     -e "MONGO_INITDB_ROOT_USERNAME=$G2_CI_ROOT_USER" \
     -e "MONGO_INITDB_ROOT_PASSWORD=$G2_CI_ROOT_PASSWORD" \
     mongo:8.0 mongod --auth --bind_ip_all >/dev/null
@@ -62,6 +69,7 @@ start_rs0() {
     -p "127.0.0.1:$port:27017" \
     -v "$volume:/data/db" \
     -v "$PWD/scripts/g2-mongo-start-rs0.sh:/g2-start.sh:ro" \
+    -e "GLIBC_TUNABLES=glibc.pthread.rseq=1" \
     -e G2_RS0_KEYFILE -e G2_EXECUTION_SCOPE \
     mongo:8.0 bash /g2-start.sh >/dev/null
   wait_auth "$name"
