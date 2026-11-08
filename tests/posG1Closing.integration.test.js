@@ -49,6 +49,25 @@ test("G1 pure POS reason codes exclude legacy manual amount differences", () => 
   assert.equal(other.expected.totalHalalas, 494005);
   assert.equal(other.expected.cashHalalas, 150965);
 });
+test("G1 POS_V2 six independent mandatory-reason triggers are server-derived", () => {
+  const base = { version: "POS_V2",
+    summary: { subscriptionCountDifference: 0, unknownSubscriptionHalala: 0,
+      localDifferenceHalala: 1000, overallDifferenceHalala: 1000 },
+    reconciliation: { cashDifferenceHalala: 0, networkDifferenceHalala: 0 },
+    automatic: { reviewPaymentsCount: 0, refundsHalala: 0 } };
+  assert.deepEqual(reasonCodesFor(base), []);
+  const cases = [
+    [{ reconciliation: { ...base.reconciliation, cashDifferenceHalala: -100 } }, "CASH_DIFFERENCE"],
+    [{ reconciliation: { ...base.reconciliation, networkDifferenceHalala: 100 } }, "NETWORK_DIFFERENCE"],
+    [{ summary: { ...base.summary, subscriptionCountDifference: 1 } }, "SUBSCRIPTION_COUNT_DIFFERENCE"],
+    [{ summary: { ...base.summary, unknownSubscriptionHalala: 1 } }, "UNKNOWN_SUBSCRIPTION_HALALA"],
+    [{ automatic: { ...base.automatic, reviewPaymentsCount: 1 } }, "SUBSCRIPTION_PAYMENTS_REVIEW"],
+    [{ automatic: { ...base.automatic, refundsHalala: 1 } }, "SUBSCRIPTION_REFUNDS"],
+  ];
+  for (const [overrides, expected] of cases) {
+    assert.deepEqual(reasonCodesFor({ ...base, ...overrides }), [expected]);
+  }
+});
 test("G1 absent start date is legacy and changes are effective dated", () => {
   assert.equal(versionAt("2026-11-08", null), "LEGACY_V1");
   const policy = { baselineStartDate: null, changes: [
