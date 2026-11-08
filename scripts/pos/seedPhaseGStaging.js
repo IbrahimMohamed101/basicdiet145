@@ -53,6 +53,9 @@ function assertNonPersonal(value, path = "$", depth = 0) {
     for (let i = 0; i < value.length; i++) assertNonPersonal(value[i], path + "." + i, depth + 1);
   } else if (value && typeof value === "object") {
     for (const [key, next] of Object.entries(value)) {
+      // Configuration ObjectIds are allowed only as validated reference IDs,
+      // not as telephone-like free text.
+      if (key === "_id" && typeof next === "string" && /^[0-9a-f]{24}$/i.test(next)) continue;
       if (key.startsWith("$") || key.includes(".") || SENSITIVE_KEY.test(key)) {
         throw new Error("Sensitive or unsafe field rejected at " + path + "." + key);
       }
