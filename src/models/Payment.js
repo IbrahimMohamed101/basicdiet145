@@ -44,6 +44,11 @@ const PaymentSchema = new mongoose.Schema(
     providerPaymentId: { type: String, set: normalizeOptionalProviderIdentifier },
     metadata: { type: mongoose.Schema.Types.Mixed },
     applied: { type: Boolean, default: false },
+    subscriptionRecoveryReview: {
+      status: { type: String, enum: ["needs_review"] },
+      reason: { type: String },
+      flaggedAt: { type: Date },
+    },
     paidAt: { type: Date },
     method: { type: String, trim: true },
     source: { type: String, trim: true },

@@ -1,4 +1,5 @@
 const assert = require("assert");
+const { logger } = require("../src/utils/logger");
 const { assertNoTestFlagsInProduction } = require("../src/utils/security");
 const {
   buildGmailApiRawMessage,
@@ -8,6 +9,7 @@ const {
   normalizeEnvironmentValue,
   normalizeDeliveryProvider,
   postGmailApiMessage,
+  sendEmailOtp,
   resetGmailTransporterForTests,
   resolveGmailIpv4,
   resolveGmailIpv4Addresses,
@@ -228,6 +230,36 @@ async function main() {
     assert.strictEqual(first.messageId, "gmail-message-2");
     assert.strictEqual(second.messageId, "gmail-message-3");
     assert.strictEqual(calls.filter((call) => call.url.includes("oauth2.googleapis.com")).length, 1);
+
+    const originalFetch = global.fetch;
+    const originalLogError = logger.error;
+    const errors = [];
+    global.fetch = async () => jsonResponse(400, {
+      error: {
+        message: `Invalid recipient recipient@example.com; Bearer access-token; refresh_token=${config.refreshToken}; OTP 654321`,
+        errors: [{ reason: "badRequest" }],
+      },
+    });
+    logger.error = (...args) => errors.push(args);
+    try {
+      await assert.rejects(sendEmailOtp({
+        toEmail: "recipient@example.com", otp: "654321", purpose: "register",
+      }), { code: "EMAIL_SEND_FAILED", status: 502 });
+      assert.strictEqual(errors.length, 1);
+      const [event, details] = errors[0];
+      assert.strictEqual(event, "Gmail OTP delivery failed");
+      assert.strictEqual(details.error.code, "GMAIL_API_SEND_FAILED");
+      assert.strictEqual(details.error.reason, "badRequest");
+      assert.strictEqual(details.error.status, 400);
+      assert.match(details.error.message, /Invalid recipient.*REDACTED/);
+      const logged = JSON.stringify(details);
+      for (const sensitive of ["recipient@example.com", "access-token", config.refreshToken, "654321"]) {
+        assert(!logged.includes(sensitive));
+      }
+    } finally {
+      global.fetch = originalFetch;
+      logger.error = originalLogError;
+    }
   });
 
   await withEnvironment({

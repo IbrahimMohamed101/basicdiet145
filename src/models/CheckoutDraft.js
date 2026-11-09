@@ -230,6 +230,13 @@ const CheckoutDraftSchema = new mongoose.Schema(
     completedAt: { type: Date },
     failedAt: { type: Date },
     failureReason: { type: String, default: "" },
+    paymentRecoveryAudit: {
+      paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment" },
+      batchId: { type: mongoose.Schema.Types.ObjectId, ref: "SubscriptionEntitlementBatch" },
+      previousFailedAt: { type: Date },
+      reason: { type: String },
+      reconciledAt: { type: Date },
+    },
   },
   { timestamps: true }
 );
