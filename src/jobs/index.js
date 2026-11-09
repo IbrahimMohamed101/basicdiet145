@@ -19,6 +19,10 @@ async function getSettingValue(key, fallback) {
 }
 
 function startJobs() {
+  if (process.env.MAINTENANCE_MODE === "true") {
+    logger.info("G2 maintenance: background jobs not scheduled");
+    return;
+  }
   logger.info("Jobs starting");
   let lastCutoffRunDate = null;
   let lastMealReminderRunDate = null;
@@ -28,7 +32,7 @@ function startJobs() {
 
   // Process all recurring jobs every minute in a single guarded loop.
   setInterval(async () => {
-    if (inProgress) return;
+    if (process.env.MAINTENANCE_MODE === "true" || inProgress) return;
     inProgress = true;
 
     try {
