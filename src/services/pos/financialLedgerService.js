@@ -15,6 +15,9 @@ const { beginOperation, commitOperation, rejectOperation } = require("./operatio
 const { PosFinancialError, pricePosCheckout } = require("./financialQuoteService");
 const { requireFinancialStagingWrites, hasPosCapability } = require("./financialRuntime");
 const { canonicalHash, validateIdempotencyKey, normalizeSaleIntent, normalizeRefundIntent } = require("./financialIntent");
+const { buildLocalTaxQrPayload } = require("../../utils/taxQr");
+const { BUSINESS_TAX_IDENTITY } = require("../../config/businessTaxIdentity");
+const { formatPosDocumentNumber } = require("./posDocumentNumber");
 
 const TRANSACTION_OPTIONS = {
   readConcern: { level: "snapshot" },
@@ -24,6 +27,27 @@ const TRANSACTION_OPTIONS = {
 const conflict = (message) => { throw new PosFinancialError("POS_CONFLICT", message, 409); };
 const malformed = (message) => { throw new PosFinancialError("POS_FINANCIAL_INVALID", message, 400); };
 let readyPromise;
+function isProductionDocument() {
+  return process.env.POS_PRODUCTION_ENABLED === "true" &&
+    process.env.NODE_ENV === "production" && mongoose.connection.name === "test";
+}
+function taxQr(issuedAt, totals) {
+  return buildLocalTaxQrPayload({
+    sellerName: BUSINESS_TAX_IDENTITY.legalNameAr,
+    vatNumber: BUSINESS_TAX_IDENTITY.vatRegistrationNumber,
+    issuedAt: issuedAt.toISOString(),
+    totalHalala: totals.grossHalalas,
+    vatHalala: totals.vatHalalas,
+  });
+}
+function taxSeller() {
+  return { legalNameAr: BUSINESS_TAX_IDENTITY.legalNameAr,
+    legalNameEn: BUSINESS_TAX_IDENTITY.legalNameEn,
+    vatRegistrationNumber: BUSINESS_TAX_IDENTITY.vatRegistrationNumber,
+    crNumber: BUSINESS_TAX_IDENTITY.crNumber,
+    addressAr: BUSINESS_TAX_IDENTITY.addressAr,
+    addressEn: BUSINESS_TAX_IDENTITY.addressEn };
+}
 function ensureFinancialIndexes() {
   if (!readyPromise) readyPromise = Promise.all([
     PosInvoice.createIndexes(), PosRefund.createIndexes(),
@@ -31,7 +55,7 @@ function ensureFinancialIndexes() {
   ]).then(async () => {
     // Preseed counters before transactions so the very first concurrent
     // issue cannot race two transactional counter upserts.
-    for (const kind of ["sale", "refund"]) {
+    for (const kind of (isProductionDocument() ? ["production-sale", "production-refund"] : ["sale", "refund"])) {
       await PosCounter.updateOne({ _id: kind },
         { $setOnInsert: { sequence: 0 } }, { upsert: true });
     }
@@ -56,14 +80,15 @@ async function verifiedActor(req) {
   };
 }
 async function nextNumber(session, kind) {
+  const production = isProductionDocument();
   const counter = await PosCounter.findOneAndUpdate(
-    { _id: kind }, { $inc: { sequence: 1 } },
+    { _id: production ? "production-" + kind : kind }, { $inc: { sequence: 1 } },
     { session, upsert: true, new: true }
   ).lean();
   if (!Number.isSafeInteger(counter.sequence) || counter.sequence < 1
     || counter.sequence > 999999999) malformed("عداد الفواتير تجاوز الحد الآمن.");
   return { sequence: counter.sequence,
-    number: (kind === "sale" ? "STG-" : "STG-R-") + String(counter.sequence).padStart(6, "0") };
+    number: formatPosDocumentNumber(kind, counter.sequence, production) };
 }
 function receiptView(doc) {
   // Expose original immutable snapshot; caller strips no money data.
@@ -83,7 +108,7 @@ async function afterUnknownOutcome(Model, key, hash, originalError) {
 }
 
 async function issueStagingInvoice(req, body, key, options = {}) {
-  requireFinancialStagingWrites(options);
+  await requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   const actor = await verifiedActor(req);
   await ensureFinancialIndexes();
@@ -157,7 +182,11 @@ async function issueStagingInvoice(req, body, key, options = {}) {
           appPaymentStatus: intent.appPaymentStatus || null,
           actor, lines: priced.lines, totals: priced.totals,
           invoiceDiscount: intent.invoiceDiscount, tender,
-          documentKind: "STAGING_TEST_NON_TAX", issuedAt: now,
+          documentKind: isProductionDocument() ? "SIMPLIFIED_TAX_INVOICE" : "STAGING_TEST_NON_TAX",
+          documentType: isProductionDocument() ? "SIMPLIFIED_TAX_INVOICE" : "STAGING_TEST_NON_TAX",
+          note: isProductionDocument() ? "فاتورة ضريبية مبسطة" : "فاتورة تجريبية — غير ضريبية",
+          seller: taxSeller(), qrPayloadBase64: taxQr(now, priced.totals),
+          issuedAt: now,
           businessDate: businessDate,
         }], { session });
         const invoice = docs[0];
@@ -240,7 +269,7 @@ function proportionalRefund(line, balance, quantity) {
   return { grossHalalas, vatHalalas, netHalalas };
 }
 async function recordStagingRefund(req, body, key, options = {}) {
-  requireFinancialStagingWrites(options);
+  await requireFinancialStagingWrites(options);
   validateIdempotencyKey(key);
   const actor = await verifiedActor(req);
   if (!hasPosCapability(actor.role, "pos.refund")) {
@@ -320,7 +349,11 @@ async function recordStagingRefund(req, body, key, options = {}) {
           ...seq, idempotencyKey: key, payloadHash: hash,
           invoiceId: invoice._id, invoiceNumber: invoice.number,
           actor, reason: intent.reason, method: intent.method,
-          lines: resultLines, totals, documentKind: "STAGING_TEST_NON_TAX",
+          lines: resultLines, totals,
+          documentKind: isProductionDocument() ? "CREDIT_NOTE" : "STAGING_TEST_NON_TAX",
+          documentType: isProductionDocument() ? "CREDIT_NOTE" : "STAGING_TEST_NON_TAX",
+          note: isProductionDocument() ? "إشعار دائن" : "مرتجع تجريبي — لا يمثل رد مبالغ فعلي",
+          seller: taxSeller(), qrPayloadBase64: taxQr(now, totals),
           recordedAt: now, businessDate: businessDate,
         }], { session });
         // Append the refund to the original invoice's ledger atomically.

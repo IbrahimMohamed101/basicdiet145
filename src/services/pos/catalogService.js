@@ -5,7 +5,7 @@ const crypto = require("node:crypto");
 const PosCatalog = require("../../models/PosCatalog");
 const PosCatalogRevision = require("../../models/PosCatalogRevision");
 const PosAudit = require("../../models/PosAudit");
-const { normalizePosCatalog } = require("./catalogValidation");
+const { normalizePosCatalog, DEFAULT_CHANNELS } = require("./catalogValidation");
 const stagingCatalog = require("./stagingCatalog.json");
 const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
 const { buildSanitizedStagingFixture } = require("../../../scripts/pos/buildSanitizedStagingFixture");
@@ -82,7 +82,21 @@ function getCatalog() {
   return PosCatalog.findById(CATALOG_ID).lean();
 }
 
-function saveDraft(revision, draft, actor = null) {
+async function saveDraft(revision, draft, actor = null) {
+  // Production is NEVER seeded. The first admin save creates an empty-shell
+  // catalog with the exact edited draft; no product, price or published menu.
+  if (revision === 0 && process.env.POS_PRODUCTION_ENABLED === "true" && !isPosStagingRuntime()) {
+    try {
+      return (await PosCatalog.create({
+        _id: CATALOG_ID, revision: 1, publishedRevision: 0,
+        published: { channels: DEFAULT_CHANNELS, categories: [], products: [] },
+        draft, draftSavedBy: actor, draftSavedAt: new Date(),
+      })).toObject();
+    } catch (error) {
+      if (error.code === 11000) return null;
+      throw error;
+    }
+  }
   return PosCatalog.findOneAndUpdate({ _id: CATALOG_ID, revision }, {
     $set: { draft, draftSavedBy: actor, draftSavedAt: new Date() },
     $inc: { revision: 1 },
@@ -99,11 +113,11 @@ async function publishDraft(revision, actor = null) {
         .session(session).lean();
       if (!current) return;
 
-      const previous = makeSnapshot(
+      const previous = current.publishedRevision > 0 ? makeSnapshot(
         current.publishedRevision, current.published, current.publishedAt || current.updatedAt || new Date(), current.publishedBy || null
-      );
-      const existingPrevious = await PosCatalogRevision
-        .findById(previous._id).session(session).lean();
+      ) : null;
+      const existingPrevious = previous ? await PosCatalogRevision
+        .findById(previous._id).session(session).lean() : null;
       if (existingPrevious && existingPrevious.contentSha256 !== previous.contentSha256) {
         throw new Error("POS previous published catalog history does not match its source.");
       }
@@ -123,7 +137,7 @@ async function publishDraft(revision, actor = null) {
         { session, new: true }
       ).lean();
       if (!updated) return;
-      await PosCatalogRevision.updateOne(
+      if (previous) await PosCatalogRevision.updateOne(
         { _id: previous._id }, { $setOnInsert: previous },
         { upsert: true, session }
       );
@@ -132,7 +146,7 @@ async function publishDraft(revision, actor = null) {
         event: "POS_CATALOG_PUBLISHED", actor, at: nextPublishedAt,
         details: {
           sourceRevision: current.publishedRevision,
-          sourceContentSha256: previous.contentSha256,
+          sourceContentSha256: previous?.contentSha256 ?? null,
           publishedRevision: nextRevision,
           contentSha256: nextSnapshot.contentSha256,
         },

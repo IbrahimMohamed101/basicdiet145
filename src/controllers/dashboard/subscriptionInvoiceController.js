@@ -10,6 +10,7 @@ const {
   getSystemVatPercentage,
 } = require("../../config/vat");
 const { BUSINESS_TAX_IDENTITY } = require("../../config/businessTaxIdentity");
+const { buildLocalTaxQrPayload } = require("../../utils/taxQr");
 
 function toNonNegativeInteger(value) {
   const parsed = Number(value);
@@ -372,29 +373,6 @@ function buildRefundSummary(refunds) {
     pendingSettlementAmountHalala: Math.max(0, recognizedAmountHalala - settledAmountHalala),
     rows,
   };
-}
-
-function formatSarFromHalala(amountHalala) {
-  const normalized = toNonNegativeInteger(amountHalala) || 0;
-  return (normalized / 100).toFixed(2);
-}
-
-function encodeTlvField(tag, value) {
-  const valueBuffer = Buffer.from(String(value), "utf8");
-  if (valueBuffer.length > 255) {
-    throw new Error(`QR TLV field ${tag} exceeds 255 bytes`);
-  }
-  return Buffer.concat([Buffer.from([tag, valueBuffer.length]), valueBuffer]);
-}
-
-function buildLocalTaxQrPayload({ sellerName, vatNumber, issuedAt, totalHalala, vatHalala }) {
-  return Buffer.concat([
-    encodeTlvField(1, sellerName),
-    encodeTlvField(2, vatNumber),
-    encodeTlvField(3, issuedAt),
-    encodeTlvField(4, formatSarFromHalala(totalHalala)),
-    encodeTlvField(5, formatSarFromHalala(vatHalala)),
-  ]).toString("base64");
 }
 
 function isTaxRegistrationEffectiveAt(issuedAt) {
