@@ -6,7 +6,7 @@ const errorResponse = require("../utils/errorResponse");
 const { isPosStagingRuntime } = require("../utils/posStagingRuntime");
 const { getCatalog } = require("../services/pos/catalogService");
 const { pricePosCheckout, PosFinancialError } = require("../services/pos/financialQuoteService");
-const { requireFinancialStagingWrites, hasPosCapability } = require("../services/pos/financialRuntime");
+const { requireFinancialStagingWrites, hasPosCapability, getPosRuntimeStatus } = require("../services/pos/financialRuntime");
 const { issueStagingInvoice, recordStagingRefund, verifiedActor } = require("../services/pos/financialLedgerService");
 const { readOperation, abandonOperation, findOperationForActor } = require("../services/pos/operationService");
 const PosInvoice = require("../models/PosInvoice");
@@ -15,9 +15,10 @@ const { isBranchOperator } = require("../constants/dashboardRoles");
 const router = Router();
 const readers = new Set(["admin", "superadmin"]);
 const canReadPos = (role) => isBranchOperator(role) || readers.has(role);
-function access(req, res, next) {
-  if (!isPosStagingRuntime() || mongoose.connection.name !== "basicdiet_pos_staging_test") {
-    return errorResponse(res, 403, "POS_STAGING_ONLY", "خدمات فواتير الكاشير متاحة في بيئة Staging المعزولة فقط.");
+async function access(req, res, next) {
+  const state = await getPosRuntimeStatus();
+  if (!state.enabled) {
+    return errorResponse(res, 403, "POS_DISABLED", "نقطة البيع غير مفعّلة أو قاعدة البيانات ليست rs0 PRIMARY.");
   }
   if (!canReadPos(req.dashboardUserRole)) {
     return errorResponse(res, 403, "FORBIDDEN", "صلاحية نقطة البيع غير متاحة.");
@@ -31,12 +32,12 @@ function errorHandler(error, res) {
   }
   throw error;
 }
-router.use(access);
+router.use(asyncHandler(access));
 // Operation state is read-only evidence. Even 404 does not authorize resubmission
 // with a different key: only successful abandon settles an unknown result.
 router.get("/operations/active/:kind", asyncHandler(async (req, res) => {
   try {
-    requireFinancialStagingWrites();
+    await requireFinancialStagingWrites();
     const actor = await verifiedActor(req);
     const operation = await findOperationForActor(actor, req.params.kind);
     return res.json({ status: true, data: operation });
@@ -44,7 +45,7 @@ router.get("/operations/active/:kind", asyncHandler(async (req, res) => {
 }));
 router.get("/operations/:key", asyncHandler(async (req, res) => {
   try {
-    requireFinancialStagingWrites();
+    await requireFinancialStagingWrites();
     const actor = await verifiedActor(req);
     const operation = await readOperation(req.params.key, actor);
     if (!operation) return errorResponse(res, 404, "POS_OPERATION_NOT_FOUND", "المحاولة غير موجودة.");
@@ -53,7 +54,7 @@ router.get("/operations/:key", asyncHandler(async (req, res) => {
 }));
 router.post("/operations/:key/abandon", asyncHandler(async (req, res) => {
   try {
-    requireFinancialStagingWrites();
+    await requireFinancialStagingWrites();
     const actor = await verifiedActor(req);
     if (req.body?.kind === "refund" && !hasPosCapability(actor.role, "pos.refund")) {
       return errorResponse(res, 403, "FORBIDDEN", "صلاحية المرتجع غير متاحة.");
@@ -71,7 +72,7 @@ router.post("/checkout/quote", asyncHandler(async (req, res) => {
 }));
 router.post("/sales", asyncHandler(async (req, res) => {
   try {
-    requireFinancialStagingWrites();
+    await requireFinancialStagingWrites();
     const result = await issueStagingInvoice(req, req.body, req.get("Idempotency-Key"));
     res.set("Idempotent-Replay", result.replayed ? "true" : "false");
     return res.status(result.replayed ? 200 : 201).json({ status: true, data: result.invoice });
@@ -103,7 +104,7 @@ router.post("/refunds", asyncHandler(async (req, res) => {
     return errorResponse(res, 403, "FORBIDDEN", "غير مصرح لهذا الموظف بعمل مرتجع.");
   }
   try {
-    requireFinancialStagingWrites();
+    await requireFinancialStagingWrites();
     const result = await recordStagingRefund(req, req.body, req.get("Idempotency-Key"));
     res.set("Idempotent-Replay", result.replayed ? "true" : "false");
     return res.status(result.replayed ? 200 : 201).json({ status: true, data: result.refund });

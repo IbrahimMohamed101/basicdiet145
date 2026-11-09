@@ -6,8 +6,9 @@ const { canonicalHash, normalizeSaleIntent, normalizeRefundIntent, validateIdemp
 const { hasPosCapability, requireFinancialStagingWrites } =
   require("../src/services/pos/financialRuntime");
 
-test("no Staging financial writes without exact isolated runtime and explicit enablement", () => {
-  assert.throws(() => requireFinancialStagingWrites(), e => e.code === "POS_STAGING_ONLY");
+test("no financial writes without exact isolated Staging runtime or approved Production rs0", async () => {
+  await assert.rejects(requireFinancialStagingWrites(), (e) =>
+    e.status === 403 && ["POS_STAGING_ONLY", "POS_DISABLED"].includes(e.code));
 });
 test("D-090 pos.refund is a separately revocable capability", () => {
   for (const role of ["cashier", "restaurant", "admin", "superadmin"]) {

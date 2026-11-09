@@ -65,6 +65,13 @@ function assertStagingSeedRuntime(options = {}) {
     mongoose.connection.name === "basicdiet_pos_g1_ci_test" &&
     mongoose.connection.host === "127.0.0.1";
   if (localDisposableRs0) return;
+  const approvedProduction = options.productionApproved === true &&
+    process.env.POS_CLOSING_ACTIVATION_APPROVED === "true" &&
+    process.env.POS_PRODUCTION_ENABLED === "true" &&
+    process.env.NODE_ENV === "production" &&
+    mongoose.connection.name === "test" &&
+    mongoose.connection.host === "mongodb.railway.internal";
+  if (approvedProduction) return;
   if (!isPosStagingRuntime() || mongoose.connection.name !== "basicdiet_pos_staging_test"
     || mongoose.connection.host !== "mongodb-qxhu.railway.internal") {
     const error = new Error("POS closing date writes are restricted to isolated Staging");
