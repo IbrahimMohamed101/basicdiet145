@@ -1,0 +1,43 @@
+name: G2 conversion tools
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/g2-conversion-tools.yml'
+      - 'scripts/g2-rs0-init-and-verify.js'
+      - 'scripts/g2-mongo-manifest.js'
+      - 'src/app.js'
+      - 'src/db.js'
+      - 'src/index.js'
+      - 'src/jobs/index.js'
+      - 'src/middleware/maintenanceMode.js'
+      - 'tests/g2MaintenanceMode.test.js'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/g2-conversion-tools.yml'
+      - 'scripts/g2-rs0-init-and-verify.js'
+      - 'scripts/g2-mongo-manifest.js'
+      - 'src/app.js'
+      - 'src/db.js'
+      - 'src/index.js'
+      - 'src/jobs/index.js'
+      - 'src/middleware/maintenanceMode.js'
+      - 'tests/g2MaintenanceMode.test.js'
+
+permissions:
+  contents: read
+
+jobs:
+  maintenance-and-conversion-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/g2MaintenanceMode.test.js

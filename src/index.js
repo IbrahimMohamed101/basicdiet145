@@ -50,6 +50,7 @@ const { ensureKsa96Promo } = require("./migrations/ensureKsa96Promo");
 const { seedAppAd } = require("./migrations/seedAppAd");
 const mongoose = require("mongoose");
 const { startJobs } = require("./jobs");
+const { isMaintenanceMode } = require("./middleware/maintenanceMode");
 const { validateEnv } = require("./utils/validateEnv");
 const { logger } = require("./utils/logger");
 
@@ -100,29 +101,33 @@ connectDb()
   .then(async () => {
     logger.info("[startup] MongoDB connected");
 
-    try {
-      const pricingMigration = await normalizeCommercialSubscriptionPricing();
-      logger.info("[startup] commercial subscription pricing normalization", pricingMigration);
+    if (isMaintenanceMode()) {
+      logger.warn("[startup] G2 maintenance active: startup mutations and background jobs disabled");
+    } else {
+      try {
+        const pricingMigration = await normalizeCommercialSubscriptionPricing();
+        logger.info("[startup] commercial subscription pricing normalization", pricingMigration);
 
-      const ks30PromoMigration = await ensureKs30Promo();
-      logger.info("[startup] KS30 promo normalization", ks30PromoMigration);
+        const ks30PromoMigration = await ensureKs30Promo();
+        logger.info("[startup] KS30 promo normalization", ks30PromoMigration);
 
-      const ksa96PromoMigration = await ensureKsa96Promo();
-      logger.info("[startup] KSA96 promo normalization", ksa96PromoMigration);
+        const ksa96PromoMigration = await ensureKsa96Promo();
+        logger.info("[startup] KSA96 promo normalization", ksa96PromoMigration);
 
-      const appAdMigration = await seedAppAd();
-      logger.info("[startup] app ad seed", appAdMigration);
-    } catch (migrationError) {
-      logger.error("[startup] commercial subscription pricing normalization failed", {
-        error: migrationError.message,
-        stack: migrationError.stack,
-      });
-      throw migrationError;
+        const appAdMigration = await seedAppAd();
+        logger.info("[startup] app ad seed", appAdMigration);
+      } catch (migrationError) {
+        logger.error("[startup] commercial subscription pricing normalization failed", {
+          error: migrationError.message,
+          stack: migrationError.stack,
+        });
+        throw migrationError;
+      }
+
+      logger.info("[startup] Starting background jobs");
+      startJobs();
+      logger.info("[startup] Background jobs started");
     }
-
-    logger.info("[startup] Starting background jobs");
-    startJobs();
-    logger.info("[startup] Background jobs started");
 
     logger.info("[startup] Starting HTTP server", { port: PORT, host: "0.0.0.0" });
     server.listen(PORT, "0.0.0.0", () => {

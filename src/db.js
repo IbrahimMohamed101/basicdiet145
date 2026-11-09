@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { isMaintenanceMode } = require("./middleware/maintenanceMode");
 const { ensurePaymentIndexes } = require("./services/paymentIndexService");
 const {
   resolveMongooseIndexRuntimePolicy,
@@ -28,14 +29,19 @@ async function connectDb() {
   const dbName = getDbNameFromUri(uri);
   const maskedUri = maskMongoUri(uri);
   const indexPolicy = resolveMongooseIndexRuntimePolicy(process.env);
+  const maintenanceMode = isMaintenanceMode();
+  const autoIndex = !maintenanceMode && indexPolicy.autoIndex;
 
-  console.log(`[railway-startup] Connecting to MongoDB (db: ${dbName}, maskedUri: ${maskedUri}, autoIndex: ${indexPolicy.autoIndex})`);
+  console.log(`[railway-startup] Connecting to MongoDB (db: ${dbName}, maskedUri: ${maskedUri}, autoIndex: ${autoIndex})`);
 
   const connection = await mongoose.connect(uri, {
     serverSelectionTimeoutMS: 10000,
-    autoIndex: indexPolicy.autoIndex,
+    autoIndex,
+    ...(maintenanceMode ? { autoCreate: false } : {}),
   });
   console.log("[railway-startup] MongoDB connected");
+
+  if (maintenanceMode) return connection;
 
   console.log("[railway-startup] Ensuring payment indexes");
   await ensurePaymentIndexes();
