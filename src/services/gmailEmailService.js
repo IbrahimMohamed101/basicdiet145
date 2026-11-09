@@ -283,6 +283,24 @@ function buildGmailApiRawMessage({ fromEmail, fromName, toEmail, subject, textBo
     .replace(/=+$/g, "");
 }
 
+function safeGmailErrorText(value, sensitiveValues) {
+  if (typeof value !== "string") return undefined;
+  let text = value;
+  for (const sensitiveValue of sensitiveValues) {
+    if (typeof sensitiveValue === "string" && sensitiveValue.length > 0) {
+      text = text.split(sensitiveValue).join("[REDACTED]");
+    }
+  }
+  return text
+    .replace(/[^\s@<>"',;]+@[^\s@<>"',;]+/g, "[REDACTED]")
+    .replace(/\bBearer\s+[^\s,;"'<>]+/gi, "Bearer [REDACTED]")
+    .replace(/\b((?:access[ _-]?|refresh[ _-]?|id[ _-]?)?token|authorization|client[ _-]?secret)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=[REDACTED]")
+    .replace(/\b(?:ya29\.|1\/)[\w./-]+|\b[\w-]{12,}\.[\w-]{12,}\.[\w-]{12,}\b/g, "[REDACTED]")
+    .replace(/[\x00-\x1f\x7f]+/g, " ")
+    .trim()
+    .slice(0, 300) || undefined;
+}
+
 async function postGmailApiMessage({ config, raw, fetchImpl = global.fetch, retryAuth = true }) {
   const accessToken = await getGmailApiAccessToken(config, fetchImpl);
   const response = await fetchImpl(GMAIL_SEND_URL, {
@@ -300,10 +318,17 @@ async function postGmailApiMessage({ config, raw, fetchImpl = global.fetch, retr
     clearCachedAccessToken();
     return postGmailApiMessage({ config, raw, fetchImpl, retryAuth: false });
   }
-  if (!response.ok || typeof body.id !== "string" || !body.id) {
+  if (!response.ok || typeof body?.id !== "string" || !body.id) {
     const err = new Error("Gmail API send request failed");
     err.code = "GMAIL_API_SEND_FAILED";
     err.status = response.status;
+    const apiError = body?.error;
+    const detail = Array.isArray(apiError?.errors)
+      ? apiError.errors.find((entry) => typeof entry?.reason === "string")
+      : undefined;
+    const sensitiveValues = [accessToken, config.refreshToken, config.clientSecret, config.clientId, config.user, raw];
+    err.reason = safeGmailErrorText(detail?.reason ?? apiError?.reason, sensitiveValues);
+    err.providerMessage = safeGmailErrorText(apiError?.message ?? detail?.message, sensitiveValues);
     throw err;
   }
   return { messageId: body.id };
@@ -469,14 +494,17 @@ async function sendEmailOtp({ toEmail, otp, purpose, expiresInMinutes }) {
     cachedTransporter = null;
     cachedTransporterKey = null;
     clearCachedAccessToken();
+    const sensitiveValues = [
+      toEmail, otp, config.user, config.appPassword, config.refreshToken, config.clientSecret, config.clientId,
+    ];
     logger.error("Gmail OTP delivery failed", {
-      email: toEmail,
       purpose,
       provider: config.provider,
       error: {
-        code: err && err.code,
-        message: err && err.message,
-        status: err && err.status,
+        code: err?.code,
+        reason: safeGmailErrorText(err?.reason, sensitiveValues),
+        message: safeGmailErrorText(err?.providerMessage ?? err?.message, sensitiveValues),
+        status: err?.status,
       },
     });
     throw new ApiError({
