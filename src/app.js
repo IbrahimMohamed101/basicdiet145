@@ -14,6 +14,7 @@ const { getAccountDeletionPage } = require("./controllers/accountDeletionControl
 const requestLanguageMiddleware = require("./middleware/requestLanguage");
 const { hideCanceledSubscriptionsFromClientList } = require("./middleware/clientSubscriptionVisibility");
 const errorResponse = require("./utils/errorResponse");
+const { maintenanceWriteGuard } = require("./middleware/maintenanceMode");
 const { logger } = require("./utils/logger");
 const { validateAndFixResponse } = require("./utils/encoding");
 const { normalizeSubscriptionBilingualResponse } = require("./utils/subscriptionBilingualResponse");
@@ -164,6 +165,9 @@ function createApp() {
 
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
+
+  // Apply before body parsing and all payment and API routes.
+  app.use(maintenanceWriteGuard);
 
   app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
