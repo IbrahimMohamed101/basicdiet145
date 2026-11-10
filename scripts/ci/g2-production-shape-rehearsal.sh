@@ -50,6 +50,12 @@ node_container() {
   docker run --rm --network "$network" --env-file "$G2_REHEARSAL_ENV_FILE" \
     -v "$PWD:/work:ro" -w /work node:20-alpine "$@"
 }
+mongo_initiate_seen() {
+  # Read the complete stream first. grep -q in a pipe can SIGPIPE docker logs and
+  # turn a positive match into a false negative under pipefail.
+  docker logs "$mongo" > "$rehearsal_tmp/mongo.log" 2>&1
+  grep -q 'replSetInitiate' "$rehearsal_tmp/mongo.log"
+}
 wait_mongo() {
   for attempt in $(seq 1 45); do
     if node_container node -e '
@@ -132,7 +138,7 @@ if [[ "$mode" == legacy ]]; then
   echo "G2_LEGACY_EXIT=$legacy_exit"
   if [[ "$legacy_exit" != 0 ]]; then
     # Replay only while still uninitialized. Never re-run an unknown mutation.
-    if docker logs "$mongo" 2>&1 | grep -q 'replSetInitiate'; then
+    if mongo_initiate_seen; then
       echo 'G2_LEGACY_POST_INIT_FAILURE' >&2
       exit 1
     fi
@@ -169,7 +175,7 @@ else
     [[ "$negative_exit" == 71 ]]
     grep -q 'G2_FAIL stage=manifest code=G2_MANIFEST_REQUIRED' "$rehearsal_tmp/negative.stderr"
     ! grep -q 'G2_INITIATE_SENT' "$rehearsal_tmp/negative.stdout"
-    ! docker logs "$mongo" 2>&1 | grep -q 'replSetInitiate'
+    ! mongo_initiate_seen
     echo "G2_NEGATIVE_${negative}_PASS"
   done
 fi
