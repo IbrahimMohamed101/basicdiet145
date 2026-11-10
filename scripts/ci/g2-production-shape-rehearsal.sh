@@ -42,6 +42,8 @@ docker network create "$network" >/dev/null
 docker volume create "$volume" >/dev/null
 docker pull mongo:8.0 >/dev/null
 docker pull node:20-alpine >/dev/null
+echo "G2_REHEARSAL_KERNEL=$(uname -r)"
+docker image inspect --format '{{index .RepoDigests 0}}' mongo:8.0
 
 node_container() {
   docker run --rm --network "$network" --env-file "$G2_REHEARSAL_ENV_FILE" \
@@ -60,6 +62,7 @@ wait_mongo() {
         await client.close(); process.exitCode = 1;
       });
     ' > "$rehearsal_tmp/readiness.stdout" 2> "$rehearsal_tmp/readiness.stderr"; then return; fi
+    if [[ "$(docker inspect --format '{{.State.Running}}' "$mongo")" != true ]]; then break; fi
     sleep 1
   done
   echo 'G2_DOCKER_READY_TIMEOUT' >&2
@@ -84,6 +87,7 @@ docker run -d --name "$mongo" --network "$network" \
   docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 \
   --setParameter diagnosticDataCollectionEnabled=false >/dev/null
 wait_mongo
+node_container node -e 'console.log("G2_REHEARSAL_NODE=" + process.version); console.log("G2_REHEARSAL_DRIVER=" + require("mongodb/package.json").version)'
 node_container node scripts/ci/g2-synthetic-seed.js
 node_container node scripts/g2-rs0-init-and-verify.js --baseline > "$rehearsal_tmp/baseline"
 export G2_REHEARSAL_BASELINE_FILE="$rehearsal_tmp/baseline"

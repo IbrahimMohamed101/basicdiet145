@@ -51,7 +51,8 @@ jobs:
 
   production-shape-rehearsal:
     name: G2 production-shape rehearsal
-    runs-on: ubuntu-24.04
+    # Keep mongo:8.0's exact commands on a compatible kernel (SERVER-121912).
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +65,7 @@ jobs:
 
   legacy-code-70-reproduction:
     name: G2 legacy code 70 reproduction
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
