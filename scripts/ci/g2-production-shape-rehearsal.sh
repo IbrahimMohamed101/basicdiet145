@@ -54,12 +54,25 @@ wait_mongo() {
       const uri = new URL(process.env.G2_MONGO_URI);
       uri.searchParams.set("directConnection", "true");
       const client = new MongoClient(uri.toString(), { serverSelectionTimeoutMS: 1000 });
-      client.connect().then(() => client.db("admin").command({ hello: 1 }))
-        .then(() => client.close(), async () => { await client.close(); process.exitCode = 1; });
-    ' >/dev/null 2>&1; then return; fi
+      client.connect().then(() => client.close(), async error => {
+        error.g2Stage = "connect";
+        process.stderr.write(require("./scripts/g2-rs0-init-and-verify").diagnostic(error));
+        await client.close(); process.exitCode = 1;
+      });
+    ' > "$rehearsal_tmp/readiness.stdout" 2> "$rehearsal_tmp/readiness.stderr"; then return; fi
     sleep 1
   done
   echo 'G2_DOCKER_READY_TIMEOUT' >&2
+  cat "$rehearsal_tmp/readiness.stderr" >&2
+  docker inspect --format '{{.State.Status}} exit={{.State.ExitCode}}' "$mongo"
+  docker logs "$mongo" 2>&1 | node -e '
+    let text = ""; process.stdin.on("data", chunk => text += chunk);
+    process.stdin.on("end", () => {
+      for (const line of text.trim().split("\n").slice(-15)) {
+        try { const log = JSON.parse(line); console.log(JSON.stringify({ s: log.s, id: log.id, msg: log.msg })); }
+        catch { /* Non-JSON entrypoint output is excluded. */ }
+      }
+    });'
   return 1
 }
 

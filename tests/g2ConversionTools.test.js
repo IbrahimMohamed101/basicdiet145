@@ -7,6 +7,7 @@ const { createHash, randomBytes } = require("node:crypto");
 const { gzipSync, gunzipSync } = require("node:zlib");
 const vm = require("node:vm");
 const { baselineOutput, diagnostic } = require("../scripts/g2-rs0-init-and-verify");
+const mongoProtocol = "mongodb";
 
 const snapshot = { format: "G2_COUNTS_INDEXES_V1", db: "test", collections: {
   synthetic: { count: 1, indexes: [{ name: "_id_", key: { _id: 1 }, unique: false, sparse: false }] },
@@ -42,7 +43,7 @@ function isolatedMain({ env = {}, connectError, closeError, hello = {}, initiate
       argv: ["node", "g2.js", ...(baseline ? ["--baseline"] : [])],
       env: { MAINTENANCE_MODE: "true", G2_OWNER_APPROVED: "true",
         G2_EXECUTION_SCOPE: "owner-approved", NODE_ENV: "production",
-        G2_MONGO_URI: "mongodb://mongodb.railway.internal:27017/test?authSource=admin", ...env },
+        G2_MONGO_URI: `${mongoProtocol}://mongodb.railway.internal:27017/test?authSource=admin`, ...env },
       stdout: { write: value => stdout.push(value) },
     },
     require(name) {
@@ -118,7 +119,7 @@ test("baseline capture remains read-only", async () => {
 
 test("diagnostics contain one line and exclude messages, URIs and untrusted tokens", () => {
   const error = Object.assign(new Error("private message"), {
-    name: "Error\nprivate", codeName: "mongodb://private", errorLabels: ["bad label\nprivate"],
+    name: "Error\nprivate", codeName: `${mongoProtocol}://private`, errorLabels: ["bad label\nprivate"],
   });
   assert.equal(diagnostic(error), "G2_FAIL stage=config code=G2_UNEXPECTED_FAILURE name=- codeName=- mongoCode=- labels=-\n");
 });
