@@ -31,6 +31,7 @@ uri.password = password;
 const variables = {
   CI: 'true', GITHUB_ACTIONS: 'true', G2_SYNTHETIC_DOCKER: 'true',
   NODE_ENV: 'production', MAINTENANCE_MODE: 'true',
+  LOG_DIR: '/tmp/g2-rehearsal-logs',
   G2_OWNER_APPROVED: 'true', G2_EXECUTION_SCOPE: 'owner-approved',
   MONGO_INITDB_ROOT_USERNAME: username, MONGO_INITDB_ROOT_PASSWORD: password,
   G2_MONGO_URI: uri.toString(), MONGO_URI: uri.toString() + '&replicaSet=rs0',
