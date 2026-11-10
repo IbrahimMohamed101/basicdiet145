@@ -7,6 +7,9 @@ on:
       - '.github/workflows/g2-conversion-tools.yml'
       - 'scripts/g2-rs0-init-and-verify.js'
       - 'scripts/g2-mongo-manifest.js'
+      - 'scripts/ci/g2-*'
+      - 'tests/g2ConversionTools.test.js'
+      - 'docs/runbooks/g2-production-night.md'
       - 'src/app.js'
       - 'src/db.js'
       - 'src/index.js'
@@ -19,6 +22,9 @@ on:
       - '.github/workflows/g2-conversion-tools.yml'
       - 'scripts/g2-rs0-init-and-verify.js'
       - 'scripts/g2-mongo-manifest.js'
+      - 'scripts/ci/g2-*'
+      - 'tests/g2ConversionTools.test.js'
+      - 'docs/runbooks/g2-production-night.md'
       - 'src/app.js'
       - 'src/db.js'
       - 'src/index.js'
@@ -41,3 +47,32 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test tests/g2MaintenanceMode.test.js
+      - run: node --test tests/g2ConversionTools.test.js
+
+  production-shape-rehearsal:
+    name: G2 production-shape rehearsal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: bash scripts/ci/g2-production-shape-rehearsal.sh current
+
+  legacy-code-70-reproduction:
+    name: G2 legacy code 70 reproduction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: bash scripts/ci/g2-production-shape-rehearsal.sh legacy
