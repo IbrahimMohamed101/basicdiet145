@@ -123,3 +123,10 @@ test("diagnostics contain one line and exclude messages, URIs and untrusted toke
   });
   assert.equal(diagnostic(error), "G2_FAIL stage=config code=G2_UNEXPECTED_FAILURE name=- codeName=- mongoCode=- labels=-\n");
 });
+
+test("unexpected driver errors retain their own metadata when they also have a cause", () => {
+  const error = Object.assign(new Error("private outer", { cause: new TypeError("private inner") }), {
+    name: "MongoServerSelectionError", errorLabels: ["ResetPool"], g2Stage: "connect",
+  });
+  assert.equal(diagnostic(error), "G2_FAIL stage=connect code=G2_UNEXPECTED_FAILURE name=MongoServerSelectionError codeName=- mongoCode=- labels=ResetPool\n");
+});

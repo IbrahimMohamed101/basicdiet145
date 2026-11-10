@@ -71,7 +71,9 @@ function readBaseline(dbName) {
 
 function diagnostic(error) {
   const code = Object.hasOwn(CODES, error.code) ? error.code : "G2_UNEXPECTED_FAILURE";
-  const original = error.cause || error;
+  // Unwrap our G2 classification only. Driver errors can have their own causes,
+  // and their top-level class/code/labels are the requested failure metadata.
+  const original = Object.hasOwn(CODES, error.code) && error.cause ? error.cause : error;
   const token = value => typeof value === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value) ? value : "-";
   const labels = Array.isArray(original.errorLabels) ? original.errorLabels.map(token).join(",") : "";
   return `G2_FAIL stage=${error.g2Stage || "config"} code=${code} name=${token(original.name)} ` +
