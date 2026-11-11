@@ -45,7 +45,7 @@ The backend uses references to this temporary service.
 | `G2_OWNER_APPROVED` | `true` after Hema's execution approval |
 | `G2_STAGING_REHEARSAL_APPROVED` | `true` after Hema's execution approval |
 | `MAINTENANCE_MODE` | `true` |
-| `NODE_ENV` | If already `production`, leave its value untouched. Otherwise privately record the exact original value, set `production` in the reviewed rehearsal patch and restore the original during staging restoration. |
+| `NODE_ENV` | The staging backend's original value is `staging`. During the rehearsal it was temporarily `production` for `preDeploy` only; the custom runtime Start Command enforced `NODE_ENV=staging`. Restore the variable to `staging` and remove the custom Start Command altogether so the Dockerfile `CMD` runs normally. |
 | `LOG_DIR` | A writable backend-container log directory |
 | `G2_BASELINE_MANIFEST_GZ_B64` | Exact compressed output from that trial's frozen baseline |
 | `G2_BASELINE_SHA256` | Exact digest from the same trial |
@@ -117,7 +117,14 @@ If there is no PASS by the deadline and complete logs prove no initiation attemp
 
 ## Restore staging and request explicit cleanup approval
 
-1. Begin restoration within the same session and by the three-hour restoration-start deadline. Restore the staging backend's original reviewed source, connection references, `preDeployCommand` and maintenance/runtime flags in a reviewed restoration patch. If `NODE_ENV` was already `production`, leave it untouched. If the rehearsal changed a different original value, restore that exact recorded value. Set `G2_OWNER_APPROVED=false` and `G2_STAGING_REHEARSAL_APPROVED=false` while retaining the other temporary G2 variables until explicit cleanup approval. Restore and verify its original staging data reads before removing any resource it depended on.
+1. Begin restoration within the same session and by the three-hour restoration-start deadline. Stage and review the original staging backend source (`codex/pos-staging-isolation @ e3e07bb57d9c2dd3702db02f211f73c7f7309caa`), original staging database connection, `preDeployCommand=[]`, and original maintenance/runtime flags. **Remove the custom Start Command entirely** (do not leave `env NODE_ENV=staging npm start`, or the temporary command including a test payment key): clear the Railway override so execution returns to the Dockerfile `CMD`. **Restore the backend variable `NODE_ENV=staging`**. Set `G2_OWNER_APPROVED=false` and `G2_STAGING_REHEARSAL_APPROVED=false`, while retaining other temporary G2 variables until separate cleanup approval. Before committing, verify the Production environment has no staged changes; deploy Staging only and confirm the original staging database reads, `Payment indexes ensured`, and HTTP readiness before removing any dependency.
 2. Present Hema with the exact temporary service ID, both newly created volume IDs, mount/attachment state and remaining backend `G2_*` variable names. Keep their synthetic state available for review until Hema explicitly approves deletion.
 3. After that explicit cleanup approval, delete only `g2-mongo-restore-drill`, its two recorded trial volumes and any remaining staging backend `G2_*` variables. Verify the original staging database volumes remain attached to their original services.
 4. Report both trial outcomes, legacy code-70 reproduction status, elapsed times, runtime metadata and cleanup results. Execution and deletion approvals are recorded separately.
+
+### 2026-11-11 rehearsal stop and NODE_ENV interpretation
+
+- Rehearsal `preDeploy` ran with `NODE_ENV=production`, but the application runtime Start Command enforced `NODE_ENV=staging`. This is **not a causal difference for historical code 70**: the immutable legacy initializer does not use Mongoose and reads `NODE_ENV` only within its `owner-approved` path. Do not attribute code 70 to the preDeploy/runtime environment split.
+- The synthetic preflight was PASS (`688650d9-a25a-4c4f-8371-c9fc52996ba9`); the original reference concatenation rendered 54,232 characters and the compressed manifest 5,484 characters.
+- Legacy pre-deploy (`fb8a930b-c56f-4ec6-ae29-2b0db0d2a69b`) at `2026-11-11T01:56:18Z` emitted `G2_INITIATE_SENT`, `G2_FAIL stage=initiate code=G2_INIT_FAILED`, and `G2_LEGACY_EXIT=66`. Therefore code **70 was not reproduced** in this trial. This is an explicit safety STOP: **do not perform standalone Rollback A on this initiated drill volume** and do not proceed to v2 without a new reviewed decision. Preserve the trial volume and logs.
+- Restoration of the original isolated staging backend was SUCCESS (`00d63fd4-bffa-4e71-b490-818f422030c4`), and at `2026-11-11T01:58:57Z` its logs confirmed `basicdiet_pos_staging_test`, `MongoDB connected`, `Payment indexes ensured`, and API listening. The custom Start Command was cleared and `NODE_ENV=staging` restored. Cleanup of the temporary drill resources was **not approved or executed**.
