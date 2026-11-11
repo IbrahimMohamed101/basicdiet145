@@ -6,14 +6,14 @@ Execution requires a new explicit Hema approval for the production window and a 
 
 - Confirm the Docker production-shape rehearsal, legacy reproduction and maintenance checks passed on the approved commit. Record whether code 70 was reproduced and the safe diagnostic if available.
 - Record the exact live backend `MONGO_URI`, MongoDB start command, pre-deploy command and relevant flags in a private local record. Test rollback access and prepare its exact configuration changes before the window.
-- Run `mongodump` locally against the standalone database before maintenance. Supply authentication privately through a protected configuration file or prompt. Write the archive into a private local directory with restrictive permissions, verify its exit status and archive checksum, and perform a restore rehearsal into an isolated local database. Stop on an incomplete backup.
+- Run `mongodump` locally against the standalone database before maintenance. Supply authentication privately through a protected configuration file or prompt and write the archive into a private local directory with restrictive permissions. The mandatory minimum is exit status 0 plus matching `done dumping` lines and document counts for the core collections present in the captured inventory, including `users`, `subscriptions`, `subscriptiondays`, `payments`, `checkoutdrafts`, `subscriptionentitlementbatches` and `subscriptionentitlementallocations`. Stop on an incomplete or mismatched dump. A local restore rehearsal is optional when Docker is available.
 - Assign a watchdog/operator to monitor the deadline and complete logs. Have the rollback operations ready to apply without another planning step. Do not start the window if uninterrupted monitoring cannot be maintained.
 
 ## 2. Freeze writes and capture a second local dump
 
 Enable backend `MAINTENANCE_MODE=true` and deploy with no initializer in `preDeployCommand`. Verify the maintenance startup marker, blocked mutation routes including Moyasar settlement GETs, disabled background jobs, and successful ordinary read/health requests. Confirm every backend replica is frozen and stop any other database writer.
 
-Immediately after the freeze, run a second local `mongodump` and verify success, checksum and readability. Preserve both dumps separately. This second dump and the subsequent baseline describe the frozen standalone state. Stop before changing MongoDB if the freeze or dump cannot be verified.
+Immediately after the freeze, run a second local `mongodump` and apply the same mandatory checks from step 1, exit status 0 plus matching core-collection `done dumping` lines and document counts. Preserve both dumps separately. This second dump and the subsequent baseline describe the frozen standalone state. Stop before changing MongoDB if the freeze or dump cannot be verified.
 
 ## 3. Capture the baseline and stage every step 5 variable
 
@@ -46,10 +46,10 @@ Stage backend `preDeployCommand=["node scripts/g2-rs0-init-and-verify.js"]` on t
 
 Record `step4_started_at` and `deadline=step4_started_at+15 minutes` in UTC **before** applying the MongoDB change. Start the watchdog at this point. Do not extend the deadline for a build, restart or retry.
 
-Prepare the private key file with the MongoDB runtime owner and mode `0400`, using the approved private `G2_RS0_KEYFILE`. Preserve the existing data volume and root user. Apply the MongoDB configuration directly to that service and deploy MongoDB only. Keep the backend step 5 patch staged during this operation so it cannot start early through an environment-wide commit.
+Use the complete approved wrapper from production deployment `2a278e7d-a452-475b-a8f2-e480dffa945f` on 2026-11-10. `/data/db/rs0-keyfile` already exists on the current production volume. The wrapper preserves an existing file and checks mode `400` and owner `mongodb`. On a fresh volume it writes the file atomically from the private `G2_RS0_KEYFILE` variable and applies those permissions. Preserve the existing data volume and root user. Apply this exact start command directly to MongoDB and deploy that service only. Keep the backend step 5 patch staged during this operation so it cannot start early through an environment-wide commit.
 
 ```sh
-docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false --replSet rs0 --keyFile /data/db/rs0-keyfile --auth
+/bin/sh -ec 'set -eu; if [ ! -e /data/db/rs0-keyfile ]; then test "$(id -u)" = 0; test -d /data/db; test -n "${G2_RS0_KEYFILE:-}"; umask 077; t=$(mktemp /data/db/.rs0-keyfile.XXXXXXXX); trap "rm -f $t" EXIT; printf "%s" "$G2_RS0_KEYFILE" > "$t"; chown mongodb:mongodb "$t"; chmod 0400 "$t"; mv "$t" /data/db/rs0-keyfile; fi; test "$(stat -c %a /data/db/rs0-keyfile)" = 400; test "$(stat -c %U /data/db/rs0-keyfile)" = mongodb; exec docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false --replSet rs0 --keyFile /data/db/rs0-keyfile --auth'
 ```
 
 Wait for MongoDB deployment success and readiness while monitoring the deadline. Stop on a failed MongoDB deployment and apply the decision rules below.
@@ -57,6 +57,8 @@ Wait for MongoDB deployment success and readiness while monitoring the deadline.
 ## 5. Commit the reviewed backend patch and initialize
 
 Recheck the complete pending diff, then apply the already-staged step 5 backend patch. Do not add or repair missing variables after starting step 4. The initializer connects directly, issues `hello`, validates gzip, JSON, database and SHA-256 before any other application database command, then initializes and verifies.
+
+After configuration validation and before connecting, every invocation emits `G2_RUNTIME node=<process.version> driver=<mongodb package version>` once on stderr. This preserves the baseline's three stdout lines. For a server-selection failure with a topology reason, the failure line also appends `topology=<type token> servers=<deduplicated server type tokens|->`. It never includes server addresses or messages.
 
 Safe failure output has this format and contains no error message or URI.
 

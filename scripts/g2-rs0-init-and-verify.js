@@ -1,6 +1,7 @@
 "use strict";
 // G2 owner-gated pre-deploy operation. No mongosh. Never log URIs or data.
 const { MongoClient } = require("mongodb");
+const { version: driverVersion } = require("mongodb/package.json");
 const { createHash } = require("node:crypto");
 const { gzipSync, gunzipSync } = require("node:zlib");
 const { collect } = require("./g2-mongo-manifest");
@@ -76,8 +77,14 @@ function diagnostic(error) {
   const original = Object.hasOwn(CODES, error.code) && error.cause ? error.cause : error;
   const token = value => typeof value === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value) ? value : "-";
   const labels = Array.isArray(original.errorLabels) ? original.errorLabels.map(token).join(",") : "";
+  let topology = "";
+  if (original.reason) {
+    const descriptions = original.reason.servers instanceof Map ? [...original.reason.servers.values()] : [];
+    const serverTypes = [...new Set(descriptions.map(server => token(server?.type)))].sort().join(",");
+    topology = ` topology=${token(original.reason.type)} servers=${serverTypes || "-"}`;
+  }
   return `G2_FAIL stage=${error.g2Stage || "config"} code=${code} name=${token(original.name)} ` +
-    `codeName=${token(original.codeName)} mongoCode=${Number.isInteger(original.code) ? original.code : "-"} labels=${labels || "-"}\n`;
+    `codeName=${token(original.codeName)} mongoCode=${Number.isInteger(original.code) ? original.code : "-"} labels=${labels || "-"}${topology}\n`;
 }
 
 function configuration() {
@@ -174,6 +181,8 @@ async function main() {
     // Both the capture and the one-time initializer must run under frozen writes.
     if (process.env.MAINTENANCE_MODE !== "true") fail("G2_MAINTENANCE_REQUIRED");
     const config = configuration();
+    // Keep the baseline's three stdout lines machine-readable in both modes.
+    process.stderr.write(`G2_RUNTIME node=${process.version} driver=${driverVersion}\n`);
     stage = "connect";
     client = new MongoClient(config.uri, { serverSelectionTimeoutMS: 10000 });
     await client.connect();

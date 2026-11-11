@@ -23,7 +23,9 @@ function signedBaseline(value = snapshot) {
 
 function isolatedMain({ env = {}, connectError, closeError, hello = {}, initiateError, baseline = false } = {}) {
   const calls = [];
+  const events = [];
   const stdout = [];
+  const stderr = [];
   const database = {
     async command(command) {
       calls.push(Object.keys(command)[0]);
@@ -33,18 +35,20 @@ function isolatedMain({ env = {}, connectError, closeError, hello = {}, initiate
     },
   };
   class MongoClient {
-    async connect() { calls.push("connect"); if (connectError) throw connectError; }
+    async connect() { calls.push("connect"); events.push("connect"); if (connectError) throw connectError; }
     db() { return database; }
     async close() { calls.push("close"); if (closeError) throw closeError; }
   }
   const context = {
     Buffer, URL, setTimeout, module: { exports: {} },
     process: {
+      version: process.version,
       argv: ["node", "g2.js", ...(baseline ? ["--baseline"] : [])],
       env: { MAINTENANCE_MODE: "true", G2_OWNER_APPROVED: "true",
         G2_EXECUTION_SCOPE: "owner-approved", NODE_ENV: "production",
         G2_MONGO_URI: `${mongoProtocol}://mongodb.railway.internal:27017/test?authSource=admin`, ...env },
       stdout: { write: value => stdout.push(value) },
+      stderr: { write: value => { stderr.push(value); events.push("stderr"); } },
     },
     require(name) {
       if (name === "mongodb") return { MongoClient };
@@ -55,7 +59,7 @@ function isolatedMain({ env = {}, connectError, closeError, hello = {}, initiate
     },
   };
   vm.runInNewContext(readFileSync(require.resolve("../scripts/g2-rs0-init-and-verify"), "utf8"), context);
-  return { main: context.module.exports.main, calls, stdout };
+  return { main: context.module.exports.main, calls, stdout, stderr, events };
 }
 
 test("baseline emits exactly three lines, hashes the original JSON and measures the encoded gzip", () => {
@@ -129,4 +133,30 @@ test("unexpected driver errors retain their own metadata when they also have a c
     name: "MongoServerSelectionError", errorLabels: ["ResetPool"], g2Stage: "connect",
   });
   assert.equal(diagnostic(error), "G2_FAIL stage=connect code=G2_UNEXPECTED_FAILURE name=MongoServerSelectionError codeName=- mongoCode=- labels=ResetPool\n");
+});
+
+test("selection diagnostics report only topology and server type tokens", () => {
+  const reason = { type: "Single", servers: new Map([
+    ["private-host-one:27017", { type: "RSGhost", error: new Error("private server error") }],
+    ["private-host-two:27017", { type: "Unknown" }],
+    ["private-host-three:27017", { type: "RSGhost" }],
+    ["private-host-four:27017", { type: "invalid\nprivate" }],
+  ]) };
+  const error = Object.assign(new Error("private message"), { name: "MongoServerSelectionError", reason, g2Stage: "connect" });
+  assert.equal(diagnostic(error), "G2_FAIL stage=connect code=G2_UNEXPECTED_FAILURE name=MongoServerSelectionError codeName=- mongoCode=- labels=- topology=Single servers=-,RSGhost,Unknown\n");
+  reason.type = "invalid\nprivate";
+  reason.servers.clear();
+  assert.match(diagnostic(error), / topology=- servers=-\n$/);
+});
+
+test("runtime versions are emitted once after config and before connecting", async () => {
+  const run = isolatedMain({ baseline: true });
+  await run.main();
+  assert.deepEqual(run.stderr, [`G2_RUNTIME node=${process.version} driver=${require("mongodb/package.json").version}\n`]);
+  assert.deepEqual(run.events.slice(0, 2), ["stderr", "connect"]);
+  assert.equal(run.stdout.join("").trim().split("\n").length, 3);
+  const blocked = isolatedMain({ env: { G2_OWNER_APPROVED: "false" } });
+  await assert.rejects(blocked.main(), { code: "G2_OWNER_APPROVAL_REQUIRED" });
+  assert.deepEqual(blocked.stderr, []);
+  assert.deepEqual(blocked.calls, []);
 });
