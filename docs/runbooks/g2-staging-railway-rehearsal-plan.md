@@ -10,18 +10,23 @@ Status is proposed for Hema review. Execution, deployment and cleanup are separa
 - Before execution, privately record the backend's original source commit/branch, variable references, `preDeployCommand`, maintenance state and runtime flags. Review the current pending patch so applying step 5 cannot also apply unrelated work.
 - All approved code must be present in the backend build image before setting its pre-deploy command. Any temporary source change and restoration will be included in the staging diff for Hema review.
 
-Two code preparations need a separate review before this plan can run.
+The preparation PR supplies the following tools for review before execution approval.
 
-1. `scripts/ci/g2-synthetic-seed.js` currently accepts Docker CI on host `mongodb.railway.internal`, database `test`, only. Extend its existing guard with an explicitly approved `staging-isolated` path requiring `G2_OWNER_APPROVED=true`, `G2_STAGING_REHEARSAL_APPROVED=true`, hostname `g2-mongo-restore-drill.railway.internal` and the exact synthetic database name. Retain the empty-database check and existing CI restrictions. Use the validated target database name in the generated manifest. Railway will use this real staging guard.
-2. Package the unchanged `c4580553a56f986e7702471b32a82d74e12e1c65:scripts/g2-rs0-init-and-verify.js` as `scripts/.g2-legacy-init.js` in the approved rehearsal image, and verify its file hash against that commit before deploying. The current CI creates this file dynamically with `git show`. The Railway image needs a reviewed packaging step because its normal image does not contain that generated file. Invoke it through `scripts/ci/g2-legacy-diagnostics.js`. Extend that adapter's evidence output to record the legacy original exit classification and safe runtime metadata, while retaining its top-level diagnostic, topology and server-type output.
+1. `scripts/ci/g2-synthetic-seed.js` has an explicitly approved `staging-isolated` path requiring `G2_OWNER_APPROVED=true`, `G2_STAGING_REHEARSAL_APPROVED=true`, hostname `g2-mongo-restore-drill.railway.internal` and database `basicdiet_g2_staging_synthetic`. Its original Docker CI restrictions remain in place. The empty-database check runs before model loading, inserts or index creation. The manifest uses the validated database name.
+2. `scripts/.g2-legacy-init.js` is the literal historical `c4580553a56f986e7702471b32a82d74e12e1c65:scripts/g2-rs0-init-and-verify.js`. Its SHA-256 is `963ead351b9ddbd26564d3124ba8628df0f1739a92a663368015af3116d0b133`, tested against `git show` from that commit. The existing Dockerfile copies this packaged file into the backend image. `scripts/ci/g2-legacy-diagnostics.js` preserves the original exit classification and arguments, emits `G2_LEGACY_EXIT=<original code>` and `G2_RUNTIME`, and retains safe error/topology metadata. It emits `G2_INITIATE_SENT` immediately before a legacy initiation command for the rollback decision.
+3. `scripts/ci/g2-preflight.js` is a read-only pre-deploy command. It checks the approved target and URI option values and reports encoded-variable lengths and SHA-256 hashes, without decoding or printing the manifest payload.
 
-The preparation changes above are proposed work. This plan does not claim the current Docker-only seed or legacy packaging is ready for Railway.
+## Single-session freeze and restoration deadline
+
+Complete both experiments and staging restoration in the same attended session. Record `staging_frozen_at` once, at the first maintenance freeze before the legacy trial, and prepare the original staging restoration patch before starting. The second trial does not reset this clock.
+
+Record `staging_restore_started_at` when restoration begins. If restoration has not started by `staging_frozen_at + 3 hours`, stop the experiment immediately and restore staging at once. This applies even if a trial is still running or awaiting diagnosis. Preserve any initiated drill state for review while restoring the original staging backend connection/configuration. Finish restoration and verify staging in that same session. The separate 15-minute step 4 deadline applies to each trial within this overall session limit.
 
 ## Temporary resources and references
 
 Create one temporary `mongo:8.0` service named `g2-mongo-restore-drill`, with private hostname `g2-mongo-restore-drill.railway.internal`, mounted at `/data/db`. Record the new service ID and every volume ID immediately after creation.
 
-Use two fresh, isolated volumes for comparable pre-init trials, `g2-drill-legacy-<UTC>` and `g2-drill-v2-<UTC>`. Run the trials sequentially through the same temporary service. Change the mounted trial volume and restore the standalone start command in one reviewed service patch. Detach and preserve the first trial's volume when attaching the second. This avoids running the second initializer against an already initialized replica set and preserves the legacy evidence until cleanup approval.
+Use two fresh, isolated volumes for comparable pre-init trials, `g2-drill-legacy-<UTC>` and `g2-drill-v2-<UTC>`. The legacy trial must run first, followed by v2 through the same temporary service. Change the mounted trial volume and restore the standalone start command in one reviewed service patch. Detach and preserve the first trial's volume when attaching the second. This avoids running the second initializer against an already initialized replica set and preserves the legacy evidence until cleanup approval.
 
 | Drill-service variable | Planned value |
 | --- | --- |
@@ -40,18 +45,20 @@ The backend uses references to this temporary service.
 | `G2_OWNER_APPROVED` | `true` after Hema's execution approval |
 | `G2_STAGING_REHEARSAL_APPROVED` | `true` after Hema's execution approval |
 | `MAINTENANCE_MODE` | `true` |
-| `NODE_ENV` | `production` for the rehearsal |
+| `NODE_ENV` | If already `production`, leave its value untouched. Otherwise privately record the exact original value, set `production` in the reviewed rehearsal patch and restore the original during staging restoration. |
 | `LOG_DIR` | A writable backend-container log directory |
 | `G2_BASELINE_MANIFEST_GZ_B64` | Exact compressed output from that trial's frozen baseline |
 | `G2_BASELINE_SHA256` | Exact digest from the same trial |
 
-Before step 4, inspect reference resolution privately through a guarded pre-deploy preflight. Compare only scheme, exact expected host/database, required option names and a digest of the expected concatenated synthetic baseline. Its output contains runtime versions, byte lengths, hashes and type/status tokens. It excludes resolved URIs, credentials and server addresses.
+Before step 4, use `preDeployCommand=["node scripts/ci/g2-preflight.js"]` to inspect reference resolution. The command validates the exact expected host/database and `authSource=admin`. If `replicaSet` or `directConnection` is present, it checks `rs0` or `true` respectively. An application URI without `replicaSet` is allowed during the standalone phase. The step 5 reference diff must include `replicaSet=rs0` before conversion.
+
+The output reports `scheme=mongodb`, `host=staging-drill`, the synthetic database name, and required/present option names. `host` is a verified role token so the actual DNS name/address stays private. It also reports character count, UTF-8 byte length and SHA-256 of the fully rendered old base64 variable when present, and of the compressed variable. These are hashes of the encoded environment values, distinct from `G2_BASELINE_SHA256`, which hashes the decompressed JSON. It excludes resolved URIs, credentials, payloads and server addresses.
 
 ## Steps 2 through 5 for each trial
 
 ### 2. Freeze staging, seed the standalone drill
 
-Enable staging backend maintenance and remove its previous pre-deploy operation for this trial. Confirm the staging background jobs and settlement routes are frozen. Keep this freeze until restoration.
+Enable staging backend maintenance and remove its previous pre-deploy operation for this trial. Confirm the staging background jobs and settlement routes are frozen. Record the session-wide `staging_frozen_at` at this first freeze before legacy. Keep this freeze across both trials until restoration. Check the three-hour restoration-start deadline throughout the session.
 
 Start the temporary MongoDB service on the fresh trial volume with the former standalone command.
 
@@ -96,13 +103,21 @@ Wait for successful MongoDB startup while observing the same deadline and comple
 - Legacy trial on its own fresh volume uses `preDeployCommand=["node scripts/ci/g2-legacy-diagnostics.js"]`. Collect its stage, original error class, numeric MongoDB code, labels, topology type and server types, or its PASS marker. A failed pre-deploy is an expected diagnostic outcome only after its exact original classification is recorded.
 - V2 trial on its own fresh volume uses `preDeployCommand=["node scripts/g2-rs0-init-and-verify.js"]`. Require `G2_RS0_PRIMARY_COMMIT_ABORT_COUNTS_INDEXES_PASS`, with `G2_INITIATE_SENT` and the matching initiation result, counts/index equality and successful commit/abort probes.
 
+For a legacy failure before initiation, stop the initializer and verify complete logs contain neither `G2_INITIATE_SENT` nor `replSetInitiate`. Apply the MongoDB portion of Rollback A from the production runbook verbatim to the drill service, retaining that trial's volume and private key variable.
+
+```sh
+docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false
+```
+
+Record `legacy_failed_at` from the timestamped failure/exit output. Deploy the drill with this standalone command, wait for `SUCCESS` and the new standalone `Waiting for connections` line, and record its timestamp as `drill_standalone_ready_at`. Report `rollback_elapsed_seconds=drill_standalone_ready_at-legacy_failed_at`. Disable the legacy pre-deploy command and re-arm approvals only for the separately reviewed v2 trial. Staging maintenance remains active across this drill rollback. If initiation evidence exists or logs are incomplete, preserve the drill state and escalate instead of switching it to standalone, while still honoring the staging restoration deadline.
+
 Record `pass_at` from the timestamped pre-deploy PASS line and report `elapsed_seconds=pass_at-step4_started_at` for each passing trial. For a failing legacy trial, report elapsed time to failure separately and retain its exact safe diagnostic. Record image digest, Node and driver versions, deployment IDs and the reference-concatenation length/hash alongside the result.
 
 If there is no PASS by the deadline and complete logs prove no initiation attempt, stop the initializer and apply the documented standalone rollback to that synthetic trial. Any initiation marker, MongoDB initiation command, or incomplete logs requires stopping with the synthetic state preserved for Hema review. Each independent trial has its own recorded deadline.
 
 ## Restore staging and request explicit cleanup approval
 
-1. Restore the staging backend's original reviewed source, connection references, `preDeployCommand`, `NODE_ENV` and maintenance/runtime flags in a reviewed restoration patch. Set `G2_OWNER_APPROVED=false` and `G2_STAGING_REHEARSAL_APPROVED=false` while retaining the other temporary G2 variables until explicit cleanup approval. Restore and verify its original staging data reads before removing any resource it depended on.
+1. Begin restoration within the same session and by the three-hour restoration-start deadline. Restore the staging backend's original reviewed source, connection references, `preDeployCommand` and maintenance/runtime flags in a reviewed restoration patch. If `NODE_ENV` was already `production`, leave it untouched. If the rehearsal changed a different original value, restore that exact recorded value. Set `G2_OWNER_APPROVED=false` and `G2_STAGING_REHEARSAL_APPROVED=false` while retaining the other temporary G2 variables until explicit cleanup approval. Restore and verify its original staging data reads before removing any resource it depended on.
 2. Present Hema with the exact temporary service ID, both newly created volume IDs, mount/attachment state and remaining backend `G2_*` variable names. Keep their synthetic state available for review until Hema explicitly approves deletion.
 3. After that explicit cleanup approval, delete only `g2-mongo-restore-drill`, its two recorded trial volumes and any remaining staging backend `G2_*` variables. Verify the original staging database volumes remain attached to their original services.
 4. Report both trial outcomes, legacy code-70 reproduction status, elapsed times, runtime metadata and cleanup results. Execution and deletion approvals are recorded separately.

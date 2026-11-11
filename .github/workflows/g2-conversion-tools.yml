@@ -7,8 +7,11 @@ on:
       - '.github/workflows/g2-conversion-tools.yml'
       - 'scripts/g2-rs0-init-and-verify.js'
       - 'scripts/g2-mongo-manifest.js'
+      - 'scripts/.g2-legacy-init.js'
       - 'scripts/ci/g2-*'
       - 'tests/g2ConversionTools.test.js'
+      - 'tests/g2RailwayRehearsalPrep.test.js'
+      - 'docs/runbooks/g2-staging-railway-rehearsal-plan.md'
       - 'docs/runbooks/g2-production-night.md'
       - 'src/app.js'
       - 'src/db.js'
@@ -22,8 +25,11 @@ on:
       - '.github/workflows/g2-conversion-tools.yml'
       - 'scripts/g2-rs0-init-and-verify.js'
       - 'scripts/g2-mongo-manifest.js'
+      - 'scripts/.g2-legacy-init.js'
       - 'scripts/ci/g2-*'
       - 'tests/g2ConversionTools.test.js'
+      - 'tests/g2RailwayRehearsalPrep.test.js'
+      - 'docs/runbooks/g2-staging-railway-rehearsal-plan.md'
       - 'docs/runbooks/g2-production-night.md'
       - 'src/app.js'
       - 'src/db.js'
@@ -41,6 +47,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -48,6 +56,7 @@ jobs:
       - run: npm ci
       - run: node --test tests/g2MaintenanceMode.test.js
       - run: node --test tests/g2ConversionTools.test.js
+      - run: node --test tests/g2RailwayRehearsalPrep.test.js
 
   production-shape-rehearsal:
     name: G2 production-shape rehearsal
