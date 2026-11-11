@@ -106,4 +106,3 @@ If there is no PASS by the deadline and complete logs prove no initiation attemp
 2. Present Hema with the exact temporary service ID, both newly created volume IDs, mount/attachment state and remaining backend `G2_*` variable names. Keep their synthetic state available for review until Hema explicitly approves deletion.
 3. After that explicit cleanup approval, delete only `g2-mongo-restore-drill`, its two recorded trial volumes and any remaining staging backend `G2_*` variables. Verify the original staging database volumes remain attached to their original services.
 4. Report both trial outcomes, legacy code-70 reproduction status, elapsed times, runtime metadata and cleanup results. Execution and deletion approvals are recorded separately.
-
