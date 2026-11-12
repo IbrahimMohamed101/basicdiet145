@@ -34,6 +34,7 @@ test("homepage dishes display the same calories as the full menu", async ({ page
 
 test("changing dish weight never reuses or scales a different portion's calories", async ({ page }) => {
   await page.goto("/menu");
+  await page.locator(".menu-extra-toggle").click();
   await page.getByRole("button", { name: "تفاصيل سالمون 100 جرام", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "سالمون", exact: true });
   await expect(dialog.locator(".menu-calories")).toHaveAttribute("data-calories", "210");
@@ -48,6 +49,7 @@ test("changing dish weight never reuses or scales a different portion's calories
 
 test("a zero-calorie drink remains visible without turning an unknown food into zero", async ({ page }) => {
   await page.goto("/menu");
+  await page.locator(".menu-extra-toggle").click();
   await page.getByRole("searchbox", { name: "ابحث عن صنف" }).fill("مياه عاديه");
   const card = page.locator(".menu-product-card");
   await expect(card).toHaveCount(1);
@@ -65,6 +67,7 @@ for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/menu");
+    await page.locator(".menu-extra-toggle").click();
     const first = page.locator(".menu-product-card").first();
     await expect(first.locator(".menu-calories")).toHaveAttribute("data-calories", "410");
     const fits = await first.locator(".menu-calories").evaluate(node => {
