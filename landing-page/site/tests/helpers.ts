@@ -30,3 +30,12 @@ export async function stubPlanCatalog(page: Page) {
     body: JSON.stringify(planCatalogFixture),
   }));
 }
+
+/** Isolate analytics ingestion in presentation/navigation-only browser tests.
+ * Production analytics semantics and analytics-origin.spec.ts are NOT mocked. */
+export async function stubPresentationAnalytics(page: Page) {
+  await page.route("**/api/analytics", route => {
+    if (route.request().method() !== "POST") return route.continue();
+    return route.fulfill({ status: 204, body: "" });
+  });
+}
