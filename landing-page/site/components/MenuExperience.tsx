@@ -12,6 +12,7 @@ import { mealProteinChoices, mealProteinGroups, mealSideChoices } from "@/lib/me
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
 import { editorialMenuDescriptions } from "@/lib/menu-editorial-descriptions";
 import { MenuCalories } from "@/components/MenuCalories";
+import { RestaurantMenu } from "@/components/RestaurantMenu";
 import { MENU_CALORIES_NOTE } from "@/lib/menu-nutrition";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
@@ -168,7 +169,7 @@ export function MenuExperience() {
             <p>وجبات دجاج ولحم وسمك، سلطات، فطور وساندويتشات. تصفّح الصور والأسعار واختار اللي يعجبك.</p>
             <PromoOfferText location="menu" />
             <div className="menu-hero-actions">
-              <a className="menu-primary-link" href="#menu-products">استكشف الأطباق <span aria-hidden="true">↙</span></a>
+              <a className="menu-primary-link" href="#restaurant-menu">استكشف الأطباق <span aria-hidden="true">↙</span></a>
               <a className="menu-ghost-link" href="#menu-custom">كوّن وجبتك <span aria-hidden="true">←</span></a>
             </div>
             <div className="menu-hero-mini-tagline" aria-label="أقسام المنيو">وجبات <span>•</span> سلطات <span>•</span> فطور <span>•</span> ساندويتشات</div>
@@ -196,7 +197,7 @@ export function MenuExperience() {
         <div className="page-shell">
           <div className="menu-featured-intro">
             <div><p className="menu-kicker"><span aria-hidden="true" /> EXPLORE THE MENU</p><h2 id="menu-category-title">ابدأ باللي تشتهيه.</h2></div>
-            <a href="#menu-products">شوف المنيو بالكامل <span aria-hidden="true">←</span></a>
+            <a href="#restaurant-menu">شوف منيو المطعم بالكامل <span aria-hidden="true">←</span></a>
           </div>
           <div className="menu-featured-grid">
             {menuShowcaseCategories.map((group, index) => (
@@ -219,9 +220,11 @@ export function MenuExperience() {
         </div>
       </section>
 
+      <RestaurantMenu />
+
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
-          <Heading id="menu-catalog-title" tag="FULL MENU / القائمة" title="اختار وجبتك بعينك." copy="تصفح أطباق بيسك دايت بالصور والأسعار واختار القسم اللي يناسبك." />
+          <Heading id="menu-catalog-title" tag="MORE CHOICES / أصناف إضافية" title="أصناف إضافية من بيسك دايت." copy="استكشف أصنافًا أخرى من كتالوج الموقع. أسعارها وحصصها منفصلة عن قائمة المطعم أعلاه." />
           <div className="menu-catalog-tools">
             <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
               {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(12); }}>{group}</button>)}
