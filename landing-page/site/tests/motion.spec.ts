@@ -285,7 +285,7 @@ for (const reduced of [false, true]) {
     ).toEqual({ paused: true, source: null, poster: false });
     // A0 STALE_TEST: the intentional poster is a separate responsive Image and a CSS fallback.
     await expect(page.locator(".hero-cinema-mobile-poster")).toHaveCount(1);
-    await expect(page.locator("video[data-motion-video]")).toHaveCSS("background-image", /url\\(/);
+    await expect(page.locator("video[data-motion-video]")).toHaveCSS("background-image", /url\(/);
 
     await context.close();
   });
@@ -392,7 +392,7 @@ test("Save-Data keeps the cinematic hero on its poster", async ({ page }) => {
   ).toEqual({ paused: true, source: null, poster: false });
   // A0 STALE_TEST: the video uses the dedicated responsive image and CSS background.
   await expect(page.locator(".hero-cinema-mobile-poster")).toHaveCount(1);
-  await expect(page.locator("video[data-motion-video]")).toHaveCSS("background-image", /url\\(/);
+  await expect(page.locator("video[data-motion-video]")).toHaveCSS("background-image", /url\(/);
 
   expect(mediaRequests).toEqual([]);
 });
