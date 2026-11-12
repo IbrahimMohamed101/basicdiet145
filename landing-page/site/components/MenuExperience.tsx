@@ -39,6 +39,10 @@ const sizeVariantFamilies = [
   { key: "chicken-meal", title: "وجبة دجاج", sizes: [{ id: "42", grams: 100 }, { id: "43", grams: 150 }, { id: "44", grams: 200 }] },
   { key: "beef-meal", title: "وجبة لحم", sizes: [{ id: "129", grams: 100 }, { id: "79", grams: 150 }, { id: "80", grams: 200 }] },
 ] as const;
+// Products now represented in the approved 2026-11-12 restaurant menu above.
+// Exclude those duplicates and the withdrawn fajita from the *extra* landing catalogue.
+// Keep the underlying POS/app catalog and its prices untouched.
+const hiddenAdditionalSandwichIds = new Set(["26", "29", "30", "31", "32", "33", "200", "27", "28", "76"]);
 const menuItemById = new Map(menuPreviewItems.map(item => [item.id, item]));
 const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
 
@@ -98,6 +102,7 @@ export function MenuExperience() {
 
 
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
+    if (hiddenAdditionalSandwichIds.has(item.id)) return false;
     return (category === "الكل" || item.category === category) &&
       (search.trim() === "" || item.name.includes(search.trim()) || item.id.includes(search.trim()));
   }).sort((a, b) => {
@@ -201,8 +206,8 @@ export function MenuExperience() {
           </div>
           <div className="menu-featured-grid">
             {menuShowcaseCategories.map((group, index) => (
-              <a key={group.label} href="#menu-products" className="menu-featured-card"
-                onClick={() => { setCategory(group.label); setSearch(""); setVisibleCount(12); }}>
+              <a key={group.label} href={group.label === "الساندويتشات" ? "#restaurant-menu" : "#menu-products"} className="menu-featured-card"
+                onClick={() => { if (group.label !== "الساندويتشات") { setCategory(group.label); setSearch(""); setVisibleCount(12); } }}>
                 <Image
                   src={group.image}
                   alt=""
