@@ -234,18 +234,80 @@ test("navbar desktop keyboard, focus outline and stable layout on scroll", async
   }
   await page.waitForTimeout(600);
   const shifts = await page.evaluate(async () => {
-    let total = 0;
+    type ShiftSource = {
+      node?: Node | null;
+      previousRect?: DOMRectReadOnly;
+      currentRect?: DOMRectReadOnly;
+    };
+    type ShiftEntry = PerformanceEntry & {
+      value: number;
+      hadRecentInput?: boolean;
+      sources?: ShiftSource[];
+    };
+    const entries: Array<{
+      value: number;
+      hadRecentInput: boolean;
+      startTime: number;
+      sources: Array<{
+        element: string;
+        nearestSection: string | null;
+        previous: { x: number; y: number; width: number; height: number } | null;
+        current: { x: number; y: number; width: number; height: number } | null;
+      }>;
+    }> = [];
+    const rect = (box?: DOMRectReadOnly) => box
+      ? { x: box.x, y: box.y, width: box.width, height: box.height }
+      : null;
+    const selector = (node?: Node | null) => {
+      if (!(node instanceof Element)) return node?.nodeName ?? "(unavailable)";
+      const classes = [...node.classList].slice(0, 3).map(name => "." + name).join("");
+      return node.tagName.toLowerCase() + (node.id ? "#" + node.id : "") + classes;
+    };
+    const nearestSection = (node?: Node | null) => node instanceof Element
+      ? node.closest("section[id], main[id], [data-deferred-calculator]")?.getAttribute("id")
+        || node.closest("[data-deferred-calculator]")?.getAttribute("data-deferred-calculator")
+        || null
+      : null;
     const observer = new PerformanceObserver(list => {
-      for (const entry of list.getEntries()) total += (entry as PerformanceEntry & { value: number }).value;
+      for (const entry of list.getEntries() as ShiftEntry[]) {
+        entries.push({
+          value: entry.value,
+          hadRecentInput: Boolean(entry.hadRecentInput),
+          startTime: entry.startTime,
+          sources: (entry.sources || []).map(source => ({
+            element: selector(source.node),
+            nearestSection: nearestSection(source.node),
+            previous: rect(source.previousRect),
+            current: rect(source.currentRect),
+          })),
+        });
+      }
     });
     observer.observe({ type: "layout-shift" });
-    const initial = document.querySelector("main")!.getBoundingClientRect().height;
+    const state = () => ({
+      mainHeight: document.querySelector("main")!.getBoundingClientRect().height,
+      plansHeight: document.getElementById("plans")?.getBoundingClientRect().height ?? null,
+      plansBusy: document.getElementById("plans")?.getAttribute("aria-busy") ?? null,
+    });
+    const before = state();
     window.scrollTo({ top: 80, behavior: "instant" });
     await new Promise(resolve => setTimeout(resolve, 400));
     window.scrollTo({ top: 0, behavior: "instant" });
     await new Promise(resolve => setTimeout(resolve, 400));
     observer.disconnect();
-    return { total, initial, final: document.querySelector("main")!.getBoundingClientRect().height };
+    const after = state();
+    return {
+      total: entries.reduce((sum, entry) => sum + entry.value, 0),
+      initial: before.mainHeight,
+      final: after.mainHeight,
+      before,
+      after,
+      entries,
+    };
+  });
+  await test.info().attach("navbar-cls-layout-shift-sources.json", {
+    body: JSON.stringify(shifts, null, 2),
+    contentType: "application/json",
   });
   expect(shifts.total).toBe(0);
   expect(shifts.final).toBe(shifts.initial);
