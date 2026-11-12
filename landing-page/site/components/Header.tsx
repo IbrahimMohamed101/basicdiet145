@@ -97,10 +97,9 @@ export function Header() {
     // Track the section actually sitting below the sticky header.
     // IntersectionObserver's callback order can leave aria-current empty after
     // anchor navigation even when the target is correctly positioned.
-    const sectionTargets = currentLinks
-      .filter((link) => link.href.startsWith("#"))
-      .map((link) => ({ ...link, section: document.getElementById(link.href.slice(1)) }))
-      .filter((item): item is { href: string; label: string; section: HTMLElement } => Boolean(item.section));
+    // The home calculator replaces a placeholder section after hydration.
+    // Resolve live IDs on every scroll rather than caching detached elements.
+    const sectionLinks = currentLinks.filter((link) => link.href.startsWith("#"));
 
     let frame = 0;
     function updateCurrentSection() {
@@ -109,7 +108,9 @@ export function Header() {
       // Use a single content band, not the last of several intersecting sections.
       // Unlinked sections therefore clear aria-current naturally.
       const band = Math.min(window.innerHeight * 0.45, headerBottom + 92);
-      const current = sectionTargets.find(({ section }) => {
+      const current = sectionLinks.find(({ href }) => {
+        const section = document.getElementById(href.slice(1));
+        if (!section) return false;
         const rect = section.getBoundingClientRect();
         return rect.top <= band && rect.bottom > band;
       });
