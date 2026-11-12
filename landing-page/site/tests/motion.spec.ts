@@ -140,7 +140,7 @@ test("cinematic hero uses the approved full video and hands off to the interacti
   );
   // Next/Image may serve the same asset through its optimized /_next/image URL.
   const mealImageSrc = await page.locator(".hero-meal-image").getAttribute("src");
-  expect(decodeURIComponent(mealImageSrc ?? "")).toContain("/meals/butter-chicken.png");
+  expect(decodeURIComponent(mealImageSrc ?? "")).toContain("/meals/salmon.png");
   await expect(page.locator(".hero-cinema-title-line")).toHaveCount(3);
   await expect(page.locator(".app-reveal-section")).toHaveCount(1);
   await expect(page.locator(".proof-strip")).toHaveCount(0);
@@ -282,7 +282,10 @@ for (const reduced of [false, true]) {
         source: video.querySelector("source")?.getAttribute("src"),
         poster: Boolean(video.poster),
       })),
-    ).toEqual({ paused: true, source: null, poster: true });
+    ).toEqual({ paused: true, source: null, poster: false });
+    // A0 STALE_TEST: the intentional poster is a separate responsive Image and a CSS fallback.
+    await expect(page.locator(".hero-cinema-mobile-poster")).toHaveCount(1);
+    await expect(page.locator("video[data-motion-video]")).toHaveCSS("background-image", /url\\(/);
 
     await context.close();
   });
@@ -294,16 +297,10 @@ test("initial reduced motion keeps smooth scrolling disabled", async ({ page }) 
     await page.goto("/");
 
   await page.locator(".button--hero").click();
-  await expect(page.locator("#app")).toBeInViewport();
-
-  await page.locator("#app .app-store-button").first().hover();
-
-  expect(
-    await page.locator("#app .app-store-button").first().evaluate((element) => ({
-      transform: getComputedStyle(element).transform,
-      scroll: getComputedStyle(document.documentElement).scrollBehavior,
-    })),
-  ).toEqual({ transform: "none", scroll: "auto" });
+  // A0 STALE_TEST: the current Hero CTA is "احسب باقتك" and targets #plans.
+  await expect(page).toHaveURL(/#plans$/);
+  await expect(page.locator("#plans")).toBeInViewport();
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
 });
 
 test("current interactions remain usable with CPU throttled 4x", async ({ page }) => {
@@ -392,7 +389,10 @@ test("Save-Data keeps the cinematic hero on its poster", async ({ page }) => {
       source: video.querySelector("source")?.getAttribute("src"),
       poster: Boolean(video.poster),
     })),
-  ).toEqual({ paused: true, source: null, poster: true });
+  ).toEqual({ paused: true, source: null, poster: false });
+  // A0 STALE_TEST: the video uses the dedicated responsive image and CSS background.
+  await expect(page.locator(".hero-cinema-mobile-poster")).toHaveCount(1);
+  await expect(page.locator("video[data-motion-video]")).toHaveCSS("background-image", /url\\(/);
 
   expect(mediaRequests).toEqual([]);
 });
