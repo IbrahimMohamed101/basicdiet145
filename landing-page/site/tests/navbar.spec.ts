@@ -252,7 +252,7 @@ test("navbar desktop keyboard, focus outline and stable layout on scroll", async
   expect(shifts.final).toBe(shifts.initial);
   await page.locator("#meals").evaluate(e => e.scrollIntoView({ behavior: "instant" }));
   await expect(page.locator('.desktop-nav a[href="#meals"]')).toHaveAttribute("aria-current", "location");
-  await page.locator(".benefits-section").evaluate(e => e.scrollIntoView({ behavior: "instant" }));
+  await page.locator(".bd-service-clarity").evaluate(e => e.scrollIntoView({ behavior: "instant" }));
   await expect(page.locator(".desktop-nav [aria-current]")).toHaveCount(0);
 });
 
