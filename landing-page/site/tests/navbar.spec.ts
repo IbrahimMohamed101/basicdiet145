@@ -194,9 +194,12 @@ test("navbar desktop keyboard, focus outline and stable layout on scroll", async
   await expect(page.locator(".skip-link")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.locator(".brand")).toBeFocused();
-  for (const id of targets) {
+  // The current desktop navbar includes /menu between #meals and #how-it-works.
+  // Preserve the full keyboard order, including the non-anchor menu link.
+  for (const { href, label } of expectedHomeLinks) {
     await page.keyboard.press("Tab");
-    const link = page.locator(`.desktop-nav a[href="#${id}"]`);
+    const link = page.locator(".desktop-nav").locator(`a[href="${href}"]`);
+    await expect(link).toHaveText(label);
     await expect(link).toBeFocused();
     expect(await link.evaluate(e => getComputedStyle(e).outlineStyle)).toBe("solid");
   }
