@@ -1,5 +1,31 @@
 # Task 6 Railway staging rehearsal plan
 
+## 2026-11-12 execution — isolated runner supersedes historical backend plan
+
+**This is the controlling design for any repeat**. The older sections below describing changes to staging `basicdiet145` are retained for historical audit only and MUST NOT be followed. Never modify source, `MONGO_URI`, runtime flags, start command, or `preDeployCommand` of staging backend `9a6d629e-c9f4-4687-bf83-613011606018`; no staging freeze is needed because the synthetic drill is independent. In the completed session its backend deployment stayed `00d63fd4-bffa-4e71-b490-818f422030c4`. No production mutations or PR merge were authorized.
+
+- Only staging `90700265-e775-4075-a99c-8d04508a7d98`; before every deploy require production `get-staged-changes` empty. Commit an environment patch **only when all its resource diffs belong solely to the intended runner or drill**; never commit unrelated staged changes. Use **new deploy**, not `redeploy`. Collect that deployment ID's complete startup logs and apply the existing three-minute Mongo startup gate.
+- Isolated `g2-runner` service `a306e774-86ec-411d-bf57-9f8d4d57ab95`: GitHub `IbrahimMohamed101/basicdiet145`, `codex/g2-railway-rehearsal-prep` with tested source commit `da63782ae760935b7d5c4051f001a316a12a2823`, same Dockerfile/Node and MongoDB driver; start `node -e "setInterval(()=>{},1<<30)"`, no public domain. Its variables are `G2_MONGO_URI=${{g2-mongo-restore-drill.MONGO_URL}}`, `G2_EXECUTION_SCOPE=staging-isolated`, `G2_OWNER_APPROVED=true` **only during a controlled trial**, `G2_STAGING_REHEARSAL_APPROVED=true`, `MAINTENANCE_MODE=true`, `NODE_ENV=production`; no `MONGO_URI`. Each seed, baseline and initializer is a **runner-only** `preDeployCommand` with a new deployment. Finally disarm with `G2_OWNER_APPROVED=false` and `preDeployCommand=[]`.
+- Drill Mongo `ee19228c-09df-47bb-8f33-02cc5f6d13e0`, `mongo:8.0`, `/data/db`. Legacy volume `3d175f01-565e-44e7-91f0-dd77521bfe7d` is detached and preserves successful initialized legacy evidence. New v2 volume `3578212e-20bd-44f8-8db5-e2fefb2c770e` is mounted on the drill; never delete it without separate approval.
+- **Kernel/TCMalloc startup precondition.** The v2 standalone deployment `a9b1eced-5c01-4e66-9953-1692e174231e` without `GLIBC_TUNABLES` logged `MongoDB cannot start` for Linux kernel 6.19.0–7.0.13. The next new standalone deployment `93769fd4-3f56-460f-873a-250177255e47` with drill-only `GLIBC_TUNABLES=glibc.pthread.rseq=1` logged `Waiting for connections` at `2026-11-12T15:46:49Z`, no kernel failure and no replication startup lines. **This is not a conclusive A/B comparison of the same defective Railway host**, because host identity/kernel was not independently proven in the second deployment. `glibc.pthread.rseq=1` is a community workaround, not a MongoDB-approved production fix; `=0` is not equivalent. References: [MongoDB SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912), [Railway Central Station thread](https://station.railway.com/questions/can-t-create-a-new-mongo-databse-93f51e99). If `MongoDB cannot start` appears on a fresh rollout, STOP immediately, do not initialize, and apply the uninitialized/initiated-volume rollback decision; do not switch MongoDB images casually.
+
+### Recorded v2 continuation, 2026-11-12 UTC
+
+| Stage | Deployment ID | Time UTC | Evidence / result |
+| --- | --- | --- | --- |
+| Standalone + rseq workaround | `93769fd4-3f56-460f-873a-250177255e47` | 15:46:49 | PASS `Waiting for connections`, no `MongoDB cannot start`, no replication startup |
+| Synthetic seed on runner | `2f8ec585-4e58-4316-911d-a45211ca2ee5` | 15:48:24 | PASS `G2_SYNTHETIC_DOCUMENTS=30000`, 65 collections, `Payment indexes ensured` |
+| Standalone baseline on runner | `19cf04c6-ab37-4cf7-9841-86c7900adf59` | 15:49:49 | PASS `G2_BASELINE_BYTES=5484`; digest `fcb6f41851c63790890732cb254f3a6bf24d00261f66661b3d66ff0f303d9f6b` |
+| Step 5 baseline prepared; runner idle | `dea2c3fc-c608-4f58-84e6-530c868473bd` | 15:51:27 | PASS: same gzip/SHA already present on runner, `preDeploy=[]` before Mongo step 4 |
+| Step 4 wrapper with rseq | `7e7a172b-cb8a-4b7e-adb2-9571151d7452` | 15:52:19 | PASS `Did not find local replica set configuration document at startup` followed by `Waiting for connections` in same deployment |
+| Step 5 v2 initializer on runner | `a268ef6d-3f21-4491-afd1-bb37f072dbdf` | 15:53:34 | PASS `G2_INITIATE_SENT` then `G2_INITIATE_OK` then `G2_RS0_PRIMARY_COMMIT_ABORT_COUNTS_INDEXES_PASS`; `G2_RUNTIME node=v20.20.2 driver=6.21.0` |
+| Repeat wrapper + rseq after PASS | `f895e0f6-9c6b-435d-b10c-a923013adc1a` | 15:54:55 | PASS `Waiting for connections` followed by `Transition to primary complete`; same volume and wrapper; changed only an inert empty preDeploy override to obtain a new deploy |
+| Read-only `hello` on runner | `dd558730-ae07-494f-80c5-d6a7083a2187` | 15:58:51 | PASS `G2_HELLO setName=rs0 isWritablePrimary=true`; no URI/address or customer data printed |
+
+`step4_started_at=2026-11-12T15:52:06.580Z`; final initializer PASS marker at `2026-11-12T15:53:34.036445Z`: **elapsed_seconds=87.456** (less than 900). Post-PASS restart and read-only hello are supplementary evidence and are not part of this elapsed time. The first inline hello probe `b7a43428-05e8-4c88-9ccf-5d325ce775be` had no diagnostic stdout, so it was **not counted** as verified; the second read-only probe above emitted the explicit PASS marker. Both test volumes and the runner remain preserved, with no deletion approval. The nine legacy `G2_*` staging-backend variables likewise remain unchanged pending separate deletion approval.
+
+---
+
 Status is proposed for Hema review. Execution, deployment and cleanup are separate approval gates. This document records a plan only. The existing six staged backend-variable removals remain pending for Hema's decision.
 
 ## Scope and prerequisites
