@@ -147,8 +147,21 @@ export function Header() {
       key={link.href}
       href={link.href.startsWith("/") || isHome || isMenu ? link.href : "/" + link.href}
       aria-current={activeHref === link.href ? "location" : undefined}
-      onClick={() => {
-        if (link.href.startsWith("#")) setActiveHref(link.href);
+      onClick={(event) => {
+        if (!link.href.startsWith("#")) return;
+        const target = document.getElementById(link.href.slice(1));
+        if (!target) return;
+        event.preventDefault();
+        setActiveHref(link.href);
+        // Native smooth-anchor scrolling can stop short during deferred home
+        // section updates. Keep hash semantics and align below the sticky nav.
+        window.location.hash = link.href;
+        window.requestAnimationFrame(() => {
+          document.getElementById(link.href.slice(1))?.scrollIntoView({
+            behavior: "instant",
+            block: "start",
+          });
+        });
       }}
     >
       {link.label}
