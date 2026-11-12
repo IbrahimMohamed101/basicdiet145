@@ -18,11 +18,13 @@ for (const width of [390, 1440]) {
     await page.evaluate(() => document.fonts.ready);
     await page.keyboard.press("Tab");
     await attachSnapshot(page, `skip-link-before-${width}`);
+    const focusState = await page.evaluate(() => ({
+      activeTag: document.activeElement?.tagName,
+      activeHtml: document.activeElement?.outerHTML.slice(0, 400),
+    }));
+    console.log("[NAV_FOCUS_DIAGNOSTIC]", width, JSON.stringify(focusState));
     await test.info().attach("focused-element", {
-      body: JSON.stringify(await page.evaluate(() => ({
-        activeTag: document.activeElement?.tagName,
-        activeHtml: document.activeElement?.outerHTML.slice(0, 400),
-      })), null, 2),
+      body: JSON.stringify(focusState, null, 2),
       contentType: "application/json",
     });
     await expect(page.locator(".skip-link")).toBeFocused();
@@ -46,8 +48,10 @@ for (const width of [390, 1440]) {
         headerBottom: document.querySelector(".nav-shell")!.getBoundingClientRect().bottom,
         viewportHeight: window.innerHeight,
       }));
+      const navMetrics = await metrics();
+      console.log("[NAV_ANCHOR_DIAGNOSTIC]", width, id, JSON.stringify(navMetrics));
       await test.info().attach(`anchor-${id}-metrics`, {
-        body: JSON.stringify(await metrics(), null, 2),
+        body: JSON.stringify(navMetrics, null, 2),
         contentType: "application/json",
       });
       await expect.poll(async () => {
