@@ -2,6 +2,14 @@ import { isolateInstagram } from "./helpers";
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 const widths = [360, 390, 430, 768, 1024, 1440];
+const expectedHomeLinks = [
+  { label: "الوجبات", href: "#meals" },
+  { label: "المنيو", href: "/menu" },
+  { label: "كيف يعمل", href: "#how-it-works" },
+  { label: "التطبيق", href: "#app" },
+  { label: "الباقات", href: "#plans" },
+  { label: "الأسئلة", href: "#faq" },
+] as const;
 const targets = ["meals", "how-it-works", "app", "plans", "faq"];
 const output = "../../.audit/refinement/final/navbar";
 async function noOverflow(page: Page) {
@@ -90,7 +98,13 @@ for (const width of widths) {
       if (mode === "no-animation") await page.evaluate(() => { document.documentElement.dataset.motion = "off"; });
       await noOverflow(page);
       if (mode === "no-js") {
-        await expect(page.locator(".nav-fallback a")).toHaveCount((await page.locator(".desktop-nav a").count()) + 1);
+        const fallback = page.locator(".nav-fallback a");
+        const expectedFallback = [...expectedHomeLinks, { label: "شوف الباقات", href: "#plans" }];
+        await expect(fallback).toHaveCount(7);
+        for (const [index, entry] of expectedFallback.entries()) {
+          await expect(fallback.nth(index)).toHaveAttribute("href", entry.href);
+          await expect(fallback.nth(index)).toHaveText(entry.label);
+        }
         await expect(page.locator(".nav-fallback")).toBeVisible();
         await expect(page.getByRole("button", { name: "فتح القائمة" })).toHaveCount(0);
         await page.locator('.nav-fallback a[href="#meals"]').click();
@@ -228,14 +242,41 @@ test("navbar classic scrollbar lock preserves page and header geometry", async (
     const session = await page.context().newCDPSession(page);
     const { nodes } = await session.send("Accessibility.getFullAXTree");
     const actions = nodes.filter(n => !n.ignored && ["button", "link"].includes(n.role?.value));
-    // A0 STALE_TEST: six navigation links now include /menu, plus close and offer CTA.
-    expect(actions).toHaveLength((await page.locator(".nav-sheet nav a").count()) + 2);
-    expect(actions.filter(n => n.name?.value === "سجّل لخصم 15%")).toHaveLength(1);
+    // Explicit accessible names and hrefs catch missing/mislabelled navigation controls.
+    const expectedActions = ["إغلاق القائمة", ...expectedHomeLinks.map(x => x.label), "سجّل لخصم 15%"];
+    expect(actions.map(n => n.name?.value).sort()).toEqual([...expectedActions].sort());
+    const sheetLinks = page.locator(".nav-sheet nav a");
+    await expect(sheetLinks).toHaveCount(6);
+    for (const [index, entry] of expectedHomeLinks.entries()) {
+      await expect(sheetLinks.nth(index)).toHaveText(entry.label);
+      await expect(sheetLinks.nth(index)).toHaveAttribute("href", entry.href);
+    }
     await page.keyboard.press("Escape");
     expect(await page.locator("#app").boundingBox()).toEqual(before);
     expect(await page.locator(".nav-shell").boundingBox()).toEqual(header);
     expect(await page.evaluate(() => document.documentElement.style.paddingRight)).toBe("");
   } finally {
     await browser.close();
+  }
+});
+
+
+test("home #app and #plans navigation stays below the sticky header", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await isolateInstagram(page);
+    await page.goto("/");
+    for (const section of ["plans", "app"]) {
+      if (width < 981) await page.getByRole("button", { name: "فتح القائمة" }).click();
+      const nav = width < 981 ? page.locator(".nav-sheet nav") : page.locator(".desktop-nav");
+      await nav.locator(`a[href="#${section}"]`).click();
+      await expect.poll(() => page.locator(`#${section}`).evaluate(element => {
+        const top = element.getBoundingClientRect().top;
+        const headerBottom = document.querySelector(".nav-shell")!.getBoundingClientRect().bottom;
+        return top >= headerBottom - 2 && top < window.innerHeight / 2;
+      })).toBe(true);
+      await expect(page.locator("#mobile-menu")).not.toHaveAttribute("open", "");
+    }
   }
 });
