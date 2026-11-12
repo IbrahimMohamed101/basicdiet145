@@ -51,8 +51,8 @@ export default function RootLayout({
       </head>
       <body>
         <MotionRuntime />
-        <MetaPixel />
         {children}
+        <MetaPixel />
       </body>
     </html>
   );
