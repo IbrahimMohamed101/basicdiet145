@@ -54,6 +54,17 @@ Before step 4, use `preDeployCommand=["node scripts/ci/g2-preflight.js"]` to ins
 
 The output reports `scheme=mongodb`, `host=staging-drill`, the synthetic database name, and required/present option names. `host` is a verified role token so the actual DNS name/address stays private. It also reports character count, UTF-8 byte length and SHA-256 of the fully rendered old base64 variable when present, and of the compressed variable. These are hashes of the encoded environment values, distinct from `G2_BASELINE_SHA256`, which hashes the decompressed JSON. It excludes resolved URIs, credentials, payloads and server addresses.
 
+## Mandatory Mongo start-command deployment-ID gate (second rehearsal, 2026-11-12)
+
+**Run after every MongoDB start-command change**, including the legacy standalone restart, legacy wrapper step 4, any permitted legacy Rollback A, v2 standalone startup and v2 wrapper step 4. Each change must produce a **new deployment ID**, its UTC start time and deployment-specific complete startup logs; never infer success from `describe-service`, a stored `startCommand`, `SUCCESS` alone or aggregate service logs.
+
+- For the standalone command, require `Waiting for connections`, and **no** replica-set startup markers or new replication-configuration lines in this deployment's own startup logs.
+- For the wrapper with `--replSet rs0` on an uninitialized trial volume, require `Did not find local replica set configuration document at startup` **then** `Waiting for connections`, in that order, from the **same deployment ID**. Presence of actual/unexpected replica-set configuration triggers STOP and preservation of the volume.
+- If the required evidence does not appear **within 3 minutes of starting that deployment**, or if logs are incomplete: STOP, do **not** run step 5, and apply the trial's documented Rollback A vs. preserve/escalate decision using complete evidence. Never roll back a volume after confirmed or uncertain successful initiation. This three-minute gate does not extend either trial's 15-minute step 4 deadline or the overall three-hour staging freeze.
+- On rollback, require another **new** standalone deployment ID and the standalone log gate before counting `rollback_elapsed_seconds` or claiming recovery. Read `get-staged-changes` on production and verify it is empty **before each deployment**, without changing production.
+
+**2026-11-11 incident / implementation lesson:** The previous drill service now has a stored wrapper with `--replSet rs0`, while deployment `9944020c-1417-446f-93d8-0c00453e5fbd` has deployment metadata `reason=redeploy` and startup logs at `2026-11-11T01:55:28Z` demonstrating standalone (`Waiting for connections` without replica-set-aware startup). Therefore the `redeploy` did not launch with the saved wrapper; successful `update-service`/saved configuration alone is not proof. Available deployment metadata does **not** establish whether the original wrapper-setting action was a direct `update-service` or an accepted staged patch; do not present that part as verified without an activity/audit record. Before another trial, capture the precise original staging backend references in a recoverable private form. When the connector redacts all values and no verified prior capture exists, do not freeze or change `MONGO_URI` because restoration cannot be guaranteed.
+
 ## Steps 2 through 5 for each trial
 
 ### 2. Freeze staging, seed the standalone drill
