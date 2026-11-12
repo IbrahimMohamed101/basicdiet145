@@ -55,7 +55,7 @@ export function Hero() {
           <PromoOfferText location="hero" />
           <div className="hero-cinema-actions">
             <a className="button button--hero button--hero-cinema" href="#plans">احسب باقتك</a>
-            <a className="button button--hero-outline" href="/menu#menu-products">تصفّح المنيو</a>
+            <a className="button button--hero-outline" href="/menu#restaurant-menu">تصفّح المنيو</a>
           </div>
         </div>
       </div>
