@@ -76,10 +76,39 @@ for (const width of widths) {
     for (const id of targets) {
       if (mobile) await toggle.click();
       await page.locator(`${mobile ? ".nav-sheet nav" : ".desktop-nav"} a[href="#${id}"]`).click();
-      await expect.poll(() => page.locator(`#${id}`).evaluate(e => {
-        const top = e.getBoundingClientRect().top;
-        return top >= document.querySelector(".nav-shell")!.getBoundingClientRect().bottom && top < innerHeight / 2;
-      })).toBe(true);
+      const geometry = () => page.locator(`#${id}`).evaluate(e => {
+        const section = e.getBoundingClientRect();
+        const header = document.querySelector(".nav-shell")!.getBoundingClientRect();
+        return {
+          target: "#" + e.id,
+          top: section.top,
+          bottom: section.bottom,
+          sectionHeight: section.height,
+          headerBottom: header.bottom,
+          viewportHeight: innerHeight,
+          scrollY,
+          hash: location.hash,
+          motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "no-preference",
+          plansBusy: document.getElementById("plans")?.getAttribute("aria-busy"),
+        };
+      });
+      await test.info().attach(`nav-anchor-${width}-${id}-initial.json`, {
+        body: JSON.stringify(await geometry(), null, 2), contentType: "application/json",
+      });
+      try {
+        await expect.poll(async () => {
+          const { top, headerBottom, viewportHeight } = await geometry();
+          return top >= headerBottom && top < viewportHeight / 2;
+        }).toBe(true);
+      } catch (error) {
+        await test.info().attach(`nav-anchor-${width}-${id}-failure-geometry.json`, {
+          body: JSON.stringify(await geometry(), null, 2), contentType: "application/json",
+        });
+        await test.info().attach(`nav-anchor-${width}-${id}-failure.png`, {
+          body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
+        });
+        throw error;
+      }
       await expect(page.locator(`.desktop-nav a[href="#${id}"]`)).toHaveAttribute("aria-current", "location");
       await expect(page.locator("#mobile-menu")).not.toHaveAttribute("open", "");
       await noOverflow(page);
@@ -138,6 +167,58 @@ for (const width of widths) {
     });
   }
 }
+
+// Diagnostic-only: identify the actual elements and geometry involved when
+// the deferred #plans placeholder is replaced. Do not modify the CLS assertion.
+test("calculator placeholder replacement records layout-shift source elements", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await isolateInstagram(page);
+  await stubPlanCatalog(page);
+  await stubPresentationAnalytics(page);
+  await page.addInitScript(() => {
+    type ShiftNode = { node?: Node | null; previousRect?: DOMRectReadOnly; currentRect?: DOMRectReadOnly };
+    type ShiftEntry = PerformanceEntry & { value: number; hadRecentInput?: boolean; sources?: ShiftNode[] };
+    const records: unknown[] = [];
+    Object.assign(window, { __landingClsSources: records });
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries() as ShiftEntry[]) {
+        records.push({
+          value: entry.value,
+          hadRecentInput: Boolean(entry.hadRecentInput),
+          startTime: entry.startTime,
+          sources: (entry.sources || []).map(source => {
+            const node = source.node instanceof Element ? source.node : null;
+            return {
+              element: node
+                ? node.tagName.toLowerCase() + (node.id ? "#" + node.id : "") + [...node.classList].slice(0, 3).map(c => "." + c).join("")
+                : source.node?.nodeName ?? null,
+              section: node?.closest("section[id]")?.id ?? null,
+              previous: source.previousRect ? { x: source.previousRect.x, y: source.previousRect.y, width: source.previousRect.width, height: source.previousRect.height } : null,
+              current: source.currentRect ? { x: source.currentRect.x, y: source.currentRect.y, width: source.currentRect.width, height: source.currentRect.height } : null,
+            };
+          }),
+        });
+      }
+    }).observe({ type: "layout-shift", buffered: true });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const state = () => page.locator("#plans").evaluate(el => ({
+    height: el.getBoundingClientRect().height,
+    top: el.getBoundingClientRect().top,
+    busy: el.getAttribute("aria-busy"),
+    mainHeight: document.querySelector("main")!.getBoundingClientRect().height,
+  }));
+  const before = await state();
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await state()).busy, { timeout: 20000 }).not.toBe("true");
+  const after = await state();
+  const entries = await page.evaluate(() => (window as Window & { __landingClsSources?: unknown[] }).__landingClsSources ?? []);
+  await test.info().attach("calculator-placeholder-replacement-cls.json", {
+    body: JSON.stringify({ before, after, entries }, null, 2),
+    contentType: "application/json",
+  });
+  expect(after.busy).not.toBe("true");
+});
 
 test("navbar short landscape and 200% text remain reachable", async ({ page }) => {
   for (const viewport of [{ width: 844, height: 390 }, { width: 360, height: 640 }, { width: 1024, height: 900 }, { width: 1440, height: 900 }]) {
