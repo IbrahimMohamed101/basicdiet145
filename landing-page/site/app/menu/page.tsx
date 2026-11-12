@@ -6,6 +6,7 @@ import { LeadDialog } from "@/components/LeadDialog";
 import { PromoMobileBar } from "@/components/PromoExperience";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import "./menu.css";
+import "./restaurant-menu.css";
 import "../calculator.css";
 import "./menu-refinement.css";
 
