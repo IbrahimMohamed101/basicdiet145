@@ -51,3 +51,15 @@
   .restaurant-menu-footnotes { font-size:13px; padding:15px; }
   .menu-extra-toggle { width:100%; }
 }
+
+/* Anchor targets clear the persistent header when navigating from menu links. */
+#restaurant-menu, #menu-products { scroll-margin-top: 94px; }
+@media(min-width:1280px) {
+  .restaurant-menu-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .restaurant-menu-photo { width:82px; height:82px; }
+  .restaurant-menu-card { padding:8px; gap:9px; }
+  .restaurant-menu-card-content h4 { font-size:14px; }
+}
+@media(max-width:630px) {
+  #restaurant-menu, #menu-products { scroll-margin-top:80px; }
+}
