@@ -214,6 +214,8 @@ test("touch hero stays static and has no pointer parallax", async ({ browser }) 
     await page.goto("http://127.0.0.1:3000/");
 
   const stage = page.getByTestId("hero-visual-stage");
+  // A0 STALE_TEST: motion is lazy-mounted only when the app reveal approaches view.
+  await stage.scrollIntoViewIfNeeded();
   await expect(stage).toHaveAttribute("data-scene-interactive", "false");
 
   expect(
@@ -232,6 +234,8 @@ test("reduced motion keeps the layered hero static", async ({ page }) => {
     await page.goto("/");
 
   const stage = page.getByTestId("hero-visual-stage");
+  // DeferredAppRevealMotion mounts its reduced-motion state on intersection.
+  await stage.scrollIntoViewIfNeeded();
   await expect(stage).toHaveAttribute("data-scene-interactive", "false");
 
   expect(
