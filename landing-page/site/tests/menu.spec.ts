@@ -487,7 +487,7 @@ test("homepage promotes website registration but keeps the food and plan paths",
   await expect(page.locator(".hero .bd-offer-copy")).toContainText("15%");
   await expect(page.locator(".hero .bd-offer-copy")).toContainText("بدون دفع الآن");
   await expect(page.locator(".hero a[href='#plans']")).toHaveCount(1);
-  await expect(page.locator(".hero a[href='/menu#menu-products']")).toHaveCount(1);
+  await expect(page.locator(".hero a[href='/menu#restaurant-menu']")).toHaveCount(1);
   await expect(page.locator("body")).not.toContainText("BASIC15");
 });
 
