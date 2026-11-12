@@ -42,7 +42,16 @@ for (const viewport of viewports) {
     test.setTimeout(150_000);
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
-    page.on("console", m => { if (["error", "warning"].includes(m.type())) errors.push(m.text()); });
+    page.on("console", m => {
+      if (["error", "warning"].includes(m.type())) {
+        errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
+      }
+    });
+    page.on("response", response => {
+      if (response.status() === 503) {
+        console.log("[DIAGNOSTIC_503_RESPONSE]", response.status(), response.url());
+      }
+    });
     await isolateInstagram(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: "reduce" });
