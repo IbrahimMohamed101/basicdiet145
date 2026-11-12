@@ -216,7 +216,7 @@ test("menu has one navigational header with local menu links", async ({ page }) 
   await expect(page.locator(".site-header")).toHaveCount(1);
   await expect(page.locator(".menu-jump-nav")).toHaveCount(0);
   const nav = page.locator(".site-header .desktop-nav");
-  await expect(nav.locator('a[href="#menu-products"]')).toHaveCount(1);
+  await expect(nav.locator('a[href="#restaurant-menu"]')).toHaveCount(1);
   await expect(nav.locator('a[href="#menu-plans"]')).toHaveCount(1);
   await expect(nav.locator('a[href="#menu-custom"]')).toHaveCount(1);
   await expect(nav.locator('a[href="#menu-download"]')).toHaveCount(1);
