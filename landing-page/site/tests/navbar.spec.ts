@@ -211,7 +211,18 @@ test("navbar desktop keyboard, focus outline and stable layout on scroll", async
     await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
   await page.keyboard.press("Tab");
-  await expect(page.locator(".skip-link")).toBeFocused();
+  await expect(page.locator("body > a.skip-link").first()).toBeFocused();
+  const consent = page.getByRole("complementary", { name: "تفضيلات ملفات الارتباط والإعلانات" });
+  if (await consent.isVisible()) {
+    for (const control of [
+      consent.getByRole("link", { name: "تفاصيل الخصوصية" }),
+      consent.getByRole("button", { name: "السماح بالتتبع" }),
+      consent.getByRole("button", { name: "رفض التتبع" }),
+    ]) {
+      await page.keyboard.press("Tab");
+      await expect(control).toBeFocused();
+    }
+  }
   await page.keyboard.press("Tab");
   await expect(page.locator(".brand")).toBeFocused();
   for (const id of targets) {
