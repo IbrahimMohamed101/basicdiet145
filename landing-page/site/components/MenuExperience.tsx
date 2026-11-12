@@ -9,6 +9,7 @@ import { PromoOfferText, PromoOfferButton } from "@/components/PromoExperience";
 import { StoreLinks } from "@/components/StoreLinks";
 import { menuArtUrl } from "@/lib/menu-art";
 import { mealProteinChoices, mealProteinGroups, mealSideChoices } from "@/lib/meal-builder-options";
+import { calculateMealPreview } from "@/lib/meal-builder-calculator";
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
 import { editorialMenuDescriptions } from "@/lib/menu-editorial-descriptions";
 import { MenuCalories } from "@/components/MenuCalories";
@@ -86,6 +87,15 @@ function ProductImage({ item, priority = false }: { item: MenuPreviewItem; prior
   );
 }
 
+function BuilderFoodPhoto({ src, alt, sizes }: { src: string; alt: string; sizes: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed ? (
+    <span className="menu-builder-image-fallback" role="img" aria-label={alt || "الصورة غير متوفرة"}>الصورة غير متوفرة</span>
+  ) : (
+    <Image src={src} alt={alt} fill sizes={sizes} onError={() => setFailed(true)} />
+  );
+}
+
 export function MenuExperience() {
   const [activeBuilder, setActiveBuilder] = useState<"meal" | "salad">("meal");
   const [protein, setProtein] = useState<string>("دجاج مشوي");
@@ -137,6 +147,7 @@ export function MenuExperience() {
   const selectedSaladLabels = saladGroups.flatMap(group => saladChoices[group.key] || []);
   const mealSelections = 1 + carbs.length;
   const activeProtein = mealProteinChoices.find((choice) => choice.name === protein) || mealProteinChoices[0];
+  const mealPreview = calculateMealPreview(protein, carbs);
   const filteredProteinChoices = proteinGroup === "all" ? mealProteinChoices : mealProteinChoices.filter((choice) => choice.group === proteinGroup);
   const saladMandatoryComplete = saladGroups.filter(group => group.min > 0 && (saladChoices[group.key] || []).length >= group.min).length;
 
@@ -298,7 +309,7 @@ export function MenuExperience() {
 
       <section className="menu-section menu-custom-section" id="menu-custom" aria-labelledby="menu-custom-title">
         <div className="page-shell">
-          <Heading id="menu-custom-title" tag="كوّنها بطريقتك" title="اصنع وجبتك أو سلطتك." copy="اختار مكوناتك وشوف اختياراتك تتجمع قدامك. تجربة للمعاينة بدون طلب أو دفع." />
+          <Heading id="menu-custom-title" tag="كوّنها بطريقتك" title="اصنع وجبتك أو سلطتك." copy="اختار مكوناتك وشوف صورها وتكلفة حصصها وسعراتها التقديرية. المعاينة بدون طلب أو دفع." />
           <div className="menu-builder-switch" role="group" aria-label="نوع تجربة التخصيص">
             <button type="button" className={activeBuilder === "meal" ? "is-active" : ""} aria-pressed={activeBuilder === "meal"} onClick={() => setActiveBuilder("meal")}>
               <span className="menu-builder-switch-num">01</span><b>اصنع وجبتك</b><small>اختار البروتين والكارب والإضافات</small>
@@ -312,12 +323,12 @@ export function MenuExperience() {
             <div className="menu-builder-editor">
               {activeBuilder === "meal" ? (
                 <div key="meal">
-                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اختر بروتين واحدًا وحتى خيارين من الكارب والإضافات. اختيار إضافة ثالثة يستبدل الأقدم تلقائيًا.</p></div>
+                  <div className="menu-editor-heading"><span>الخطوة 01</span><h3>اختار البروتين والكارب</h3><p>اختر حصة بروتين 100 جم وحتى حصتين من الكارب. الأسعار والسعرات مأخوذة من المنيو، واختيار إضافة ثالثة يستبدل الأقدم.</p></div>
                   <div className="menu-mobile-selection-status" role="status" aria-live="polite" aria-atomic="true">
                     <div className="menu-mobile-selection-current">
                       <small>اختيارات وجبتك</small>
                       <strong>{protein}</strong>
-                      <span>{carbs.length} / 2 إضافات{carbs.length ? " · " + carbs.join("، ") : " · اختر الإضافات المناسبة"}</span>
+                      <span>{carbs.length} / 2 إضافات{carbs.length ? " · " + carbs.join("، ") : " · اختر الإضافات المناسبة"} · {mealPreview?.totalPriceSar ?? 0} ر.س</span>
                     </div>
                     <a href="#menu-builder-summary">الملخص <span aria-hidden="true">↓</span></a>
                   </div>
@@ -334,13 +345,13 @@ export function MenuExperience() {
                     <div className="menu-option-grid">
                       {filteredProteinChoices.map((option) => {
                         const selected = protein === option.name;
-                        const src = option.image || menuArtUrl(option.name);
                         return <button type="button" key={option.name} aria-pressed={selected}
                             className={"menu-option-photo-button" + (selected ? " is-active" : "")}
                             onClick={() => setProtein(option.name)}>
-                          <span className="menu-option-thumb"><Image src={src} alt="" fill sizes="(max-width: 520px) 42vw, 180px" unoptimized={src.startsWith("/api/menu-art")} /></span>
+                          <span className="menu-option-thumb"><BuilderFoodPhoto src={option.image} alt="" sizes="(max-width: 520px) 42vw, 180px" /></span>
                           <span className="menu-option-name">{option.name}</span>
-                          <small className="menu-builder-photo-note">صورة توضيحية</small>
+                          <small className="menu-builder-photo-note">{option.illustrative ? "صورة توضيحية" : "صورة من المنيو"}</small>
+                          <small className="menu-builder-metrics">{option.price} ر.س · {option.calories} سعرة</small>
                           <span className="menu-option-check" aria-hidden="true">{selected ? "✓" : "+"}</span>
                         </button>;
                       })}
@@ -351,19 +362,19 @@ export function MenuExperience() {
                     <div className="menu-option-grid">
                       {mealSideChoices.map((option) => {
                         const picked = carbs.includes(option.name);
-                        const src = option.image || menuArtUrl(option.name);
                         return <button type="button" key={option.name} aria-pressed={picked}
                             className={"menu-option-photo-button" + (picked ? " is-active" : "")}
                             onClick={() => toggleCarb(option.name)}>
-                          <span className="menu-option-thumb"><Image src={src} alt="" fill sizes="(max-width: 520px) 42vw, 180px" unoptimized={src.startsWith("/api/menu-art")} /></span>
+                          <span className="menu-option-thumb"><BuilderFoodPhoto src={option.image} alt="" sizes="(max-width: 520px) 42vw, 180px" /></span>
                           <span className="menu-option-name">{option.name}</span>
-                          <small className="menu-builder-photo-note">صورة توضيحية</small>
+                          <small className="menu-builder-photo-note">{option.illustrative ? "صورة توضيحية" : "صورة من المنيو"}</small>
+                          <small className="menu-builder-metrics">{option.price} ر.س · {option.calories} سعرة</small>
                           <span className="menu-option-check" aria-hidden="true">{picked ? "✓" : "+"}</span>
                         </button>;
                       })}
                     </div>
                   </div>
-                  <p className="menu-editor-note">الصور توضيحية وليست توثيقًا لشكل الحصة الفعلية. هذه تجربة تخصيص فقط؛ الخيارات النهائية والتوفر حسب التطبيق.</p>
+                  <p className="menu-editor-note">الصور للتعريف بالأصناف ولا تمثل بالضرورة شكل الطبق النهائي. المجموع لحصص المنيو المنفردة، وليس عرض سعر باقة أو طلبًا مؤكدًا. السعرات تقديرية؛ التوفر والطلب الفعلي حسب المطعم أو التطبيق.</p>
                 </div>
               ) : (
                 <div key="salad">
@@ -389,11 +400,10 @@ export function MenuExperience() {
               <span className="menu-summary-eyebrow">ملخص اختياراتك</span>
               <div className="menu-summary-visual">
                 <div className="menu-summary-visual-photo">
-                  <Image key={activeBuilder === "meal" ? protein : "salad"}
-                    src={activeBuilder === "meal" ? (activeProtein.image || menuArtUrl(protein)) : secondImage}
-                    alt={activeBuilder === "meal" ? "صورة تمثيلية للبروتين المختار: " + protein : "صورة توضيحية للسلطة"}
-                    fill sizes="(max-width:760px) 42vw, 230px"
-                    unoptimized={activeBuilder === "meal" && !activeProtein.image} />
+                  <BuilderFoodPhoto key={activeBuilder === "meal" ? protein : "salad"}
+                    src={activeBuilder === "meal" ? activeProtein.image : secondImage}
+                    alt={activeBuilder === "meal" ? "صورة البروتين المختار من المنيو: " + protein : "صورة توضيحية للسلطة"}
+                    sizes="(max-width:760px) 42vw, 230px" />
                 </div>
                 <span className="menu-summary-visual-caption">معاينة من صور المنيو وليست صورة لتركيبتك النهائية</span>
               </div>
@@ -411,6 +421,8 @@ export function MenuExperience() {
                   <div><span>البروتين</span><b>{protein}</b></div>
                   <div><span>الكارب والإضافات</span><b>{carbs.length ? carbs.join(" • ") : "لسه ما اخترت"}</b></div>
                   <div><span>الاختيارات</span><b>{mealSelections} من 3</b></div>
+                  <div className="menu-summary-total"><span>مجموع أسعار الحصص</span><b>{numberFormatter.format(mealPreview?.totalPriceSar ?? 0)} ر.س</b></div>
+                  <div className="menu-summary-total"><span>مجموع السعرات التقريبية</span><b>{numberFormatter.format(mealPreview?.totalCalories ?? 0)} سعرة</b></div>
                 </div>
               ) : (
                 <div className="menu-summary-data">
@@ -419,7 +431,9 @@ export function MenuExperience() {
                   <div><span>المجموعات المطلوبة</span><b>{numberFormatter.format(saladMandatoryComplete)} من {numberFormatter.format(saladGroups.filter(g => g.min > 0).length)}</b></div>
                 </div>
               )}
-              <p className="menu-summary-disclaimer">استعراض فقط. لا يتم إنشاء طلب أو احتساب سعر أو سعرات من هذه الاختيارات.</p>
+              <p className="menu-summary-disclaimer">{activeBuilder === "meal"
+                ? "مجموع استرشادي لحصة البروتين (100 جم) وحصص الكارب المختارة كما هي مدرجة في منيو المطعم. السعرات تقديرية ولا تشمل تغييرات التحضير. ليس سعر وجبة مجمعة أو باقة، ولا يتم إنشاء طلب أو تحصيل مبلغ."
+                : "استعراض للمكونات فقط؛ لا تتوفر كميات معتمدة لحساب سعرات السلطة أو سعرها. لا يتم إنشاء طلب أو تحصيل مبلغ."}</p>
               <MenuContactButton location="final" intent={activeBuilder === "meal" ? "meal_builder" : "salad_builder"} className="menu-summary-cta">خلّينا نتواصل معك <span aria-hidden="true">←</span></MenuContactButton>
               <div className="menu-builder-store"><span>أو حمّل التطبيق وكمّل بنفسك</span><StoreLinks location="app" /></div>
             </aside>
