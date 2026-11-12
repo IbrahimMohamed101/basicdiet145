@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { isolateInstagram, stubPlanCatalog, stubPresentationAnalytics } from "./helpers";
+import { isolateInstagram, stubPlanCatalog, stubUnavailablePlanCatalog, stubPresentationAnalytics } from "./helpers";
 
 const viewports = [
   { width: 1920, height: 1080 }, { width: 1536, height: 864 },
@@ -45,11 +45,6 @@ for (const viewport of viewports) {
     page.on("console", m => {
       if (["error", "warning"].includes(m.type())) {
         errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
-      }
-    });
-    page.on("response", response => {
-      if (response.status() === 503) {
-        console.log("[DIAGNOSTIC_503_RESPONSE]", response.status(), response.url());
       }
     });
     await isolateInstagram(page);
@@ -250,11 +245,7 @@ test("mobile meals use a contained editorial grid, desktop keeps its twelve-colu
 
 test("home calculator preserves honest fallback when plan-catalog responds 503", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route("**/api/plan-catalog", route => route.fulfill({
-    status: 503,
-    contentType: "application/json",
-    body: JSON.stringify({ status: false, data: [], code: "UNAVAILABLE" }),
-  }));
+  await stubUnavailablePlanCatalog(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator("#plans").scrollIntoViewIfNeeded();
   await expect(page.locator("#plans .bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
