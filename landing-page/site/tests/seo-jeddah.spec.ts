@@ -152,6 +152,7 @@ test("mobile hero poster paints without a costly blur, mask or duplicate backgro
 
 test("menu helper labels meet 4.5:1 contrast against white", async ({ page }) => {
   await page.goto("/menu", { waitUntil: "domcontentloaded" });
+  await page.locator(".menu-extra-toggle").click();
   const contrasts = await page.evaluate(() => {
     const selectors = [
       ".menu-featured-intro .menu-kicker",
