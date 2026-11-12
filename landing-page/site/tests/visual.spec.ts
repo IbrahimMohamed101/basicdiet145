@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { isolateInstagram, stubPlanCatalog } from "./helpers";
+import { isolateInstagram, stubPlanCatalog, stubPresentationAnalytics } from "./helpers";
 
 const viewports = [
   { width: 1920, height: 1080 }, { width: 1536, height: 864 },
@@ -54,6 +54,7 @@ for (const viewport of viewports) {
     });
     await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -91,6 +92,7 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
       const page = await context.newPage();
       await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await checkMeals(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -102,6 +104,7 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
 test("home calculator day, grams and fulfillment controls work with keyboard", async ({ page }) => {
   // Use the same canonical fixture as the non-analytics navigation/visual tests.
   await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator("#plans").scrollIntoViewIfNeeded();
   const controls = page.locator("#plans .bd-calculator-controls");
@@ -137,6 +140,7 @@ test("Reels defer requests and support contained mobile scrolling", async ({ pag
   await page.emulateMedia({ reducedMotion: "reduce" });
   await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reels iframe")).toHaveCount(0);
   const cards = page.locator(".reel-card");
