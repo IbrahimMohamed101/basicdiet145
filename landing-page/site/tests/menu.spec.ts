@@ -56,7 +56,7 @@ test("shared calculator reads public plan prices and preserves chosen dimensions
 test("builder and catalog interactions are read-only", async ({ page }) => {
   await page.goto("/menu");
   const builder = page.locator("#menu-custom");
-  await builder.getByRole("button", { name: /رز أبيض/ }).click();
+  await builder.getByRole("button", { name: /رز أبيض بسمتي/ }).click();
   await expect(builder.locator(".menu-summary-data")).toContainText("رز أبيض");
   await builder.getByRole("group", { name: "نوع تجربة التخصيص" })
     .getByRole("button", { name: /اصنع سلطتك/ }).click();
@@ -255,7 +255,7 @@ test("meal-builder shows photos only for supported matched dishes", async ({ pag
   const builder = page.locator("#menu-custom");
   const chicken = builder.getByRole("button", { name: /دجاج كريمة/ });
   await expect(chicken.locator("img")).toHaveCount(1);
-  const rice = builder.getByRole("button", { name: /رز أبيض/ });
+  const rice = builder.getByRole("button", { name: /رز أبيض بسمتي/ });
   await expect(rice.locator("img")).toHaveCount(1);
   await rice.click();
   await expect(rice).toHaveAttribute("aria-pressed","true");
@@ -330,7 +330,7 @@ test("meal and salad summary show real visual, selections and working reset", as
   const builder = page.locator("#menu-custom");
   await expect(builder.locator(".menu-summary-disc")).toHaveCount(0);
   await expect(builder.locator(".menu-summary-visual-photo img")).toHaveCount(1);
-  await builder.getByRole("button", { name: /رز أبيض/ }).click();
+  await builder.getByRole("button", { name: /رز أبيض بسمتي/ }).click();
   await expect(builder.locator(".menu-summary-chips")).toContainText("رز أبيض");
   await builder.getByRole("button", { name: "ابدأ من جديد" }).click();
   await expect(builder.locator(".menu-summary-chips")).not.toContainText("رز أبيض");
@@ -615,5 +615,68 @@ test("primary menu anchor clears the sticky header on mobile and desktop", async
       const header = document.querySelector(".site-header")?.getBoundingClientRect();
       return (target?.top ?? 0) - (header?.bottom ?? 1);
     })).toBeGreaterThanOrEqual(-2);
+  }
+});
+
+
+test("meal builder uses 28 printed-menu proteins and carbs and shares prices/calories", async ({ page }) => {
+  const { mealProteinChoices, mealSideChoices } = await import("../lib/meal-builder-options");
+  const { restaurantMenuItems } = await import("../lib/restaurant-menu-data");
+  const { calculateMealPreview } = await import("../lib/meal-builder-calculator");
+
+  expect(mealProteinChoices).toHaveLength(19);
+  expect(mealSideChoices).toHaveLength(9);
+  expect(mealProteinChoices.filter(x => x.group === "chicken")).toHaveLength(15);
+  expect(mealProteinChoices.filter(x => x.group === "beef")).toHaveLength(2);
+  expect(mealProteinChoices.filter(x => x.group === "fish")).toHaveLength(2);
+  for (const item of [...mealProteinChoices, ...mealSideChoices]) {
+    const source = restaurantMenuItems.find(x => x.name === item.name);
+    expect(source, item.name).toBeDefined();
+    expect(item.image, item.name).toBe(source?.image);
+    expect(item.price, item.name).toBe(source?.price);
+    expect(item.calories, item.name).toBe(source?.calories);
+    expect(item.image).toMatch(/^\/restaurant-menu\/.+\.jpg$/);
+  }
+  expect([...mealProteinChoices, ...mealSideChoices].some(x => /فاهيتا|روزماري|رز صيني معجن/.test(x.name))).toBe(false);
+  expect(calculateMealPreview("دجاج مشوي", [])).toMatchObject({totalPriceSar: 20,totalCalories:175,selections:1});
+  expect(calculateMealPreview("دجاج مشوي",["بطاطس مهروسة"])).toMatchObject({totalPriceSar:27,totalCalories:325,selections:2});
+  expect(calculateMealPreview("دجاج مشوي",["بطاطس مهروسة","رز أبيض بسمتي"])).toMatchObject({totalPriceSar:34,totalCalories:515,selections:3});
+  expect(calculateMealPreview("سمك مشوي",["بطاطا حلوة"])).toMatchObject({totalPriceSar:27,totalCalories:270});
+  expect(calculateMealPreview("كباب لحم",[])).toMatchObject({totalPriceSar:22,totalCalories:270});
+  expect(calculateMealPreview("دجاج مشوي",["رز أبيض بسمتي","رز أبيض بسمتي"])).toBeNull();
+  expect(calculateMealPreview("دجاج مشوي",["رز أبيض بسمتي","بطاطا حلوة","خضار مشوي"])).toBeNull();
+
+  await page.goto("/menu");
+  const builder = page.locator("#menu-custom");
+  const totals = builder.locator(".menu-summary-total");
+  await expect(totals).toHaveCount(2);
+  await expect(totals.nth(0)).toContainText("20 ر.س");
+  await expect(totals.nth(1)).toContainText("175 سعرة");
+  await builder.getByRole("button", {name: /بطاطس مهروسة/}).click();
+  await expect(totals.nth(0)).toContainText("27 ر.س");
+  await expect(totals.nth(1)).toContainText("325 سعرة");
+  await builder.getByRole("button", {name: /رز أبيض بسمتي/}).click();
+  await expect(totals.nth(0)).toContainText("34 ر.س");
+  await expect(totals.nth(1)).toContainText("515 سعرة");
+  await builder.getByRole("button", {name: /دجاج 65/}).click();
+  await expect(totals.nth(0)).toContainText("34 ر.س");
+  await expect(totals.nth(1)).toContainText("600 سعرة");
+  await builder.getByRole("button", {name: "ابدأ من جديد"}).click();
+  await expect(totals.nth(0)).toContainText("20 ر.س");
+  await expect(totals.nth(1)).toContainText("175 سعرة");
+  await expect(builder).toContainText("ليس سعر وجبة مجمعة");
+});
+
+test("builder loads same local dish images and its controls stay inside narrow screens", async ({page}) => {
+  for (const width of [320,390,768,1440]) {
+    await page.setViewportSize({width,height:844});
+    await page.goto("/menu");
+    const builder=page.locator("#menu-custom");
+    const thumbs=builder.locator(".menu-option-thumb img");
+    await expect(thumbs).toHaveCount(28);
+    const first=thumbs.first();
+    await first.scrollIntoViewIfNeeded();
+    await expect.poll(async () => first.evaluate((img:HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   }
 });

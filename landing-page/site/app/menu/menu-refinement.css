@@ -630,3 +630,79 @@ body:has(.menu-page) a.skip-link:focus-visible {
   .menu-page .menu-option-grid button.menu-option-photo-button { min-height: 138px; padding: 6px; }
   .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-name { font-size: 12px; }
 }
+
+
+/* The builder now uses the restaurant menu's own image, portion price and calorie data. */
+.menu-page .menu-option-grid button.menu-option-photo-button .menu-builder-metrics {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0;
+  color: #175c41;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: right;
+  direction: rtl;
+}
+/* Crop dark corner pixels baked into earlier square product exports. */
+.menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb img {
+  object-fit: cover;
+  transform: scale(1.12);
+}
+.menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb .menu-builder-image-fallback {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #e7efea;
+  color: #285b41;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.6;
+}
+.menu-page .menu-summary-visual-photo .menu-builder-image-fallback {
+  display: grid;
+  place-items: center;
+  min-height: 155px;
+  border-radius: 12px;
+  background: #e7efea;
+  color: #285b41;
+}
+.menu-page .menu-summary-data > div.menu-summary-total {
+  padding-block: 13px;
+  border-bottom: 1px solid rgba(255,255,255,.2);
+}
+.menu-page .menu-summary-data > div.menu-summary-total span {
+  color: #d0ebd8;
+  font-weight: 650;
+}
+.menu-page .menu-summary-data > div.menu-summary-total b {
+  color: #f0ffe9;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .menu-page .menu-option-grid button.menu-option-photo-button {
+    min-height: 168px;
+  }
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-builder-metrics {
+    font-size: 10px;
+  }
+  .menu-page .menu-summary-data > div.menu-summary-total b {
+    font-size: 15px;
+  }
+}
+
+.menu-page .menu-summary-visual-photo img {
+  object-fit: cover;
+  transform: scale(1.12);
+}
+@media (max-width: 520px) {
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb img {
+    object-fit: cover;
+    transform: scale(1.12);
+  }
+}
