@@ -63,7 +63,8 @@ for (const viewport of viewports) {
     const missing = await page.locator('a[href^="#"]').evaluateAll(es => es.filter(e => !document.getElementById(e.getAttribute("href")!.slice(1))).map(e => e.getAttribute("href")));
     expect(missing).toEqual([]);
     await checkMeals(page);
-    await expect(page.locator(".faq-item")).toHaveCount(6);
+    // A1 integration CI: the current FAQ component renders seven question items.
+    await expect(page.locator(".faq-item")).toHaveCount(7);
     expect(errors).toEqual([]);
     await mkdir("../../.audit/refinement/final", { recursive: true });
     await page.screenshot({ path: `../../.audit/refinement/final/${viewport.width}-full.png`, fullPage: true });
