@@ -2,7 +2,7 @@ name: Landing Extended
 
 on:
   pull_request:
-    branches: [landing-page-research]
+    branches: [landing-page-research, codex/a1-env-analytics]
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-extended.yml"
