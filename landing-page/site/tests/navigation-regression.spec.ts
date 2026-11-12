@@ -10,7 +10,7 @@ async function attachSnapshot(page: Page, label: string) {
   });
 }
 
-for (const width of [390, 1440]) {
+for (const width of [390, 1024, 1440]) {
   test(`keyboard skip link is first focus target at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await isolateInstagram(page);
