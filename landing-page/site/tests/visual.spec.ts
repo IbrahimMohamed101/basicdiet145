@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { isolateInstagram } from "./helpers";
+import { isolateInstagram, stubPlanCatalog } from "./helpers";
 
 const viewports = [
   { width: 1920, height: 1080 }, { width: 1536, height: 864 },
@@ -53,6 +53,7 @@ for (const viewport of viewports) {
       }
     });
     await isolateInstagram(page);
+    await stubPlanCatalog(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -89,6 +90,7 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
     try {
       const page = await context.newPage();
       await isolateInstagram(page);
+    await stubPlanCatalog(page);
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await checkMeals(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -98,16 +100,8 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
 }
 
 test("home calculator day, grams and fulfillment controls work with keyboard", async ({ page }) => {
-  // Stable catalog fixture uses the verified 26-day/150g/two-meal price from the brief.
-  await page.route("**/api/plan-catalog", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ status: true, data: [{
-      planId: "000000000000000000000026",
-      daysCount: 26,
-      gramsOptions: [{ grams: 150, mealsOptions: [{ mealsPerDay: 2, priceSar: 1186 }] }],
-    }] }),
-  }));
+  // Use the same canonical fixture as the non-analytics navigation/visual tests.
+  await stubPlanCatalog(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator("#plans").scrollIntoViewIfNeeded();
   const controls = page.locator("#plans .bd-calculator-controls");
@@ -142,6 +136,7 @@ test("Reels defer requests and support contained mobile scrolling", async ({ pag
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await isolateInstagram(page);
+    await stubPlanCatalog(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reels iframe")).toHaveCount(0);
   const cards = page.locator(".reel-card");
@@ -247,4 +242,18 @@ test("mobile meals use a contained editorial grid, desktop keeps its twelve-colu
   }));
   expect(layout.display).toBe("grid");
   expect(layout.columns).toBe(12);
+});
+
+test("home calculator preserves honest fallback when plan-catalog responds 503", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ status: false, data: [], code: "UNAVAILABLE" }),
+  }));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  await expect(page.locator("#plans .bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
+  await page.locator("#plans .bd-calculator-primary").click();
+  await expect(page.getByRole("dialog", { name: "خصم 15% على اشتراكك" })).toBeVisible();
 });
