@@ -94,30 +94,39 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    if (!window.IntersectionObserver) return;
-    // Observe all sections so unlinked sections clear a stale active item too.
-    const sections = Array.from(document.querySelectorAll("main section"));
-    let observer: IntersectionObserver;
-    function observeSections() {
-      observer?.disconnect();
-      const height = window.innerHeight;
-      const bandStart = Math.min(120, height * 0.2);
-      observer = new IntersectionObserver(() => {
-        const visibleSections = sections.filter((section) => {
-          const rect = section.getBoundingClientRect();
-          return rect.top <= height * 0.45 && rect.bottom > bandStart;
-        });
-        const current = visibleSections[visibleSections.length - 1];
-        const href = current?.id ? `#${current.id}` : "";
-        setActiveHref(currentLinks.some((link) => link.href === href) ? href : "");
-      }, { rootMargin: `-${bandStart}px 0px -${height * 0.55}px 0px`, threshold: 0 });
-      sections.forEach((section) => observer.observe(section));
+    // Track the section actually sitting below the sticky header.
+    // IntersectionObserver's callback order can leave aria-current empty after
+    // anchor navigation even when the target is correctly positioned.
+    const sectionTargets = currentLinks
+      .filter((link) => link.href.startsWith("#"))
+      .map((link) => ({ ...link, section: document.getElementById(link.href.slice(1)) }))
+      .filter((item): item is { href: string; label: string; section: HTMLElement } => Boolean(item.section));
+
+    let frame = 0;
+    function updateCurrentSection() {
+      frame = 0;
+      const headerBottom = document.querySelector(".nav-shell")?.getBoundingClientRect().bottom ?? 0;
+      // Use a single content band, not the last of several intersecting sections.
+      // Unlinked sections therefore clear aria-current naturally.
+      const band = Math.min(window.innerHeight * 0.45, headerBottom + 92);
+      const current = sectionTargets.find(({ section }) => {
+        const rect = section.getBoundingClientRect();
+        return rect.top <= band && rect.bottom > band;
+      });
+      const next = current?.href || "";
+      setActiveHref((previous) => previous === next ? previous : next);
     }
-    observeSections();
-    window.addEventListener("resize", observeSections, { passive: true });
+    function onScroll() {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updateCurrentSection);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    updateCurrentSection();
     return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", observeSections);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (frame) cancelAnimationFrame(frame);
     };
   }, [pathname]);
 
@@ -136,6 +145,9 @@ export function Header() {
       key={link.href}
       href={link.href.startsWith("/") || isHome || isMenu ? link.href : "/" + link.href}
       aria-current={activeHref === link.href ? "location" : undefined}
+      onClick={() => {
+        if (link.href.startsWith("#")) setActiveHref(link.href);
+      }}
     >
       {link.label}
     </a>
