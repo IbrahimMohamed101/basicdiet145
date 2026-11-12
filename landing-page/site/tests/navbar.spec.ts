@@ -79,10 +79,22 @@ for (const width of widths) {
     for (const id of targets) {
       if (mobile) await toggle.click();
       await page.locator(`${mobile ? ".nav-sheet nav" : ".desktop-nav"} a[href="#${id}"]`).click();
-      await expect.poll(() => page.locator(`#${id}`).evaluate(e => {
-        const top = e.getBoundingClientRect().top;
-        return top >= document.querySelector(".nav-shell")!.getBoundingClientRect().bottom && top < innerHeight / 2;
-      })).toBe(true);
+      try {
+        await expect.poll(() => page.locator(`#${id}`).evaluate(e => {
+          const top = e.getBoundingClientRect().top;
+          return top >= document.querySelector(".nav-shell")!.getBoundingClientRect().bottom && top < innerHeight / 2;
+        })).toBe(true);
+      } catch (error) {
+        const geometry = await page.locator(`#${id}`).evaluate(e => ({
+          top: e.getBoundingClientRect().top,
+          bottom: e.getBoundingClientRect().bottom,
+          headerBottom: document.querySelector(".nav-shell")!.getBoundingClientRect().bottom,
+          innerHeight,
+          scrollY,
+        }));
+        console.log("[NAV_OFFSET_FAILURE]", width, id, JSON.stringify(geometry));
+        throw error;
+      }
       await expect(page.locator(`.desktop-nav a[href="#${id}"]`)).toHaveAttribute("aria-current", "location");
       await expect(page.locator("#mobile-menu")).not.toHaveAttribute("open", "");
       await noOverflow(page);
