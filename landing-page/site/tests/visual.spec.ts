@@ -87,12 +87,40 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
   });
 }
 
-test("calculator fulfillment buttons support keyboard selection and update the summary", async ({ page }) => {
+test("home calculator day, grams and fulfillment controls work with keyboard", async ({ page }) => {
+  // Stable catalog fixture uses the verified 26-day/150g/two-meal price from the brief.
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ status: true, data: [{
+      planId: "000000000000000000000026",
+      daysCount: 26,
+      gramsOptions: [{ grams: 150, mealsOptions: [{ mealsPerDay: 2, priceSar: 1186 }] }],
+    }] }),
+  }));
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  // A0 STALE_TEST: home plans now use buttons, not the removed flexibility radios.
   await page.locator("#plans").scrollIntoViewIfNeeded();
   const controls = page.locator("#plans .bd-calculator-controls");
   await expect(controls).toBeVisible();
+
+  const days = controls.locator(".bd-calculator-durations button");
+  await expect(days).toHaveCount(3);
+  for (const [index, expected] of ["7", "26", "30"].entries()) {
+    await expect(days.nth(index)).toContainText(expected);
+  }
+  await expect(days.nth(1)).toBeEnabled();
+  await days.nth(1).focus();
+  await page.keyboard.press("Enter");
+  await expect(days.nth(1)).toHaveAttribute("aria-pressed", "true");
+
+  const grams = controls.locator("fieldset").nth(1).locator("button");
+  await expect(grams).toHaveText(["100 جم", "150 جم", "200 جم"]);
+  await expect(grams.nth(1)).toBeEnabled();
+  await grams.nth(1).focus();
+  await page.keyboard.press("Enter");
+  await expect(grams.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#plans .bd-calculator-summary-title")).toContainText("26 يوم · 150 جم");
+
   const pickup = controls.getByRole("button", { name: "استلام", exact: true });
   await pickup.focus();
   await page.keyboard.press("Enter");
