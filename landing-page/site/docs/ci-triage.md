@@ -82,6 +82,12 @@ All twelve failures are the 360/390/430/768/1024/1440-pixel `reduced` and `no-an
 
 These are **candidates**, not proven root causes. They require live behavioral checks and regression tests after the A1+A2 integration report.
 
+## Follow-up evidence: A1+A2 integration after reviewer fixes
+
+The diagnostic [integration PR #224](https://github.com/IbrahimMohamed101/basicdiet145/pull/224) ran at commit `236c039c` with a passing [required gate](https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/43318444847) (77/77). The independent [Extended run](https://github.com/IbrahimMohamed101/basicdiet145/actions/runs/43318444716) recorded 30 failures / 58 passes: **12 navbar reduced/no-animation 503 console cases, 11 full-page RTL 503 console cases, 6 navbar current-section/anchor cases, and 1 skip-link focus case**. The eleven `visual.spec.ts` cases now proceed past the stale FAQ count and fail at `expect(errors).toEqual([])` with the same HTTP 503 console message.
+
+These eleven visual failures do **not** imply eleven new confirmed environment bugs: the exact HTTP response URLs still do not appear in the text log. All 23 HTTP 503 failures remain **unclassified** until a trace or a `page.on("response")` diagnostic captures URLs and request purposes. Do not hide this signal by deleting console assertions.
+
 ## Triage decision rules and next actions
 
 - **STALE_TEST:** assert against canonical data or current intentional UI (e.g. 25 vs 28 builder options; old navbar CTA, obsolete benefits section, prior hero asset). Preserve the feature tested; do not simply weaken an assertion.
