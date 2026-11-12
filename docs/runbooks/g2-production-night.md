@@ -54,6 +54,17 @@ Use the complete approved wrapper from production deployment `2a278e7d-a452-475b
 
 Wait for MongoDB deployment success and readiness while monitoring the deadline. Stop on a failed MongoDB deployment and apply the decision rules below.
 
+### Mandatory deployment-ID/startup-log gate (2026-11-12)
+
+This is a **hard gate after every MongoDB start-command change**, including step 4, the standalone rollback, and any repeated attempt. A saved Railway `startCommand` or a successful `update-service` response is **not** evidence of the command used by the running container. Do not trust a service-level aggregate log or a previous deployment's startup.
+
+1. Apply the change only to the intended MongoDB service and environment. Trigger a **new deployment** after the configuration change, record its exact deployment ID, UTC creation/start time and status; inspect its deployment snapshot/configuration if available. Do not assume that `redeploy` of an older build applies a newly saved command: the 2026-11-11 staging drill `9944020c-1417-446f-93d8-0c00453e5fbd` was a `redeploy` with a service-level wrapper saved but its startup proved standalone.
+2. Fetch the **complete startup logs for that specific deployment ID** (`get-logs` with `deploymentId` and a bounded startup time window). For an uninitialized volume being converted to `--replSet rs0`, require `Did not find local replica set configuration document at startup` **followed by** `Waiting for connections`; also verify the expected replica-set-aware startup evidence. If an initialized configuration unexpectedly appears, stop and escalate without attempting standalone rollback. For the standalone command, require `Waiting for connections` and **no replication-related startup lines** (including `Starting up replica set aware services`, `Did not find local replica set configuration document at startup`, or new replication-configuration lines).
+3. Allow at most **3 minutes after starting the new deployment** to obtain the required ordered markers from its own complete logs. If markers are absent, logs are missing/truncated, or the actual launch mode is uncertain: **do not run or retry the initializer**. Apply the rollback/escalation decision in section 6 using complete initializer and MongoDB logs. Never perform Rollback A after confirmed or possible successful initiation. This three-minute check does not reset the existing 15-minute conversion deadline.
+4. Reapply this same mandatory deployment-ID gate to the standalone deployment performed by Rollback A, recording its ID and UTC `Waiting for connections` time. No replication startup markers are permitted on the rollback deployment. A failure to verify the rollback startup is a STOP/escalation, not a reason to declare restoration complete.
+
+Operator checklist: command changed → new deployment ID recorded → exact deployment startup logs checked → markers match mode within 3 minutes → only then advance. Production deployment still requires its own explicit approval; the staging rehearsal approval does not authorize it.
+
 ## 5. Commit the reviewed backend patch and initialize
 
 Recheck the complete pending diff, then apply the already-staged step 5 backend patch. Do not add or repair missing variables after starting step 4. The initializer connects directly, issues `hello`, validates gzip, JSON, database and SHA-256 before any other application database command, then initializes and verifies.
