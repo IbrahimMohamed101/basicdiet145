@@ -19,7 +19,16 @@ for (const width of widths) {
   test(`navbar RTL ${width}: anchors, keyboard, modal and scroll lock`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
-    page.on("console", m => { if (["error", "warning"].includes(m.type())) errors.push(m.text()); });
+    page.on("console", m => {
+      if (["error", "warning"].includes(m.type())) {
+        errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
+      }
+    });
+    page.on("response", response => {
+      if (response.status() === 503) {
+        console.log("[DIAGNOSTIC_503_RESPONSE]", response.status(), response.url());
+      }
+    });
     await page.setViewportSize({ width, height: width === 360 ? 640 : 900 });
     await isolateInstagram(page);
     await page.goto("/");
@@ -92,7 +101,16 @@ for (const width of widths) {
       const page = await context.newPage();
       const errors: string[] = [];
       page.on("pageerror", e => errors.push(e.message));
-      page.on("console", m => { if (["error", "warning"].includes(m.type())) errors.push(m.text()); });
+      page.on("console", m => {
+      if (["error", "warning"].includes(m.type())) {
+        errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
+      }
+    });
+    page.on("response", response => {
+      if (response.status() === 503) {
+        console.log("[DIAGNOSTIC_503_RESPONSE]", response.status(), response.url());
+      }
+    });
       await isolateInstagram(page);
     await page.goto("/");
       if (mode === "no-animation") await page.evaluate(() => { document.documentElement.dataset.motion = "off"; });
