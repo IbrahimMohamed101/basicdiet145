@@ -5,6 +5,7 @@ export type RestaurantMenuItem = {
   price: number;
   calories: number;
   image: string;
+  illustrative?: boolean;
 };
 
 /**
@@ -129,6 +130,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "id": "restaurant-15",
     "category": "الدجاج",
     "name": "دجاج زعتر",
+    "illustrative": true,
     "price": 20,
     "calories": 195,
     "image": "/restaurant-menu/chicken_15.jpg"
@@ -177,6 +179,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "id": "restaurant-21",
     "category": "الساندوتشات",
     "name": "ساندوتش تركي",
+    "illustrative": true,
     "price": 13,
     "calories": 310,
     "image": "/restaurant-menu/sandwich_new_turkey.jpg"
@@ -185,6 +188,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "id": "restaurant-22",
     "category": "الساندوتشات",
     "name": "بيض بالتركي",
+    "illustrative": true,
     "price": 13,
     "calories": 370,
     "image": "/restaurant-menu/sandwich_new_turkeyegg.jpg"
@@ -201,6 +205,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "id": "restaurant-24",
     "category": "الساندوتشات",
     "name": "ساندوتش دجاج مكسيكي",
+    "illustrative": true,
     "price": 13,
     "calories": 370,
     "image": "/restaurant-menu/sandwich_new_mexican.jpg"

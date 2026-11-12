@@ -12,7 +12,7 @@ import { mealProteinChoices, mealProteinGroups, mealSideChoices } from "@/lib/me
 import { verifiedMenuDetails } from "@/lib/menu-item-details";
 import { editorialMenuDescriptions } from "@/lib/menu-editorial-descriptions";
 import { MenuCalories } from "@/components/MenuCalories";
-import { RestaurantMenu } from "@/components/RestaurantMenu";
+import { RestaurantMenu, type RestaurantMenuTab } from "@/components/RestaurantMenu";
 import { MENU_CALORIES_NOTE } from "@/lib/menu-nutrition";
 
 const foodImage = "https://res.cloudinary.com/da8tyika6/image/upload/f_auto,q_auto:eco,c_limit,w_900/f_auto,q_auto/v1/basicdiet145/menu/file_lltkbm";
@@ -39,6 +39,10 @@ const sizeVariantFamilies = [
   { key: "chicken-meal", title: "وجبة دجاج", sizes: [{ id: "42", grams: 100 }, { id: "43", grams: 150 }, { id: "44", grams: 200 }] },
   { key: "beef-meal", title: "وجبة لحم", sizes: [{ id: "129", grams: 100 }, { id: "79", grams: 150 }, { id: "80", grams: 200 }] },
 ] as const;
+// Hide sandwich entries duplicated in the current restaurant catalogue.
+const legacyRestaurantOverlapIds = new Set([
+  "26", "27", "28", "29", "30", "31", "32", "33", "76", "200",
+]);
 const menuItemById = new Map(menuPreviewItems.map(item => [item.id, item]));
 const variantFamilyById = new Map<string, (typeof sizeVariantFamilies)[number]>(sizeVariantFamilies.flatMap(family => family.sizes.map(size => [size.id, family] as const)));
 
@@ -93,12 +97,15 @@ export function MenuExperience() {
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
   const [selectedProduct, setSelectedProduct] = useState<MenuPreviewItem | null>(null);
+  const [restaurantTab, setRestaurantTab] = useState<RestaurantMenuTab>("الكل");
+  const [extrasOpen, setExtrasOpen] = useState(false);
 
   const numberFormatter = new Intl.NumberFormat("en-US");
 
 
   const filteredItems = useMemo(() => menuPreviewItems.filter((item) => {
-    return (category === "الكل" || item.category === category) &&
+    return !legacyRestaurantOverlapIds.has(item.id) &&
+      (category === "الكل" || item.category === category) &&
       (search.trim() === "" || item.name.includes(search.trim()) || item.id.includes(search.trim()));
   }).sort((a, b) => {
     if (category === "الكل" && !search.trim()) {
@@ -201,8 +208,19 @@ export function MenuExperience() {
           </div>
           <div className="menu-featured-grid">
             {menuShowcaseCategories.map((group, index) => (
-              <a key={group.label} href="#menu-products" className="menu-featured-card"
-                onClick={() => { setCategory(group.label); setSearch(""); setVisibleCount(12); }}>
+              <a key={group.label}
+                href={group.label === "الساندويتشات" ? "#restaurant-menu" : "#menu-products"}
+                className="menu-featured-card"
+                onClick={() => {
+                  if (group.label === "الساندويتشات") {
+                    setRestaurantTab("الساندوتشات");
+                  } else {
+                    setExtrasOpen(true);
+                    setCategory(group.label);
+                    setSearch("");
+                    setVisibleCount(12);
+                  }
+                }}>
                 <Image
                   src={group.image}
                   alt=""
@@ -220,11 +238,16 @@ export function MenuExperience() {
         </div>
       </section>
 
-      <RestaurantMenu />
+      <RestaurantMenu activeTab={restaurantTab} onCategoryChange={setRestaurantTab} />
 
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
-          <Heading id="menu-catalog-title" tag="MORE CHOICES / أصناف إضافية" title="أصناف إضافية من بيسك دايت." copy="استكشف أصنافًا أخرى من كتالوج الموقع. أسعارها وحصصها منفصلة عن قائمة المطعم أعلاه." />
+          <Heading id="menu-catalog-title" tag="MORE CHOICES / خيارات أخرى" title="أصناف إضافية من بيسك دايت." copy="سلطات وفطور وحلويات ومشروبات ووجبات أخرى، غير مكررة مع قائمة المطعم. الأسعار هنا خاصة بالحصص المعروضة." />
+          <button type="button" className="menu-extra-toggle" onClick={() => setExtrasOpen(value => !value)}
+            aria-expanded={extrasOpen} aria-controls="menu-extra-content">
+            {extrasOpen ? "إخفاء الأصناف الإضافية ↑" : "استعراض باقي الأصناف ↓"}
+          </button>
+          {extrasOpen && <div id="menu-extra-content">
           <div className="menu-catalog-tools">
             <div className="menu-filter-strip" role="group" aria-label="تصنيفات المنيو">
               {menuCategories.map((group) => <button key={group} type="button" aria-pressed={category === group} className={category === group ? "is-active" : ""} onClick={() => { setCategory(group); setVisibleCount(12); }}>{group}</button>)}
@@ -266,7 +289,8 @@ export function MenuExperience() {
           </aside>}
           {filteredItems.length === 0 && <p className="menu-empty" role="status">ما لقينا أصناف مطابقة. جرّب تصنيف أو اسم مختلف.</p>}
           {visibleCount < displayItems.length && <div className="menu-more-wrap"><button type="button" className="menu-more" onClick={() => setVisibleCount((n) => n + 12)}>عرض المزيد <span aria-hidden="true">↓</span></button></div>}
-          <p className="menu-catalog-footnote">{MENU_CALORIES_NOTE} الأسعار بالريال السعودي حسب قائمة المطعم، وقد يتغير السعر أو التوفر. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
+          <p className="menu-catalog-footnote">{MENU_CALORIES_NOTE} الأسعار بالريال السعودي حسب كتالوج الموقع لهذا القسم، وقد تختلف الحصص وطريقة التقديم عن منيو المطعم الرئيسي. الصور التوضيحية لا تمثل بالضرورة شكل الطبق النهائي.</p>
+          </div>}
         </div>
       </section>
 

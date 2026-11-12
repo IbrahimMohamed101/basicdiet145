@@ -14,7 +14,8 @@ for (const width of [320, 360, 390, 768, 1440]) {
     await expect.poll(async () => page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);
-    await expect(page.locator("main .menu-product-card")).toHaveCount(12);
+    await expect(page.locator("main .menu-product-card")).toHaveCount(0);
+    await expect(page.locator("#restaurant-menu .restaurant-menu-card")).toHaveCount(16);
     const missingTargets = await page.locator('a[href^="#"]').evaluateAll((links) => links
       .map((link) => link.getAttribute("href") || "")
       .filter((href) => href.length > 1 && !document.getElementById(href.slice(1))));
@@ -63,6 +64,7 @@ test("builder and catalog interactions are read-only", async ({ page }) => {
   await builder.getByRole("button", { name: "جرجير" }).click();
   await expect(builder.locator(".menu-summary-data")).toContainText("2");
   const catalog = page.locator("#menu-products");
+  await catalog.locator(".menu-extra-toggle").click();
   await catalog.getByRole("group", { name: "تصنيفات المنيو" })
     .getByRole("button", { name: "السلطات" }).click();
   await expect(catalog).toContainText("18 صنف");
@@ -214,7 +216,7 @@ test("menu has one navigational header with local menu links", async ({ page }) 
   await expect(page.locator(".site-header")).toHaveCount(1);
   await expect(page.locator(".menu-jump-nav")).toHaveCount(0);
   const nav = page.locator(".site-header .desktop-nav");
-  await expect(nav.locator('a[href="#menu-products"]')).toHaveCount(1);
+  await expect(nav.locator('a[href="#restaurant-menu"]')).toHaveCount(1);
   await expect(nav.locator('a[href="#menu-plans"]')).toHaveCount(1);
   await expect(nav.locator('a[href="#menu-custom"]')).toHaveCount(1);
   await expect(nav.locator('a[href="#menu-download"]')).toHaveCount(1);
@@ -223,6 +225,7 @@ test("menu has one navigational header with local menu links", async ({ page }) 
 
 test("menu hides weight variants on cards but shows 48px choices in product details", async ({ page }) => {
   await page.goto("/menu");
+  await page.locator(".menu-extra-toggle").click();
   const shrimp = page.locator(".menu-product-card").filter({ has: page.getByRole("heading", { name: "جمبري" }) });
   await expect(shrimp).toHaveCount(1);
   await expect(shrimp.getByRole("button", { name: "150 جم" })).toHaveCount(0);
@@ -272,6 +275,7 @@ test("all 108 cashier items have a picture reference and illustrative exceptions
   expect(artwork.headers()["content-type"]).toContain("image/svg+xml");
   expect(await artwork.text()).toContain("<svg");
   await page.goto("/menu");
+  await page.locator(".menu-extra-toggle").click();
   await page.locator("#menu-products").getByRole("button", { name: "المشروبات" }).click();
   await expect(page.locator(".menu-product-card img")).toHaveCount(12);
   await expect(page.locator(".menu-product-card .menu-photo-disclosure")).toHaveCount(12);
@@ -400,6 +404,7 @@ test("home leads with food and live calculator before app presentation", async (
 test("mobile menu search and categories are swipeable and option targets exceed 44px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/menu");
+  await page.locator(".menu-extra-toggle").click();
   const controls = page.locator("#menu-products .menu-catalog-tools");
   await expect(controls.getByRole("searchbox")).toBeVisible();
   const rail = controls.getByRole("group", { name: "تصنيفات المنيو" });
@@ -427,6 +432,7 @@ test("the 15% savings are displayed without exposing a customer-facing coupon co
   await expect(calculator.locator(".bd-calculator-offer-savings b")).toContainText(money.format(177.9));
   await expect(page.locator("body")).not.toContainText("BASIC15");
   await expect(page.locator(".menu-hero .bd-offer-copy")).toContainText("15%");
+  await page.locator(".menu-extra-toggle").click();
   await expect(page.locator(".menu-offer-inline")).toContainText("بدون دفع");
   await expect(page.locator("#menu-download")).toContainText("15%");
 });
@@ -481,7 +487,7 @@ test("homepage promotes website registration but keeps the food and plan paths",
   await expect(page.locator(".hero .bd-offer-copy")).toContainText("15%");
   await expect(page.locator(".hero .bd-offer-copy")).toContainText("بدون دفع الآن");
   await expect(page.locator(".hero a[href='#plans']")).toHaveCount(1);
-  await expect(page.locator(".hero a[href='/menu#menu-products']")).toHaveCount(1);
+  await expect(page.locator(".hero a[href='/menu#restaurant-menu']")).toHaveCount(1);
   await expect(page.locator("body")).not.toContainText("BASIC15");
 });
 
@@ -542,4 +548,72 @@ test("double activation of registration CTA sends only one request", async ({ pa
   });
   expect(recorded.filter(e => e.event === "lp_lead_opened")).toHaveLength(1);
   expect(recorded.filter(e => e.event === "lp_lead_submitted")).toHaveLength(1);
+});
+
+
+test("restaurant menu prices, categories, generated-photo labels and compact expansion", async ({ page }) => {
+  await page.goto("/menu");
+  const menu = page.locator("#restaurant-menu");
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(16);
+  await menu.getByRole("button", { name: "الساندوتشات" }).click();
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(9);
+  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "بيض مسلوق" })).toContainText("11");
+  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "برجر لحم" })).toContainText("23");
+  await expect(menu).not.toContainText("فاهيتا");
+  await menu.getByRole("button", { name: "الأسماك واللحوم" }).click();
+  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "سمك مشوي" })).toContainText("20");
+  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "سمك كريمة" })).toContainText("20");
+  await menu.getByRole("button", { name: "الدجاج" }).click();
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(15);
+  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "دجاج زعتر" }).locator(".restaurant-menu-image-note")).toHaveText("صورة توضيحية");
+  await menu.getByRole("button", { name: /الكل/ }).click();
+  await menu.locator(".restaurant-menu-expand").click();
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(37);
+});
+
+test("new photo route is optimized, loads in browser and remains in the viewport", async ({ page, request }) => {
+  const optimized = await request.get("/_next/image?url=%2Frestaurant-menu%2Fchicken_1.jpg&w=256&q=75");
+  expect(optimized.status()).toBe(200);
+  expect(optimized.headers()["content-type"]).toMatch(/image\//);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/menu");
+    const photo = page.locator("#restaurant-menu .restaurant-menu-photo img").first();
+    await photo.scrollIntoViewIfNeeded();
+    await expect.poll(async () => photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    const decline = page.getByRole("button", { name: "رفض التتبع" });
+    if (await decline.isVisible()) await decline.click();
+    await page.locator("#restaurant-menu").screenshot({ path: `test-results/restaurant-menu-${width}.png`, animations: "disabled" });
+    await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("additional catalogue starts collapsed and removes duplicate sandwich and fajita prices", async ({ page }) => {
+  await page.goto("/menu");
+  const extras = page.locator("#menu-products");
+  await expect(extras.locator(".menu-product-card")).toHaveCount(0);
+  await extras.locator(".menu-extra-toggle").click();
+  await expect(extras.locator(".menu-extra-toggle")).toHaveAttribute("aria-expanded", "true");
+  await extras.getByRole("button", { name: "الساندويتشات" }).click();
+  await expect(extras).toContainText("5 صنف");
+  for (const removed of ["دجاج فاهيتا", "بيض مسلوق", "برجر لحم", "دجاج مكسيكي"]) {
+    await expect(extras.locator(".menu-product-grid")).not.toContainText(removed);
+  }
+  await page.locator(".menu-featured-card").filter({ hasText: "الساندويتشات" }).click();
+  await expect(page.locator("#restaurant-menu").getByRole("button", { name: "الساندوتشات" })).toHaveAttribute("aria-pressed", "true");
+});
+
+
+test("primary menu anchor clears the sticky header on mobile and desktop", async ({ page }) => {
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/menu");
+    await page.locator(".menu-hero .menu-primary-link").click();
+    await expect(page).toHaveURL(/#restaurant-menu$/);
+    await expect.poll(async () => page.evaluate(() => {
+      const target = document.querySelector("#restaurant-menu-heading")?.getBoundingClientRect();
+      const header = document.querySelector(".site-header")?.getBoundingClientRect();
+      return (target?.top ?? 0) - (header?.bottom ?? 1);
+    })).toBeGreaterThanOrEqual(-2);
+  }
 });

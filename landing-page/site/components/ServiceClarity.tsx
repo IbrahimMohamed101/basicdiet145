@@ -14,7 +14,7 @@ export function ServiceClarity() {
         </div>
         <div className="bd-service-footer">
           <a href="#faq">راجع الأسئلة الشائعة عن التوصيل والاستلام ←</a>
-          <a href="/menu#menu-products">شوف الأطباق والأسعار</a>
+          <a href="/menu#restaurant-menu">شوف الأطباق والأسعار</a>
         </div>
       </div>
     </section>
