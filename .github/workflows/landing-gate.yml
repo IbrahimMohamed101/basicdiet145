@@ -2,12 +2,12 @@ name: Landing Gate
 
 on:
   pull_request:
-    branches: [landing-page-research, codex/a1-env-analytics]
+    branches: [landing-page-research, landing-production]
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-gate.yml"
   push:
-    branches: [landing-page-research]
+    branches: [landing-page-research, landing-production]
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-gate.yml"
@@ -53,15 +53,24 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR: artifacts/landing-gate-html
           PLAYWRIGHT_JSON_OUTPUT_FILE: artifacts/landing-gate.json
         run: |
-          npx playwright test \
-            tests/menu.spec.ts \
-            tests/menu-nutrition.spec.ts \
-            tests/lead-flow.spec.ts \
-            tests/menu-builder-mobile.spec.ts \
-            tests/seo-jeddah.spec.ts \
-            tests/lead-origin.spec.ts \
-            tests/analytics-origin.spec.ts \
-            --reporter=line,github,html,json --retries=1 --trace=on-first-retry
+          specs=(
+            tests/menu.spec.ts
+            tests/menu-nutrition.spec.ts
+            tests/lead-flow.spec.ts
+            tests/menu-builder-mobile.spec.ts
+            tests/seo-jeddah.spec.ts
+            tests/lead-origin.spec.ts
+            tests/analytics-origin.spec.ts
+          )
+          # Navigation regressions live in stacked Draft #225 until that PR lands.
+          # On landing-production the Tier 1 spec is mandatory, never optional.
+          if [[ -f tests/navigation-regression.spec.ts ]]; then
+            specs+=(tests/navigation-regression.spec.ts)
+          elif [[ "${GITHUB_BASE_REF:-}" == "landing-production" || "${GITHUB_REF_NAME:-}" == "landing-production" ]]; then
+            echo "::error::Missing required Tier 1 navigation-regression.spec.ts"
+            exit 1
+          fi
+          npx playwright test "${specs[@]}" --reporter=line,github,html,json --retries=1 --trace=on-first-retry
       - name: Upload gate report and traces
         if: always()
         uses: actions/upload-artifact@v4
