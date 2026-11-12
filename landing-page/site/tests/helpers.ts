@@ -31,6 +31,15 @@ export async function stubPlanCatalog(page: Page) {
   }));
 }
 
+/** Verify the actual unavailable-catalog UI rather than a successful fixture. */
+export async function stubUnavailablePlanCatalog(page: Page) {
+  await page.route("**/api/plan-catalog", route => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ status: false, data: [], code: "UNAVAILABLE" }),
+  }));
+}
+
 /** Isolate analytics ingestion in presentation/navigation-only browser tests.
  * Production analytics semantics and analytics-origin.spec.ts are NOT mocked. */
 export async function stubPresentationAnalytics(page: Page) {
