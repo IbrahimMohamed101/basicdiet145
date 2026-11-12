@@ -20,7 +20,7 @@ export function Header() {
   const isHome = pathname === "/";
   const isMenu = pathname === "/menu";
   const currentLinks = isMenu ? [
-    { href: "#menu-products", label: "المنيو" },
+    { href: "#restaurant-menu", label: "المنيو" },
     { href: "#menu-plans", label: "الاشتراكات" },
     { href: "#menu-custom", label: "اصنع بنفسك" },
     { href: "#menu-download", label: "تواصل معنا" },
