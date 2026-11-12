@@ -2,7 +2,7 @@ name: Landing Extended
 
 on:
   pull_request:
-    branches: [landing-page-research, codex/a1-env-analytics]
+    branches: [landing-page-research]
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-extended.yml"
@@ -47,7 +47,7 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR: artifacts/landing-extended-html
           PLAYWRIGHT_JSON_OUTPUT_FILE: artifacts/landing-extended.json
         run: |
-          mapfile -t specs < <(find tests -maxdepth 1 -type f -name '*.spec.ts' | sort | grep -Ev '^tests/(menu|menu-nutrition|lead-flow|menu-builder-mobile|seo-jeddah|lead-origin|analytics-origin)\.spec\.ts$')
+          mapfile -t specs < <(find tests -maxdepth 1 -type f -name '*.spec.ts' | sort | grep -Ev '^tests/(menu|menu-nutrition|lead-flow|menu-builder-mobile|seo-jeddah|lead-origin|analytics-origin|navigation-regression)\.spec\.ts$')
           if (("${#specs[@]}" == 0)); then echo "No extended specs"; exit 0; fi
           npx playwright test "${specs[@]}" --reporter=line,github,html,json --retries=1 --trace=on-first-retry
       - name: Upload extended report and traces
