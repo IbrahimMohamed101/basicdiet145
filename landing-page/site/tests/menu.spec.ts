@@ -581,6 +581,7 @@ test("new photo route is optimized, loads in browser and remains in the viewport
     const photo = page.locator("#restaurant-menu .restaurant-menu-photo img").first();
     await photo.scrollIntoViewIfNeeded();
     await expect.poll(async () => photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    await page.locator("#restaurant-menu").screenshot({ path: `test-results/restaurant-menu-${width}.png`, animations: "disabled" });
     await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   }
 });
