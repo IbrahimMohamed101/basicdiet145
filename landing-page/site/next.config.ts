@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
       { pathname: "/media/**", search: "" },
       { pathname: "/meals/**", search: "" },
       { pathname: "/menu-images/**", search: "" },
+      { pathname: "/restaurant-menu/**", search: "" },
       { pathname: "/brand/**", search: "" },
     ],
   },
