@@ -107,7 +107,8 @@ export function Header() {
       const headerBottom = document.querySelector(".nav-shell")?.getBoundingClientRect().bottom ?? 0;
       // Use a single content band, not the last of several intersecting sections.
       // Unlinked sections therefore clear aria-current naturally.
-      const band = Math.min(window.innerHeight * 0.45, headerBottom + 92);
+      // Keep the band close enough to short sections (e.g. #how-it-works at 1024px).
+      const band = Math.min(window.innerHeight * 0.45, Math.max(headerBottom + 24, 128));
       const current = sectionLinks.find(({ href }) => {
         const section = document.getElementById(href.slice(1));
         if (!section) return false;
