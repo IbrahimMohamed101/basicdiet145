@@ -1,4 +1,4 @@
-import { isolateInstagram, stubPlanCatalog } from "./helpers";
+import { isolateInstagram, stubPlanCatalog, stubPresentationAnalytics } from "./helpers";
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 const widths = [360, 390, 430, 768, 1024, 1440];
@@ -32,6 +32,7 @@ for (const width of widths) {
     await page.setViewportSize({ width, height: width === 360 ? 640 : 900 });
     await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
@@ -114,6 +115,7 @@ for (const width of widths) {
     });
       await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
       if (mode === "no-animation") await page.evaluate(() => { document.documentElement.dataset.motion = "off"; });
       await noOverflow(page);
@@ -152,6 +154,7 @@ test("navbar short landscape and 200% text remain reachable", async ({ page }) =
     await page.setViewportSize(viewport);
     await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
     await page.addStyleTag({ content: "html { font-size: 200%; }" });
     await noOverflow(page);
@@ -181,6 +184,7 @@ test("navbar resize closes modal and restores focus", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
   await page.getByRole("button", { name: "فتح القائمة" }).click();
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -195,6 +199,7 @@ test("navbar CPU 4x keyboard CTA preserves event and unlocks before scroll", asy
   await session.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
   await page.evaluate(() => { window.addEventListener("basicdiet:cta", e => { document.documentElement.dataset.cta = JSON.stringify((e as CustomEvent).detail); }); });
   await page.getByRole("button", { name: "فتح القائمة" }).focus();
@@ -212,6 +217,7 @@ test("navbar desktop keyboard, focus outline and stable layout on scroll", async
   await page.setViewportSize({ width: 1440, height: 900 });
   await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
   await page.keyboard.press("Tab");
@@ -253,6 +259,7 @@ test("navbar classic scrollbar lock preserves page and header geometry", async (
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("http://127.0.0.1:3000");
     await page.evaluate(() => document.fonts.ready);
     await page.locator("#app").evaluate(e => e.scrollIntoView({ behavior: "instant" }));
@@ -292,6 +299,7 @@ test("home #app and #plans navigation stays below the sticky header", async ({ p
     await page.emulateMedia({ reducedMotion: "reduce" });
     await isolateInstagram(page);
     await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.goto("/");
     for (const section of ["plans", "app"]) {
       if (width < 981) await page.getByRole("button", { name: "فتح القائمة" }).click();
