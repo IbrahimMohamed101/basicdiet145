@@ -225,9 +225,10 @@ test("navbar desktop keyboard, focus outline and stable layout on scroll", async
   }
   await page.keyboard.press("Tab");
   await expect(page.locator(".brand")).toBeFocused();
-  for (const id of targets) {
+  // Include /menu in its real DOM position; skipping it shifts every later Tab.
+  for (const { href } of expectedHomeLinks) {
     await page.keyboard.press("Tab");
-    const link = page.locator(`.desktop-nav a[href="#${id}"]`);
+    const link = page.locator(`.desktop-nav a[href="${href}"]`);
     await expect(link).toBeFocused();
     expect(await link.evaluate(e => getComputedStyle(e).outlineStyle)).toBe("solid");
   }
