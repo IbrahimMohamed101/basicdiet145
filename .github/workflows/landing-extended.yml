@@ -1,0 +1,65 @@
+name: Landing Extended
+
+on:
+  pull_request:
+    branches: [landing-page-research]
+    paths:
+      - "landing-page/site/**"
+      - ".github/workflows/landing-extended.yml"
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extended:
+    name: extended (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: landing-page/site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing-page/site/package-lock.json
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Start production-mode server
+        run: |
+          npm start -- --hostname 127.0.0.1 --port 3000 > /tmp/landing-extended.log 2>&1 &
+          for i in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:3000/menu > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/landing-extended.log
+          exit 1
+      - name: Extended browser suite (informational)
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: artifacts/landing-extended-html
+          PLAYWRIGHT_JSON_OUTPUT_FILE: artifacts/landing-extended.json
+        run: |
+          mapfile -t specs < <(find tests -maxdepth 1 -type f -name '*.spec.ts' | sort | grep -Ev '^tests/(menu|menu-nutrition|lead-flow|menu-builder-mobile|seo-jeddah|lead-origin|analytics-origin)\.spec\.ts$')
+          if (("${#specs[@]}" == 0)); then echo "No extended specs"; exit 0; fi
+          npx playwright test "${specs[@]}" --reporter=line,github,html,json --retries=1 --trace=on-first-retry
+      - name: Upload extended report and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-extended-report
+          path: |
+            landing-page/site/artifacts/landing-extended-html/
+            landing-page/site/artifacts/landing-extended.json
+            landing-page/site/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
