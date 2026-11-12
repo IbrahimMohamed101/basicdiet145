@@ -137,27 +137,27 @@ test("FAQ and download links work without JavaScript", async ({ browser }) => {
 });
 
 // Prevent mobile cover/scale regressions without changing the cinematic desktop hero.
+// A0 STALE_TEST: the mobile experience deliberately hides the video in favor of an image LCP.
 for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 640, height: 720 }]) {
-  test(`mobile Hero displays uncropped video at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`mobile Hero displays uncropped image poster at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const geometry = await page.locator(".hero-cinema-video").evaluate((video) => {
-      const videoBox = video.getBoundingClientRect();
+    await expect(page.locator(".hero-cinema-video")).toBeHidden();
+    const poster = page.locator(".hero-cinema-mobile-poster");
+    await expect(poster).toBeVisible();
+    const geometry = await poster.evaluate((image) => {
+      const posterBox = image.getBoundingClientRect();
       const titleBox = document.querySelector(".hero-cinema-title")!.getBoundingClientRect();
       return {
-        fit: getComputedStyle(video).objectFit,
-        transform: getComputedStyle(video).transform,
-        width: videoBox.width,
-        height: videoBox.height,
-        videoBottom: videoBox.bottom,
+        width: posterBox.width,
+        height: posterBox.height,
+        posterBottom: posterBox.bottom,
         titleTop: titleBox.top,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
-    expect(geometry.fit).toBe("contain");
-    expect(geometry.transform).toBe("none");
     expect(geometry.width / geometry.height).toBeCloseTo(16 / 9, 1);
-    expect(geometry.videoBottom).toBeLessThan(geometry.titleTop);
+    expect(geometry.posterBottom).toBeLessThan(geometry.titleTop);
     expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width + 1);
   });
 }
