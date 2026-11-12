@@ -1,12 +1,6 @@
 name: Landing Page Build
 
 on:
-  push:
-    branches:
-      - landing-page-research
-    paths:
-      - "landing-page/site/**"
-      - ".github/workflows/landing-page-build.yml"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +20,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: landing-page/site/package.json
 

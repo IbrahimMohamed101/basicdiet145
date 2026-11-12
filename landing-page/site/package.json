@@ -2,6 +2,7 @@
   "name": "basicdiet-landing",
   "version": "0.1.0",
   "private": true,
+  "engines": { "node": ">=24 <25" },
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/extract-menu-photos.mjs && node scripts/verify-menu-catalog.mjs && next build",
