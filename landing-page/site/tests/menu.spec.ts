@@ -581,6 +581,8 @@ test("new photo route is optimized, loads in browser and remains in the viewport
     const photo = page.locator("#restaurant-menu .restaurant-menu-photo img").first();
     await photo.scrollIntoViewIfNeeded();
     await expect.poll(async () => photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    const decline = page.getByRole("button", { name: "رفض التتبع" });
+    if (await decline.isVisible()) await decline.click();
     await page.locator("#restaurant-menu").screenshot({ path: `test-results/restaurant-menu-${width}.png`, animations: "disabled" });
     await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   }
@@ -599,4 +601,19 @@ test("additional catalogue starts collapsed and removes duplicate sandwich and f
   }
   await page.locator(".menu-featured-card").filter({ hasText: "الساندويتشات" }).click();
   await expect(page.locator("#restaurant-menu").getByRole("button", { name: "الساندوتشات" })).toHaveAttribute("aria-pressed", "true");
+});
+
+
+test("primary menu anchor clears the sticky header on mobile and desktop", async ({ page }) => {
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/menu");
+    await page.locator(".menu-hero .menu-primary-link").click();
+    await expect(page).toHaveURL(/#restaurant-menu$/);
+    await expect.poll(async () => page.evaluate(() => {
+      const target = document.querySelector("#restaurant-menu-heading")?.getBoundingClientRect();
+      const header = document.querySelector(".site-header")?.getBoundingClientRect();
+      return (target?.top ?? 0) - (header?.bottom ?? 1);
+    })).toBeGreaterThanOrEqual(-2);
+  }
 });
