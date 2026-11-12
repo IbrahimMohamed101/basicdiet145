@@ -10,7 +10,7 @@ const viewports = [
   { width: 375, height: 812 }, { width: 360, height: 800 },
   { width: 320, height: 720 },
 ];
-const sections = [".hero", "#app", "#meals", ".benefits-section", "#how-it-works", "#reels", "#plans", "#faq", ".final-cta", ".footer"];
+const sections = [".hero", "#app", "#meals", ".bd-service-clarity", "#how-it-works", "#reels", "#plans", "#faq", ".final-cta", ".footer"];
 
 async function checkMeals(page: Page) {
   const cards = page.locator("#meals .meal-card");
@@ -87,21 +87,17 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
   });
 }
 
-test("flexibility radios work with keyboard and announce the example", async ({ page }) => {
+test("calculator fulfillment buttons support keyboard selection and update the summary", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const grams = page.locator('input[name="grams"][value="150"]');
-  await grams.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(page.locator('input[name="grams"][value="100"]')).toBeChecked();
-  await page.keyboard.press("ArrowLeft");
-  await page.keyboard.press("ArrowLeft");
-  await expect(page.locator('input[name="grams"][value="200"]')).toBeChecked();
-  await expect(page.getByRole("status")).toContainText("200");
-  await page.getByRole("radio", { name: "5", exact: true }).check();
-  await page.getByRole("radio", { name: "استلام", exact: true }).check();
-  await expect(page.getByRole("status")).toContainText("5");
-  await expect(page.getByRole("status")).toContainText("استلام");
-  expect(await page.locator('input[name="grams"][value="200"] + span').evaluate(e => getComputedStyle(e).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  // A0 STALE_TEST: home plans now use buttons, not the removed flexibility radios.
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  const controls = page.locator("#plans .bd-calculator-controls");
+  await expect(controls).toBeVisible();
+  const pickup = controls.getByRole("button", { name: "استلام", exact: true });
+  await pickup.focus();
+  await page.keyboard.press("Enter");
+  await expect(pickup).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#plans .bd-calculator-specs")).toContainText("استلام");
 });
 
 test("Reels defer requests and support contained mobile scrolling", async ({ page }) => {
@@ -141,27 +137,27 @@ test("FAQ and download links work without JavaScript", async ({ browser }) => {
 });
 
 // Prevent mobile cover/scale regressions without changing the cinematic desktop hero.
+// A0 STALE_TEST: the mobile experience deliberately hides the video in favor of an image LCP.
 for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 640, height: 720 }]) {
-  test(`mobile Hero displays uncropped video at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`mobile Hero displays uncropped image poster at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const geometry = await page.locator(".hero-cinema-video").evaluate((video) => {
-      const videoBox = video.getBoundingClientRect();
+    await expect(page.locator(".hero-cinema-video")).toBeHidden();
+    const poster = page.locator(".hero-cinema-mobile-poster");
+    await expect(poster).toBeVisible();
+    const geometry = await poster.evaluate((image) => {
+      const posterBox = image.getBoundingClientRect();
       const titleBox = document.querySelector(".hero-cinema-title")!.getBoundingClientRect();
       return {
-        fit: getComputedStyle(video).objectFit,
-        transform: getComputedStyle(video).transform,
-        width: videoBox.width,
-        height: videoBox.height,
-        videoBottom: videoBox.bottom,
+        width: posterBox.width,
+        height: posterBox.height,
+        posterBottom: posterBox.bottom,
         titleTop: titleBox.top,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
-    expect(geometry.fit).toBe("contain");
-    expect(geometry.transform).toBe("none");
     expect(geometry.width / geometry.height).toBeCloseTo(16 / 9, 1);
-    expect(geometry.videoBottom).toBeLessThan(geometry.titleTop);
+    expect(geometry.posterBottom).toBeLessThan(geometry.titleTop);
     expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width + 1);
   });
 }

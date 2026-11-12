@@ -32,7 +32,7 @@ for (const width of widths) {
       await expect(dialog).toBeVisible();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       const close = dialog.getByRole("button", { name: "إغلاق القائمة" });
-      const cta = dialog.getByRole("button", { name: "ابدأ اشتراكك" });
+      const cta = dialog.getByRole("button", { name: "سجّل لخصم 15%" });
       await expect(close).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(cta).toBeFocused();
@@ -90,7 +90,7 @@ for (const width of widths) {
       if (mode === "no-animation") await page.evaluate(() => { document.documentElement.dataset.motion = "off"; });
       await noOverflow(page);
       if (mode === "no-js") {
-        await expect(page.locator(".nav-fallback a")).toHaveCount(6);
+        await expect(page.locator(".nav-fallback a")).toHaveCount((await page.locator(".desktop-nav a").count()) + 1);
         await expect(page.locator(".nav-fallback")).toBeVisible();
         await expect(page.getByRole("button", { name: "فتح القائمة" })).toHaveCount(0);
         await page.locator('.nav-fallback a[href="#meals"]').click();
@@ -128,13 +128,15 @@ test("navbar short landscape and 200% text remain reachable", async ({ page }) =
     }
     if (viewport.width < 981) {
       await page.getByRole("button", { name: "فتح القائمة" }).click();
-      const cta = page.getByRole("dialog").getByRole("button", { name: "ابدأ اشتراكك" });
+      const navDialog = page.getByRole("dialog", { name: "التنقل الرئيسي" });
+      const cta = navDialog.getByRole("button", { name: "سجّل لخصم 15%" });
       await cta.focus();
       await expect(cta).toBeInViewport();
       await page.screenshot({ animations: "disabled", path: `${output}/${viewport.width}-text-200-open.png` });
       await page.keyboard.press("Enter");
-      await expect(page.getByRole("dialog")).not.toBeVisible();
-      await expect.poll(() => page.locator("#app").evaluate(e => e.getBoundingClientRect().top >= document.querySelector(".nav-shell")!.getBoundingClientRect().bottom)).toBe(true);
+      await expect(navDialog).not.toBeVisible();
+      await expect(page.getByRole("dialog", { name: "خصم 15% على اشتراكك" })).toBeVisible();
+      await page.getByRole("button", { name: "إغلاق النافذة" }).click();
     }
     await page.screenshot({ animations: "disabled", path: `${output}/${viewport.width}-text-200.png` });
   }
@@ -162,9 +164,10 @@ test("navbar CPU 4x keyboard CTA preserves event and unlocks before scroll", asy
   await page.keyboard.press("Space");
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect(page.locator("html")).toHaveAttribute("data-cta", JSON.stringify({ location: "header", platform: "desktop" }));
-  await expect.poll(() => page.locator("#app").evaluate(e => Math.abs(e.getBoundingClientRect().top - 112) < 2)).toBe(true);
+  await expect(page.getByRole("dialog", { name: "التنقل الرئيسي" })).not.toBeVisible();
+  await expect(page.getByRole("dialog", { name: "خصم 15% على اشتراكك" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-cta", JSON.stringify({ location: "header", promotion: "BASIC15", placement: "header" }));
+  await page.getByRole("button", { name: "إغلاق النافذة" }).click();
   await session.detach();
 });
 
@@ -225,8 +228,9 @@ test("navbar classic scrollbar lock preserves page and header geometry", async (
     const session = await page.context().newCDPSession(page);
     const { nodes } = await session.send("Accessibility.getFullAXTree");
     const actions = nodes.filter(n => !n.ignored && ["button", "link"].includes(n.role?.value));
-    expect(actions).toHaveLength(7); // close, five section links, one CTA
-    expect(actions.filter(n => n.name?.value === "ابدأ اشتراكك")).toHaveLength(1);
+    // A0 STALE_TEST: six navigation links now include /menu, plus close and offer CTA.
+    expect(actions).toHaveLength((await page.locator(".nav-sheet nav a").count()) + 2);
+    expect(actions.filter(n => n.name?.value === "سجّل لخصم 15%")).toHaveLength(1);
     await page.keyboard.press("Escape");
     expect(await page.locator("#app").boundingBox()).toEqual(before);
     expect(await page.locator(".nav-shell").boundingBox()).toEqual(header);
