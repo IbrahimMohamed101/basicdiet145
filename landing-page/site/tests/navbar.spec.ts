@@ -24,11 +24,6 @@ for (const width of widths) {
         errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
       }
     });
-    page.on("response", response => {
-      if (response.status() === 503) {
-        console.log("[DIAGNOSTIC_503_RESPONSE]", response.status(), response.url());
-      }
-    });
     await page.setViewportSize({ width, height: width === 360 ? 640 : 900 });
     await isolateInstagram(page);
     await stubPlanCatalog(page);
@@ -106,11 +101,6 @@ for (const width of widths) {
       page.on("console", m => {
       if (["error", "warning"].includes(m.type())) {
         errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
-      }
-    });
-    page.on("response", response => {
-      if (response.status() === 503) {
-        console.log("[DIAGNOSTIC_503_RESPONSE]", response.status(), response.url());
       }
     });
       await isolateInstagram(page);
