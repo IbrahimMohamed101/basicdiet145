@@ -645,8 +645,10 @@ body:has(.menu-page) a.skip-link:focus-visible {
   text-align: right;
   direction: rtl;
 }
+/* Crop dark corner pixels baked into earlier square product exports. */
 .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb img {
-  object-fit: contain;
+  object-fit: cover;
+  transform: scale(1.12);
 }
 .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb .menu-builder-image-fallback {
   width: 100%;
@@ -691,5 +693,16 @@ body:has(.menu-page) a.skip-link:focus-visible {
   }
   .menu-page .menu-summary-data > div.menu-summary-total b {
     font-size: 15px;
+  }
+}
+
+.menu-page .menu-summary-visual-photo img {
+  object-fit: cover;
+  transform: scale(1.12);
+}
+@media (max-width: 520px) {
+  .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-thumb img {
+    object-fit: cover;
+    transform: scale(1.12);
   }
 }
