@@ -1,12 +1,12 @@
 name: Landing page build
 on:
   pull_request:
-    branches: [landing-page-research]
+    branches: [landing-page-research, landing-production]
     paths:
       - "landing-page/site/**"
       - ".github/workflows/landing-site-check.yml"
   push:
-    branches: [landing-page-research]
+    branches: [landing-page-research, landing-production]
     paths:
       - "landing-page/site/**"
 jobs:
@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 24
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build

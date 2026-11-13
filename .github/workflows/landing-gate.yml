@@ -1,0 +1,84 @@
+name: Landing Gate
+
+on:
+  pull_request:
+    branches: [landing-page-research, landing-production]
+    paths:
+      - "landing-page/site/**"
+      - ".github/workflows/landing-gate.yml"
+  push:
+    branches: [landing-page-research, landing-production]
+    paths:
+      - "landing-page/site/**"
+      - ".github/workflows/landing-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: landing-page/site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: landing-page/site/package-lock.json
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Start production-mode server
+        run: |
+          npm start -- --hostname 127.0.0.1 --port 3000 > /tmp/landing-gate.log 2>&1 &
+          for i in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:3000/menu > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/landing-gate.log
+          exit 1
+      - name: Tier 1 regression suite (required)
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: artifacts/landing-gate-html
+          PLAYWRIGHT_JSON_OUTPUT_FILE: artifacts/landing-gate.json
+        run: |
+          specs=(
+            tests/menu.spec.ts
+            tests/menu-nutrition.spec.ts
+            tests/lead-flow.spec.ts
+            tests/menu-builder-mobile.spec.ts
+            tests/seo-jeddah.spec.ts
+            tests/lead-origin.spec.ts
+            tests/analytics-origin.spec.ts
+          )
+          # Navigation regressions live in stacked Draft #225 until that PR lands.
+          # On landing-production the Tier 1 spec is mandatory, never optional.
+          if [[ -f tests/navigation-regression.spec.ts ]]; then
+            specs+=(tests/navigation-regression.spec.ts)
+          elif [[ "${GITHUB_BASE_REF:-}" == "landing-production" || "${GITHUB_REF_NAME:-}" == "landing-production" ]]; then
+            echo "::error::Missing required Tier 1 navigation-regression.spec.ts"
+            exit 1
+          fi
+          npx playwright test "${specs[@]}" --reporter=line,github,html,json --retries=1 --trace=on-first-retry
+      - name: Upload gate report and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-gate-report
+          path: |
+            landing-page/site/artifacts/landing-gate-html/
+            landing-page/site/artifacts/landing-gate.json
+            landing-page/site/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

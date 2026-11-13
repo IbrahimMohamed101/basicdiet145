@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { isolateInstagram } from "./helpers";
+import { isolateInstagram, stubPlanCatalog, stubUnavailablePlanCatalog, stubPresentationAnalytics } from "./helpers";
 
 const viewports = [
   { width: 1920, height: 1080 }, { width: 1536, height: 864 },
@@ -10,7 +10,7 @@ const viewports = [
   { width: 375, height: 812 }, { width: 360, height: 800 },
   { width: 320, height: 720 },
 ];
-const sections = [".hero", "#app", "#meals", ".benefits-section", "#how-it-works", "#reels", "#plans", "#faq", ".final-cta", ".footer"];
+const sections = [".hero", "#app", "#meals", ".bd-service-clarity", "#how-it-works", "#reels", "#plans", "#faq", ".final-cta", ".footer"];
 
 async function checkMeals(page: Page) {
   const cards = page.locator("#meals .meal-card");
@@ -42,8 +42,14 @@ for (const viewport of viewports) {
     test.setTimeout(150_000);
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
-    page.on("console", m => { if (["error", "warning"].includes(m.type())) errors.push(m.text()); });
+    page.on("console", m => {
+      if (["error", "warning"].includes(m.type())) {
+        errors.push(`${m.text()} [console-location-url=${m.location().url || "unknown"}]`);
+      }
+    });
     await isolateInstagram(page);
+    await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -63,7 +69,8 @@ for (const viewport of viewports) {
     const missing = await page.locator('a[href^="#"]').evaluateAll(es => es.filter(e => !document.getElementById(e.getAttribute("href")!.slice(1))).map(e => e.getAttribute("href")));
     expect(missing).toEqual([]);
     await checkMeals(page);
-    await expect(page.locator(".faq-item")).toHaveCount(6);
+    // A1 integration CI: the current FAQ component renders seven question items.
+    await expect(page.locator(".faq-item")).toHaveCount(7);
     expect(errors).toEqual([]);
     await mkdir("../../.audit/refinement/final", { recursive: true });
     await page.screenshot({ path: `../../.audit/refinement/final/${viewport.width}-full.png`, fullPage: true });
@@ -79,6 +86,8 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
     try {
       const page = await context.newPage();
       await isolateInstagram(page);
+    await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await checkMeals(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -87,27 +96,46 @@ for (const zoom of [0.8, 0.9, 1, 1.1, 1.25]) {
   });
 }
 
-test("flexibility radios work with keyboard and announce the example", async ({ page }) => {
+test("home calculator day, grams and fulfillment controls work with keyboard", async ({ page }) => {
+  // Use the same canonical fixture as the non-analytics navigation/visual tests.
+  await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const grams = page.locator('input[name="grams"][value="150"]');
-  await grams.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(page.locator('input[name="grams"][value="100"]')).toBeChecked();
-  await page.keyboard.press("ArrowLeft");
-  await page.keyboard.press("ArrowLeft");
-  await expect(page.locator('input[name="grams"][value="200"]')).toBeChecked();
-  await expect(page.getByRole("status")).toContainText("200");
-  await page.getByRole("radio", { name: "5", exact: true }).check();
-  await page.getByRole("radio", { name: "استلام", exact: true }).check();
-  await expect(page.getByRole("status")).toContainText("5");
-  await expect(page.getByRole("status")).toContainText("استلام");
-  expect(await page.locator('input[name="grams"][value="200"] + span').evaluate(e => getComputedStyle(e).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  const controls = page.locator("#plans .bd-calculator-controls");
+  await expect(controls).toBeVisible();
+
+  const days = controls.locator(".bd-calculator-durations button");
+  await expect(days).toHaveCount(3);
+  for (const [index, expected] of ["7", "26", "30"].entries()) {
+    await expect(days.nth(index)).toContainText(expected);
+  }
+  await expect(days.nth(1)).toBeEnabled();
+  await days.nth(1).focus();
+  await page.keyboard.press("Enter");
+  await expect(days.nth(1)).toHaveAttribute("aria-pressed", "true");
+
+  const grams = controls.locator("fieldset").nth(1).locator("button");
+  await expect(grams).toHaveText(["100 جم", "150 جم", "200 جم"]);
+  await expect(grams.nth(1)).toBeEnabled();
+  await grams.nth(1).focus();
+  await page.keyboard.press("Enter");
+  await expect(grams.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#plans .bd-calculator-summary-title")).toContainText("26 يوم · 150 جم");
+
+  const pickup = controls.getByRole("button", { name: "استلام", exact: true });
+  await pickup.focus();
+  await page.keyboard.press("Enter");
+  await expect(pickup).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#plans .bd-calculator-specs")).toContainText("استلام");
 });
 
 test("Reels defer requests and support contained mobile scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await isolateInstagram(page);
+    await stubPlanCatalog(page);
+    await stubPresentationAnalytics(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reels iframe")).toHaveCount(0);
   const cards = page.locator(".reel-card");
@@ -141,27 +169,27 @@ test("FAQ and download links work without JavaScript", async ({ browser }) => {
 });
 
 // Prevent mobile cover/scale regressions without changing the cinematic desktop hero.
+// A0 STALE_TEST: the mobile experience deliberately hides the video in favor of an image LCP.
 for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 640, height: 720 }]) {
-  test(`mobile Hero displays uncropped video at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`mobile Hero displays uncropped image poster at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const geometry = await page.locator(".hero-cinema-video").evaluate((video) => {
-      const videoBox = video.getBoundingClientRect();
+    await expect(page.locator(".hero-cinema-video")).toBeHidden();
+    const poster = page.locator(".hero-cinema-mobile-poster");
+    await expect(poster).toBeVisible();
+    const geometry = await poster.evaluate((image) => {
+      const posterBox = image.getBoundingClientRect();
       const titleBox = document.querySelector(".hero-cinema-title")!.getBoundingClientRect();
       return {
-        fit: getComputedStyle(video).objectFit,
-        transform: getComputedStyle(video).transform,
-        width: videoBox.width,
-        height: videoBox.height,
-        videoBottom: videoBox.bottom,
+        width: posterBox.width,
+        height: posterBox.height,
+        posterBottom: posterBox.bottom,
         titleTop: titleBox.top,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
-    expect(geometry.fit).toBe("contain");
-    expect(geometry.transform).toBe("none");
     expect(geometry.width / geometry.height).toBeCloseTo(16 / 9, 1);
-    expect(geometry.videoBottom).toBeLessThan(geometry.titleTop);
+    expect(geometry.posterBottom).toBeLessThan(geometry.titleTop);
     expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width + 1);
   });
 }
@@ -213,4 +241,14 @@ test("mobile meals use a contained editorial grid, desktop keeps its twelve-colu
   }));
   expect(layout.display).toBe("grid");
   expect(layout.columns).toBe(12);
+});
+
+test("home calculator preserves honest fallback when plan-catalog responds 503", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await stubUnavailablePlanCatalog(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator("#plans").scrollIntoViewIfNeeded();
+  await expect(page.locator("#plans .bd-calculator-price")).toContainText("تعذّر تحميل الأسعار");
+  await page.locator("#plans .bd-calculator-primary").click();
+  await expect(page.getByRole("dialog", { name: "خصم 15% على اشتراكك" })).toBeVisible();
 });
