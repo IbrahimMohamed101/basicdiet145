@@ -32,9 +32,9 @@
   transition: transform var(--motion-duration-ui) var(--motion-ease-out);
 }
 
+/* Compact color/shadow on scroll without moving the fixed header's focusable
+   descendants. Previous padding/translate changes caused measurable CLS. */
 .nav-shell--scrolled {
-  padding-block: var(--space-3);
-  transform: translateY(-6px);
   background: var(--color-surface);
   box-shadow: var(--shadow-elevation-2);
 }
@@ -320,7 +320,6 @@
     margin-block-start: var(--space-3);
     padding: var(--space-3);
   }
-  .nav-shell--scrolled { transform: translateY(-2px); padding-block: var(--space-2); }
   .brand-logo { inline-size: 46px; block-size: 44px; }
   .nav-dialog { padding: var(--space-3); padding-block-start: max(var(--space-3), env(safe-area-inset-top)); }
   .nav-sheet { padding: var(--space-5); padding-block-end: max(var(--space-5), env(safe-area-inset-bottom)); }
