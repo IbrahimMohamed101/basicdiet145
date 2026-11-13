@@ -493,6 +493,15 @@ async function testFiveConcurrentDistinctPurchasesAreAllPreserved() {
 }
 
 async function testWebhookReplayAndVerifyRaceApplyExactlyOnce() {
+  // This fixture describes an August subscription. The webhook/verify dispatcher
+  // resolves the real restaurant business date, unlike the direct activation
+  // tests below. Pin ONLY Date (not MongoDB timers) so this replay/concurrency
+  // assertion is independent of the calendar date on which CI runs.
+  const clock = require("sinon").useFakeTimers({
+    now: new Date("2026-08-06T12:00:00+03:00"),
+    toFake: ["Date"],
+  });
+  try {
   const container = await createContainer();
   const purchase = await createPaidPurchase(
     container,
@@ -526,6 +535,9 @@ async function testWebhookReplayAndVerifyRaceApplyExactlyOnce() {
   assert.strictEqual(String(draft.subscriptionId), String(container._id));
   assert.strictEqual(String(payment.subscriptionId), String(container._id));
   assert.strictEqual(payment.applied, true);
+  } finally {
+    clock.restore();
+  }
 }
 
 async function testTransientFailureRollsBackAndRetryAppliesOnce() {
