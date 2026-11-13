@@ -92,6 +92,45 @@ for (const width of [390, 1440]) {
   });
 }
 
+// Guard the fixed header against scroll-state geometry shifts (CLS root cause).
+// Normal and mobile viewports are covered; existing zero-CLS assertion remains.
+for (const width of [390, 1440]) {
+  test(`fixed header controls remain stationary when scrolling at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await isolateInstagram(page);
+    await page.goto("/", { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    const measure = () => page.locator(".nav-shell").evaluate((shell) => {
+      const rect = (e: Element | null) => {
+        if (!e) return null;
+        const box = e.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      };
+      return {
+        shell: rect(shell),
+        brand: rect(shell.querySelector(".brand")),
+        nav: rect(shell.querySelector(".desktop-nav")),
+        actions: rect(shell.querySelector(".nav-actions")),
+      };
+    });
+    const before = await measure();
+    await page.evaluate(() => window.scrollTo({ top: 160, behavior: "instant" }));
+    await expect(page.locator(".nav-shell")).toHaveClass(/nav-shell--scrolled/);
+    const after = await measure();
+    await test.info().attach(`fixed-header-scroll-geometry-${width}.json`, {
+      body: JSON.stringify({ before, after }, null, 2), contentType: "application/json",
+    });
+    for (const name of ["shell", "brand", "nav", "actions"] as const) {
+      if (!before[name] || !after[name]) continue;
+      expect(after[name].x).toBeCloseTo(before[name].x, 1);
+      expect(after[name].y).toBeCloseTo(before[name].y, 1);
+      expect(after[name].width).toBeCloseTo(before[name].width, 1);
+      expect(after[name].height).toBeCloseTo(before[name].height, 1);
+    }
+  });
+}
+
 for (const width of [390, 1024, 1440]) {
   test(`keyboard skip link is first focus target at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
