@@ -1,0 +1,34 @@
+name: POS G0 Staging privacy and seed gates
+on:
+  pull_request:
+    branches:
+      - codex/pos-staging-isolation
+  push:
+    branches:
+      - codex/pos-g0-mongo-runbook-seed-staging-20261108
+permissions:
+  contents: read
+jobs:
+  privacy-seed-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Refuse Production and PII fixture import
+        run: |
+          node --check scripts/pos/seedPhaseGStaging.js
+          node --test tests/posG0SeedSafety.test.js
+
+  mongo8-restored-synthetic-rehearsal:
+    # MongoDB 8.0 currently refuses Linux kernel >= 6.19 on ubuntu-24.04 GitHub runners.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: MongoDB 8 standalone -> restore -> rs0 keyfile/auth -> verified transaction rollback -> standalone
+        run: bash scripts/ci/pos-g0-rehearsal.sh
