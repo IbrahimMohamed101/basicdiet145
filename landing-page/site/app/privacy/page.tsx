@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function LandingPrivacyPage() {
   return (
-    <main dir="rtl" className="min-h-screen px-5 py-10 md:py-16" style={{ background: "#f5f8f2", color: "#12332a" }}>
+    <main id="content-start" dir="rtl" className="min-h-screen px-5 py-10 md:py-16" style={{ background: "#f5f8f2", color: "#12332a" }}>
       <article className="mx-auto max-w-3xl rounded-3xl border bg-white p-6 shadow-sm md:p-10" style={{ borderColor: "#dbe9d9" }}>
         <Link className="mb-8 inline-flex rounded-full border px-4 py-2 text-sm font-bold" href="/" style={{ color: "#108055", borderColor: "#dbe9d9" }}>
           ← العودة إلى Basic Diet

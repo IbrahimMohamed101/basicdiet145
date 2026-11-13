@@ -48,8 +48,15 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" className={tajawal.variable}>
       <head>
         <link rel="icon" href="/brand/logo-primary.png" />
+        <style>{`
+          body > a.skip-link[data-global-skip] ~ a.skip-link,
+          body > a.skip-link[data-global-skip] ~ * .skip-link {
+            display: none;
+          }
+        `}</style>
       </head>
       <body>
+        <a className="skip-link" data-global-skip="true" href="#content-start">انتقل للمحتوى</a>
         <MotionRuntime />
         <MetaPixel />
         {children}
