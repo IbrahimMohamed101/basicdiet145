@@ -92,6 +92,38 @@ for (const width of [390, 1440]) {
   });
 }
 
+// Measure placeholder and loaded calculator at responsive widths before accepting
+// a fixed min-height; do not infer one viewport's value applies to all layouts.
+for (const width of [390, 1024, 1440]) {
+  test(`deferred calculator height diagnostic at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await isolateInstagram(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const plans = page.locator("#plans");
+    const before = await plans.evaluate(e => ({
+      height: e.getBoundingClientRect().height,
+      busy: e.getAttribute("aria-busy"),
+      top: e.getBoundingClientRect().top,
+      scrollY,
+    }));
+    await plans.scrollIntoViewIfNeeded();
+    await expect.poll(() => page.locator("#plans").getAttribute("aria-busy"), { timeout: 25000 }).toBeNull();
+    const after = await page.locator("#plans").evaluate(e => ({
+      height: e.getBoundingClientRect().height,
+      busy: e.getAttribute("aria-busy"),
+      top: e.getBoundingClientRect().top,
+      scrollY,
+    }));
+    const metrics = { width, before, after, delta: after.height - before.height };
+    await test.info().attach(`calculator-height-${width}.json`, {
+      body: JSON.stringify(metrics, null, 2),
+      contentType: "application/json",
+    });
+    expect(before.height).toBeGreaterThan(0);
+    expect(after.height).toBeGreaterThan(0);
+  });
+}
+
 for (const width of [390, 1024, 1440]) {
   test(`keyboard skip link is first focus target at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

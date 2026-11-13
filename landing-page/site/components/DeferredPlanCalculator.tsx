@@ -17,7 +17,8 @@ const Calculator = dynamic(
 function CalculatorPlaceholder() {
   return (
     <section id="plans" className="bd-calculator-section bd-calculator-home"
-      aria-labelledby="plans-heading" aria-busy="true">
+      aria-labelledby="plans-heading" aria-busy="true"
+      style={{ minHeight: 1106 }}>
       <div className="page-shell" style={{ minHeight: 440, paddingBlock: 72 }}>
         <h2 id="plans-heading">احسب باقتك.</h2>
         <p>اختر مدة الاشتراك وحجم وجباتك وعددها اليومي.</p>
