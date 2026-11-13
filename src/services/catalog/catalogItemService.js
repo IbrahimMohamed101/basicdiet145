@@ -4,6 +4,7 @@ const CatalogItem = require("../../models/CatalogItem");
 const MenuCategory = require("../../models/MenuCategory");
 const MenuOption = require("../../models/MenuOption");
 const MenuProduct = require("../../models/MenuProduct");
+const MenuAuditLog = require("../../models/MenuAuditLog");
 const ProductGroupOption = require("../../models/ProductGroupOption");
 const { generateUniqueKey } = require("./catalogKeyUiHelpers");
 
@@ -131,6 +132,12 @@ function serialize(row, counts = {}) {
     imageUrl: obj.imageUrl || "",
     itemKind: obj.itemKind || "product",
     nutrition: obj.nutrition || {},
+    nutritionDataStatus: obj.nutritionDataStatus || "unknown",
+    nutritionSource: obj.nutritionSource || "",
+    nutritionBasis: obj.nutritionBasis || null,
+    nutritionServingSizeGrams: obj.nutritionServingSizeGrams ?? null,
+    nutritionVerifiedAt: obj.nutritionVerifiedAt || null,
+    nutritionVerifiedBy: obj.nutritionVerifiedBy || null,
     isActive: obj.isActive !== false,
     isAvailable: obj.isAvailable !== false,
     linkedProductsCount,
@@ -235,6 +242,28 @@ async function updateCatalogItem(id, body = {}) {
   assertObjectId(id);
   const row = await CatalogItem.findById(id);
   if (!row) throw new CatalogItemError("CatalogItem not found", "CATALOG_ITEM_NOT_FOUND", 404);
+  // Never let an ordinary dashboard edit silently replace already-public nutrition.
+  // The approval endpoint replaces values and evidence in one reviewed operation.
+  if (Object.prototype.hasOwnProperty.call(body, "nutrition")) {
+    const liveQuery = {
+      catalogItemId: row._id,
+      isActive: true,
+      isVisible: { $ne: false },
+      isAvailable: { $ne: false },
+      publishedAt: { $ne: null },
+    };
+    const [liveProduct, liveOption] = await Promise.all([
+      MenuProduct.exists(liveQuery),
+      MenuOption.exists(liveQuery),
+    ]);
+    if (liveProduct || liveOption) {
+      throw new CatalogItemError(
+        "Published nutrition must be changed through the reviewed nutrition approval endpoint",
+        "PUBLISHED_NUTRITION_REQUIRES_APPROVAL",
+        409
+      );
+    }
+  }
   const beforeKind = row.itemKind;
   const payload = normalizePayload(body, row.toObject());
   if (body.itemKind !== undefined && payload.itemKind !== beforeKind) {
@@ -245,6 +274,18 @@ async function updateCatalogItem(id, body = {}) {
     }
   }
   row.set(payload);
+  // Any nutrition edit invalidates a previous approval. Unrelated edits retain it.
+  // Only the dedicated nutrition approval operation may mark data as verified.
+  if (Object.prototype.hasOwnProperty.call(body, "nutrition")) {
+    row.set({
+      nutritionDataStatus: "unknown",
+      nutritionSource: "",
+      nutritionBasis: null,
+      nutritionServingSizeGrams: null,
+      nutritionVerifiedAt: null,
+      nutritionVerifiedBy: null,
+    });
+  }
   try {
     await row.save();
     const counts = await countUsageForIds([row._id]);
@@ -257,10 +298,74 @@ async function updateCatalogItem(id, body = {}) {
   }
 }
 
+/**
+ * Explicit, authenticated sign-off for the full nutrition record of one catalog item.
+ * No inferred calories, no partial macro input and no implicit approval on normal edits.
+ * API roles are enforced by the route; reviewer identity is taken from the signed session.
+ */
+async function approveCatalogItemNutrition(id, body = {}, actor = {}) {
+  assertObjectId(id);
+  if (!["admin", "superadmin"].includes(String(actor.role || ""))) {
+    throw new CatalogItemError("Nutrition approval requires admin review", "NUTRITION_APPROVAL_FORBIDDEN", 403);
+  }
+  if (!mongoose.Types.ObjectId.isValid(String(actor.userId || ""))) {
+    throw new CatalogItemError("Verified reviewer identity is required", "NUTRITION_REVIEWER_REQUIRED", 400);
+  }
+  if (!isPlainObject(body) || !isPlainObject(body.nutrition)) {
+    throw new CatalogItemError("Full nutrition object is required", "NUTRITION_FIELDS_REQUIRED", 422);
+  }
+  const normalized = {};
+  for (const key of ["calories", "proteinGrams", "carbsGrams", "fatGrams"]) {
+    if (!Object.prototype.hasOwnProperty.call(body.nutrition, key)
+      || body.nutrition[key] === null || body.nutrition[key] === "") {
+      throw new CatalogItemError(`nutrition.${key} is required`, "NUTRITION_FIELDS_REQUIRED", 422);
+    }
+    normalized[key] = normalizeNonNegativeNumber(body.nutrition[key]);
+  }
+  const source = typeof body.nutritionSource === "string" ? body.nutritionSource.trim() : "";
+  const basis = String(body.nutritionBasis || "");
+  const serving = Number(body.nutritionServingSizeGrams);
+  if (source.length < 5 || source.length > 500) {
+    throw new CatalogItemError("Documented nutritionSource is required (5-500 characters)", "NUTRITION_SOURCE_REQUIRED", 422);
+  }
+  if (!["per_serving", "per_100g"].includes(basis) || !Number.isFinite(serving) || serving <= 0) {
+    throw new CatalogItemError("Valid nutritionBasis and nutritionServingSizeGrams are required", "NUTRITION_SERVING_REQUIRED", 422);
+  }
+  if (basis === "per_100g" && serving !== 100) {
+    throw new CatalogItemError("Per-100g nutrition must use 100g", "NUTRITION_SERVING_MISMATCH", 422);
+  }
+  const row = await CatalogItem.findById(id);
+  if (!row) throw new CatalogItemError("CatalogItem not found", "CATALOG_ITEM_NOT_FOUND", 404);
+  const before = row.toObject();
+  row.set({
+    nutrition: normalized,
+    nutritionDataStatus: "verified",
+    nutritionSource: source,
+    nutritionBasis: basis,
+    nutritionServingSizeGrams: serving,
+    nutritionVerifiedBy: actor.userId,
+    nutritionVerifiedAt: new Date(),
+  });
+  await row.save();
+  await MenuAuditLog.create({
+    entityType: "catalog_item",
+    entityId: row._id,
+    action: "nutrition_verified",
+    before,
+    after: row.toObject(),
+    actorId: actor.userId,
+    actorRole: actor.role,
+    meta: { nutritionSource: source, nutritionBasis: basis, nutritionServingSizeGrams: serving },
+  });
+  const counts = await countUsageForIds([row._id]);
+  return serialize(row, counts.get(String(row._id)));
+}
+
 module.exports = {
   CatalogItemError,
   createCatalogItem,
   getCatalogItem,
   listCatalogItems,
   updateCatalogItem,
+  approveCatalogItemNutrition,
 };

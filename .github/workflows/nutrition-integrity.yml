@@ -1,0 +1,66 @@
+name: Nutrition integrity contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/models/CatalogItem.js"
+      - "src/models/MenuOption.js"
+      - "src/services/catalog/catalogItemService.js"
+      - "src/services/catalog/menuNutritionAuditService.js"
+      - "src/services/orders/menuCatalogAdminService.js"
+      - "src/services/orders/menuCatalogPresenter.js"
+      - "src/services/orders/menuCatalogService.js"
+      - "src/services/orders/menuReleaseService.js"
+      - "src/services/orders/orderMenuService.js"
+      - "src/controllers/dashboard/catalogItemController.js"
+      - "src/controllers/dashboard/menuController.js"
+      - "src/routes/dashboardCatalogItems.js"
+      - "src/routes/dashboardMenu.js"
+      - "tests/nutritionIntegrityContract.test.js"
+      - "tests/nutritionApprovalIsolatedDb.integration.test.js"
+      - "tests/menuOptionNutritionVerificationDefault.test.js"
+      - ".github/workflows/nutrition-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      MONGOMS_VERSION: 7.0.14
+      JWT_SECRET: nutrition-contract-test-secret
+      DASHBOARD_JWT_SECRET: nutrition-dashboard-contract-test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --silent
+      - name: Validate changed JavaScript
+        run: |
+          node --check src/models/CatalogItem.js
+          node --check src/models/MenuOption.js
+          node --check src/services/catalog/catalogItemService.js
+          node --check src/services/catalog/menuNutritionAuditService.js
+          node --check src/services/orders/menuCatalogAdminService.js
+          node --check src/services/orders/menuCatalogPresenter.js
+          node --check src/services/orders/menuCatalogService.js
+          node --check src/services/orders/menuReleaseService.js
+          node --check src/services/orders/orderMenuService.js
+          node --check src/controllers/dashboard/catalogItemController.js
+          node --check src/controllers/dashboard/menuController.js
+          node --check src/routes/dashboardCatalogItems.js
+          node --check src/routes/dashboardMenu.js
+      - name: Nutrition contracts
+        run: |
+          node tests/menuOptionNutritionVerificationDefault.test.js
+          node tests/menuNutritionPresentation.test.js
+          node tests/nutritionIntegrityContract.test.js
+      - name: Isolated Mongo review and live-edit protection
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/nutritionApprovalIsolatedDb.integration.test.js

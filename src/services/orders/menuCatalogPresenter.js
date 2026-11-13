@@ -73,6 +73,20 @@ function resolveNutrition(doc, catalogItem) {
   return normalizeNutrition(doc && doc.nutrition);
 }
 
+function resolveNutritionReview(doc, catalogItem) {
+  const source = catalogItem || doc || {};
+  const verified = source.nutritionDataStatus === "verified"
+    && Boolean(String(source.nutritionSource || "").trim())
+    && Boolean(source.nutritionVerifiedAt)
+    && Boolean(source.nutritionVerifiedBy);
+  return {
+    nutritionDataStatus: verified ? "verified" : "unknown",
+    nutritionVerified: verified,
+    nutritionServingSizeGrams: source.nutritionServingSizeGrams ?? null,
+    nutritionSource: verified ? source.nutritionSource : null,
+  };
+}
+
 function serializePublicProduct(product, lang, optionGroups, categoryId = product.categoryId, {
   includePresentationUi = false,
   catalogItem = null,
@@ -82,6 +96,7 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
   const requiresBuilder = isCustomizable;
   const canAddDirectly = product.pricingModel === "fixed" && !requiresBuilder && !hasOptionGroups;
   const nutrition = resolveNutrition(product, catalogItem);
+  const nutritionReview = resolveNutritionReview(product, catalogItem);
   return {
     id: String(product._id),
     key: product.key,
@@ -102,6 +117,7 @@ function serializePublicProduct(product, lang, optionGroups, categoryId = produc
     weightStepGrams: Number(product.weightStepGrams || 50),
     calories: nutrition.calories,
     nutrition,
+    ...nutritionReview,
     nutritionBasis: product.pricingModel === "per_100g" ? "per_100g" : "per_serving",
     sortOrder: Number(product.sortOrder || 0),
     ui: includePresentationUi
@@ -143,6 +159,7 @@ function serializePublicOption(relation, option, lang, { catalogItem = null } = 
   const extraWeightPriceHalala = relation.extraWeightPriceHalala === null || relation.extraWeightPriceHalala === undefined
     ? Number(option.extraWeightPriceHalala || 0) : Number(relation.extraWeightPriceHalala || 0);
   const nutrition = resolveNutrition(option, catalogItem);
+  const nutritionReview = resolveNutritionReview(option, catalogItem);
   const payload = {
     id: String(option._id),
     optionId: String(option._id),
@@ -159,6 +176,7 @@ function serializePublicOption(relation, option, lang, { catalogItem = null } = 
     extraWeightPriceHalala,
     calories: nutrition.calories,
     nutrition,
+    ...nutritionReview,
     nutritionBasis: "per_serving",
     displayCategoryKey: option.displayCategoryKey || "",
     premiumKey: option.premiumKey || "",
@@ -276,6 +294,7 @@ module.exports = {
   truthyByDefault,
   normalizeNutrition,
   resolveNutrition,
+  resolveNutritionReview,
   serializePublicCategory,
   serializePublicProduct,
   serializePublicGroup,

@@ -25,6 +25,7 @@ router.use(dashboardMutationRoleMiddleware(["admin", "superadmin", "restaurant"]
 router.use(dashboardMenuUiNullCompatibility);
 
 router.get("/preview", asyncHandler(controller.getPreview));
+router.get("/nutrition-audit", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.getNutritionAudit));
 
 router.get("/categories", asyncHandler(controller.listCategories));
 router.post("/categories", asyncHandler(controller.createCategory));
@@ -84,6 +85,7 @@ router.post("/options", asyncHandler(controller.createOption));
 router.patch("/options/reorder", asyncHandler(controller.reorderOptions));
 router.get("/options/:id", asyncHandler(controller.getOption));
 router.patch("/options/:id", asyncHandler(controller.updateOption));
+router.post("/options/:id/nutrition/approve", dashboardRoleMiddleware(["admin", "superadmin"]), asyncHandler(controller.approveOptionNutrition));
 router.patch("/options/:id/visibility", asyncHandler(controller.updateOptionVisibility));
 router.patch("/options/:id/availability", asyncHandler(controller.updateOptionAvailability));
 router.delete("/options/:id", asyncHandler(controller.deleteOption));
