@@ -168,7 +168,7 @@ export function Header() {
         window.location.hash = link.href;
         window.requestAnimationFrame(() => {
           document.getElementById(link.href.slice(1))?.scrollIntoView({
-            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+            behavior: "instant",
             block: "start",
           });
         });
