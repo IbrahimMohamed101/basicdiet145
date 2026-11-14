@@ -43,6 +43,7 @@ jobs:
           set -euo pipefail
           for file in \
             tests/posMainlineSafety.test.js \
+            tests/posD098PreactivationGate.test.js \
             tests/posD097ProductionGate.test.js \
             tests/posD097TaxQr.test.js \
             tests/posInvoiceMath.test.js \
