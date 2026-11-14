@@ -1,5 +1,7 @@
 "use strict";
 
+const { isBranchOperator } = require("../../constants/dashboardRoles");
+
 const mongoose = require("mongoose");
 const ActivityLog = require("../../models/ActivityLog");
 const AppUser = require("../../models/AppUser");
@@ -293,8 +295,8 @@ function normalizeCompensationPayload(payload) {
 }
 
 async function grantCustomerMealCompensation({ id, payload, actorId, actorRole }) {
-  if (actorRole !== "superadmin") {
-    throw customerManagementError(403, "FORBIDDEN", "Only superadmin may grant meal compensation");
+  if (actorRole !== "superadmin" && !isBranchOperator(actorRole)) {
+    throw customerManagementError(403, "FORBIDDEN", "Customer management permission is required to grant meal compensation");
   }
   const input = normalizeCompensationPayload(payload);
   const managed = await findManagedCustomer(id);
@@ -359,7 +361,9 @@ async function grantCustomerMealCompensation({ id, payload, actorId, actorRole }
       await ActivityLog.create({
         entityType: "subscription",
         entityId: updated._id,
-        action: "subscription_meal_compensation_granted_by_superadmin",
+        action: actorRole === "superadmin"
+          ? "subscription_meal_compensation_granted_by_superadmin"
+          : "subscription_meal_compensation_granted_by_branch_operator",
         byUserId: actorId,
         byRole: actorRole,
         meta: {
@@ -719,7 +723,8 @@ async function updateCustomerWithoutTransaction({
   await retryAuditLog({
     entityType: "user",
     entityId: user._id,
-    action: "customer_profile_updated_by_superadmin",
+    action: actorRole === "superadmin"
+      ? "customer_profile_updated_by_superadmin" : "customer_profile_updated_by_branch_operator",
     byUserId: actorId,
     byRole: actorRole,
     meta: {
@@ -746,8 +751,8 @@ async function updateCustomerWithoutTransaction({
 }
 
 async function updateCustomerManagementProfile({ id, payload, actorId, actorRole }) {
-  if (actorRole !== "superadmin") {
-    throw customerManagementError(403, "FORBIDDEN", "Only superadmin may update customer identity data");
+  if (actorRole !== "superadmin" && !isBranchOperator(actorRole)) {
+    throw customerManagementError(403, "FORBIDDEN", "Customer management permission is required to update customer identity data");
   }
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw customerManagementError(400, "INVALID", "Request body must be an object");
@@ -916,7 +921,8 @@ async function updateCustomerManagementProfile({ id, payload, actorId, actorRole
       await ActivityLog.create([{
         entityType: "user",
         entityId: user._id,
-        action: "customer_profile_updated_by_superadmin",
+        action: actorRole === "superadmin"
+          ? "customer_profile_updated_by_superadmin" : "customer_profile_updated_by_branch_operator",
         byUserId: actorId,
         byRole: actorRole,
         meta: {

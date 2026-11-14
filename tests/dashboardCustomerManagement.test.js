@@ -58,6 +58,7 @@ async function run() {
   const api = request(app);
   const superadmin = await dashboardHeaders("superadmin");
   const admin = await dashboardHeaders("admin");
+  const restaurant = await dashboardHeaders("restaurant");
 
   const customer = await User.create({
     phone: "+966500000101",
@@ -125,7 +126,7 @@ async function run() {
 
   response = await api
     .get(`/api/dashboard/customer-management/${customer._id}`)
-    .set(superadmin.headers);
+    .set(restaurant.headers);
   assert.strictEqual(response.status, 200, JSON.stringify(response.body));
   assert.strictEqual(response.body.data.phoneE164, "+966500000101");
   assert.strictEqual(response.body.data.activeSubscription.id, String(subscription._id));
@@ -142,7 +143,7 @@ async function run() {
 
   response = await api
     .patch(`/api/dashboard/customer-management/${customer._id}`)
-    .set(superadmin.headers)
+    .set(restaurant.headers)
     .send({
       fullName: "Updated Customer",
       phone: "0500000102",
@@ -169,7 +170,7 @@ async function run() {
     ActivityLog.findOne({
       entityType: "user",
       entityId: customer._id,
-      action: "customer_profile_updated_by_superadmin",
+      action: "customer_profile_updated_by_branch_operator",
     }).lean(),
     RefreshSession.findOne({ userId: customer._id }).lean(),
     Otp.findOne({ phone: "+966500000101" }).lean(),
@@ -192,7 +193,8 @@ async function run() {
   assert.strictEqual(updatedSubscription.deliveryAddress.district, "Al Olaya");
   assert.strictEqual(updatedSubscription.deliveryAddress.lat, 24.7136, "existing coordinates must be preserved");
   assert(auditLog, "profile update must create an audit log");
-  assert.strictEqual(auditLog.byRole, "superadmin");
+  assert.strictEqual(auditLog.byRole, "restaurant");
+  assert.strictEqual(String(auditLog.byUserId), String(restaurant.dashboardUser._id));
   assert.strictEqual(auditLog.meta.before.phone, "+966500000101");
   assert.strictEqual(auditLog.meta.after.phone, "+966500000102");
   assert(refreshSession.revokedAt, "identity change must revoke refresh sessions");
@@ -210,6 +212,11 @@ async function run() {
     });
   assert.strictEqual(response.status, 403, JSON.stringify(response.body));
 
+  response = await api
+    .get(`/api/dashboard/customer-management/${customer._id}/subscriptions/${subscription._id}/financial-control`)
+    .set(restaurant.headers);
+  assert.strictEqual(response.status, 403, JSON.stringify(response.body));
+
   const compensationPayload = {
     quantity: 5,
     reason: "Service recovery compensation approved by the customer care manager",
@@ -217,7 +224,7 @@ async function run() {
   };
   response = await api
     .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
-    .set(superadmin.headers)
+    .set(restaurant.headers)
     .send(compensationPayload);
   assert.strictEqual(response.status, 201, JSON.stringify(response.body));
   assert.strictEqual(response.body.meta.replayed, false);
@@ -229,7 +236,7 @@ async function run() {
 
   response = await api
     .post(`/api/dashboard/customer-management/${customer._id}/meal-compensations`)
-    .set(superadmin.headers)
+    .set(restaurant.headers)
     .send(compensationPayload);
   assert.strictEqual(response.status, 200, JSON.stringify(response.body));
   assert.strictEqual(response.body.meta.replayed, true);
@@ -239,7 +246,7 @@ async function run() {
     ActivityLog.find({
       entityType: "subscription",
       entityId: subscription._id,
-      action: "subscription_meal_compensation_granted_by_superadmin",
+      action: "subscription_meal_compensation_granted_by_branch_operator",
     }).lean(),
   ]);
   assert.strictEqual(compensatedSubscription.totalMeals, 19, "idempotent replay must not double-add total meals");
@@ -247,6 +254,7 @@ async function run() {
   assert.strictEqual(compensatedSubscription.compensatedMealsTotal, 5);
   assert.strictEqual(compensatedSubscription.adminMealCompensations.length, 1);
   assert.strictEqual(compensationLogs.length, 1, "exactly one activity log must be written");
+  assert.strictEqual(compensationLogs[0].byRole, "restaurant");
   assert.strictEqual(compensationLogs[0].meta.before.remainingMeals, 14);
   assert.strictEqual(compensationLogs[0].meta.after.remainingMeals, 19);
 
