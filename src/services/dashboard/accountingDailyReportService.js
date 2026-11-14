@@ -2,6 +2,7 @@
 
 const { addDays } = require("date-fns");
 const { fromZonedTime } = require("date-fns-tz");
+const { getBusinessDayBounds } = require("../pos/businessDaySetting");
 const ActivityLog = require("../../models/ActivityLog");
 const Addon = require("../../models/Addon");
 const DashboardUser = require("../../models/DashboardUser");
@@ -14,6 +15,11 @@ const dateUtils = require("../../utils/date");
 const { normalizeHalala, normalizeStoredVatBreakdown } = require("../../utils/pricing");
 const { VAT_PERCENTAGE } = require("../../config/vat");
 const { buildSectionedCsv } = require("../../utils/csvExport");
+const { isPosStagingRuntime } = require("../../utils/posStagingRuntime");
+const { expectedTotals } = require("../pos/expectedTotals");
+const DailyCashClosing = require("../../models/DailyCashClosing");
+const { resolveClosingVersion, POS } = require("../pos/posClosingSetting");
+const { addOtherReceivables } = require("./dailyCashClosingService");
 
 const MANUAL_DEDUCTION_ACTION = "manual_subscription_meal_deduction";
 const PAID_STATUS = "paid";
@@ -70,29 +76,9 @@ async function getSettingValue(key, fallback) {
 
 async function resolveBusinessPeriod(businessDate) {
   assertBusinessDate(businessDate);
-  const [openValue, closeValue] = await Promise.all([
-    getSettingValue("restaurant_open_time", "00:00"),
-    getSettingValue("restaurant_close_time", "23:59"),
-  ]);
-  const openTime = parseTime(openValue, "00:00");
-  const closeTime = parseTime(closeValue, "23:59");
-  const timezone = dateUtils.KSA_TIMEZONE;
-  const start = fromZonedTime(`${businessDate}T${openTime}:00`, timezone);
-  const openMinutes = dateUtils.toMinutes(openTime);
-  const closeMinutes = dateUtils.toMinutes(closeTime);
-  const closeDate = closeMinutes > openMinutes
-    ? businessDate
-    : dateUtils.addDaysToKSADateString(businessDate, 1);
-  const closeInstant = fromZonedTime(`${closeDate}T${closeTime}:00`, timezone);
-  const end = new Date(closeInstant.getTime() + 59999);
-
-  if (openMinutes === closeMinutes) {
-    const fullDayEnd = addDays(start, 1);
-    fullDayEnd.setMilliseconds(fullDayEnd.getMilliseconds() - 1);
-    return { businessDate, timezone, start, end: fullDayEnd, openTime, closeTime };
-  }
-
-  return { businessDate, timezone, start, end, openTime, closeTime };
+  // Financial reporting must use precisely the same historical half-open
+  // bounds as POS invoices, paidAt, refunds and cashier closing.
+  return getBusinessDayBounds(businessDate);
 }
 
 function resolveFullDayPeriod(businessDate) {
@@ -305,7 +291,7 @@ async function buildDailyReport({
   const fallbackVatPercentage = VAT_PERCENTAGE;
 
   const orderMatch = {
-    createdAt: { $gte: period.start, $lte: period.end },
+    createdAt: { $gte: period.start, $lt: period.end },
   };
   if (selectedFulfillment !== "all") {
     orderMatch.$or = [
@@ -325,7 +311,7 @@ async function buildDailyReport({
 
   const activeSubscriptionMatch = {
     status: "active",
-    createdAt: { $lte: period.end },
+    createdAt: { $lt: period.end },
     $or: [
       { validityEndDate: { $gte: period.start } },
       { endDate: { $gte: period.start } },
@@ -498,6 +484,16 @@ async function buildDailyReport({
       addonDeductionMap.set(addon.addonId, current);
     }
   }
+  // Preserve legacy report output exactly, including its historical Staging
+  // read-only POS fields. POS_V2 uses the very same closing snapshot/reducer,
+  // never a second aggregation of POS sales through Order/Payment.
+  const closing = await DailyCashClosing.findOne({ businessDate: period.businessDate }).lean();
+  const closingVersion = await resolveClosingVersion(period.businessDate, closing);
+  const frozen = closingVersion === POS && closing &&
+    ["submitted", "approved"].includes(closing.status) ? closing.snapshot?.expectedTotals : null;
+  const posFinancial = frozen || (closingVersion === POS
+    ? addOtherReceivables(await expectedTotals(period.businessDate), closing?.channels)
+    : isPosStagingRuntime() ? await expectedTotals(period.businessDate) : null);
   const normalizedSummary = {
     grossRevenueHalala: null,
     netRevenueHalala: resolvedNetSalesHalala,
@@ -514,6 +510,11 @@ async function buildDailyReport({
   return {
     date: period.businessDate,
     businessDate: period.businessDate,
+    ...(closingVersion === POS ? {
+      closingVersion,
+      calculationMode: "pos_expected_totals",
+      posClosingExpectedTotals: posFinancial,
+    } : {}),
     filters: {
       date: period.businessDate,
       fromDate: null,
@@ -530,6 +531,9 @@ async function buildDailyReport({
     },
     summary: {
       ...normalizedSummary,
+      posInvoiceCount: posFinancial?.pos.invoiceCount ?? null,
+      posRefundCount: posFinancial?.pos.refundCount ?? null,
+      posNetSalesHalala: posFinancial?.pos.netHalalas ?? null,
       grossSalesHalala,
       netSalesHalala: resolvedNetSalesHalala,
       vatHalala,
@@ -560,6 +564,8 @@ async function buildDailyReport({
       byPaymentStatus: bucketsToArray(byPaymentStatus, "paymentStatus"),
       byPaymentMethod: bucketsToArray(byPaymentMethod, "method"),
     },
+    posSales: posFinancial?.pos ?? null,
+    posSubscriptionsCollected: posFinancial?.subscriptions ?? null,
     oneTimeOrders: {
       summary: {
         createdCount: orders.length,
@@ -615,6 +621,7 @@ async function buildDailyReport({
     },
     dataSources: {
       oneTimeOrders: "Order",
+      posSales: posFinancial ? "PosInvoice + PosRefund; separated from Order and Payment" : null,
       payments: "Payment when linked; Order.paymentStatus remains the paid-status gate",
       subscriptionRevenue: null,
       refunds: null,
@@ -712,6 +719,8 @@ function reportToCsv(report) {
       ],
     },
     { title: "Summary", headers: ["metric", "value"], rows: summaryRows },
+    { title: "POS Staging Sales", headers: ["metric", "value"],
+      rows: report.posSales ? Object.entries(report.posSales).filter(([, value]) => typeof value !== "object") : [] },
     { title: "Money", headers: ["metric", "value"], rows: moneyRows },
     {
       title: "One-Time Orders",

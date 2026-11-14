@@ -161,12 +161,22 @@ async function run() {
     expectStatus(res, 403, "restaurant does not inherit admin catalog mutation");
 
     res = await api.get("/api/dashboard/plans?view=picker").set(cashierHeaders);
-    expectStatus(res, 403, "cashier cannot use kitchen plan picker");
+    expectStatus(res, 200, "cashier shares restaurant kitchen catalog read");
+    res = await api.get("/api/dashboard/users?limit=1").set(cashierHeaders);
+    expectStatus(res, 200, "cashier shares restaurant app-user read");
+
+    res = await api.post("/api/dashboard/addons").set(cashierHeaders).send({
+      name: { en: `${TEST_TAG} Cashier Mutate` },
+      category: "juice",
+      kind: "plan",
+      priceHalala: 100,
+    });
+    expectStatus(res, 403, "cashier cannot use admin-only catalog mutation");
 
     res = await api.patch(`/api/dashboard/addon-plans/${rows.addonPlan._id}/toggle`).set(adminHeaders).send({});
     expectStatus(res, 200, "admin can still mutate add-on plan");
 
-    console.log("kitchen and restaurant read-only permission tests passed");
+    console.log("kitchen read-only and cashier/restaurant permission parity tests passed");
   } finally {
     await cleanup();
     await mongoose.disconnect();

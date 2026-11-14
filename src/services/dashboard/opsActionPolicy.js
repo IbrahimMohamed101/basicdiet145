@@ -1,6 +1,6 @@
 "use strict";
 
-const { dashboardRoleHasPermission } = require("../../constants/dashboardRoles");
+const { dashboardRoleHasPermission, isBranchOperator } = require("../../constants/dashboardRoles");
 const {
   canTransitionStatus,
   normalizeOperationalStatus,
@@ -183,7 +183,8 @@ function normalizeActionId(actionId) {
 }
 
 function roleAllowedForActionMode(actionId, role, mode) {
-  const operationalRole = role === "restaurant" ? "kitchen" : role;
+  const branchOperator = isBranchOperator(role);
+  const operationalRole = branchOperator ? "kitchen" : role;
   if (actionId === "prepare" && operationalRole === "courier" && mode !== "delivery") {
     return false;
   }
@@ -191,7 +192,7 @@ function roleAllowedForActionMode(actionId, role, mode) {
     // The unified restaurant account owns the end-to-end operations board.
     // Unlike a legacy kitchen-only account, it may confirm a home delivery so
     // the canonical fulfillment service settles the customer's meal balance.
-    if (role === "restaurant") return mode === "pickup" || mode === "delivery";
+    if (branchOperator) return mode === "pickup" || mode === "delivery";
     if (operationalRole === "kitchen" && mode !== "pickup") return false;
     if (operationalRole === "courier" && mode === "pickup") return false;
   }

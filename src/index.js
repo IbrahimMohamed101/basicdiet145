@@ -1,4 +1,6 @@
 require("dotenv").config();
+const { preparePosStagingRuntime } = require("./utils/posStagingRuntime");
+const isolatedPosStaging = preparePosStagingRuntime();
 const {
   assertSubscriptionStackingProductionSafety,
 } = require("./services/subscription/subscriptionStackingProductionSafetyService");
@@ -102,7 +104,14 @@ connectDb()
     logger.info("[startup] MongoDB connected");
 
     if (isMaintenanceMode()) {
+      // Main's G2 maintenance guard takes priority over Staging-only POS fixtures.
       logger.warn("[startup] G2 maintenance active: startup mutations and background jobs disabled");
+    } else if (isolatedPosStaging) {
+      const { ensureDefaultDashboardUsers } = require("./services/dashboardDefaultUsersService");
+      const { seedPosStagingCatalog } = require("./services/pos/catalogService");
+      await ensureDefaultDashboardUsers();
+      await seedPosStagingCatalog();
+      logger.info("[startup] Isolated POS Staging: dashboard fixtures ready; migrations and background jobs disabled");
     } else {
       try {
         const pricingMigration = await normalizeCommercialSubscriptionPricing();

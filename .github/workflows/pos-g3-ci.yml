@@ -1,0 +1,63 @@
+name: POS G3 Standalone and Replica Contract Gates
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - ".github/workflows/pos-g3-ci.yml"
+      - "docs/pos-g3-test-matrix.md"
+  push:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - ".github/workflows/pos-g3-ci.yml"
+      - "docs/pos-g3-test-matrix.md"
+jobs:
+  standalone-subscription-and-deduction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      mongodb:
+        image: mongo:8.0
+        # GitHub runner kernels expose an rseq incompatibility with Mongo 8's
+        # per-CPU allocator; disable that cache mode only for disposable CI.
+        env:
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGODB_URI: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      MONGO_URL: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+      DASHBOARD_JWT_SECRET: isolated-ci-dashboard-jwt-not-a-prod-key
+      JWT_SECRET: isolated-ci-jwt-not-a-prod-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Confirm standalone topology before testing
+        run: |
+          test "$(docker exec $(docker ps -q --filter ancestor=mongo:8.0 | head -1) mongosh --quiet --eval 'db.adminCommand({hello:1}).setName || "standalone"' | tr -d '\r')" = "standalone"
+      - name: Cashier cash/visa/amount invariants on standalone MongoDB
+        run: NODE_ENV=test node --test tests/posG3StandaloneSubscriptionGuard.test.js
+      - name: Two concurrent meal deductions must result in exactly one success
+        run: node tests/subscriptionBalanceConcurrency.test.js
+  replica-financial-fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Riyadh business day and full-day halala reconciliation fixtures
+        run: NODE_ENV=test node --test tests/posG2ExpectedTotals.test.js tests/dailyCashClosing.test.js
