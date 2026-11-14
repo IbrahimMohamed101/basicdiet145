@@ -64,12 +64,7 @@ router.get(
 router.get(
   "/pos/range",
   dashboardAuthMiddleware,
-  (req, res, next) => {
-    if (req.dashboardUserRole !== "superadmin") {
-      return errorResponse(res, 403, "FORBIDDEN", "التقرير المالي الموحد متاح للسوبر أدمن فقط.");
-    }
-    return next();
-  },
+  dashboardRoleMiddleware([]), // Only superadmin gets the explicit bypass.
   asyncHandler(async (req, res) => {
     try {
       const data = await buildPosAccountingRange(req.query);
