@@ -14,13 +14,12 @@ const {
 
 const router = Router();
 const superadminOnly = dashboardRoleMiddleware(["superadmin"]);
+const customerManagementRoles = dashboardRoleMiddleware(["restaurant"]);
 const customerPasswordResetRoles = dashboardRoleMiddleware(["restaurant", "admin"]);
 
 router.use(dashboardAuthMiddleware);
 
-// Password recovery is a branch operation: restaurant, admin and superadmin can
-// issue a new server-generated password. All broader customer-management writes
-// remain superadmin-only below.
+// Password recovery also allows admins through its dedicated policy.
 router.post(
   "/:id/password-reset",
   customerPasswordResetRoles,
@@ -29,15 +28,15 @@ router.post(
 );
 
 // Must precede the parameterized customer routes.
-router.get("/retention", superadminOnly, asyncHandler(retentionController.getRetention));
-router.get("/retention/:id/followups", superadminOnly, asyncHandler(followupController.listFollowups));
-router.post("/retention/:id/followups", superadminOnly, asyncHandler(followupController.addFollowup));
+router.get("/retention", customerManagementRoles, asyncHandler(retentionController.getRetention));
+router.get("/retention/:id/followups", customerManagementRoles, asyncHandler(followupController.listFollowups));
+router.post("/retention/:id/followups", customerManagementRoles, asyncHandler(followupController.addFollowup));
 
-router.get("/:id", superadminOnly, asyncHandler(controller.getCustomer));
-router.patch("/:id", superadminOnly, asyncHandler(controller.updateCustomer));
+router.get("/:id", customerManagementRoles, asyncHandler(controller.getCustomer));
+router.patch("/:id", customerManagementRoles, asyncHandler(controller.updateCustomer));
 router.post(
   "/:id/meal-compensations",
-  superadminOnly,
+  customerManagementRoles,
   asyncHandler(controller.grantMealCompensation)
 );
 router.get(
@@ -52,9 +51,9 @@ router.post(
 );
 router.post(
   "/:id/account-merge/preview",
-  superadminOnly,
+  customerManagementRoles,
   asyncHandler(controller.previewAccountMerge)
 );
-router.post("/:id/account-merge", superadminOnly, asyncHandler(controller.mergeAccounts));
+router.post("/:id/account-merge", customerManagementRoles, asyncHandler(controller.mergeAccounts));
 
 module.exports = router;

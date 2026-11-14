@@ -1,5 +1,7 @@
 "use strict";
 
+const { isBranchOperator } = require("../../constants/dashboardRoles");
+
 const mongoose = require("mongoose");
 const AccountDeletionRequest = require("../../models/AccountDeletionRequest");
 const ActivityLog = require("../../models/ActivityLog");
@@ -139,8 +141,8 @@ async function buildConflicts(sourceId, targetId) {
 }
 
 async function previewCustomerAccountMerge({ sourceId, targetPhone, actorRole }) {
-  if (actorRole !== "superadmin") {
-    throw mergeError(403, "FORBIDDEN", "Only superadmin may merge customer accounts");
+  if (actorRole !== "superadmin" && !isBranchOperator(actorRole)) {
+    throw mergeError(403, "FORBIDDEN", "Customer management permission is required to merge customer accounts");
   }
   const { source, target } = await resolveAccounts(sourceId, targetPhone);
   const [sourceCounts, targetCounts, conflicts] = await Promise.all([
@@ -192,8 +194,8 @@ async function markStepCompleted(operationId, step) {
 }
 
 async function executeCustomerAccountMerge({ sourceId, payload, actorId, actorRole }) {
-  if (actorRole !== "superadmin") {
-    throw mergeError(403, "FORBIDDEN", "Only superadmin may merge customer accounts");
+  if (actorRole !== "superadmin" && !isBranchOperator(actorRole)) {
+    throw mergeError(403, "FORBIDDEN", "Customer management permission is required to merge customer accounts");
   }
   const input = normalizeExecutionPayload(payload);
   const preview = await previewCustomerAccountMerge({ sourceId, targetPhone: input.targetPhone, actorRole });
@@ -311,7 +313,8 @@ async function executeCustomerAccountMerge({ sourceId, payload, actorId, actorRo
     await ActivityLog.create({
       entityType: "user",
       entityId: target._id,
-      action: "customer_accounts_merged_by_superadmin",
+      action: actorRole === "superadmin"
+        ? "customer_accounts_merged_by_superadmin" : "customer_accounts_merged_by_branch_operator",
       byUserId: actorId,
       byRole: actorRole,
       meta: {

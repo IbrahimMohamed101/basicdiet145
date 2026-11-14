@@ -39,8 +39,8 @@ async function run() {
   });
 
   const dashboardUser = await DashboardUser.create({
-    email: "merge-superadmin@example.test",
-    role: "superadmin",
+    email: "merge-restaurant@example.test",
+    role: "restaurant",
     passwordHash: "not-used",
     isActive: true,
   });
@@ -174,7 +174,7 @@ async function run() {
     RefreshSession.findOne({ userId: source._id }).lean(),
     ActivityLog.findOne({
       entityId: target._id,
-      action: "customer_accounts_merged_by_superadmin",
+      action: "customer_accounts_merged_by_branch_operator",
     }).lean(),
   ]);
   assert.strictEqual(updatedTarget.phone, "+966500284700");
@@ -189,6 +189,7 @@ async function run() {
   assert.deepStrictEqual(updatedAppUser.fcmTokens, []);
   assert(session.revokedAt);
   assert(audit);
+  assert.strictEqual(audit.byRole, "restaurant");
   assert.strictEqual(audit.meta.persistenceMode, "standalone_forward_only_saga");
 
   assert.strictEqual(await Subscription.countDocuments({ userId: target._id }), 2);

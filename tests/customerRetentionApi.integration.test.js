@@ -121,7 +121,31 @@ async function run() {
   assert.equal(response.body.data.rows.length, 0, "Suppressed customers cannot appear in contactable lists");
   response = await client.get(url).set(auth(superadmin)).query({ contactableOnly: "invalid" });
   assert.equal(response.status, 400);
-  for (const role of ["restaurant", "kitchen", "courier", "cashier"]) {
+  for (const role of ["restaurant", "cashier"]) {
+    const staff = await DashboardUser.create({
+      email: "retention-" + role + "@example.test", role, passwordHash: "test", isActive: true,
+    });
+    response = await client.get(url).set(auth(staff));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.rows[0].doNotContact, true);
+    response = await client.get(followupUrl).set(auth(staff));
+    assert.equal(response.status, 200);
+    response = await client.post(followupUrl).set(auth(staff))
+      .send({ ...payload, requestId: `retention-${role}-blocked` });
+    assert.equal(response.status, 409);
+    assert.equal(response.body.error.code, "CUSTOMER_DO_NOT_CONTACT");
+
+    const prospect = await User.create({
+      name: "Synthetic " + role, role: "client", phone: role === "restaurant" ? "+966500000505" : "+966500000506",
+    });
+    const prospectUrl = url + "/" + prospect._id + "/followups";
+    response = await client.post(prospectUrl).set(auth(staff))
+      .send({ ...payload, requestId: `retention-${role}-accepted` });
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    const event = await Followup.findOne({ userId: prospect._id }).lean();
+    assert.equal(String(event.actorId), String(staff._id));
+  }
+  for (const role of ["kitchen", "courier"]) {
     const user = await DashboardUser.create({ email: "retention-" + role + "@example.test", role,
       passwordHash: "test", isActive: true });
     for (const route of [url, followupUrl]) {
