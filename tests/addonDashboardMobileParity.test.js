@@ -85,7 +85,7 @@ async function main() {
     replSet: { storageEngine: "wiredTiger" },
   });
   await mongoose.connect(mongo.getUri(`addon_dashboard_mobile_parity_${Date.now()}`));
-  await AddonPlanPrice.init();
+  await Promise.all([Addon.init(), AddonPlanPrice.init()]);
 
   try {
     const category = await MenuCategory.create({

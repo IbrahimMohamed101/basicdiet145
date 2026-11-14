@@ -7,6 +7,7 @@ const dateUtils = require("../../utils/date");
 const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { pickLang } = require("../../utils/i18n");
 const { projectSubscriptionEntitlements } = require("../subscription/subscriptionEntitlementProjectionService");
+const { resolveBatchLifecycleState } = require("../subscription/subscriptionStackingLifecycleService");
 
 const DASHBOARD_STACKING_READ_VERSION = "dashboard_stacking_read.v1";
 
@@ -58,7 +59,7 @@ function paymentReadModel(payment) {
   };
 }
 
-function batchReadModel(batch, { planNames, payments, paymentsById, paymentsByDraftId } = {}) {
+function batchReadModel(batch, { planNames, payments, paymentsById, paymentsByDraftId, businessDate } = {}) {
   const planId = stringId(batch.planId);
   const paymentId = stringId(batch.paymentId);
   const checkoutDraftId = stringId(batch.checkoutDraftId);
@@ -70,6 +71,11 @@ function batchReadModel(batch, { planNames, payments, paymentsById, paymentsByDr
       ? paymentsByDraftId.get(checkoutDraftId)
       : null
   );
+  const status = businessDate && batch.applicationState === "applied"
+    && ["active", "paid_scheduled"].includes(batch.status)
+    && batch.effectiveStartDate && (batch.validityEndDate || batch.endDate)
+    ? resolveBatchLifecycleState(batch, businessDate).status
+    : batch.status;
   return {
     id: stringId(batch._id),
     purchaseId: stringId(batch._id),
@@ -78,7 +84,7 @@ function batchReadModel(batch, { planNames, payments, paymentsById, paymentsByDr
     isLegacyPackage: batch.sourceType === "legacy_seed",
     planId,
     planName: planNames.get(planId) || null,
-    status: batch.status,
+    status,
     applicationState: batch.applicationState,
     requestedStartDate: batch.requestedStartDate || null,
     effectiveStartDate: batch.effectiveStartDate || null,
@@ -140,6 +146,7 @@ function buildContext({
   paymentsByDraftId = null,
   businessDate = null,
 }) {
+  const targetBusinessDate = businessDate || dateUtils.toKSADateString(new Date());
   const resolvedPaymentsById = paymentsById || payments || new Map();
   const resolvedPaymentsByDraftId = paymentsByDraftId || new Map();
   const packages = batches.map((batch) => batchReadModel(batch, {
@@ -147,13 +154,13 @@ function buildContext({
     payments: resolvedPaymentsById,
     paymentsById: resolvedPaymentsById,
     paymentsByDraftId: resolvedPaymentsByDraftId,
+    businessDate: targetBusinessDate,
   }));
   const transactionById = new Map();
   for (const item of packages) {
     if (item.payment) transactionById.set(item.payment.id, item.payment);
   }
 
-  const targetBusinessDate = businessDate || dateUtils.toKSADateString(new Date());
   const currentProjection = projectSubscriptionEntitlements({
     batches,
     businessDate: targetBusinessDate,
