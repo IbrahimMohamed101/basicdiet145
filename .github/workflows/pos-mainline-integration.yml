@@ -56,7 +56,6 @@ jobs:
             tests/posG0SeedGuard.test.js \
             tests/posD092BranchOperatorParity.test.js \
             tests/posCashierRestaurantRoleParity.test.js \
-            tests/posG3StandaloneSubscriptionGuard.test.js \
             tests/g2MaintenanceMode.test.js; do
             node --test "$file"
           done
@@ -87,3 +86,32 @@ jobs:
         env:
           MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_history_ci_test?replicaSet=rs0
         run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posCatalogHistory.integration.test.js
+
+  pos-mainline-standalone:
+    name: POS cash/Visa entitlement guard (synthetic standalone Mongo)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      POS_PRODUCTION_ENABLED: "false"
+      DASHBOARD_JWT_SECRET: pos-mainline-ci-disposable-only
+      JWT_SECRET: pos-mainline-ci-disposable-only
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g3_ci_test?directConnection=true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Start disposable standalone MongoDB (never rs0)
+        run: |
+          set -euo pipefail
+          docker run -d --name pos-mainline-standalone -p 27017:27017 mongo:7 --bind_ip_all
+          for attempt in $(seq 1 40); do
+            if docker exec pos-mainline-standalone mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -q '^1$'; then break; fi
+            sleep 1
+          done
+          docker exec pos-mainline-standalone mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' | grep -q '^1$'
+      - name: Enforce D-091 standalone no forged payment entitlement
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posG3StandaloneSubscriptionGuard.test.js
