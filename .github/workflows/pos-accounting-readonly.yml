@@ -1,0 +1,35 @@
+name: POS accountant read-only range safety
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/services/dashboard/posAccountingRangeReportService.js'
+      - 'src/services/dashboard/oneTimeAccountingRangeReportService.js'
+      - 'tests/oneTimeAccountingRangeReport.test.js'
+      - 'src/routes/dashboardAccounting.js'
+      - 'tests/posAccountingRangeReport.test.js'
+      - '.github/workflows/pos-accounting-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Synthetic arithmetic, boundary and report structure; no database
+        run: |
+          NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/posAccountingRangeReport.test.js
+          NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/oneTimeAccountingRangeReport.test.js
+          node --check src/services/dashboard/oneTimeAccountingRangeReportService.js
+          node --check src/services/dashboard/posAccountingRangeReportService.js
+          node --check src/routes/dashboardAccounting.js
