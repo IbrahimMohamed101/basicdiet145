@@ -6,6 +6,7 @@ const marketingAnalyticsController = require("../controllers/dashboard/marketing
 const asyncHandler = require("../middleware/asyncHandler");
 const errorResponse = require("../utils/errorResponse");
 const { buildPosAccountingRange } = require("../services/dashboard/posAccountingRangeReportService");
+const { buildOneTimeAccountingRange } = require("../services/dashboard/oneTimeAccountingRangeReportService");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 
 const router = Router();
@@ -69,6 +70,23 @@ router.get(
     try {
       const data = await buildPosAccountingRange(req.query);
       return res.json({ status: true, data });
+    } catch (error) {
+      if (error && error.code === "POS_ACCOUNTING_INVALID_RANGE") {
+        return errorResponse(res, 400, error.code, error.message);
+      }
+      throw error;
+    }
+  })
+);
+
+// Online one-time pay orders have a separate immutable accounting source from POS.
+router.get(
+  "/one-time/range",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware([]),
+  asyncHandler(async (req, res) => {
+    try {
+      return res.json({ status: true, data: await buildOneTimeAccountingRange(req.query) });
     } catch (error) {
       if (error && error.code === "POS_ACCOUNTING_INVALID_RANGE") {
         return errorResponse(res, 400, error.code, error.message);
