@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'src/services/dashboard/posAccountingRangeReportService.js'
+      - 'src/services/dashboard/oneTimeAccountingRangeReportService.js'
+      - 'tests/oneTimeAccountingRangeReport.test.js'
       - 'src/routes/dashboardAccounting.js'
       - 'tests/posAccountingRangeReport.test.js'
       - '.github/workflows/pos-accounting-readonly.yml'
@@ -27,5 +29,7 @@ jobs:
       - name: Synthetic arithmetic, boundary and report structure; no database
         run: |
           NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/posAccountingRangeReport.test.js
+          NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/oneTimeAccountingRangeReport.test.js
+          node --check src/services/dashboard/oneTimeAccountingRangeReportService.js
           node --check src/services/dashboard/posAccountingRangeReportService.js
           node --check src/routes/dashboardAccounting.js
