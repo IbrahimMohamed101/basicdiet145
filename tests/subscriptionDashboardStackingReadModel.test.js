@@ -330,6 +330,38 @@ async function testFallsBackToParentBalanceWhenNoBatchIsCurrent() {
 }
 
 
+async function testDisplaysExpiredBatchesWithStaleStoredStatuses() {
+  const parentId = new mongoose.Types.ObjectId();
+  const batches = ["active", "paid_scheduled"].map((status) => ({
+    _id: new mongoose.Types.ObjectId(),
+    containerSubscriptionId: parentId,
+    applicationState: "applied",
+    status,
+    effectiveStartDate: new Date("2026-10-10T00:00:00+03:00"),
+    endDate: new Date("2026-11-04T00:00:00+03:00"),
+    validityEndDate: new Date("2026-11-08T00:00:00+03:00"),
+    totalMeals: 52,
+    remainingMeals: 19,
+    consumedMeals: 33,
+  }));
+  const result = await projectDashboardStackingReadModel(
+    { data: [subscription(parentId)] },
+    {
+      businessDate: "2026-11-09",
+      runtime: { findBatches: async () => batches },
+    }
+  );
+  const { stacking } = result.data[0];
+  assert.strictEqual(stacking.aggregateBalance, null);
+  assert.deepStrictEqual(
+    stacking.packages.map(({ status, remainingMeals, consumedMeals }) => (
+      [status, remainingMeals, consumedMeals]
+    )),
+    [["expired", 19, 33], ["expired", 19, 33]]
+  );
+  assert.deepStrictEqual(batches.map(({ status }) => status), ["active", "paid_scheduled"]);
+}
+
 async function testUsesRestaurantBusinessDateWhenNotSupplied() {
   const parentId = new mongoose.Types.ObjectId();
   const payload = {
@@ -389,6 +421,7 @@ async function run() {
   await testMiddlewareRoutesAndProjection();
   await testUsesRestaurantBusinessDateWhenNotSupplied();
   await testFallsBackToParentBalanceWhenNoBatchIsCurrent();
+  await testDisplaysExpiredBatchesWithStaleStoredStatuses();
   console.log("subscription dashboard stacking read model tests passed");
 }
 
