@@ -23,7 +23,7 @@ function withMaintenance(t, state) {
 test("G2 maintenance blocks POST/PUT/PATCH/DELETE before all API, dashboard and Moyasar routes", async (t) => {
   withMaintenance(t, "true");
   const app = createApp();
-  for (const path of ["/api/webhooks/moyasar",
+  for (const path of ["/api/webhooks/moyasar", "/api/dashboard/pos/catalog/publish",
     "/api/dashboard/subscriptions", "/api/auth/login", "/api/landing/leads",
     "/api/does-not-exist"]) {
     for (const method of ["post", "put", "patch", "delete"]) {

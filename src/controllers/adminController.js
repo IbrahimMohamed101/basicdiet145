@@ -11,6 +11,8 @@ const Subscription = require("../models/Subscription");
 const { withSubscriptionOrigins } = require("../services/subscriptionAcquisitionReadService");
 const Order = require("../models/Order");
 const Payment = require("../models/Payment");
+const { isBranchOperator } = require("../constants/dashboardRoles");
+
 const CheckoutDraft = require("../models/CheckoutDraft");
 const SubscriptionDay = require("../models/SubscriptionDay");
 const SubscriptionAuditLog = require("../models/SubscriptionAuditLog");
@@ -1945,6 +1947,12 @@ async function createAppUserAdmin(req, res) {
         { session }
       );
 
+      await ActivityLog.create([{
+        entityType: "app_user", entityId: createdCoreUser[0]._id,
+        action: "app_customer_created_by_dashboard",
+        byUserId: req.dashboardUserId, byRole: req.dashboardUserRole,
+        meta: { appUserId: String(createdAppUser[0]._id), source: "dashboard" },
+      }], { session });
       if (typeof session.commitTransaction === "function") await session.commitTransaction();
     } catch (err) {
       await session.abortTransaction();
@@ -1985,22 +1993,77 @@ async function createAppUserAdmin(req, res) {
   }
 }
 
+function hasClientSuppliedSource(body) {
+  return Object.hasOwn(body || {}, "source") || Object.hasOwn(body?.payment || {}, "source");
+}
+
+function hasClientSuppliedPaidAt(body) {
+  return Object.hasOwn(body || {}, "paidAt") ||
+    Object.hasOwn(body?.payment || {}, "paidAt");
+}
+
 async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, explicitRuntimeOverrides = null) {
   const runtime = resolveAdminRuntimeOverrides(
     sliceCAdminRuntime,
     nextOrRuntimeOverrides,
     explicitRuntimeOverrides
   );
-  const body = normalizeDashboardQuotePayload(req.body || {});
-  const { userId } = body;
-  if (!validateObjectIdOrRespond(res, userId, "userId")) {
-    return undefined;
+  if (hasClientSuppliedSource(req.body)) {
+    return errorResponse(res, 400, "SOURCE_NOT_ALLOWED", "Payment source is assigned by the server");
+  }
+  if (hasClientSuppliedPaidAt(req.body)) {
+    return errorResponse(res, 400, "PAID_AT_NOT_ALLOWED", "Payment date is assigned by the server");
   }
 
-  if (req.dashboardUserRole === "cashier") {
-    if (!body.payment || body.payment.method !== "cash") {
-      return errorResponse(res, 403, "FORBIDDEN", "Cashier role is only allowed to create cash-paid subscriptions");
-    }
+  const body = normalizeDashboardQuotePayload(req.body || {});
+  const { userId } = body;
+  if (!validateObjectIdOrRespond(res, userId, "userId")) return undefined;
+
+  // The recording adapter attaches a server-only verified context to POST /dashboard/subscriptions.
+  // Direct /admin/subscriptions requests must be cash, never Visa/Mada.
+  const dashboardRecordPath = /^\/api\/dashboard\/subscriptions\/?$/.test(
+    String(req.originalUrl || "").split("?")[0]
+  );
+  const verified = req.verifiedDashboardSubscriptionPayment;
+  if ((dashboardRecordPath && (!verified || !["cash", "visa"].includes(verified.method))) ||
+      (!dashboardRecordPath && verified)) {
+    return errorResponse(res, 403, "PAYMENT_CONTEXT_INVALID", "Payment must use its authorized recording route");
+  }
+  const recordedPaymentMethod = dashboardRecordPath ? verified.method : "cash";
+  const recordingSource = dashboardRecordPath
+    ? (recordedPaymentMethod === "visa" ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
+      : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE)
+    : "dashboard_cashier";
+  if (dashboardRecordPath && verified.source !== recordingSource) {
+    return errorResponse(res, 403, "PAYMENT_CONTEXT_INVALID", "Untrusted recording source");
+  }
+  // D-092: a branch operator must ALWAYS record a real paid cash/Visa payment.
+  // Only admin or superadmin can intentionally issue an unpaid/free subscription.
+  // The original authenticated role is kept unchanged for audit.
+  if (!body.payment && (isBranchOperator(req.dashboardUserRole)
+      || !["admin", "superadmin"].includes(String(req.dashboardUserRole || "")))) {
+    return errorResponse(res, 400, "PAYMENT_REQUIRED", "Branch operator subscription requires paid payment");
+  }
+  // Complimentary subscriptions are an explicitly justified admin action.
+  // Validate before activating any entitlement, including on standalone Mongo.
+  const isComplimentary = !body.payment;
+  const complimentaryReason = typeof body.complimentaryReason === "string"
+    ? body.complimentaryReason.trim() : "";
+  if (isComplimentary && (complimentaryReason.length < 5 || complimentaryReason.length > 500)) {
+    return errorResponse(res, 400, "COMPLIMENTARY_REASON_REQUIRED",
+      "A complimentary subscription requires a reason of 5 to 500 characters");
+  }
+  // No payment is allowed exclusively for admin or superadmin; the recording
+  // adapter always supplies a paid and fully quoted payment before activation.
+  if (body.payment && body.payment.method !== "cash") {
+    return errorResponse(res, 400, "INVALID_PAYMENT_METHOD",
+      "Direct admin subscription creation accepts cash only; use dashboard recording for Visa/Mada");
+  }
+  if (dashboardRecordPath && !body.payment) {
+    return errorResponse(res, 400, "PAYMENT_REQUIRED", "Recorded dashboard subscriptions require payment");
+  }
+  if (body.payment && body.payment.status !== "paid") {
+    return errorResponse(res, 400, "PAYMENT_STATUS_INVALID", "Subscription payment must be paid");
   }
 
   const user = await runtime.findClientUserById(userId);
@@ -2032,6 +2095,16 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
     return errorResponse(res, mapped.status, mapped.code, mapped.message);
   }
 
+  if (!["admin", "superadmin"].includes(String(req.dashboardUserRole || ""))
+      && (!Number.isSafeInteger(Number(quote.breakdown.totalHalala))
+        || Number(quote.breakdown.totalHalala) <= 0)) {
+    return errorResponse(res, 400, "PAYMENT_REQUIRED",
+      "Free or zero-valued subscriptions require admin/superadmin approval");
+  }
+  if (body.payment && (!Number.isSafeInteger(Number(body.payment.collectedAmountHalala)) ||
+      Number(body.payment.collectedAmountHalala) !== Number(quote.breakdown.totalHalala))) {
+    return errorResponse(res, 400, "PAYMENT_AMOUNT_MISMATCH", "Collected amount must match the server quote");
+  }
   const session = await startSafeSession();
 
   try {
@@ -2130,22 +2203,45 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
       }
 
       await Payment.create([{
-        provider: "cash",
+        provider: recordedPaymentMethod === "visa" ? "manual" : "cash",
         type: "subscription_activation",
         status: "paid",
         amount: Number(body.payment.collectedAmountHalala),
         currency: quote.breakdown.currency || "SAR",
         userId: user._id,
         subscriptionId: subscription._id,
-        paidAt: body.payment.paidAt ? new Date(body.payment.paidAt) : new Date(),
-        method: "cash",
-        source: body.source || "dashboard_cashier",
+        paidAt: new Date(),
+        method: recordedPaymentMethod,
+        source: recordingSource,
+        metadata: {
+          paymentMethod: recordedPaymentMethod,
+          recordingMode: "dashboard_manual",
+          gatewayUsed: false,
+        },
         collectedBy: req.dashboardUserId,
         applied: true
       }], { session });
 
       subscription.status = "active";
       await subscription.save({ session });
+    }
+
+    if (isComplimentary) {
+      // Required audit is NOT best-effort: write in the same Mongo session as
+      // entitlement creation. A failed audit aborts the transaction on rs0.
+      await ActivityLog.create([{
+        entityType: "subscription",
+        entityId: subscription._id,
+        action: "complimentary_subscription_created",
+        byUserId: req.dashboardUserId,
+        byRole: req.dashboardUserRole,
+        meta: {
+          subscriptionId: String(subscription._id),
+          complimentaryReason,
+          actorId: String(req.dashboardUserId),
+          actorRole: req.dashboardUserRole,
+        },
+      }], { session });
     }
 
     if (typeof session.commitTransaction === "function") await session.commitTransaction();
@@ -2189,8 +2285,8 @@ async function createSubscriptionAdmin(req, res, nextOrRuntimeOverrides = null, 
           paymentId: paymentDoc ? String(paymentDoc._id) : null,
           quoteTotal: quote.breakdown.totalHalala,
           collectedAmount: body.payment.collectedAmountHalala,
-          paymentMethod: "cash",
-          source: body.source || "dashboard_cashier",
+          paymentMethod: recordedPaymentMethod,
+          source: recordingSource,
           premiumItems: body.premiumItems || [],
           addons: body.addons || [],
           fulfillmentMethod: body.fulfillmentMethod || body.deliveryMode || "pickup",

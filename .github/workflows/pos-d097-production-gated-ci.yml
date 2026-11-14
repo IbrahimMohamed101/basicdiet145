@@ -1,0 +1,45 @@
+name: D-097 Production POS Gated Tax QR (Draft, no deployment)
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "src/services/pos/**"
+      - "src/models/PosInvoice.js"
+      - "src/models/PosRefund.js"
+      - "src/routes/dashboardPosCatalog.js"
+      - "src/routes/dashboardPosFinancial.js"
+      - "src/utils/taxQr.js"
+      - "src/controllers/dashboard/subscriptionInvoiceController.js"
+      - "tests/posD097*.test.js"
+      - ".github/workflows/pos-d097-production-gated-ci.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  d097-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      POS_PRODUCTION_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Lint JavaScript syntax and test approval guard
+        run: |
+          set -euo pipefail
+          for file in src/utils/taxQr.js src/services/pos/financialRuntime.js src/services/pos/financialLedgerService.js src/services/pos/posDocumentNumber.js src/services/pos/posClosingSetting.js scripts/pos/activateProductionClosing.js; do
+            node --check "$file"
+          done
+      - name: D-097 QR byte identity, 15% VAT halala, partial refund, Production disabled and Staging unchanged
+        run: |
+          set -euo pipefail
+          node --test tests/posD097TaxQr.test.js tests/posD097ProductionGate.test.js
+      - name: Existing POS quote/financial regression
+        run: |
+          set -euo pipefail
+          node --test tests/posInvoiceMath.test.js tests/posFinancialQuote.test.js

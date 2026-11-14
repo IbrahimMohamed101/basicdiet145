@@ -1,0 +1,80 @@
+name: G2 Mongo 8 Standalone-to-rs0 and Restore Drill (Disposable)
+on:
+  pull_request:
+    branches: [codex/pos-staging-isolation]
+    paths:
+      - "scripts/g2-mongo-*"
+      - "scripts/g2-rs0-init-and-verify.js"
+      - "scripts/ci/g2-mongo-migration-drill.sh"
+      - "scripts/g2-mongo-final-start-command.txt"
+      - ".github/workflows/g2-mongo-replica-ci.yml"
+      - "docs/pos-g0-mongo-replica-runbook.md"
+      - "src/app.js"
+      - "src/index.js"
+      - "src/jobs/index.js"
+      - "src/middleware/maintenanceMode.js"
+      - "src/routes/webhooks.js"
+      - "tests/g2MaintenanceMode.test.js"
+permissions:
+  contents: read
+jobs:
+  mongo8-drill:
+    name: mongo8-auth-standalone-rs0-restore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CI: "true"
+      G2_EXECUTION_SCOPE: ci-disposable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install backend dependencies without lifecycle writes
+        run: npm ci --ignore-scripts
+      - name: Install database-tools binaries from mongo:8.0 image (CI only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker create --name g2-ci-dbtools mongo:8.0 >/dev/null
+          docker cp g2-ci-dbtools:/usr/bin/mongodump /tmp/g2-mongodump
+          docker cp g2-ci-dbtools:/usr/bin/mongorestore /tmp/g2-mongorestore
+          docker rm g2-ci-dbtools >/dev/null
+          sudo install -m 0755 /tmp/g2-mongodump /usr/local/bin/mongodump
+          sudo install -m 0755 /tmp/g2-mongorestore /usr/local/bin/mongorestore
+          mongodump --version | head -n 1
+      - name: Validate G2 scripts and exact Railway image start command
+        run: |
+          set -euo pipefail
+          for file in scripts/g2-mongo-*.js scripts/g2-rs0-init-and-verify.js; do node --check "$file"; done
+          for file in scripts/g2-mongo-*.sh scripts/ci/g2-mongo-migration-drill.sh; do bash -n "$file"; done
+          node -e 'if(process.env.G2_EXECUTION_SCOPE!=="ci-disposable"||process.env.CI!=="true")process.exit(1)'
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const actual = fs.readFileSync('scripts/g2-mongo-final-start-command.txt','utf8').trim();
+          const expected = "/bin/sh -ec 'set -eu; if [ ! -e /data/db/rs0-keyfile ]; then test \"$(id -u)\" = 0; test -d /data/db; test -n \"${G2_RS0_KEYFILE:-}\"; umask 077; t=$(mktemp /data/db/.rs0-keyfile.XXXXXXXX); trap \"rm -f $t\" EXIT; printf \"%s\" \"$G2_RS0_KEYFILE\" > \"$t\"; chown mongodb:mongodb \"$t\"; chmod 0400 \"$t\"; mv \"$t\" /data/db/rs0-keyfile; fi; test \"$(stat -c %a /data/db/rs0-keyfile)\" = 400; test \"$(stat -c %U /data/db/rs0-keyfile)\" = mongodb; exec docker-entrypoint.sh mongod --ipv6 --bind_ip ::,0.0.0.0 --setParameter diagnosticDataCollectionEnabled=false --replSet rs0 --keyFile /data/db/rs0-keyfile --auth'";
+          assert.equal(actual,expected,'Exact approved Railway start command changed');
+          NODE
+      - name: Maintenance 503 webhook, GET/health, jobs and baseline owner gates
+        env:
+          NODE_ENV: test
+        run: |
+          set -euo pipefail
+          node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/g2MaintenanceMode.test.js
+      - name: Synthetic mongo:8.0 authenticated standalone to same-volume rs0 to archive restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci/g2-mongo-migration-drill.sh 2>&1 | tee g2-ci-timing.log
+          grep -qx 'G2_SYNTHETIC_STANDALONE_TO_RS0_RESTORE_DRILL_PASS' g2-ci-timing.log
+      - name: Timing summary (no secrets, no database rows)
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### G2 synthetic CI timing (not a Production duration forecast)'
+            echo '---'
+            grep '^G2_TIMING ' g2-ci-timing.log || true
+          } >> "$GITHUB_STEP_SUMMARY"

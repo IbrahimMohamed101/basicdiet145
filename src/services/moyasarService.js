@@ -1,4 +1,5 @@
 const https = require("https");
+const { isPosStagingRuntime } = require("../utils/posStagingRuntime");
 
 const MOYASAR_HOST = "api.moyasar.com";
 const DEFAULT_MOYASAR_TIMEOUT_MS = 15000;
@@ -122,11 +123,22 @@ function getUrlSafeSummary(url) {
  * Safe to log: only names are returned, never values.
  */
 function getMoyasarEnvStatus() {
+  if (isPosStagingRuntime()) return { configured: false, missingVars: REQUIRED_ENV_VARS };
   const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
   return {
     configured: missing.length === 0,
     missingVars: missing,
   };
+}
+
+function getMoyasarApiKey() {
+  if (isPosStagingRuntime()) {
+    const error = new Error("Moyasar is disabled in isolated POS Staging");
+    error.code = "STAGING_GATEWAY_DISABLED";
+    error.status = 503;
+    throw error;
+  }
+  return process.env.MOYASAR_SECRET_KEY;
 }
 
 /**
@@ -154,7 +166,7 @@ async function createInvoice({
   _orderId,
   _paymentId,
 }) {
-  const apiKey = process.env.MOYASAR_SECRET_KEY;
+  const apiKey = getMoyasarApiKey();
   if (!apiKey) {
     const err = new Error("MOYASAR_SECRET_KEY is not configured");
     err.code = "CONFIG";
@@ -202,7 +214,7 @@ async function createInvoice({
 }
 
 async function getInvoice(invoiceId) {
-  const apiKey = process.env.MOYASAR_SECRET_KEY;
+  const apiKey = getMoyasarApiKey();
   if (!apiKey) {
     const err = new Error("Missing MOYASAR_SECRET_KEY");
     err.code = "CONFIG";

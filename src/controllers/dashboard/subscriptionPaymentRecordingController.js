@@ -266,6 +266,10 @@ async function quoteSubscriptionAdmin(req, res, next) {
 }
 
 async function createSubscriptionAdmin(req, res, next) {
+  if (Object.hasOwn(req.body || {}, "source") || Object.hasOwn(req.body?.payment || {}, "source")) {
+    return res.status(400).json({ status: false,
+      error: { code: "SOURCE_NOT_ALLOWED", message: "Payment source is assigned by the server" } });
+  }
   let selection;
   try {
     selection = normalizeDashboardPaymentMethod(req.body || {});
@@ -276,6 +280,14 @@ async function createSubscriptionAdmin(req, res, next) {
       messageAr: "طريقة الدفع يجب أن تكون كاش أو فيزا",
       error: { code: err.code || "INVALID_PAYMENT_METHOD", message: err.message },
     });
+  }
+
+  // No client may backdate a dashboard payment. This must be rejected before
+  // quoting or activating entitlements, including on standalone Mongo.
+  if (Object.hasOwn(req.body || {}, "paidAt") ||
+    Object.hasOwn(req.body?.payment || {}, "paidAt")) {
+    return res.status(400).json({ status: false,
+      error: { code: "PAID_AT_NOT_ALLOWED", message: "Payment date is assigned by the server" } });
   }
 
   const quoteRequest = cloneRequestWithBody(req, { ...(req.body || {}) });
@@ -304,6 +316,27 @@ async function createSubscriptionAdmin(req, res, next) {
   const originalPayment = req.body && req.body.payment && typeof req.body.payment === "object"
     ? req.body.payment
     : {};
+  // An explicit collected amount is a cashier statement, not a suggestion.
+  // Never silently replace it with the quote total. On standalone Mongo,
+  // failing after entitlement activation has no rollback.
+  const claimedAmount = originalPayment.collectedAmountHalala;
+  if (claimedAmount !== undefined && claimedAmount !== null &&
+      (!Number.isSafeInteger(Number(claimedAmount))
+        || Number(claimedAmount) < 0
+        || Number(claimedAmount) !== totalHalala)) {
+    return res.status(400).json({
+      status: false,
+      error: { code: "PAYMENT_AMOUNT_MISMATCH",
+        message: "Collected amount does not match the server quote" },
+    });
+  }
+  if (originalPayment.status && originalPayment.status !== "paid") {
+    return res.status(400).json({
+      status: false,
+      error: { code: "PAYMENT_STATUS_INVALID",
+        message: "Manual subscription payment must be marked paid" },
+    });
+  }
   const recordingSource = selection.method === "visa"
     ? Payment.DASHBOARD_SUBSCRIPTION_VISA_SOURCE
     : Payment.DASHBOARD_SUBSCRIPTION_CASH_SOURCE;
@@ -317,9 +350,12 @@ async function createSubscriptionAdmin(req, res, next) {
       method: "cash",
       status: "paid",
       collectedAmountHalala: totalHalala,
-      paidAt: originalPayment.paidAt || new Date().toISOString(),
     },
-    source: recordingSource,
+  });
+  // Trusted server-only context, not a field in req.body. Only this adapter
+  // can authorize manual Visa/Mada for POST /dashboard/subscriptions.
+  coreRequest.verifiedDashboardSubscriptionPayment = Object.freeze({
+    method: selection.method, source: recordingSource,
   });
 
   const createCaptured = await invokeCaptured(subscriptionCreationController.createSubscriptionAdmin, coreRequest, next);

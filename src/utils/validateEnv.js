@@ -1,6 +1,7 @@
 const { logger } = require("./logger");
 const { assertNoTestFlagsInProduction, isTestAuthEnabled } = require("./security");
 const { assertSafeTestMongoUri } = require("./mongoUriResolver");
+const { isPosStagingRuntime } = require("./posStagingRuntime");
 
 function addMissingIfEmpty(missing, key) {
   if (!process.env[key]) {
@@ -19,6 +20,7 @@ function validateEnv() {
   const hasMongoUri = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
   const hasTestMongoUri = Boolean(process.env.MONGO_URI_TEST);
   const isProduction = process.env.NODE_ENV === "production";
+  const isolatedPosStaging = isPosStagingRuntime();
 
   /* ── PRODUCTION HARD FAIL: reject any test/bypass flags ───────────── */
   const securityCheck = assertNoTestFlagsInProduction();
@@ -31,7 +33,7 @@ function validateEnv() {
 
   /* ── OTP provider requirement ─────────────────────────────────────── */
   const testAuthActive = isTestAuthEnabled();
-  const shouldRequireOtpProvider = !testAuthActive;
+  const shouldRequireOtpProvider = !testAuthActive && !isolatedPosStaging;
 
   const cloudinaryKeys = [
     "CLOUDINARY_CLOUD_NAME",
@@ -48,7 +50,7 @@ function validateEnv() {
   }
   addMissingIfEmpty(missing, "JWT_SECRET");
   addMissingIfEmpty(missing, "DASHBOARD_JWT_SECRET");
-  addMissingIfEmpty(missing, "MOYASAR_SECRET_KEY");
+  addMissingBypassAware(missing, "MOYASAR_SECRET_KEY", !isolatedPosStaging);
   addMissingBypassAware(missing, "TWILIO_ACCOUNT_SID", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_AUTH_TOKEN", shouldRequireOtpProvider);
   addMissingBypassAware(missing, "TWILIO_VERIFY_SERVICE_SID", shouldRequireOtpProvider);

@@ -16,6 +16,7 @@ const { hideCanceledSubscriptionsFromClientList } = require("./middleware/client
 const errorResponse = require("./utils/errorResponse");
 const { maintenanceWriteGuard } = require("./middleware/maintenanceMode");
 const { logger } = require("./utils/logger");
+const { isPosStagingRuntime } = require("./utils/posStagingRuntime");
 const { validateAndFixResponse } = require("./utils/encoding");
 const { normalizeSubscriptionBilingualResponse } = require("./utils/subscriptionBilingualResponse");
 const { normalizePickupProductNamesResponse } = require("./utils/pickupProductNameResponse");
@@ -94,6 +95,8 @@ function parseConfiguredCorsOrigins() {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+
+  if (isPosStagingRuntime()) return listOrigins;
 
   return Array.from(new Set([
     "http://localhost:5173",
@@ -269,6 +272,11 @@ function createApp() {
   const landingLeads = require("./routes/landingLeads");
   app.use("/api/landing", landingLeads.publicRouter);
   app.use("/api/dashboard/landing-leads", landingLeads.adminRouter);
+  // Preserve Staging-only webhook isolation; expose guarded POS API on Production.
+  if (isPosStagingRuntime()) {
+    app.use("/api/webhooks", (_req, res) => res.sendStatus(404));
+  }
+  app.use("/api/dashboard/pos", requestLanguageMiddleware, require("./routes/dashboardPosCatalog"));
   app.use("/api", requestLanguageMiddleware, routes);
 
   // JSON 404 handler for unknown /api/* routes.
