@@ -44,8 +44,8 @@ function normalizeSaleIntent(body) {
   } else if (!["paid", "cash"].includes(body.appPaymentStatus)) {
     deny("حدد حالة دفع التطبيق مدفوع أو كاش.");
   }
-  const serviceMode = restaurant ? body.serviceMode : "external-app";
-  if (restaurant && !["dine-in", "takeaway", "delivery"].includes(serviceMode)) {
+  const serviceMode = restaurant ? (body.serviceMode ?? "restaurant") : "external-app";
+  if (restaurant && !["restaurant", "dine-in", "takeaway", "delivery"].includes(serviceMode)) {
     deny("نوع طلب المطعم غير صالح.");
   }
   const externalOrderNumber = restaurant ? null : (body.externalOrderNumber ?? "");
