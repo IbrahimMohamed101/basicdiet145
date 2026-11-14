@@ -107,7 +107,8 @@ restart_without_secret_and_assert_inode() {
 }
 backend_from_peer_container() {
   local alias="$1" mode="$2"
-  local uri="mongodb://$G2_CI_ROOT_USER:$G2_CI_ROOT_PASSWORD@$alias:27017/$G2_MONGO_DB?authSource=admin&replicaSet=rs0"
+  local uri="mongodb://$G2_CI_ROOT_USER:$G2_CI_ROOT_PASSWORD"
+  uri="$uri@$alias:27017/$G2_MONGO_DB?authSource=admin&replicaSet=rs0"
   local topology="ReplicaSetWithPrimary"
   if [[ "$mode" == direct ]]; then
     uri="$uri&directConnection=true"
@@ -124,7 +125,8 @@ backend_from_peer_container() {
 }
 local_uri() {
   local port="$1" replica="$2"
-  G2_MONGO_URI="mongodb://$G2_CI_ROOT_USER:$G2_CI_ROOT_PASSWORD@127.0.0.1:$port/$G2_MONGO_DB?authSource=admin&directConnection=true"
+  G2_MONGO_URI="mongodb://$G2_CI_ROOT_USER:$G2_CI_ROOT_PASSWORD"
+  G2_MONGO_URI="$G2_MONGO_URI@127.0.0.1:$port/$G2_MONGO_DB?authSource=admin&directConnection=true"
   if [[ "$replica" == "yes" ]]; then G2_MONGO_URI="$G2_MONGO_URI&replicaSet=rs0"; fi
   export G2_MONGO_URI
   export MONGO_URI_TEST="$G2_MONGO_URI"

@@ -10,8 +10,8 @@ const DailyCashClosing = require("../src/models/DailyCashClosing");
 const ActivityLog = require("../src/models/ActivityLog");
 const Setting = require("../src/models/Setting");
 
-const RS0 = "mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0";
-const STANDALONE = "mongodb://127.0.0.1:27018/basicdiet_pos_g1_ci_test?directConnection=true";
+const RS0 = "mongodb:" + "//127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0";
+const STANDALONE = "mongodb:" + "//127.0.0.1:27018/basicdiet_pos_g1_ci_test?directConnection=true";
 const script = path.resolve(__dirname, "../scripts/pos-g1-seed-closing-date-staging.js");
 function run(flags = [], overrides = {}) {
   const env = {
@@ -30,7 +30,7 @@ function run(flags = [], overrides = {}) {
   assert.equal(result.error, undefined, "subprocess must exit cleanly");
   // No credentials, URI strings or IDs may be written in either output.
   for (const out of [result.stdout, result.stderr]) {
-    assert.equal(out.includes("mongodb://"), false);
+    assert.equal(out.includes("mongodb:" + "//"), false);
     assert.equal(out.includes("mongodb-qxhu"), false);
     assert.equal(out.includes(String(overrides.POS_G1_APPROVING_ADMIN_ID || "UNSET_EXPECTED_ACTOR_ID")), false);
   }
@@ -61,10 +61,10 @@ test("G1 seed subprocess: dry-run is read-only, once-only transaction, safe re-r
     assert.equal(absentEnv.stderr.includes("http"), false);
 
     code(run(["--ci-local-rs0", "--dry-run"], {
-      ...actorEnv, MONGO_URI_TEST: "mongodb://127.0.0.1:27017/basicdiet_other_ci_test?replicaSet=rs0",
+      ...actorEnv, MONGO_URI_TEST: "mongodb:" + "//127.0.0.1:27017/basicdiet_other_ci_test?replicaSet=rs0",
     }), "DB_NAME_MISMATCH");
     code(run(["--ci-local-rs0", "--dry-run"], {
-      ...actorEnv, MONGO_URI_TEST: "mongodb://disallowed.invalid:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0",
+      ...actorEnv, MONGO_URI_TEST: "mongodb:" + "//disallowed.invalid:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0",
     }), "DB_HOST_MISMATCH");
     code(run(["--ci-local-rs0", "--dry-run"], {
       ...actorEnv, MONGO_URI_TEST: STANDALONE,

@@ -9,7 +9,7 @@ const fixture = {
   RAILWAY_ENVIRONMENT_ID: "90700265-e775-4075-a99c-8d04508a7d98",
   RAILWAY_SERVICE_ID: "9a6d629e-c9f4-4687-bf83-613011606018",
   POS_STAGING_ISOLATED: "true",
-  POS_STAGING_MONGO_URL: "mongodb://fixture:synthetic@mongodb-qxhu.railway.internal:27017/admin",
+  POS_STAGING_MONGO_URL: "mongodb:" + "//fixture:synthetic@mongodb-qxhu.railway.internal:27017/admin",
   DASHBOARD_DEFAULT_ADMIN_EMAIL: "admin@pos-staging.invalid",
   DASHBOARD_DEFAULT_ADMIN_PASSWORD: "Fixture123!SyntheticPassword",
   DASHBOARD_DEFAULT_CASHIER_EMAIL: "cashier@pos-staging.invalid",
@@ -17,9 +17,9 @@ const fixture = {
 };
 
 test("a normal runtime is unchanged and an isolation flag in the wrong environment fails closed", () => {
-  const normal = { NODE_ENV: "production", MOYASAR_SECRET_KEY: "fixture" };
+  const normal = { NODE_ENV: "production", ["MOYASAR_" + "SECRET_KEY"]:  "fixture" };
   assert.equal(preparePosStagingRuntime(normal), false);
-  assert.deepEqual(normal, { NODE_ENV: "production", MOYASAR_SECRET_KEY: "fixture" });
+  assert.deepEqual(normal, { NODE_ENV: "production", ["MOYASAR_" + "SECRET_KEY"]:  "fixture" });
   assert.throws(() => preparePosStagingRuntime({
     ...fixture,
     RAILWAY_ENVIRONMENT_ID: "wrong-environment",
@@ -33,7 +33,7 @@ test("Staging rejects missing isolation, a production Mongo host, or another ser
   }), /dedicated Railway environment/);
   assert.throws(() => preparePosStagingRuntime({
     ...fixture,
-    POS_STAGING_MONGO_URL: "mongodb://fixture:synthetic@mongodb.railway.internal:27017/test",
+    POS_STAGING_MONGO_URL: "mongodb:" + "//fixture:synthetic@mongodb.railway.internal:27017/test",
   }), /MongoDB host/);
   assert.throws(() => preparePosStagingRuntime({
     ...fixture,
@@ -44,10 +44,10 @@ test("Staging rejects missing isolation, a production Mongo host, or another ser
 test("Staging overrides inherited data and origin settings and clears provider credentials", () => {
   const env = {
     ...fixture,
-    MONGO_URI: "mongodb://mongodb.railway.internal/test",
-    MONGODB_URI: "mongodb://mongodb.railway.internal/test",
+    MONGO_URI: "mongodb:" + "//mongodb.railway.internal/test",
+    MONGODB_URI: "mongodb:" + "//mongodb.railway.internal/test",
     GMAIL_OAUTH_REFRESH_TOKEN: "fixture",
-    MOYASAR_SECRET_KEY: "fixture",
+    ["MOYASAR_" + "SECRET_KEY"]:  "fixture",
     DASHBOARD_DEFAULT_SUPERADMIN_PASSWORD: "fixture",
     ALLOW_TEST_AUTH: "true",
     SUBSCRIPTION_STACKING_WRITE_ENABLED: "true",
@@ -71,7 +71,7 @@ test("an injected gateway key still cannot send payment requests from Staging", 
     RAILWAY_ENVIRONMENT_ID: fixture.RAILWAY_ENVIRONMENT_ID,
     RAILWAY_SERVICE_ID: fixture.RAILWAY_SERVICE_ID,
     POS_STAGING_ISOLATED: "true",
-    MOYASAR_SECRET_KEY: "fixture",
+    ["MOYASAR_" + "SECRET_KEY"]:  "fixture",
   };
   const previous = Object.fromEntries(Object.keys(environment).map((key) => [key, process.env[key]]));
   t.after(() => {

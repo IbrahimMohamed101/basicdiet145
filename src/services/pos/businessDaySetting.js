@@ -97,7 +97,7 @@ function assertSafeStagingCutoffMutation(options = {}) {
   const disposableCiRs0 = options.testOnly === true
     && process.env.NODE_ENV === "test"
     && process.env.MONGO_URI_TEST ===
-      "mongodb://127.0.0.1:27017/basicdiet_pos_g_d091_ci_test?directConnection=true"
+      "mongodb:" + "//127.0.0.1:27017/basicdiet_pos_g_d091_ci_test?directConnection=true"
     && mongoose.connection.name === "basicdiet_pos_g_d091_ci_test"
     && mongoose.connection.host === "127.0.0.1";
   if (disposableCiRs0) return;

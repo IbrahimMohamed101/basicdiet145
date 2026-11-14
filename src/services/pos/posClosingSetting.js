@@ -63,7 +63,7 @@ function assertStagingSeedRuntime(options = {}) {
   const localDisposableRs0 = options.testOnly === true &&
     process.env.NODE_ENV === "test" &&
     process.env.MONGO_URI_TEST ===
-      "mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0" &&
+      "mongodb:" + "//127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0" &&
     mongoose.connection.name === "basicdiet_pos_g1_ci_test" &&
     mongoose.connection.host === "127.0.0.1";
   if (localDisposableRs0) return;

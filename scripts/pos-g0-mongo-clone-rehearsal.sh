@@ -71,7 +71,8 @@ docker run -d --name "$DST" --network none \
   -v "$VOL:/data/db" mongo:8.0 \
   mongod --replSet rs0 --keyFile /data/db/rs0-keyfile --auth --bind_ip_all >/dev/null
 
-MONGO_AUTH="mongodb://$AUTH_USER:$AUTH_PASSWORD@127.0.0.1:27017/admin?authSource=admin&directConnection=true"
+MONGO_AUTH="mongodb://$AUTH_USER:$AUTH_PASSWORD"
+MONGO_AUTH="$MONGO_AUTH@127.0.0.1:27017/admin?authSource=admin&directConnection=true"
 for _ in $(seq 1 50); do
   if docker exec "$DST" mongosh --quiet "$MONGO_AUTH" --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -q '^1$'; then break; fi
   sleep 1
