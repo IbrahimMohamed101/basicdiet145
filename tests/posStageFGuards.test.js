@@ -37,6 +37,25 @@ test("idempotency key is required and canonical stable hash ignores client total
   assert.equal(canonicalHash({ a: 1, b: { x: 1, y: 2 } }),
     canonicalHash({ b: { y: 2, x: 1 }, a: 1 }));
 });
+test("restaurant sales default to restaurant mode without changing legacy or external mode", () => {
+  const base = { revision: 1, channel: "restaurant",
+    items: [{ productId: "water", variantId: "bottle", quantity: 1 }],
+    tender: { method: "network" } };
+  const normalized = normalizeSaleIntent(base);
+  assert.equal(normalized.serviceMode, "restaurant");
+  assert.equal(normalizeSaleIntent({ ...base, serviceMode: "restaurant" }).serviceMode, "restaurant");
+  assert.equal(canonicalHash(normalized), canonicalHash(normalizeSaleIntent({
+    ...base, serviceMode: "restaurant",
+  })));
+  for (const mode of ["dine-in", "takeaway", "delivery"]) {
+    assert.equal(normalizeSaleIntent({ ...base, serviceMode: mode }).serviceMode, mode);
+  }
+  assert.throws(() => normalizeSaleIntent({ ...base, serviceMode: "bad" }),
+    /نوع طلب المطعم/);
+  assert.equal(normalizeSaleIntent({
+    ...base, channel: "keeta", appPaymentStatus: "paid",
+  }).serviceMode, "external-app");
+});
 test("app receivables carry external status, not restaurant tender", () => {
   const a = normalizeSaleIntent({ revision: 1, channel: "keeta", appPaymentStatus: "cash",
     externalOrderNumber: "T-123",
