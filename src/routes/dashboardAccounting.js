@@ -4,6 +4,8 @@ const subscriptionPaymentController = require("../controllers/dashboard/subscrip
 const subscriptionOperationsAuditController = require("../controllers/dashboard/subscriptionOperationsAuditController");
 const marketingAnalyticsController = require("../controllers/dashboard/marketingAnalyticsController");
 const asyncHandler = require("../middleware/asyncHandler");
+const errorResponse = require("../utils/errorResponse");
+const { buildPosAccountingRange } = require("../services/dashboard/posAccountingRangeReportService");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 
 const router = Router();
@@ -55,6 +57,30 @@ router.get(
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin"]),
   asyncHandler(marketingAnalyticsController.getMarketingAnalytics)
+);
+
+// Superadmin-only, read-only financial intelligence over immutable POS documents.
+// This route neither changes POS invoices nor reconciles external platform payouts.
+router.get(
+  "/pos/range",
+  dashboardAuthMiddleware,
+  (req, res, next) => {
+    if (req.dashboardUserRole !== "superadmin") {
+      return errorResponse(res, 403, "FORBIDDEN", "التقرير المالي الموحد متاح للسوبر أدمن فقط.");
+    }
+    return next();
+  },
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await buildPosAccountingRange(req.query);
+      return res.json({ status: true, data });
+    } catch (error) {
+      if (error && error.code === "POS_ACCOUNTING_INVALID_RANGE") {
+        return errorResponse(res, 400, error.code, error.message);
+      }
+      throw error;
+    }
+  })
 );
 
 module.exports = router;
