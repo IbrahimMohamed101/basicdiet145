@@ -1,0 +1,89 @@
+name: POS mainline integration safety (review only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/services/pos/**'
+      - 'src/routes/dashboardPos*'
+      - 'src/app.js'
+      - 'src/index.js'
+      - 'src/utils/posStagingRuntime.js'
+      - 'tests/pos*'
+      - '.github/workflows/pos-mainline-integration.yml'
+  push:
+    branches: [codex/pos-mainline-integration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pos-mainline-unit:
+    name: POS production-off, permissions, numbering and G2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      POS_PRODUCTION_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Syntax and guarded production entrypoint
+        run: |
+          set -euo pipefail
+          for file in src/app.js src/index.js src/routes/dashboardPosCatalog.js src/routes/dashboardPosFinancial.js src/services/pos/financialRuntime.js src/services/pos/posClosingSetting.js; do
+            node --check "$file"
+          done
+      - name: POS D-097/D-098, legacy closing, staging isolation and G2 maintenance
+        run: |
+          set -euo pipefail
+          for file in \
+            tests/posMainlineSafety.test.js \
+            tests/posD097ProductionGate.test.js \
+            tests/posD097TaxQr.test.js \
+            tests/posInvoiceMath.test.js \
+            tests/posFinancialQuote.test.js \
+            tests/posStagingRuntime.test.js \
+            tests/posCatalogValidation.test.js \
+            tests/posQuote.test.js \
+            tests/posG2ExpectedTotals.test.js \
+            tests/posStageFGuards.test.js \
+            tests/posCatalogHistory.test.js \
+            tests/posG0SeedGuard.test.js \
+            tests/posD092BranchOperatorParity.test.js \
+            tests/posCashierRestaurantRoleParity.test.js \
+            tests/posG3StandaloneSubscriptionGuard.test.js \
+            tests/g2MaintenanceMode.test.js; do
+            node --test "$file"
+          done
+
+  pos-mainline-transactions:
+    name: POS real Mongo rs0 catalog and closing (synthetic only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      POS_PRODUCTION_ENABLED: "false"
+      DASHBOARD_JWT_SECRET: pos-mainline-ci-disposable-only
+      JWT_SECRET: pos-mainline-ci-disposable-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Start local disposable MongoDB rs0
+        run: bash scripts/ci/start-mongo-replset.sh pos-mainline-ci-mongo
+      - name: G1 real closing/version and transaction guards
+        env:
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_g1_ci_test?replicaSet=rs0
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posG1Closing.integration.test.js
+      - name: Catalog version immutable history
+        env:
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_pos_history_ci_test?replicaSet=rs0
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js --test tests/posCatalogHistory.integration.test.js
