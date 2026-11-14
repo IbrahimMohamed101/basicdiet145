@@ -15,7 +15,6 @@ cleanup() {
   docker volume rm "$volume" >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
   rm -rf "$rehearsal_tmp"
-  rm -f scripts/.g2-legacy-init.js
 }
 trap cleanup EXIT
 export G2_REHEARSAL_ENV_FILE="$rehearsal_tmp/common.env"
@@ -110,6 +109,7 @@ fs.appendFileSync(process.env.G2_REHEARSAL_ENV_FILE,
   'G2_BASELINE_PART1=' + old.slice(0, 30000) + '\nG2_BASELINE_PART2=' + old.slice(30000) + '\n');
 process.stdout.write('G2_BASELINE_GZ_BYTES=' + compressed.length + '\nG2_BASELINE_JSON_BYTES=' + json.length + '\n');
 NODE
+node_container sh -c 'export G2_BASELINE_MANIFEST_B64="${G2_BASELINE_PART1}${G2_BASELINE_PART2}"; exec node scripts/ci/g2-preflight.js'
 docker stop "$mongo" >/dev/null
 docker rm "$mongo" >/dev/null
 docker run --rm --user 0 -v "$volume:/data/db" mongo:8.0 sh -c \
@@ -123,26 +123,23 @@ docker run -d --name "$mongo" --network "$network" \
 wait_mongo
 
 if [[ "$mode" == legacy ]]; then
-  git show c4580553a56f986e7702471b32a82d74e12e1c65:scripts/g2-rs0-init-and-verify.js > scripts/.g2-legacy-init.js
   set +e
-  node_container sh -c 'export G2_BASELINE_MANIFEST_B64="${G2_BASELINE_PART1}${G2_BASELINE_PART2}"; exec node scripts/.g2-legacy-init.js' \
+  node_container sh -c 'export G2_BASELINE_MANIFEST_B64="${G2_BASELINE_PART1}${G2_BASELINE_PART2}"; exec node scripts/ci/g2-legacy-diagnostics.js' \
     > "$rehearsal_tmp/legacy.stdout" 2> "$rehearsal_tmp/legacy.stderr"
   legacy_exit=$?
   set -e
   echo "G2_LEGACY_EXIT=$legacy_exit"
+  cat "$rehearsal_tmp/legacy.stderr" >&2
   if [[ "$legacy_exit" != 0 ]]; then
-    # Replay only while still uninitialized. Never re-run an unknown mutation.
+    # Never continue from an unknown mutation. The adapter captures the first
+    # failure directly, so a second legacy execution is unnecessary.
     # A failed log read is fatal. grep a completed file to avoid pipefail/SIGPIPE.
     docker logs "$mongo" > "$rehearsal_tmp/mongo.log" 2>&1
-    if grep -q 'replSetInitiate' "$rehearsal_tmp/mongo.log"; then
+    if grep -q 'replSetInitiate' "$rehearsal_tmp/mongo.log" || \
+       grep -q 'G2_INITIATE_SENT' "$rehearsal_tmp/legacy.stdout"; then
       echo 'G2_LEGACY_POST_INIT_FAILURE' >&2
       exit 1
     fi
-    set +e
-    node_container sh -c 'export G2_BASELINE_MANIFEST_B64="${G2_BASELINE_PART1}${G2_BASELINE_PART2}"; exec node scripts/ci/g2-legacy-diagnostics.js'
-    diagnostic_exit=$?
-    set -e
-    [[ "$diagnostic_exit" != 0 ]]
   else
     grep -qx 'G2_RS0_PRIMARY_COMMIT_ABORT_COUNTS_INDEXES_PASS' "$rehearsal_tmp/legacy.stdout"
     echo 'G2_LEGACY_FAILURE_NOT_REPRODUCED'
