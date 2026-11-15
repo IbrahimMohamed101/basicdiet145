@@ -7,7 +7,6 @@ const { mapSubscriptionDelivery } = require("../mappers/deliveryMapper");
 const errorResponse = require("../utils/errorResponse");
 const { logger } = require("../utils/logger");
 const opsTransitionService = require("../services/dashboard/opsTransitionService");
-const { isHistoricalBusinessDate } = require("../services/dashboard/historicalMutationPolicy");
 const {
   fulfillHistoricalDeliveryDay,
 } = require("../services/dashboard/historicalDeliveryFulfillmentService");
@@ -47,23 +46,21 @@ async function markDelivered(req, res) {
 
   let fulfillment;
   try {
-    const userId = req.dashboardUserId || req.userId;
-    const settleHistorical = () => fulfillHistoricalDeliveryDay({ dayId: delivery.dayId, userId, role });
-    if (isHistoricalBusinessDate(delivery.date)) {
-      fulfillment = await settleHistorical();
-    } else {
-      try {
-        fulfillment = await opsTransitionService.executeAction("fulfill", {
-          entityId: delivery.dayId,
-          entityType: "subscription",
-          userId,
-          role,
-          payload: {},
-        });
-      } catch (err) {
-        if (!err || err.code !== "HISTORICAL_MUTATION_FORBIDDEN") throw err;
-        fulfillment = await settleHistorical();
-      }
+    try {
+      fulfillment = await opsTransitionService.executeAction("fulfill", {
+        entityId: delivery.dayId,
+        entityType: "subscription",
+        userId: req.dashboardUserId || req.userId,
+        role,
+        payload: {},
+      });
+    } catch (err) {
+      if (!err || err.code !== "HISTORICAL_MUTATION_FORBIDDEN") throw err;
+      fulfillment = await fulfillHistoricalDeliveryDay({
+        dayId: delivery.dayId,
+        userId: req.dashboardUserId || req.userId,
+        role,
+      });
     }
 
     const { delivery: updatedDelivery, user } = await loadDeliveryResponse(delivery._id);
@@ -73,7 +70,7 @@ async function markDelivered(req, res) {
       fulfillment: {
         subscriptionDayId: String(delivery.dayId),
         status: "fulfilled",
-        alreadyFulfilled: Boolean(fulfillment && fulfillment.alreadyFulfilled),
+        alreadyFulfilled: Boolean(fulfillment && (fulfillment.alreadyFulfilled || fulfillment.idempotent)),
         deductedCredits: Number(fulfillment && fulfillment.deductedCredits || 0),
       },
     });

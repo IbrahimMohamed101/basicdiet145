@@ -641,6 +641,7 @@ function patchOpsTransitionService(dailyAddonService) {
     const result = await original(actionId, context);
     day = await resolveActionDay(context);
     if (!day) return result;
+    if (action === "fulfill" && isHistoricalBusinessDate(resolveBusinessDate(day))) return result;
     p3PickupAction = Boolean(
       context.entityType === "subscription_pickup_request"
       && day.stackingExtraSelectionState

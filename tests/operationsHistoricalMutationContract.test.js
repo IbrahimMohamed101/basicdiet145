@@ -164,18 +164,17 @@ async function runTests() {
   await seedBaseData();
   await seedAuthUsers();
 
-  // Test 1, 7, 8, 10: Courier cannot mark past SubscriptionDay delivery as delivered
-  await test("1, 7, 8, 10: Courier cannot mark past SubscriptionDay delivery as delivered; returns 409 HISTORICAL_MUTATION_FORBIDDEN with Arabic message; balances unchanged", async () => {
+  await test("Courier cannot settle a past subscription delivery that was never prepared", async () => {
     const pastDay = await SubscriptionDay.create({
       subscriptionId: seedData.deliverySub._id,
       date: PAST_STR,
-      status: "out_for_delivery",
+      status: "open",
     });
     const pastDelivery = await Delivery.create({
       subscriptionId: seedData.deliverySub._id,
       dayId: pastDay._id,
       date: PAST_STR,
-      status: "out_for_delivery",
+      status: "scheduled",
     });
 
     const subBefore = await Subscription.findById(seedData.deliverySub._id).lean();
@@ -193,6 +192,29 @@ async function runTests() {
     const subAfter = await Subscription.findById(seedData.deliverySub._id).lean();
     assert.deepStrictEqual(subAfter.addonBalance, subBefore.addonBalance, "Addon balance must remain unchanged");
     assert.strictEqual(subAfter.remainingMeals, subBefore.remainingMeals, "Remaining meals must remain unchanged");
+  });
+
+  await test("Courier can settle an eligible historical subscription delivery", async () => {
+    const date = dateUtils.addDaysToKSADateString(PAST_STR, -1);
+    const day = await SubscriptionDay.create({
+      subscriptionId: seedData.deliverySub._id,
+      date,
+      status: "out_for_delivery",
+    });
+    const delivery = await Delivery.create({
+      subscriptionId: seedData.deliverySub._id,
+      dayId: day._id,
+      date,
+      status: "out_for_delivery",
+    });
+    const before = await Subscription.findById(day.subscriptionId).lean();
+    const res = await request(app)
+      .put(`/api/courier/deliveries/${delivery._id}/delivered`)
+      .set(auth("courier"));
+    expectStatus(res, 200, "courier settles eligible historical delivery");
+    assert.strictEqual(res.body.fulfillment.deductedCredits, 2);
+    const after = await Subscription.findById(day.subscriptionId).lean();
+    assert.strictEqual(after.remainingMeals, before.remainingMeals - 2);
   });
 
   // Test 2: Courier cannot mark past Order delivery as delivered
