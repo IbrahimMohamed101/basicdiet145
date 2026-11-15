@@ -4,6 +4,7 @@
 // stacked entitlement batch. No MongoDB connection or customer writes required.
 process.env.NODE_ENV = "test";
 const assert = require("node:assert/strict");
+const { test } = require("node:test");
 const {
   assertFulfillmentMethodAllowed,
   buildFulfillmentPolicy,
@@ -24,7 +25,11 @@ const {
 } = require("../src/services/dashboard/kitchenOperationsContractService");
 const {
   buildEligibleBaseMealBatchQuery,
+  consumeStackedChefChoiceDelivery,
 } = require("../src/services/dashboard/manualDeduction/stackedManualDeductionService");
+const Subscription = require("../src/models/Subscription");
+const Batch = require("../src/models/SubscriptionEntitlementBatch");
+const Allocation = require("../src/models/SubscriptionEntitlementAllocation");
 
 const customer = { _id: "customer-1", name: "Sample Customer", phone: "+966500000001" };
 const subscription = {
@@ -133,3 +138,67 @@ assert.deepEqual(batchQuery.$or, [
 
 assert.equal(JSON.stringify({ subscription, day }), before, "GET projections must not mutate source data");
 console.log("stackedFulfillmentModeKitchenOps.test.js: OK");
+
+test("Chef Choice settlement debits eligible delivery credits exactly once, including on retry", async (t) => {
+  const batch = (id, remainingMeals, validityEndDate, mode) => ({
+    _id: id, userId: subscription.userId, status: "active", applicationState: "applied",
+    totalMeals: remainingMeals, remainingMeals, consumedMeals: 0, reservedMeals: 0,
+    effectiveStartDate: "2026-10-01", endDate: validityEndDate, validityEndDate,
+    mealsPerDay: 2, proteinGrams: 200, deliverySnapshot: { mode },
+  });
+  const first = batch("first", 1, "2026-10-25", "delivery");
+  const second = batch("second", 51, "2026-10-29", "delivery");
+  const pickup = batch("pickup", 10, "2026-10-22", "pickup");
+  const expired = batch("expired", 12, "2026-10-19", "delivery");
+  const all = [second, pickup, first, expired];
+  let reservedDay = false;
+  let failSecond = true;
+  let mirror;
+  let debitCount = 0;
+  t.mock.method(Allocation, "exists", async () => reservedDay);
+  t.mock.method(Batch, "find", () => ({ lean: async () => all }));
+  t.mock.method(Subscription, "findOneAndUpdate", async () => ({ _id: subscription._id }));
+  t.mock.method(Subscription, "updateOne", async (_filter, update) => {
+    if ("entitlementVersion" in update.$set) mirror = update.$set;
+    return { matchedCount: 1 };
+  });
+  t.mock.method(Batch, "findOneAndUpdate", (filter, update) => ({
+    async lean() {
+      const selected = all.find((entry) => entry._id === filter._id);
+      if (selected === second && failSecond) throw new Error("interrupted write");
+      const journalPath = "metadata.chefChoiceDeliveryDeductions";
+      assert.equal(filter[journalPath + ".idempotencyKey"].$ne, day._id);
+      const journal = update[1].$set[journalPath].$concatArrays[1][0];
+      assert.equal(selected.deliverySnapshot.mode, "delivery");
+      assert.equal(journal.idempotencyKey, day._id);
+      assert.equal(journal.consumedReservedMeals, 0);
+      selected.metadata ??= { chefChoiceDeliveryDeductions: [] };
+      selected.metadata.chefChoiceDeliveryDeductions.push(journal);
+      selected.remainingMeals -= journal.quantity;
+      selected.consumedMeals += journal.quantity;
+      if (!selected.remainingMeals) selected.status = "exhausted";
+      debitCount += 1;
+      return selected;
+    },
+  }));
+
+  const args = { day, subscription, quantity: 2, mirrorDate: day.date };
+  reservedDay = true;
+  assert.equal(await consumeStackedChefChoiceDelivery(args), null);
+  reservedDay = false;
+  await assert.rejects(consumeStackedChefChoiceDelivery({ ...args, quantity: 4 }), { code: "INSUFFICIENT_CREDITS" });
+  assert.equal(debitCount, 0);
+  await assert.rejects(consumeStackedChefChoiceDelivery(args), /interrupted write/);
+  assert.equal(first.remainingMeals, 0);
+  failSecond = false;
+  assert.equal((await consumeStackedChefChoiceDelivery(args)).changedCount, 2);
+  assert.equal(second.remainingMeals, 50);
+  assert.equal(first.consumedMeals + second.consumedMeals, 2);
+  assert.equal(mirror.remainingMeals, 60);
+  assert.equal((await consumeStackedChefChoiceDelivery({
+    ...args, quantity: 1, day: { ...day, creditsDeducted: true },
+  })).changedCount, 2);
+  assert.equal(debitCount, 2);
+  assert.equal(pickup.remainingMeals, 10);
+  assert.equal(expired.remainingMeals, 12);
+});

@@ -9,7 +9,12 @@ const { consumeSubscriptionDayCredits, resolveDayMealsToDeduct } = require("./su
 // Keep fulfillment on the final composed Pickup balance authority even though
 // backend repair and stacking installers are applied in separate startup steps.
 const pickupRequestBalanceService = require("./subscription/subscriptionPickupRequestBalanceService");
-const { transitionDayEntitlements } = require("./subscription/subscriptionMealEntitlementService");
+const entitlementService = require("./subscription/subscriptionMealEntitlementService");
+const {
+  isValidHomeDeliveryChefChoiceDay,
+  resolveHomeDeliveryEntitlementCount,
+} = require("./dashboard/homeDeliveryChefChoiceService");
+const { getTodayKSADate } = require("../utils/date");
 const {
   consumeDayExtraSelectionsTransactional,
 } = require("./subscription/subscriptionStackingExtraSelectionLifecycleService");
@@ -17,7 +22,7 @@ const {
   runExtraEntitlementTransaction,
 } = require("./subscription/subscriptionExtraEntitlementAllocationService");
 
-async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) {
+async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session, actor }) {
   const dayQuery = dayId ? { _id: dayId } : { subscriptionId, date };
   const day = await SubscriptionDay.findOne(dayQuery).session(session);
 
@@ -36,6 +41,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
           date,
           dayId: day._id,
           session: transactionSession,
+          actor,
         });
         if (!result || result.ok !== true) {
           failedResult = result;
@@ -103,14 +109,35 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
   // subscription a second time.
   let entitlementSettlement = null;
   try {
-    entitlementSettlement = await transitionDayEntitlements({
-      subscriptionId: sub._id,
-      day,
-      toState: "consumed",
-      session,
-    });
+    if (
+      ["ready_for_delivery", "out_for_delivery"].includes(day.status)
+      && !day.stackingExtraSelectionState
+      && !day.baseAllocationKeys?.length
+      && !sub.baseMealAllocations?.some((entry) => String(entry.dayId) === String(day._id))
+      && isValidHomeDeliveryChefChoiceDay(day, sub)
+    ) {
+      const quantity = resolveHomeDeliveryEntitlementCount(day, sub);
+      const { consumeStackedChefChoiceDelivery } = require("./dashboard/manualDeduction/stackedManualDeductionService");
+      entitlementSettlement = await consumeStackedChefChoiceDelivery({
+        day, subscription: sub, quantity, actor, mirrorDate: getTodayKSADate(),
+      });
+      if (entitlementSettlement) fulfilledSnapshot.deductedCredits = entitlementSettlement.changedCount;
+    }
+    if (!entitlementSettlement) {
+      // Startup composition installs the stacking router after this module can
+      // be loaded. Resolve the method on the live service at fulfillment time.
+      entitlementSettlement = await entitlementService.transitionDayEntitlements({
+        subscriptionId: sub._id,
+        day,
+        toState: "consumed",
+        session,
+      });
+    }
   } catch (err) {
-    return { ok: false, code: err.code || "CONSUMPTION_FAILED", message: err.message || "Entitlement consumption failed" };
+    return {
+      ok: false, code: err.code || "CONSUMPTION_FAILED", status: err.status,
+      message: err.message || "Entitlement consumption failed", details: err.details,
+    };
   }
   if (entitlementSettlement.handled && !day.creditsDeducted) {
     await SubscriptionDay.updateOne(
@@ -175,7 +202,7 @@ async function fulfillSubscriptionDay({ subscriptionId, date, dayId, session }) 
       });
     } catch (err) {
       if (err.code === "INSUFFICIENT_CREDITS") {
-        return { ok: false, code: "INSUFFICIENT_CREDITS", message: "Not enough credits" };
+        return { ok: false, code: "INSUFFICIENT_CREDITS", status: 422, message: "Not enough credits" };
       }
       throw err;
     }
