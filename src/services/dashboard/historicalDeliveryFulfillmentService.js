@@ -8,6 +8,7 @@ const { fulfillSubscriptionDay } = require("../fulfillmentService");
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const { runMongoTransactionWithRetry } = require("../mongoTransactionRetryService");
 const { logger } = require("../../utils/logger");
+const { validateSubscriptionDayOperationalGate } = require("./subscriptionDayOperationalGateService");
 const {
   resolveBusinessDate,
   canRecoverHistoricalDeliveryFulfillment,
@@ -42,6 +43,7 @@ async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
       role,
       mode,
       businessDate,
+      allowSettledReplay: day.creditsDeducted === true,
     });
 
     if (!allowed) {
@@ -54,12 +56,19 @@ async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
     }
 
     const fromStatus = day.status;
-    const fulfillment = await fulfillSubscriptionDay({ dayId: day._id, session });
+    const gate = validateSubscriptionDayOperationalGate(day, "fulfill", { subscription });
+    if (fromStatus !== "fulfilled" && !gate.allowed) {
+      throw operationalError(gate.message, gate.code, gate.status);
+    }
+    const fulfillment = await fulfillSubscriptionDay({
+      dayId: day._id, session, actor: { userId, role },
+    });
     if (!fulfillment.ok) {
       throw operationalError(
         fulfillment.message || "Historical fulfillment failed",
         fulfillment.code || "HISTORICAL_FULFILLMENT_FAILED",
-        fulfillment.code === "NOT_FOUND" ? 404 : 409
+        fulfillment.status || (fulfillment.code === "NOT_FOUND" ? 404 : 409),
+        fulfillment.details
       );
     }
 
@@ -71,7 +80,7 @@ async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
       fromStatus,
       businessDate,
       alreadyFulfilled: Boolean(fulfillment.alreadyFulfilled),
-      deductedCredits: Number(fulfillment.deductedCredits || 0),
+      deductedCredits: fulfillment.alreadyFulfilled ? 0 : Number(fulfillment.deductedCredits || 0),
     };
   }, {
     label: "historical_delivery_fulfillment_recovery",
@@ -82,7 +91,7 @@ async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
   // without transactional rollback, so projection/audit failures after a valid
   // debit must never turn a successful settlement into a retryable HTTP error.
   // Reconcile these secondary records best-effort after the canonical settlement.
-  const now = new Date();
+  const deliveredAt = settlement.day.fulfilledAt || new Date();
   try {
     await Delivery.updateOne(
       {
@@ -97,7 +106,7 @@ async function fulfillHistoricalDeliveryDay({ dayId, userId = null, role }) {
           subscriptionId: settlement.subscriptionId,
           date: settlement.businessDate,
           status: "delivered",
-          deliveredAt: now,
+          deliveredAt,
           address: settlement.deliveryAddress,
           window: settlement.deliveryWindow,
         },

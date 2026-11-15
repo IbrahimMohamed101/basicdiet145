@@ -10,7 +10,9 @@ const { validateSubscriptionDayOperationalGate } = require("../../services/dashb
 const { resolveEffectiveFulfillmentMode } = require("../../services/subscription/subscriptionFulfillmentPolicyService");
 const {
   resolveBusinessDate,
+  isHistoricalBusinessDate,
   canRecoverHistoricalDeliveryFulfillment,
+  canRecordHistoricalNoShow,
 } = require("../../services/dashboard/historicalMutationPolicy");
 const {
   fulfillHistoricalDeliveryDay,
@@ -81,13 +83,12 @@ async function handleAction(req, res) {
       if (!doc) {
         return errorResponse(res, 404, "NOT_FOUND", "Entity not found");
       }
-      const targetBusinessDate = doc.date || doc.fulfillmentDate || doc.deliveryDate || doc.scheduledDate || doc.pickupDate || doc.serviceDate;
-      if (targetBusinessDate && targetBusinessDate < dateUtils.getTodayKSADate()) {
+      if (isHistoricalBusinessDate(resolveBusinessDate(doc))) {
         let isIdempotentReplay = false;
         if (action === "fulfill" && doc.status === "fulfilled") isIdempotentReplay = true;
         if (action === "no_show" && doc.status === "no_show") isIdempotentReplay = true;
         if (action === "cancel" && ["canceled", "cancelled", "delivery_canceled", "canceled_at_branch", "no_show"].includes(doc.status)) isIdempotentReplay = true;
-        const isAdminNoShow = action === "no_show" && ["admin", "superadmin"].includes(String(role || ""));
+        const isAdminNoShow = canRecordHistoricalNoShow({ actionId: action, role, entityType });
         if (!isIdempotentReplay && !isAdminNoShow) {
           return errorResponse(res, 409, "HISTORICAL_MUTATION_FORBIDDEN", "Historical operational records cannot be modified");
         }
@@ -135,14 +136,15 @@ async function handleAction(req, res) {
         role,
         mode: effectiveMode,
         businessDate: targetBusinessDate,
+        allowSettledReplay: doc.creditsDeducted === true,
       });
 
-      if (targetBusinessDate && targetBusinessDate < dateUtils.getTodayKSADate()) {
+      if (isHistoricalBusinessDate(targetBusinessDate)) {
         let isIdempotentReplay = false;
         if (action === "fulfill" && doc.status === "fulfilled") isIdempotentReplay = true;
         if (action === "no_show" && doc.status === "no_show") isIdempotentReplay = true;
         if (action === "cancel" && ["canceled", "cancelled", "delivery_canceled", "canceled_at_branch", "no_show"].includes(doc.status)) isIdempotentReplay = true;
-        const isAdminNoShow = action === "no_show" && ["admin", "superadmin"].includes(String(role || ""));
+        const isAdminNoShow = canRecordHistoricalNoShow({ actionId: action, role, entityType });
         if (!isIdempotentReplay && !isAdminNoShow && !historicalDeliveryRecovery) {
           return errorResponse(res, 409, "HISTORICAL_MUTATION_FORBIDDEN", "Historical operational records cannot be modified");
         }
@@ -154,7 +156,8 @@ async function handleAction(req, res) {
       }
 
       const gate = validateSubscriptionDayOperationalGate(doc, action, { subscription: sub });
-      if (!gate.allowed) {
+      const historicalSettlementReplay = historicalDeliveryRecovery && doc.status === "fulfilled";
+      if (!gate.allowed && !historicalSettlementReplay) {
         return errorResponse(res, gate.status, gate.code, gate.message);
       }
       
@@ -166,7 +169,7 @@ async function handleAction(req, res) {
         actionId: action,
       });
 
-      if (!validation.allowed) {
+      if (!validation.allowed && !historicalSettlementReplay) {
         const code = validation.reason === "INVALID_STATE_TRANSITION" ? "INVALID_TRANSITION" : validation.reason;
         return errorResponse(res, 409, code, `Action ${action} is not allowed in current state`);
       }

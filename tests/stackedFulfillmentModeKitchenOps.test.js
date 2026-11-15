@@ -30,6 +30,7 @@ const {
 const Subscription = require("../src/models/Subscription");
 const Batch = require("../src/models/SubscriptionEntitlementBatch");
 const Allocation = require("../src/models/SubscriptionEntitlementAllocation");
+const { getTodayKSADate, addDaysToKSADateString } = require("../src/utils/date");
 
 const customer = { _id: "customer-1", name: "Sample Customer", phone: "+966500000001" };
 const subscription = {
@@ -72,7 +73,8 @@ assert.equal(kitchen.selectionMode, "chef_choice");
 assert.equal(kitchen.mealSlots.length, 2);
 assert.deepEqual(kitchen.mealSlots.map((slot) => slot.selectionType), ["chef_choice", "chef_choice"]);
 assert.equal(validateSubscriptionDayOperationalGate(day, "prepare", { subscription }).allowed, true);
-const dto = mapSubscriptionDayToDTO(day, null, subscription, customer, "restaurant", "ar");
+const todayDay = { ...day, date: getTodayKSADate() };
+const dto = mapSubscriptionDayToDTO(todayDay, null, subscription, customer, "restaurant", "ar");
 assert.equal(dto.mode, "delivery");
 assert.equal(dto.kitchenCards.length, 2);
 assert(dto.allowedActions.some((action) => action.id === "prepare"));
@@ -105,16 +107,34 @@ assert.equal(buildKitchenDetailsPayload(pickupOnlyDay, subscription, "ar").mealS
 assert.equal(validateSubscriptionDayOperationalGate(pickupOnlyDay, "prepare", { subscription }).code, "EMPTY_KITCHEN_MEALS");
 
 // Neither missing address nor pending payment may display an executable Prepare button.
-const missingAddress = { ...day, deliveryAddressOverride: null };
+const missingAddress = { ...todayDay, deliveryAddressOverride: null };
 assert.equal(buildKitchenDetailsPayload(missingAddress, subscription, "ar").mealSlots.length, 0);
 const addressGate = validateSubscriptionDayOperationalGate(missingAddress, "prepare", { subscription });
 assert.equal(addressGate.allowed, false);
 assert(!mapSubscriptionDayToDTO(missingAddress, null, subscription, customer, "restaurant", "ar")
   .allowedActions.some((action) => action.id === "prepare"));
-const unpaidDay = { ...day, addonSelections: [{ source: "pending_payment" }] };
+const unpaidDay = { ...todayDay, addonSelections: [{ source: "pending_payment" }] };
 assert.equal(validateSubscriptionDayOperationalGate(unpaidDay, "prepare", { subscription }).allowed, false);
 assert(!mapSubscriptionDayToDTO(unpaidDay, null, subscription, customer, "restaurant", "ar")
   .allowedActions.some((action) => action.id === "prepare"));
+
+test("only eligible historical delivery settlements appear for each staff role", () => {
+  const yesterday = addDaysToKSADateString(todayDay.date, -1);
+  const older = addDaysToKSADateString(todayDay.date, -2);
+  const ready = { ...day, date: yesterday, status: "ready_for_delivery" };
+  const actions = (candidate, role) => mapSubscriptionDayToDTO(
+    candidate, null, subscription, customer, role, "ar"
+  ).allowedActions.map((action) => action.id);
+
+  assert.deepEqual(actions(ready, "restaurant"), ["fulfill"]);
+  assert.deepEqual(actions(ready, "cashier"), ["fulfill"]);
+  assert.deepEqual(actions(ready, "kitchen"), []);
+  assert.deepEqual(actions({ ...ready, date: older }, "restaurant"), []);
+  assert.deepEqual(actions({ ...ready, date: older }, "courier"), ["fulfill"]);
+  assert.deepEqual(actions({ ...ready, status: "open" }, "restaurant"), []);
+  assert.deepEqual(actions({ ...ready, fulfillmentModeOverride: "pickup" }, "restaurant"), []);
+  assert.deepEqual(actions({ ...ready, addonSelections: [{ source: "pending_payment" }] }, "restaurant"), []);
+});
 
 // Reverse renewal (delivery parent -> pickup stacked day) also respects the daily method.
 const deliveryParent = { ...subscription, deliveryMode: "delivery" };

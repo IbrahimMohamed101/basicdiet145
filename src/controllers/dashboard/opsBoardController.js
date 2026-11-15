@@ -21,6 +21,11 @@ const opsActionPolicy = require("../../services/dashboard/opsActionPolicy");
 const dashboardDtoService = require("../../services/dashboard/dashboardDtoService");
 const { executeDashboardOrderAction } = require("../../services/orders/orderDashboardService");
 const { validateSubscriptionDayOperationalGate } = require("../../services/dashboard/subscriptionDayOperationalGateService");
+const {
+  canRecoverHistoricalDeliveryFulfillment,
+  resolveBusinessDate,
+} = require("../../services/dashboard/historicalMutationPolicy");
+const { fulfillHistoricalDeliveryDay } = require("../../services/dashboard/historicalDeliveryFulfillmentService");
 const errorResponse = require("../../utils/errorResponse");
 const dateUtils = require("../../utils/date");
 const { getRequestLang } = require("../../utils/i18n");
@@ -128,6 +133,7 @@ function mapDay(day, latestAction, zoneMap, lang, role, delivery = null, catalog
     mode,
     role,
     lang,
+    businessDate: resolveBusinessDate(day),
   }).filter((action) => (
     validateSubscriptionDayOperationalGate(day, action.id, { subscription }).allowed
   ));
@@ -609,7 +615,6 @@ async function action(req, res) {
     return queueDetail(req, res);
   }
 
-  const existingDay = await SubscriptionDay.findById(entityId).select("date").lean();
   // Settlement on read intentionally removed — meals are not consumed by date passage.
   const day = await SubscriptionDay.findById(entityId)
     .populate("subscriptionId", "deliveryMode selectedMealsPerDay deliveryWindow deliveryAddress startDate")
@@ -618,6 +623,23 @@ async function action(req, res) {
   const mode = getEffectiveDeliveryMode(day, day.subscriptionId || {});
   if (mode === "pickup" && ["prepare", "start_preparation", "ready_for_pickup", "ready-for-pickup", "fulfill", "no_show"].includes(actionId)) {
     return errorResponse(res, 422, "PICKUP_REQUEST_REQUIRED", "Pickup preparation requires an explicit client request");
+  }
+  if (canRecoverHistoricalDeliveryFulfillment({
+    entityType: "subscription",
+    actionId,
+    status: day.status,
+    role: req.dashboardUserRole,
+    mode,
+    businessDate: resolveBusinessDate(day),
+    allowSettledReplay: day.creditsDeducted === true,
+  })) {
+    try {
+      await fulfillHistoricalDeliveryDay({ dayId: day._id, userId: req.dashboardUserId, role: req.dashboardUserRole });
+    } catch (err) {
+      return respondToActionError(res, err);
+    }
+    req.params.dayId = entityId;
+    return queueDetail(req, res);
   }
   const validation = opsActionPolicy.validateAction({
     entityType: "subscription",

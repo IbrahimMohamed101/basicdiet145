@@ -55,15 +55,12 @@ async function markDelivered(req, res) {
         payload: {},
       });
     } catch (err) {
-      if (err && err.code === "HISTORICAL_MUTATION_FORBIDDEN") {
-        fulfillment = await fulfillHistoricalDeliveryDay({
-          dayId: delivery.dayId,
-          userId: req.dashboardUserId || req.userId,
-          role,
-        });
-      } else {
-        throw err;
-      }
+      if (!err || err.code !== "HISTORICAL_MUTATION_FORBIDDEN") throw err;
+      fulfillment = await fulfillHistoricalDeliveryDay({
+        dayId: delivery.dayId,
+        userId: req.dashboardUserId || req.userId,
+        role,
+      });
     }
 
     const { delivery: updatedDelivery, user } = await loadDeliveryResponse(delivery._id);
@@ -73,7 +70,7 @@ async function markDelivered(req, res) {
       fulfillment: {
         subscriptionDayId: String(delivery.dayId),
         status: "fulfilled",
-        alreadyFulfilled: Boolean(fulfillment && fulfillment.alreadyFulfilled),
+        alreadyFulfilled: fulfillment?.alreadyFulfilled ?? (delivery.status === "delivered"),
         deductedCredits: Number(fulfillment && fulfillment.deductedCredits || 0),
       },
     });

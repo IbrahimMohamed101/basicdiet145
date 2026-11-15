@@ -16,6 +16,8 @@ const User = require("../src/models/User");
 const DashboardUser = require("../src/models/DashboardUser");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
+const SubscriptionEntitlementBatch = require("../src/models/SubscriptionEntitlementBatch");
+const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
 const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const Delivery = require("../src/models/Delivery");
 const Plan = require("../src/models/Plan");
@@ -754,6 +756,110 @@ async function runTests() {
     await Subscription.deleteOne({ _id: restaurantSub._id });
     await SubscriptionDay.deleteOne({ _id: restaurantDay._id });
     await Delivery.deleteOne({ dayId: restaurantDay._id });
+  });
+
+  await test("Restaurant settles yesterday's stacked delivery once and cannot settle older deliveries", async () => {
+    const yesterday = dateUtils.addDaysToKSADateString(TODAY_STR, -1);
+    const older = dateUtils.addDaysToKSADateString(TODAY_STR, -2);
+    const endDate = dateUtils.addDaysToKSADateString(TODAY_STR, 7);
+    const sub = await Subscription.create({
+      userId: seedData.client._id,
+      planId: seedData.plan._id,
+      status: "active",
+      startDate: new Date(older),
+      endDate: new Date(endDate),
+      totalMeals: 0,
+      remainingMeals: 0,
+      entitlementVersion: 2,
+      selectedGrams: 150,
+      selectedMealsPerDay: 2,
+      deliveryMode: "delivery",
+      deliveryAddress: seedData.deliverySub.deliveryAddress,
+      deliveryWindow: seedData.deliverySub.deliveryWindow,
+    });
+    const { insertedId: batchId } = await SubscriptionEntitlementBatch.collection.insertOne({
+      userId: sub.userId,
+      containerSubscriptionId: sub._id,
+      applicationState: "applied",
+      status: "active",
+      totalMeals: 50,
+      remainingMeals: 50,
+      reservedMeals: 0,
+      consumedMeals: 0,
+      effectiveStartDate: new Date(older),
+      endDate: new Date(endDate),
+      validityEndDate: new Date(endDate),
+      mealsPerDay: 2,
+      proteinGrams: 150,
+      deliverySnapshot: { mode: "delivery" },
+      sourceKey: TEST_TAG,
+    });
+    const [day, olderDay] = await SubscriptionDay.create([yesterday, older].map((date) => ({
+      subscriptionId: sub._id,
+      date,
+      status: "ready_for_delivery",
+    })));
+    const getOpsItem = async (candidate) => {
+      const res = await request(app)
+        .get(`/api/dashboard/ops/list?date=${candidate.date}`)
+        .set(auth("restaurant"));
+      expectStatus(res, 200, "restaurant operations list");
+      const item = res.body.data.find(({ entityId }) => entityId === String(candidate._id));
+      assert(item, "delivery must be visible in the operations list");
+      return item;
+    };
+    const settle = (candidate) => request(app)
+      .post("/api/dashboard/ops/actions/fulfill")
+      .send({ entityId: candidate._id, entityType: "subscription_day", source: "subscription" })
+      .set(auth("restaurant"));
+
+    assert.deepStrictEqual((await getOpsItem(day)).allowedActions.map(({ id }) => id), ["fulfill"]);
+    assert.deepStrictEqual((await getOpsItem(olderDay)).allowedActions, []);
+    const blocked = await settle(olderDay);
+    expectStatus(blocked, 409, "older delivery settlement from restaurant");
+    assert.strictEqual(blocked.body.error.code, "HISTORICAL_MUTATION_FORBIDDEN");
+
+    const completed = await settle(day);
+    expectStatus(completed, 200, "yesterday's restaurant settlement");
+    assert.strictEqual(completed.body.data.status, "fulfilled");
+    assert.deepStrictEqual(completed.body.data.allowedActions, []);
+    const firstDelivery = await Delivery.findOne({ dayId: day._id }).lean();
+    assert.strictEqual(firstDelivery.status, "delivered");
+    assert.strictEqual(firstDelivery.date, yesterday);
+
+    expectStatus(await settle(day), 200, "retry of yesterday's settlement");
+    const courierRetry = await request(app)
+      .put(`/api/courier/deliveries/${firstDelivery._id}/delivered`)
+      .set(auth("courier"));
+    expectStatus(courierRetry, 200, "courier retries yesterday's settlement");
+    assert.strictEqual(courierRetry.body.fulfillment.alreadyFulfilled, true);
+    assert.strictEqual(courierRetry.body.fulfillment.deductedCredits, 0);
+    const boardRetry = await request(app)
+      .post("/api/dashboard/kitchen/actions/fulfill")
+      .send({ entityId: day._id, entityType: "subscription_day" })
+      .set(auth("admin"));
+    expectStatus(boardRetry, 200, "legacy board retries yesterday's settlement");
+
+    const [fulfilledDay, batch, deliveryAfterRetry, audit] = await Promise.all([
+      SubscriptionDay.findById(day._id).lean(),
+      SubscriptionEntitlementBatch.findById(batchId).lean(),
+      Delivery.findOne({ dayId: day._id }).lean(),
+      SubscriptionAuditLog.find({ entityId: day._id, action: "dashboard_historical_fulfill" }).lean(),
+    ]);
+    assert.strictEqual(fulfilledDay.creditsDeducted, true);
+    assert.strictEqual(batch.remainingMeals, 48);
+    assert.strictEqual(batch.consumedMeals, 2);
+    assert.deepStrictEqual(deliveryAfterRetry.deliveredAt, firstDelivery.deliveredAt);
+    assert.strictEqual(audit.length, 1);
+    assert.strictEqual(audit[0].actorType, "restaurant");
+    assert.strictEqual(audit[0].meta.deductedCredits, 2);
+    await Promise.all([
+      Subscription.deleteOne({ _id: sub._id }),
+      SubscriptionEntitlementBatch.deleteOne({ _id: batchId }),
+      SubscriptionDay.deleteMany({ subscriptionId: sub._id }),
+      Delivery.deleteMany({ subscriptionId: sub._id }),
+      SubscriptionAuditLog.deleteMany({ entityId: day._id }),
+    ]);
   });
 
   // Section 10: Direct Controller Security Contract
