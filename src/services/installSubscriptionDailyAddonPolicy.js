@@ -8,6 +8,7 @@ const SubscriptionPickupRequest = require("../models/SubscriptionPickupRequest")
 const SubscriptionDayAppendOperation = require("../models/SubscriptionDayAppendOperation");
 const { logger } = require("../utils/logger");
 const { localizeWriteDayPayload } = require("../utils/subscription/subscriptionWriteLocalization");
+const { isHistoricalBusinessDate, resolveBusinessDate } = require("./dashboard/historicalMutationPolicy");
 const {
   serializeSubscriptionDayForClient,
   shapeMealPlannerReadFields,
@@ -632,6 +633,7 @@ function patchOpsTransitionService(dailyAddonService) {
     if (
       day
       && !p3PickupAction
+      && !isHistoricalBusinessDate(resolveBusinessDate(day))
       && ["prepare", "ready_for_pickup", "ready_for_delivery", "dispatch", "fulfill"].includes(action)
     ) {
       await dailyAddonService.ensureDailyAddonDefaultsForDay({ dayId: day._id });

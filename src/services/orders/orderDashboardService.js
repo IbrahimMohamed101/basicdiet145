@@ -8,6 +8,7 @@ const { FINAL_ORDER_STATUSES, normalizeLegacyOrderStatus } = require("../../util
 const { serializeOrderForDashboard } = require("./orderSerializationService");
 const opsTransitionService = require("../dashboard/opsTransitionService");
 const opsActionPolicy = require("../dashboard/opsActionPolicy");
+const { resolveBusinessDate } = require("../dashboard/historicalMutationPolicy");
 const { getOrderFulfillmentMethod } = require("../../utils/oneTimeOrderDeliveryGate");
 const { getOrderTimelineForDashboard } = require("./orderTimelineService");
 const { isOneTimeOrderDeliveryEnabled, shouldBlockOneTimeOrderDelivery } = require("../../utils/oneTimeOrderDeliveryGate");
@@ -24,6 +25,7 @@ function getAllowedOrderActionIds(order, actor = {}) {
     mode: getOrderFulfillmentMethod(order),
     role: actor.role,
     lang: "en",
+    businessDate: resolveBusinessDate(order),
   }).map((action) => action.id);
 }
 

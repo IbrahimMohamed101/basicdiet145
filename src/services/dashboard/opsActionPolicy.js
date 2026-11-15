@@ -2,6 +2,11 @@
 
 const { dashboardRoleHasPermission, isBranchOperator } = require("../../constants/dashboardRoles");
 const {
+  isHistoricalBusinessDate,
+  canRecoverHistoricalDeliveryFulfillment,
+  canRecordHistoricalNoShow,
+} = require("./historicalMutationPolicy");
+const {
   canTransitionStatus,
   normalizeOperationalStatus,
 } = require("./opsTransitionPolicy");
@@ -205,7 +210,7 @@ function roleAllowedForActionMode(actionId, role, mode) {
 /**
  * Get all allowed actions for an entity.
  */
-function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
+function getAllowedActions({ entityType, status, mode, role, lang = "ar", businessDate, today }) {
   const normalizedEntityType = entityType === "subscription_day" || entityType === "pickup_day"
     ? "subscription"
     : entityType;
@@ -215,11 +220,17 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
     actionId,
     mode,
   }));
+  const historical = isHistoricalBusinessDate(businessDate, today);
+  const deliveryRecovery = (actionId) => historical && canRecoverHistoricalDeliveryFulfillment({
+    entityType, status, mode, role, actionId, businessDate, today,
+  });
 
   return allowedIds
     .map((actionId) => {
       const config = ACTION_REGISTRY[actionId];
       if (!config) return null;
+      const recoveringDelivery = deliveryRecovery(actionId);
+      if (historical && !recoveringDelivery && !canRecordHistoricalNoShow({ actionId, role, entityType })) return null;
 
       // Role check. The restaurant role inherits kitchen and cashier capabilities.
       if (config.roles && !dashboardRoleHasPermission(role, config.roles)) return null;
@@ -230,7 +241,9 @@ function getAllowedActions({ entityType, status, mode, role, lang = "ar" }) {
 
       return {
         id: config.id || actionId,
-        label: config.label[lang] || config.label["en"],
+        label: recoveringDelivery
+          ? (lang === "ar" ? "تسوية التوصيل" : "Settle past delivery")
+          : config.label[lang] || config.label["en"],
         color: config.color,
         icon: config.icon,
         endpoint: config.endpoint,

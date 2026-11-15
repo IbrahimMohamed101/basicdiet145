@@ -17,6 +17,7 @@ const { buildKitchenProjection } = require("./kitchenProjectionService");
 const { DEFAULT_PICKUP_LOCATION } = require("../../constants/defaultPickupLocation");
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const { validateSubscriptionDayOperationalGate } = require("./subscriptionDayOperationalGateService");
+const { resolveBusinessDate } = require("./historicalMutationPolicy");
 
 /**
  * Service to map internal models to the UnifiedOperationalDTO.
@@ -80,6 +81,7 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, 
     mode,
     role,
     lang,
+    businessDate: resolveBusinessDate(day),
   });
 
   if (mode === "pickup" && (!pickupPayload || !pickupPayload.pickupRequestId)) {
@@ -186,6 +188,7 @@ function mapOrderToDTO(order, delivery, user, role, lang, catalogMaps = {}) {
     mode,
     role,
     lang,
+    businessDate: resolveBusinessDate(order),
   });
 
   const deliveryPayload = buildDeliveryPayload(delivery, {
@@ -277,6 +280,7 @@ function mapSubscriptionPickupRequestToDTO(pickupRequest, subscription, user, ro
     mode: "pickup",
     role,
     lang,
+    businessDate: resolveBusinessDate(pickupRequest),
   }).map((action) => {
     if (!action || action.id !== "start_preparation") return action;
     return {
