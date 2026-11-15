@@ -537,8 +537,16 @@ async function handleFulfill({ entityId, entityType, payload, userId, role, sess
     }
 
     const fromStatus = day.status;
-    const result = await fulfillSubscriptionDay({ dayId: entityId, session });
-    if (!result.ok) throw new Error(result.message || "Fulfillment failed");
+    const result = await fulfillSubscriptionDay({
+      dayId: entityId, session, actor: { userId, role },
+    });
+    if (!result.ok) {
+      const err = new Error(result.message || "Fulfillment failed");
+      err.code = result.code;
+      err.status = result.status || (result.code === "NOT_FOUND" ? 404 : 409);
+      err.details = result.details;
+      throw err;
+    }
     appendOperationAudit(result.day || day, "fulfill", userId, role);
     if (result.day && typeof result.day.save === "function") {
       await result.day.save({ session });

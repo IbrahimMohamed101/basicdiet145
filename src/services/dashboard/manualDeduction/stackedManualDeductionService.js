@@ -5,9 +5,15 @@ const mongoose = require("mongoose");
 const ActivityLog = require("../../../models/ActivityLog");
 const Subscription = require("../../../models/Subscription");
 const SubscriptionEntitlementBatch = require("../../../models/SubscriptionEntitlementBatch");
+const SubscriptionEntitlementAllocation = require("../../../models/SubscriptionEntitlementAllocation");
 const SubscriptionExtraEntitlementBucket = require("../../../models/SubscriptionExtraEntitlementBucket");
 const { startSafeSession } = require("../../../utils/mongoTransactionSupport");
 const { buildContainerMirror } = require("../../subscription/subscriptionStackingActivationService");
+const {
+  isBatchProjectableOnDate,
+  resolveBatchDailyContribution,
+} = require("../../subscription/subscriptionEntitlementProjectionService");
+const { compareBatchesForAllocation } = require("../../subscription/subscriptionEntitlementSlotBlueprintService");
 const {
   consumeBatchThroughAllocationLedgerTransactional,
 } = require("../subscriptionQuickDayDeductionLedgerAdapter");
@@ -27,6 +33,7 @@ const { MANUAL_DEDUCTION_ACTION } = require("./constants");
 
 const LEASE_MS = 30000;
 const JOURNAL_KEY = "manualDeductions";
+const DELIVERY_JOURNAL_KEY = "chefChoiceDeliveryDeductions";
 const PARENT_OPERATION_FIELD = "legacyMealBalanceOperationKeys";
 
 function manualError(code, message, status = 409, details = {}) {
@@ -73,15 +80,15 @@ function operationObjectId(subscriptionId, idempotencyKey) {
   return new mongoose.Types.ObjectId(hex);
 }
 
-function journalRows(document) {
+function journalRows(document, journalKey = JOURNAL_KEY) {
   const metadata = document && document.metadata && typeof document.metadata === "object"
     ? document.metadata
     : {};
-  return Array.isArray(metadata[JOURNAL_KEY]) ? metadata[JOURNAL_KEY] : [];
+  return Array.isArray(metadata[journalKey]) ? metadata[journalKey] : [];
 }
 
-function journalFor(document, idempotencyKey) {
-  return journalRows(document).find((row) => (
+function journalFor(document, idempotencyKey, journalKey = JOURNAL_KEY) {
+  return journalRows(document, journalKey).find((row) => (
     String(row && row.idempotencyKey || "") === String(idempotencyKey)
   )) || null;
 }
@@ -268,6 +275,7 @@ function buildManualBatchJournalEntry({
   allocationKeys = [],
   consumedReservedMeals = 0,
   consumedAvailableMeals = 0,
+  requestedQuantity,
   appliedAt = new Date(),
 }) {
   return {
@@ -281,11 +289,15 @@ function buildManualBatchJournalEntry({
     allocationKeys: allocationKeys.map(String),
     consumedReservedMeals: asInt(consumedReservedMeals),
     consumedAvailableMeals: asInt(consumedAvailableMeals),
+    ...(requestedQuantity === undefined ? {} : { requestedQuantity }),
     appliedAt,
   };
 }
 
-async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole }) {
+async function applyAvailableOnlyBatchDebit({
+  batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole,
+  journalKey = JOURNAL_KEY, batchGuard = {}, requestedQuantity,
+}) {
   const now = new Date();
   const updated = await SubscriptionEntitlementBatch.findOneAndUpdate(
     {
@@ -293,8 +305,9 @@ async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, f
       containerSubscriptionId: batch.containerSubscriptionId,
       applicationState: "applied",
       status: { $in: ["active", "paid_scheduled", "exhausted"] },
+      ...batchGuard,
       remainingMeals: { $gte: quantity },
-      [`metadata.${JOURNAL_KEY}.idempotencyKey`]: { $ne: idempotencyKey },
+      [`metadata.${journalKey}.idempotencyKey`]: { $ne: idempotencyKey },
     },
     [
       {
@@ -306,12 +319,12 @@ async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, f
       },
       {
         $set: {
-          [`metadata.${JOURNAL_KEY}`]: {
+          [`metadata.${journalKey}`]: {
             $concatArrays: [
               {
                 $cond: [
-                  { $isArray: `$metadata.${JOURNAL_KEY}` },
-                  `$metadata.${JOURNAL_KEY}`,
+                  { $isArray: `$metadata.${journalKey}` },
+                  `$metadata.${journalKey}`,
                   [],
                 ],
               },
@@ -323,6 +336,7 @@ async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, f
                 actorId,
                 actorRole,
                 consumedAvailableMeals: quantity,
+                requestedQuantity,
                 appliedAt: now,
               })],
             ],
@@ -366,7 +380,7 @@ async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, f
 
   if (updated) return updated;
   const current = await SubscriptionEntitlementBatch.findById(batch._id).lean();
-  const journal = journalFor(current, idempotencyKey);
+  const journal = journalFor(current, idempotencyKey, journalKey);
   if (journal) {
     assertJournal(journal, fingerprint);
     return current;
@@ -376,6 +390,94 @@ async function applyAvailableOnlyBatchDebit({ batch, quantity, idempotencyKey, f
     "Subscription package balance changed; not enough remaining meals",
     409
   );
+}
+
+// The day ID is the retry key. Debit only free delivery credits and record the
+// debit on the same batch write, including when MongoDB has no transactions.
+async function consumeStackedChefChoiceDelivery({ day, subscription, quantity, actor, mirrorDate }) {
+  const subscriptionId = subscription._id;
+  const idempotencyKey = String(day._id);
+  const businessDate = day.date;
+  const batchFilter = {
+    containerSubscriptionId: subscriptionId,
+    userId: subscription.userId,
+    applicationState: "applied",
+  };
+  const readBatches = () => SubscriptionEntitlementBatch.find(batchFilter).lean();
+  const readBatchesWithoutAllocations = async () => {
+    if (await SubscriptionEntitlementAllocation.exists({
+      containerSubscriptionId: subscriptionId,
+      $or: [{ subscriptionDayId: day._id }, { date: businessDate }],
+    })) return [];
+    return readBatches();
+  };
+  const batches = await readBatchesWithoutAllocations();
+  if (!batches.length || (day.creditsDeducted &&
+    !batches.some((batch) => journalFor(batch, idempotencyKey, DELIVERY_JOURNAL_KEY)))) return null;
+
+  const lease = await acquireLease(subscriptionId, `chef-choice:${idempotencyKey}`);
+  try {
+    const current = await readBatchesWithoutAllocations();
+    if (!current.length) return null;
+    const journals = current.map((batch) => journalFor(batch, idempotencyKey, DELIVERY_JOURNAL_KEY)).filter(Boolean);
+    const requested = journals[0]?.requestedQuantity ?? quantity;
+    if (!Number.isSafeInteger(requested) || requested <= 0) {
+      throw manualError("DATA_INTEGRITY_ERROR", "Delivery deduction has an invalid meal count", 409);
+    }
+    const fingerprint = crypto.createHash("sha256")
+      .update(JSON.stringify([String(subscriptionId), businessDate, requested]))
+      .digest("hex");
+    let alreadyApplied = 0;
+    for (const journal of journals) {
+      assertJournal(journal, fingerprint);
+      alreadyApplied += asInt(journal.quantity);
+    }
+    let remaining = requested - alreadyApplied;
+    if (remaining < 0 || (day.creditsDeducted && remaining > 0)) {
+      throw manualError("DATA_INTEGRITY_ERROR", "Delivery deduction does not match the recorded day", 409);
+    }
+
+    const { start, end } = dateWindow(businessDate);
+    const eligible = current
+      .filter((batch) => isBatchProjectableOnDate(batch, businessDate)
+        && String(batch.deliverySnapshot?.mode || batch.deliverySnapshot?.type || "").toLowerCase() === "delivery"
+        && !journalFor(batch, idempotencyKey, DELIVERY_JOURNAL_KEY))
+      .sort(compareBatchesForAllocation);
+    const available = eligible.reduce((total, batch) => total + resolveBatchDailyContribution(batch), 0);
+    if (remaining > available) {
+      throw manualError("INSUFFICIENT_CREDITS", "Not enough credits", 422, { requested, available: available + alreadyApplied });
+    }
+    for (const batch of eligible) {
+      if (remaining === 0) break;
+      const debit = Math.min(remaining, resolveBatchDailyContribution(batch));
+      if (!debit) continue;
+      await applyAvailableOnlyBatchDebit({
+        batch, quantity: debit, idempotencyKey, fingerprint, businessDate,
+        actorId: actor?.userId, actorRole: actor?.role,
+        journalKey: DELIVERY_JOURNAL_KEY,
+        requestedQuantity: requested,
+        batchGuard: {
+          status: { $in: ["active", "paid_scheduled"] },
+          effectiveStartDate: { $lte: end },
+          validityEndDate: { $gte: start },
+          userId: subscription.userId,
+        },
+      });
+      remaining -= debit;
+    }
+
+    const mirror = buildContainerMirror({ container: subscription, batches: await readBatches(), businessDate: mirrorDate });
+    const updated = await Subscription.updateOne(
+      { _id: subscriptionId, "stackingActivationLease.token": lease.token },
+      { $set: { ...mirror, entitlementVersion: 2 } }
+    );
+    if (!updated.matchedCount) {
+      throw manualError("SUBSCRIPTION_UPDATE_BUSY", "Another subscription update is already running for this customer", 409);
+    }
+    return { handled: true, changedCount: requested };
+  } finally {
+    await releaseLease(lease).catch(() => {});
+  }
 }
 
 async function applyReservedAwareBatchDebit({ batch, quantity, idempotencyKey, fingerprint, businessDate, actorId, actorRole }) {
@@ -1020,5 +1122,6 @@ module.exports = {
   dateWindow,
   deductibleBatchMeals,
   executeStackedManualDeduction,
+  consumeStackedChefChoiceDelivery,
   hasEntitlementBatches,
 };
