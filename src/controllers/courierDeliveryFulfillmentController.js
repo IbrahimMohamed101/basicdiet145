@@ -70,7 +70,7 @@ async function markDelivered(req, res) {
       fulfillment: {
         subscriptionDayId: String(delivery.dayId),
         status: "fulfilled",
-        alreadyFulfilled: Boolean(fulfillment && (fulfillment.alreadyFulfilled || fulfillment.idempotent)),
+        alreadyFulfilled: fulfillment?.alreadyFulfilled ?? (delivery.status === "delivered"),
         deductedCredits: Number(fulfillment && fulfillment.deductedCredits || 0),
       },
     });
