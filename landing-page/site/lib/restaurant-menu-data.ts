@@ -243,6 +243,24 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "image": "/restaurant-menu/fish_4.jpg"
   },
   {
+    "id": "restaurant-38",
+    "category": "الأسماك واللحوم",
+    "name": "لحم مفروم",
+    "price": 22,
+    "calories": 250,
+    "image": "/api/meal-image?id=1VrtZmwaQaSkmVAw3iyGYpcOYbOCvQzcK",
+    "illustrative": true
+  },
+  {
+    "id": "restaurant-39",
+    "category": "الأسماك واللحوم",
+    "name": "لحم مشروم",
+    "price": 22,
+    "calories": 240,
+    "image": "/api/meal-image?id=1_-GVEqxtZtww4VnHJGojzoULSJf5cTF4",
+    "illustrative": true
+  },
+  {
     "id": "restaurant-29",
     "category": "الكارب",
     "name": "رز أبيض بسمتي",
