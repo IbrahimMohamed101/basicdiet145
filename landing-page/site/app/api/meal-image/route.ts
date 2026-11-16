@@ -1,4 +1,6 @@
 const ALLOWED_MEAL_IMAGE_IDS = new Set([
+  "1VrtZmwaQaSkmVAw3iyGYpcOYbOCvQzcK", // لحم مفروم — approved restaurant preview
+  "1_-GVEqxtZtww4VnHJGojzoULSJf5cTF4", // لحم مشروم — approved restaurant preview
   "11PrvdVeUBEzD2YeRZBnMo4rEJGzcgx_b",
   "11b9wuwyURXCFABlvQFWtO7dhuJheqcMr",
   "15DKTySV0UFCKvVrDO0HS4N4hvX7lFEbl",
