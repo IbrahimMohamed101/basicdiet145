@@ -90,3 +90,7 @@
   .menu-coming-soon-content { padding: 18px; }
   #menu-coming-soon { scroll-margin-top: 80px; }
 }
+
+/* New uncropped high-resolution sources, with art direction per viewport. */
+.menu-coming-soon-responsive-photo { position: absolute; inset: 0; display: block; }
+.menu-coming-soon-responsive-photo img { object-fit: cover; object-position: center; }

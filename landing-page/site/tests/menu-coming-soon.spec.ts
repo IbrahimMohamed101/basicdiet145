@@ -23,6 +23,14 @@ for (const width of [390, 1440]) {
     await expect(section.getByRole("link")).toHaveCount(0);
     await expect(section).not.toContainText(/ريال|سعرة حرارية/);
     await expect(section.locator("img")).toHaveCount(2);
+    const version = width <= 760 ? "mobile" : "desktop";
+    for (const dish of ["coconut", "pizza"]) {
+      const source = section.locator(`source[srcset="/restaurant-menu/coming-soon-${dish}-mobile.avif"]`);
+      await expect(source).toHaveAttribute("media", "(max-width: 760px)");
+      const image = source.locator("xpath=following-sibling::img");
+      await expect.poll(() => image.evaluate((el) => decodeURIComponent((el as HTMLImageElement).currentSrc)))
+        .toContain(`/restaurant-menu/coming-soon-${dish}-${version}.avif`);
+    }
     for (const image of await section.locator("img").all()) {
       await image.scrollIntoViewIfNeeded();
       await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
