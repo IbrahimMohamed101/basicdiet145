@@ -619,15 +619,15 @@ test("primary menu anchor clears the sticky header on mobile and desktop", async
 });
 
 
-test("meal builder uses 28 printed-menu proteins and carbs and shares prices/calories", async ({ page }) => {
+test("meal builder uses 30 printed-menu proteins and carbs and shares prices/calories", async ({ page }) => {
   const { mealProteinChoices, mealSideChoices } = await import("../lib/meal-builder-options");
   const { restaurantMenuItems } = await import("../lib/restaurant-menu-data");
   const { calculateMealPreview } = await import("../lib/meal-builder-calculator");
 
-  expect(mealProteinChoices).toHaveLength(19);
+  expect(mealProteinChoices).toHaveLength(21);
   expect(mealSideChoices).toHaveLength(9);
   expect(mealProteinChoices.filter(x => x.group === "chicken")).toHaveLength(15);
-  expect(mealProteinChoices.filter(x => x.group === "beef")).toHaveLength(2);
+  expect(mealProteinChoices.filter(x => x.group === "beef")).toHaveLength(4);
   expect(mealProteinChoices.filter(x => x.group === "fish")).toHaveLength(2);
   for (const item of [...mealProteinChoices, ...mealSideChoices]) {
     const source = restaurantMenuItems.find(x => x.name === item.name);
@@ -635,7 +635,7 @@ test("meal builder uses 28 printed-menu proteins and carbs and shares prices/cal
     expect(item.image, item.name).toBe(source?.image);
     expect(item.price, item.name).toBe(source?.price);
     expect(item.calories, item.name).toBe(source?.calories);
-    expect(item.image).toMatch(/^\/restaurant-menu\/.+\.jpg$/);
+    expect(item.image).toMatch(/^\/(?:restaurant-menu\/.+\.jpg|api\/meal-image\?id=[\w-]+)$/);
   }
   expect([...mealProteinChoices, ...mealSideChoices].some(x => /فاهيتا|روزماري|رز صيني معجن/.test(x.name))).toBe(false);
   expect(calculateMealPreview("دجاج مشوي", [])).toMatchObject({totalPriceSar: 20,totalCalories:175,selections:1});
@@ -667,13 +667,13 @@ test("meal builder uses 28 printed-menu proteins and carbs and shares prices/cal
   await expect(builder).toContainText("ليس سعر وجبة مجمعة");
 });
 
-test("builder loads same local dish images and its controls stay inside narrow screens", async ({page}) => {
+test("builder loads same menu dish images and its controls stay inside narrow screens", async ({page}) => {
   for (const width of [320,390,768,1440]) {
     await page.setViewportSize({width,height:844});
     await page.goto("/menu");
     const builder=page.locator("#menu-custom");
     const thumbs=builder.locator(".menu-option-thumb img");
-    await expect(thumbs).toHaveCount(28);
+    await expect(thumbs).toHaveCount(30);
     const first=thumbs.first();
     await first.scrollIntoViewIfNeeded();
     await expect.poll(async () => first.evaluate((img:HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
