@@ -94,7 +94,7 @@ export function RestaurantMenu({
         {activeTab === "الكل" && (
           <div className="restaurant-menu-expand-wrap">
             <button type="button" className="restaurant-menu-expand" onClick={() => setShowAll(value => !value)} aria-expanded={showAll}>
-              {showAll ? "عرض أصناف أقل" : "عرض جميع أصناف المطعم الـ37"}
+              {showAll ? "عرض أصناف أقل" : `عرض جميع أصناف المطعم الـ${restaurantMenuItems.length}`}
               <span aria-hidden="true">{showAll ? "↑" : "↓"}</span>
             </button>
           </div>
