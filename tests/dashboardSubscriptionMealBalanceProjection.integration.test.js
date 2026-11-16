@@ -8,6 +8,8 @@ process.env.JWT_SECRET =
 process.env.DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED = "false";
 
 const assert = require("assert");
+const fs = require("node:fs");
+const path = require("node:path");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const request = require("supertest");
@@ -15,10 +17,15 @@ const request = require("supertest");
 const { createApp } = require("../src/app");
 const ActivityLog = require("../src/models/ActivityLog");
 const DashboardUser = require("../src/models/DashboardUser");
+const Delivery = require("../src/models/Delivery");
 const Plan = require("../src/models/Plan");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionAuditLog = require("../src/models/SubscriptionAuditLog");
+const SubscriptionDay = require("../src/models/SubscriptionDay");
+const Batch = require("../src/models/SubscriptionEntitlementBatch");
 const User = require("../src/models/User");
+const { inspectSubscription, applyCorrection } = require("../scripts/reconcile-stacked-delivery-balances");
+const { getTodayKSADate } = require("../src/utils/date");
 const { issueAppAccessToken } = require("../src/services/appTokenService");
 const {
   issueDashboardAccessToken,
@@ -33,13 +40,101 @@ const WRITE_COMMANDS = new Set([
   "bulkWrite",
 ]);
 
+async function verifyHistoricalDeliveryReconciliation({ api, user, plan }) {
+  const today = getTodayKSADate();
+  const now = new Date(`${today}T00:00:00+03:00`);
+  const dateAt = (offset) => new Date(now.getTime() + offset * 86400000);
+  const subscription = await Subscription.create({
+    userId: user._id, planId: plan._id, status: "active",
+    startDate: dateAt(-20), endDate: dateAt(2), validityEndDate: dateAt(2),
+    totalMeals: 52, remainingMeals: 12, consumedMeals: 40, entitlementVersion: 2,
+    deliveryMode: "delivery", selectedGrams: 150, selectedMealsPerDay: 2,
+  });
+  const batch = await Batch.create({
+    userId: user._id, containerSubscriptionId: subscription._id, planId: plan._id,
+    sourceType: "dashboard", sourceKey: "synthetic-delivery-reconciliation",
+    applicationState: "applied", status: "active", requestedStartDate: dateAt(-20),
+    effectiveStartDate: dateAt(-20), endDate: dateAt(2), validityEndDate: dateAt(2),
+    totalMeals: 52, remainingMeals: 46, consumedMeals: 6,
+    daysCount: 26, mealsPerDay: 2, proteinGrams: 150, deliverySnapshot: { mode: "delivery" },
+  });
+  const days = Array.from({ length: 17 }, (_, index) => ({
+    _id: new mongoose.Types.ObjectId(), subscriptionId: subscription._id,
+    date: getTodayKSADate(dateAt(index - 17)),
+    status: "fulfilled", creditsDeducted: true, fulfilledAt: dateAt(index - 17),
+    fulfilledSnapshot: { deductedCredits: 2 },
+  }));
+  await SubscriptionDay.collection.insertMany(days);
+  await Delivery.insertMany(days.map((day) => ({
+    dayId: day._id, subscriptionId: subscription._id, date: day.date,
+    status: "delivered", deliveredAt: day.fulfilledAt,
+  })));
+  const audits = days.map((day) => ({
+    entityType: "subscription_day", entityId: day._id, action: "fulfill",
+    fromStatus: "out_for_delivery", toStatus: "fulfilled", actorType: "admin",
+  }));
+  await SubscriptionAuditLog.insertMany(audits.slice(0, -1));
+  const parentBefore = await Subscription.findById(subscription._id).lean();
+  const batchBefore = await Batch.findById(batch._id).lean();
+  const missingEvidence = await inspectSubscription(parentBefore, [batchBefore]);
+  assert.strictEqual(missingEvidence.outcome, "evidence-does-not-close-gap");
+  assert.strictEqual(missingEvidence.evidenced, 32);
+  await SubscriptionAuditLog.create(audits.at(-1));
+  const repair = await inspectSubscription(parentBefore, [batchBefore]);
+  assert.strictEqual(repair.outcome, "reconcilable");
+  assert.strictEqual(repair.quantity, 34);
+  assert.strictEqual(repair.deliveries.length, 17);
+  const applied = await applyCorrection(parentBefore, repair);
+  assert.deepStrictEqual([applied.remainingMeals, applied.consumedMeals], [12, 40]);
+  await assert.rejects(applyCorrection(parentBefore, repair), /Package changed/);
+  assert.deepStrictEqual(await Subscription.findById(subscription._id).lean(), parentBefore);
+  assert.strictEqual(
+    (await inspectSubscription(parentBefore, [await Batch.findById(batch._id).lean()])).outcome,
+    "no-reconcilable-drift"
+  );
+
+  const admin = await DashboardUser.create({
+    email: "balance-reconciliation@example.test", passwordHash: "not-used",
+    role: "superadmin", isActive: true,
+  });
+  const headers = { Authorization: `Bearer ${issueDashboardAccessToken(admin)}` };
+  const detail = await api.get(`/api/dashboard/subscriptions/${subscription._id}`).set(headers);
+  const search = await api.get("/api/dashboard/subscriptions/search").query({ phone: user.phone }).set(headers);
+  const profile = await api.get(`/api/dashboard/customer-management/${user._id}`).set(headers);
+  const summary = await api.get("/api/dashboard/subscriptions/summary").set(headers);
+  for (const response of [detail, search, profile, summary]) assert.strictEqual(response.status, 200);
+  assert.strictEqual(detail.body.data.stacking.aggregateBalance.remainingMeals, 12);
+  assert.strictEqual(detail.body.data.stacking.packages[0].remainingMeals, 12);
+  assert.strictEqual(search.body.data.subscription.displayRemainingMeals, 12);
+  assert.strictEqual(profile.body.data.activeSubscription.balances.remainingMeals, 12);
+  assert.strictEqual(profile.body.data.activeSubscription.balances.consumedMeals, 40);
+  assert.strictEqual(summary.body.data.summary.totalRemainingMeals, 48);
+
+  await Batch.updateOne({ _id: batch._id }, { $inc: { remainingMeals: -2, reservedMeals: 2 } });
+  const listing = await api.get("/api/dashboard/subscriptions").set(headers);
+  const listingRow = listing.body.data.find((row) => row.id === String(subscription._id));
+  const exported = await api.get("/api/dashboard/subscriptions/export").set(headers);
+  const exportRow = exported.body.data.items.find((row) => row.id === String(subscription._id));
+  const reservedProfile = await api.get(`/api/dashboard/customer-management/${user._id}`).set(headers);
+  for (const row of [listingRow, exportRow]) {
+    assert.strictEqual(row.remainingMeals, 12);
+    assert.strictEqual(row.availableMeals, 10);
+    assert.strictEqual(row.stacking.packages[0].remainingMeals, 10);
+    assert.strictEqual(row.stacking.aggregateBalance.reservedMeals, 2);
+  }
+  assert.strictEqual(reservedProfile.body.data.activeSubscription.balances.remainingMeals, 12);
+  assert.strictEqual(reservedProfile.body.data.activeSubscription.balances.reservedMeals, 2);
+}
+
 async function main() {
+  const mongoDbPath = fs.mkdtempSync(path.join(process.cwd(), "tmp-dashboard-balance-mongo-"));
   const replSet = await MongoMemoryReplSet.create({
     replSet: {
       count: 1,
       dbName: DB_NAME,
       storageEngine: "wiredTiger",
     },
+    instanceOpts: [{ dbPath: mongoDbPath, args: ["--nounixsocket"] }],
   });
   const mongoUri = replSet.getUri(DB_NAME);
   const parsedUri = new URL(mongoUri);
@@ -181,6 +276,8 @@ async function main() {
       .set(otherCustomerHeaders);
     assert.strictEqual(customerAttempt.status, 401);
 
+    mongoose.connection.client.off("commandStarted", commandListener);
+
     const excessiveDeduction = await api
       .post(`${detailPath}/manual-deduction`)
       .set(dashboardHeaders)
@@ -194,8 +291,6 @@ async function main() {
       excessiveDeduction.body.error.code,
       "INSUFFICIENT_REMAINING_MEALS"
     );
-
-    mongoose.connection.client.off("commandStarted", commandListener);
 
     const after = await Subscription.collection.findOne({
       _id: subscription._id,
@@ -216,8 +311,10 @@ async function main() {
     assert.deepStrictEqual(
       writeCommands,
       [],
-      `read and rejected-write verification emitted writes: ${writeCommands.join(",")}`
+      `read verification emitted writes: ${writeCommands.join(",")}`
     );
+
+    await verifyHistoricalDeliveryReconciliation({ api, user: otherUser, plan });
 
     console.log(
       "dashboardSubscriptionMealBalanceProjection.integration.test.js passed"
@@ -228,6 +325,7 @@ async function main() {
       await mongoose.disconnect();
     }
     await replSet.stop();
+    fs.rmSync(mongoDbPath, { force: true, recursive: true });
   }
 }
 

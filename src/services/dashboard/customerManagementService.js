@@ -14,6 +14,8 @@ const User = require("../../models/User");
 const { logger } = require("../../utils/logger");
 const { startSafeSession } = require("../../utils/mongoTransactionSupport");
 const { assertValidPhoneE164 } = require("../otpService");
+const { getRestaurantBusinessDate } = require("../restaurantHoursService");
+const { loadDashboardAggregateBalances } = require("./subscriptionDashboardStackingReadService");
 
 const EDITABLE_FIELDS = new Set([
   "fullName",
@@ -159,12 +161,19 @@ function serializeMealCompensation(row) {
   };
 }
 
-function serializeActiveSubscription(subscription, plan = null) {
+async function serializeActiveSubscription(subscription, plan = null) {
   if (!subscription) return null;
+  const batchBalances = await loadDashboardAggregateBalances([subscription], await getRestaurantBusinessDate());
+  const aggregate = batchBalances.get(String(subscription._id));
+  // Older staff compensation writes may exist only on the parent. Keep those
+  // grants visible in this profile until they have been posted to the batches.
+  const balance = aggregate && !(subscription.compensatedMealsTotal > 0 && subscription.totalMeals > aggregate.totalMeals)
+    ? aggregate
+    : subscription;
   const premiumRemainingMeals = (subscription.premiumBalance || [])
     .reduce((sum, row) => sum + Math.max(0, Number(row.remainingQty || 0)), 0);
-  const remainingMeals = Math.max(0, Number(subscription.remainingMeals || 0));
-  const totalMeals = Math.max(0, Number(subscription.totalMeals || 0));
+  const remainingMeals = Math.max(0, Number(balance.remainingMeals || 0));
+  const totalMeals = Math.max(0, Number(balance.totalMeals || 0));
   const compensationHistory = [...(subscription.adminMealCompensations || [])]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     .slice(0, 20)
@@ -188,19 +197,19 @@ function serializeActiveSubscription(subscription, plan = null) {
       remainingRegularMeals: Math.max(0, remainingMeals - premiumRemainingMeals),
       remainingPremiumMeals: premiumRemainingMeals,
       consumedMeals: Math.max(0, Number(
-        subscription.consumedMeals === undefined
+        balance.consumedMeals === undefined
           ? totalMeals - remainingMeals
-          : subscription.consumedMeals
+          : balance.consumedMeals
       )),
-      reservedMeals: Math.max(0, Number(subscription.reservedMeals || 0)),
-      forfeitedMeals: Math.max(0, Number(subscription.forfeitedMeals || 0)),
+      reservedMeals: Math.max(0, Number(balance.reservedMeals || 0)),
+      forfeitedMeals: Math.max(0, Number(balance.forfeitedMeals || 0)),
       compensatedMealsTotal: Math.max(0, Number(subscription.compensatedMealsTotal || 0)),
     },
     compensationHistory,
   };
 }
 
-function serializeCustomer({ user, appUser, activeSubscription, plan = null }) {
+async function serializeCustomer({ user, appUser, activeSubscription, plan = null }) {
   return {
     id: String(user._id),
     coreUserId: String(user._id),
@@ -210,7 +219,7 @@ function serializeCustomer({ user, appUser, activeSubscription, plan = null }) {
     phoneE164: user.phoneE164 || user.phone || (appUser && appUser.phone) || null,
     email: user.email || (appUser && appUser.email) || null,
     isActive: user.isActive !== false,
-    activeSubscription: serializeActiveSubscription(activeSubscription, plan),
+    activeSubscription: await serializeActiveSubscription(activeSubscription, plan),
     createdAt: user.createdAt || null,
     updatedAt: user.updatedAt || null,
   };
@@ -314,7 +323,7 @@ async function grantCustomerMealCompensation({ id, payload, actorId, actorRole }
     if (replayed) {
       const plan = await findPlan(subscription.planId);
       return {
-        customer: serializeCustomer({ ...managed, activeSubscription: subscription, plan }),
+        customer: await serializeCustomer({ ...managed, activeSubscription: subscription, plan }),
         compensation: serializeMealCompensation(replayed),
         replayed: true,
       };
@@ -392,7 +401,7 @@ async function grantCustomerMealCompensation({ id, payload, actorId, actorRole }
 
     const plan = await findPlan(updated.planId);
     return {
-      customer: serializeCustomer({ ...managed, activeSubscription: updated, plan }),
+      customer: await serializeCustomer({ ...managed, activeSubscription: updated, plan }),
       compensation: serializeMealCompensation(compensation),
       replayed: false,
     };
@@ -739,7 +748,7 @@ async function updateCustomerWithoutTransaction({
   });
 
   return {
-    customer: serializeCustomer({
+    customer: await serializeCustomer({
       user: updatedUser,
       appUser: updatedAppUser,
       activeSubscription: updatedSubscription,
@@ -936,7 +945,7 @@ async function updateCustomerManagementProfile({ id, payload, actorId, actorRole
       }], { session });
 
       result = {
-        customer: serializeCustomer({ user, appUser, activeSubscription, plan }),
+        customer: await serializeCustomer({ user, appUser, activeSubscription, plan }),
         changedFields: fields,
         sessionsRevoked,
       };
