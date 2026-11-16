@@ -568,7 +568,7 @@ test("restaurant menu prices, categories, generated-photo labels and compact exp
   await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "دجاج زعتر" }).locator(".restaurant-menu-image-note")).toHaveText("صورة توضيحية");
   await menu.getByRole("button", { name: /الكل/ }).click();
   await menu.locator(".restaurant-menu-expand").click();
-  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(37);
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(39);
 });
 
 test("new photo route is optimized, loads in browser and remains in the viewport", async ({ page, request }) => {
