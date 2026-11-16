@@ -33,3 +33,14 @@ for (const width of [390, 1440]) {
     )).toBeLessThanOrEqual(1);
   });
 }
+
+test("new beef photo proxy serves public image content", async ({ request }) => {
+  for (const dish of newDishes) {
+    const response = await request.get(`/api/meal-image?id=${encodeURIComponent(dish.imageId)}`, {
+      timeout: 20000,
+    });
+    expect(response.status(), `Photo unavailable for ${dish.name}`).toBe(200);
+    expect(response.headers()["content-type"]).toMatch(/^image\//);
+    expect((await response.body()).byteLength).toBeGreaterThan(5000);
+  }
+});
