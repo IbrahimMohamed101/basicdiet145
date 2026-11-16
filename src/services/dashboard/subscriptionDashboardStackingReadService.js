@@ -8,6 +8,7 @@ const { getRestaurantBusinessDate } = require("../restaurantHoursService");
 const { pickLang } = require("../../utils/i18n");
 const { projectSubscriptionEntitlements } = require("../subscription/subscriptionEntitlementProjectionService");
 const { resolveBatchLifecycleState } = require("../subscription/subscriptionStackingLifecycleService");
+const { projectDashboardSubscriptionBalance } = require("../subscription/subscriptionDashboardMealBalanceProjectionService");
 
 const DASHBOARD_STACKING_READ_VERSION = "dashboard_stacking_read.v1";
 
@@ -137,6 +138,41 @@ function defaultRuntime() {
   };
 }
 
+function dashboardAggregateBalance(batches, businessDate) {
+  const projection = projectSubscriptionEntitlements({
+    batches: batches.filter((batch) => batch.applicationState == null || batch.applicationState === "applied"),
+    businessDate,
+  });
+  if (projection.batchCount === 0) return null;
+
+  const balance = projection.mealBalance;
+  const accounted = balance.remainingMeals + balance.consumedMeals + balance.forfeitedMeals;
+  // Persisted batches keep available and reserved credits in separate counters.
+  // The dashboard aggregate represents all remaining, including reservations.
+  if (accounted + balance.reservedMeals === balance.totalMeals) {
+    return { ...balance, remainingMeals: balance.remainingMeals + balance.reservedMeals };
+  }
+  return balance;
+}
+
+async function loadDashboardAggregateBalances(subscriptions, businessDate) {
+  const ids = subscriptions.map((subscription) => subscription._id);
+  if (ids.length === 0) return new Map();
+  const batches = await SubscriptionEntitlementBatch.find({ containerSubscriptionId: { $in: ids } })
+    .select("containerSubscriptionId applicationState status effectiveStartDate endDate validityEndDate totalMeals remainingMeals reservedMeals consumedMeals forfeitedMeals")
+    .lean();
+  const bySubscription = new Map();
+  for (const batch of batches) {
+    const id = stringId(batch.containerSubscriptionId);
+    if (!bySubscription.has(id)) bySubscription.set(id, []);
+    bySubscription.get(id).push(batch);
+  }
+  return new Map(Array.from(bySubscription, ([id, rows]) => [
+    id,
+    dashboardAggregateBalance(rows, businessDate),
+  ]));
+}
+
 function buildContext({
   subscription,
   batches,
@@ -161,15 +197,11 @@ function buildContext({
     if (item.payment) transactionById.set(item.payment.id, item.payment);
   }
 
-  const currentProjection = projectSubscriptionEntitlements({
-    batches,
-    businessDate: targetBusinessDate,
-  });
   // Match the canonical client read path: entitlement batches are only allowed to
   // replace the parent balance when at least one batch is projectable for the
   // current business date. If all batches are future/historical for today,
   // preserving the parent balance is safer than manufacturing a zero balance.
-  const aggregateBalance = currentProjection.batchCount > 0 ? currentProjection.mealBalance : null;
+  const aggregateBalance = dashboardAggregateBalance(batches, targetBusinessDate);
 
   return {
     version: DASHBOARD_STACKING_READ_VERSION,
@@ -190,7 +222,9 @@ function applyContexts(payload, contexts) {
   const decorate = (value) => {
     if (!isSubscriptionReadModel(value)) return value;
     const id = stringId(value._id || value.id);
-    return { ...value, stacking: contexts.get(id) };
+    const stacking = contexts.get(id);
+    const decorated = { ...value, stacking };
+    return stacking?.aggregateBalance ? projectDashboardSubscriptionBalance(decorated) : decorated;
   };
   const data = payload.data;
 
@@ -289,6 +323,7 @@ module.exports = {
   applyContexts,
   batchReadModel,
   buildContext,
+  loadDashboardAggregateBalances,
   isSubscriptionReadModel,
   paymentReadModel,
   projectDashboardStackingReadModel,

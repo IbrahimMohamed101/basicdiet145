@@ -7,7 +7,7 @@ const {
 } = require("../services/dashboard/subscriptionDashboardStackingReadService");
 
 const DASHBOARD_SUBSCRIPTION_STACKING_READ_PATH =
-  /\/dashboard\/subscriptions(?:\/list|\/search|\/[a-f0-9]{24})?\/?$/i;
+  /\/dashboard\/subscriptions(?:\/list|\/search|\/export|\/[a-f0-9]{24})?\/?$/i;
 
 function isEligibleDashboardSubscriptionStackingRead(req = {}) {
   if (String(req.method || "").toUpperCase() !== "GET") return false;

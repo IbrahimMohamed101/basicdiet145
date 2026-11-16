@@ -72,6 +72,7 @@ const {
 const { normalizeStoredVatBreakdown, buildMoneySummary } = require("../utils/pricing");
 const { resolveSubscriptionAddonBillingMode } = require("../utils/subscription/subscriptionCatalog");
 const { projectBaseMealBalancesForRead, projectBaseMealBalanceForRead } = require("../services/subscription/subscriptionBaseMealBalanceReadService");
+const { loadDashboardAggregateBalances } = require("../services/dashboard/subscriptionDashboardStackingReadService");
 const { resolveOptionalPagination, buildPaginationMeta } = require("../utils/optionalPagination");
 const { DASHBOARD_ROLES, DASHBOARD_ROLE_LABEL } = require("../constants/dashboardRoles");
 const { buildDefaultPickupLocation } = require("../constants/defaultPickupLocation");
@@ -4571,25 +4572,22 @@ async function getSubscriptionsSummaryAdmin(req, res) {
     const selectedStatusMatch = selectedStatus
       ? (selectedStatus === "ended" ? { status: { $in: ["expired", "canceled"] } } : { status: selectedStatus })
       : {};
-    const [totalSubscriptions, activeSubscriptions, pendingSubscriptions, expiredSubscriptions, canceledSubscriptions, remainingMealsRows, selectedStatusCount] = await Promise.all([
+    const [totalSubscriptions, activeSubscriptions, pendingSubscriptions, expiredSubscriptions, canceledSubscriptions, balanceRows, selectedStatusCount, businessDate] = await Promise.all([
       Subscription.countDocuments(filters.match),
       Subscription.countDocuments({ ...filters.match, status: "active" }),
       Subscription.countDocuments({ ...filters.match, status: "pending_payment" }),
       Subscription.countDocuments({ ...filters.match, status: "expired" }),
       Subscription.countDocuments({ ...filters.match, status: "canceled" }),
-      Subscription.aggregate([
-        { $match: filters.match },
-        {
-          $group: {
-            _id: null,
-            totalRemainingMeals: { $sum: { $ifNull: ["$remainingMeals", 0] } },
-          },
-        },
-      ]),
+      Subscription.find(filters.match).select("_id remainingMeals").lean(),
       selectedStatus
         ? Subscription.countDocuments({ ...filters.match, ...selectedStatusMatch })
         : Promise.resolve(null),
+      getRestaurantBusinessDate(),
     ]);
+    const batchBalances = await loadDashboardAggregateBalances(balanceRows, businessDate);
+    const totalRemainingMeals = balanceRows.reduce((total, row) => (
+      total + Number(batchBalances.get(String(row._id))?.remainingMeals ?? row.remainingMeals ?? 0)
+    ), 0);
 
     return res.status(200).json({
       status: true,
@@ -4608,7 +4606,7 @@ async function getSubscriptionsSummaryAdmin(req, res) {
           canceledSubscriptions: Number(canceledSubscriptions || 0),
           endedSubscriptions: Number(expiredSubscriptions || 0) + Number(canceledSubscriptions || 0),
           selectedStatusCount: selectedStatus ? Number(selectedStatusCount || 0) : null,
-          totalRemainingMeals: Number((remainingMealsRows[0] && remainingMealsRows[0].totalRemainingMeals) || 0),
+          totalRemainingMeals,
         },
       },
     });
