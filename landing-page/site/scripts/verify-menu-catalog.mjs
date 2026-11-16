@@ -81,8 +81,8 @@ if (!builderCalculator.includes("Math.round(part.price * 100)") ||
 const builderUI = read("components/MenuExperience.tsx");
 if (!builderUI.includes("filteredProteinChoices.map") || !builderUI.includes("mealSideChoices.map"))
   fail("Builder UI does not render all configured choices");
-if (!builderUI.includes("صورة توضيحية") || !builderUI.includes("proteinGroup"))
-  fail("Illustrative-media disclosure or category filter missing");
+if (!builderUI.includes("الصور للتعريف بالأصناف") || !builderUI.includes("proteinGroup"))
+  fail("Food image context note or category filter missing");
 for (const file of ["components/MenuExperience.tsx", "components/MenuCalories.tsx", "components/MealGallery.tsx", "components/PlanCalculator.tsx"]) {
   const source = read(file);
   if (source.includes('Intl.NumberFormat("ar-SA"') || /[٠-٩۰-۹]/.test(source)) fail("Arabic-digit formatter or literal in " + file);
