@@ -24,7 +24,7 @@ for (const width of [390, 1440]) {
       await expect(card).toHaveCount(1);
       await expect(card).toContainText("22");
       await expect(card).toContainText(`${dish.calories} سعرة حرارية تقريبًا`);
-      await expect(card.getByText("صورة توضيحية")).toBeVisible();
+      await expect(card.getByText("صورة توضيحية")).toHaveCount(0);
       await expect(card.locator("img")).toHaveAttribute("src", new RegExp(dish.imageId));
       await expect(card.getByRole("button")).toHaveCount(0);
     }
