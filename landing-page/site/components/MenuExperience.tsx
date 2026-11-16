@@ -261,12 +261,15 @@ export function MenuExperience() {
           <div className="menu-coming-soon-grid">
             <article className="menu-coming-soon-card">
               <div className="menu-coming-soon-photo">
-                <Image
-                  src="/restaurant-menu/coming-soon-coconut.avif"
+                <picture className="menu-coming-soon-responsive-photo">
+                  <source media="(max-width: 760px)" srcSet="/restaurant-menu/coming-soon-coconut-mobile.avif" type="image/avif" />
+                  <Image
+                    src="/restaurant-menu/coming-soon-coconut-desktop.avif"
                   alt="حلى كوكونت بطبقة من جوز الهند المبشور وقطعة فراولة"
                   fill
                   sizes="(max-width: 760px) 100vw, 50vw"
-                />
+                  />
+                </picture>
                 <span className="menu-coming-soon-photo-note">صورة توضيحية</span>
               </div>
               <div className="menu-coming-soon-content">
@@ -277,12 +280,15 @@ export function MenuExperience() {
             </article>
             <article className="menu-coming-soon-card">
               <div className="menu-coming-soon-photo">
-                <Image
-                  src="/restaurant-menu/coming-soon-pizza.avif"
+                <picture className="menu-coming-soon-responsive-photo">
+                  <source media="(max-width: 760px)" srcSet="/restaurant-menu/coming-soon-pizza-mobile.avif" type="image/avif" />
+                  <Image
+                    src="/restaurant-menu/coming-soon-pizza-desktop.avif"
                   alt="بيتزا دايت بقاعدة من البطاطس والبيض مع الجبن والزيتون"
                   fill
                   sizes="(max-width: 760px) 100vw, 50vw"
-                />
+                  />
+                </picture>
                 <span className="menu-coming-soon-photo-note">صورة توضيحية</span>
               </div>
               <div className="menu-coming-soon-content">
