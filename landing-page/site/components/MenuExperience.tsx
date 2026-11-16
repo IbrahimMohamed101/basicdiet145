@@ -251,6 +251,54 @@ export function MenuExperience() {
 
       <RestaurantMenu activeTab={restaurantTab} onCategoryChange={setRestaurantTab} />
 
+      <section className="menu-coming-soon" id="menu-coming-soon" aria-labelledby="menu-coming-soon-title" dir="rtl">
+        <div className="page-shell">
+          <div className="menu-coming-soon-intro">
+            <span className="menu-coming-soon-eyebrow">COMING SOON / قريبًا</span>
+            <h2 id="menu-coming-soon-title">قريبًا في بيسك دايت</h2>
+            <p>أصناف جديدة بطعم مختلف، بنجهزها لكم بعناية.</p>
+          </div>
+          <div className="menu-coming-soon-grid">
+            <article className="menu-coming-soon-card">
+              <div className="menu-coming-soon-photo">
+                <Image
+                  src="/restaurant-menu/coming-soon-coconut.avif"
+                  alt="حلى كوكونت بطبقة من جوز الهند المبشور وقطعة فراولة"
+                  fill
+                  sizes="(max-width: 760px) 100vw, 50vw"
+                />
+                <span className="menu-coming-soon-photo-note">صورة توضيحية</span>
+              </div>
+              <div className="menu-coming-soon-content">
+                <span className="menu-coming-soon-status">قريبًا</span>
+                <h3>كوكونت</h3>
+                <p>حلى كريمي بطعم جوز الهند، مغطى بجوز الهند المبشور ولمسة فراولة منعشة.</p>
+              </div>
+            </article>
+            <article className="menu-coming-soon-card">
+              <div className="menu-coming-soon-photo">
+                <Image
+                  src="/restaurant-menu/coming-soon-pizza.avif"
+                  alt="بيتزا دايت بقاعدة من البطاطس والبيض مع الجبن والزيتون"
+                  fill
+                  sizes="(max-width: 760px) 100vw, 50vw"
+                />
+                <span className="menu-coming-soon-photo-note">صورة توضيحية</span>
+              </div>
+              <div className="menu-coming-soon-content">
+                <div className="menu-coming-soon-labels">
+                  <span className="menu-coming-soon-status">قريبًا</span>
+                  <span className="menu-coming-soon-feature">بدون عجين</span>
+                </div>
+                <h3>بيتزا</h3>
+                <p>بيتزا دايت بطعم البيتزا اللي بتحبها، لكن بطريقة مختلفة! قاعدة شهية من البطاطس والبيض بدون عجين، مع إمكانية إضافة أي نوع بروتين تفضله، مثل الدجاج أو اللحم أو الجمبري أو السمك.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+
       <section className="menu-section menu-catalog-section" id="menu-products" aria-labelledby="menu-catalog-title">
         <div className="page-shell">
           <Heading id="menu-catalog-title" tag="MORE CHOICES / خيارات أخرى" title="أصناف إضافية من بيسك دايت." copy="سلطات وفطور وحلويات ومشروبات ووجبات أخرى، غير مكررة مع قائمة المطعم. الأسعار هنا خاصة بالحصص المعروضة." />
