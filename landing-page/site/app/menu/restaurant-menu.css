@@ -63,3 +63,30 @@
 @media(max-width:630px) {
   #restaurant-menu, #menu-products { scroll-margin-top:80px; }
 }
+
+
+/* Upcoming dishes: clearly non-orderable editorial preview, not the POS/app catalogue. */
+.menu-coming-soon { padding: clamp(44px, 6vw, 82px) 0; background: #fffdf7; color: #244a35; border-block: 1px solid #e2eadc; }
+.menu-coming-soon-intro { text-align: center; margin: 0 auto 28px; max-width: 720px; }
+.menu-coming-soon-eyebrow { display: block; margin-bottom: 9px; color: #ac6c50; font-size: 12px; letter-spacing: .06em; font-weight: 800; }
+.menu-coming-soon-intro h2 { font-size: clamp(28px, 3.2vw, 42px); line-height: 1.35; margin: 0 0 8px; font-weight: 850; }
+.menu-coming-soon-intro p { color: #657668; margin: 0; line-height: 1.8; }
+.menu-coming-soon-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.menu-coming-soon-card { min-width: 0; overflow: hidden; background: #fff; border: 1px solid #e4ebdf; border-radius: 21px; box-shadow: 0 12px 28px rgba(38, 72, 50, .06); }
+.menu-coming-soon-photo { position: relative; aspect-ratio: 1.42; overflow: hidden; background: #f3f0e6; }
+.menu-coming-soon-photo img { object-fit: cover; object-position: center; }
+.menu-coming-soon-photo-note { position: absolute; inset-inline-end: 13px; bottom: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, .91); color: #48604f; font-size: 11px; }
+.menu-coming-soon-content { padding: clamp(18px, 2.2vw, 27px); }
+.menu-coming-soon-labels { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.menu-coming-soon-status, .menu-coming-soon-feature { display: inline-block; border-radius: 999px; padding: 5px 12px; font-size: 12px; line-height: 1.6; font-weight: 800; }
+.menu-coming-soon-status { background: #eaf2e4; color: #276544; }
+.menu-coming-soon-feature { background: #f8eee6; color: #a65b37; }
+.menu-coming-soon-content h3 { font-size: clamp(23px, 2.3vw, 30px); margin: 12px 0 6px; color: #214e35; }
+.menu-coming-soon-content p { margin: 0; color: #556859; font-size: 15px; line-height: 1.95; }
+#menu-coming-soon { scroll-margin-top: 94px; }
+@media (max-width: 760px) {
+  .menu-coming-soon-grid { grid-template-columns: 1fr; gap: 16px; }
+  .menu-coming-soon-photo { aspect-ratio: 1.55; }
+  .menu-coming-soon-content { padding: 18px; }
+  #menu-coming-soon { scroll-margin-top: 80px; }
+}
