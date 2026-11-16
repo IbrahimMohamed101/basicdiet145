@@ -31,7 +31,6 @@
 
 /* Clear, compact catalogue on both desktop and narrow phones. */
 .restaurant-menu-tab { min-height:44px; }
-.restaurant-menu-image-note { position:absolute; z-index:1; inset-inline:3px; bottom:3px; padding:2px 3px; background:rgba(255,255,255,.94); color:#28543c; border-radius:4px; font-size:8px; text-align:center; line-height:1.25; }
 .restaurant-menu-image-fallback { height:100%; display:grid; place-items:center; padding:8px; color:#506956; font-size:11px; text-align:center; background:#eef2ec; }
 .restaurant-menu-expand-wrap { display:flex; justify-content:center; margin:20px 0 8px; }
 .restaurant-menu-expand { border-radius:999px; padding:11px 22px; min-height:44px; font:inherit; font-weight:800; color:#24573e; background:#fff; border:1px solid #b9d2c2; cursor:pointer; }
@@ -75,7 +74,6 @@
 .menu-coming-soon-card { min-width: 0; overflow: hidden; background: #fff; border: 1px solid #e4ebdf; border-radius: 21px; box-shadow: 0 12px 28px rgba(38, 72, 50, .06); }
 .menu-coming-soon-photo { position: relative; aspect-ratio: 1.42; overflow: hidden; background: #f3f0e6; }
 .menu-coming-soon-photo img { object-fit: cover; object-position: center; }
-.menu-coming-soon-photo-note { position: absolute; inset-inline-end: 13px; bottom: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, .91); color: #48604f; font-size: 11px; }
 .menu-coming-soon-content { padding: clamp(18px, 2.2vw, 27px); }
 .menu-coming-soon-labels { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .menu-coming-soon-status, .menu-coming-soon-feature { display: inline-block; border-radius: 999px; padding: 5px 12px; font-size: 12px; line-height: 1.6; font-weight: 800; }

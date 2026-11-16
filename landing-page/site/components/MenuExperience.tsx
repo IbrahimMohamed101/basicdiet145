@@ -74,15 +74,13 @@ function Heading({ tag, title, copy, id }: { tag: string; title: string; copy: s
 function ProductImage({ item, priority = false }: { item: MenuPreviewItem; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
   const src = failed || !item.image ? menuArtUrl(item.name, item.category) : item.image;
-  const illustrative = item.illustrativeImage === true || !item.image || failed;
   return (
     <div className="menu-product-photo">
       <Image key={src} src={src}
-        alt={illustrative ? "رسم أو صورة توضيحية للصنف: " + item.name : item.name}
+        alt={item.name}
         fill sizes="(max-width: 600px) 46vw, (max-width: 1000px) 34vw, 300px"
         quality={78} priority={priority} unoptimized={src.startsWith("https://") || src.startsWith("/api/menu-art")}
         onError={() => setFailed(true)} />
-      {illustrative && <span className="menu-photo-disclosure">صورة توضيحية</span>}
     </div>
   );
 }
@@ -207,7 +205,7 @@ export function MenuExperience() {
           </div>
         </div>
         <div className="page-shell menu-preview-ribbon" role="note">
-          <span>الصور المعلّمة «صورة توضيحية» للعرض فقط. الأسعار حسب قائمة المطعم، ويُرجى تأكيد توفر الأصناف عند التواصل.</span>
+          <span>الصور للعرض وقد تختلف عن شكل التقديم الفعلي. الأسعار حسب قائمة المطعم، ويُرجى تأكيد توفر الأصناف عند التواصل.</span>
         </div>
       </section>
 
@@ -270,7 +268,6 @@ export function MenuExperience() {
                   sizes="(max-width: 760px) 100vw, 50vw"
                   />
                 </picture>
-                <span className="menu-coming-soon-photo-note">صورة توضيحية</span>
               </div>
               <div className="menu-coming-soon-content">
                 <span className="menu-coming-soon-status">قريبًا</span>
@@ -289,7 +286,6 @@ export function MenuExperience() {
                   sizes="(max-width: 760px) 100vw, 50vw"
                   />
                 </picture>
-                <span className="menu-coming-soon-photo-note">صورة توضيحية</span>
               </div>
               <div className="menu-coming-soon-content">
                 <div className="menu-coming-soon-labels">
@@ -404,7 +400,6 @@ export function MenuExperience() {
                             onClick={() => setProtein(option.name)}>
                           <span className="menu-option-thumb"><BuilderFoodPhoto src={option.image} alt="" sizes="(max-width: 520px) 42vw, 180px" /></span>
                           <span className="menu-option-name">{option.name}</span>
-                          <small className="menu-builder-photo-note">{option.illustrative ? "صورة توضيحية" : "صورة من المنيو"}</small>
                           <small className="menu-builder-metrics">{option.price} ر.س · {option.calories} سعرة</small>
                           <span className="menu-option-check" aria-hidden="true">{selected ? "✓" : "+"}</span>
                         </button>;
@@ -421,7 +416,6 @@ export function MenuExperience() {
                             onClick={() => toggleCarb(option.name)}>
                           <span className="menu-option-thumb"><BuilderFoodPhoto src={option.image} alt="" sizes="(max-width: 520px) 42vw, 180px" /></span>
                           <span className="menu-option-name">{option.name}</span>
-                          <small className="menu-builder-photo-note">{option.illustrative ? "صورة توضيحية" : "صورة من المنيو"}</small>
                           <small className="menu-builder-metrics">{option.price} ر.س · {option.calories} سعرة</small>
                           <span className="menu-option-check" aria-hidden="true">{picked ? "✓" : "+"}</span>
                         </button>;
@@ -456,7 +450,7 @@ export function MenuExperience() {
                 <div className="menu-summary-visual-photo">
                   <BuilderFoodPhoto key={activeBuilder === "meal" ? protein : "salad"}
                     src={activeBuilder === "meal" ? activeProtein.image : secondImage}
-                    alt={activeBuilder === "meal" ? "صورة البروتين المختار من المنيو: " + protein : "صورة توضيحية للسلطة"}
+                    alt={activeBuilder === "meal" ? "صورة البروتين المختار من المنيو: " + protein : "معاينة السلطة"}
                     sizes="(max-width:760px) 42vw, 230px" />
                 </div>
                 <span className="menu-summary-visual-caption">معاينة من صور المنيو وليست صورة لتركيبتك النهائية</span>

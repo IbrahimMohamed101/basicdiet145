@@ -263,7 +263,7 @@ test("meal-builder shows photos only for supported matched dishes", async ({ pag
 });
 
 
-test("all 108 cashier items have a picture reference and illustrative exceptions are flagged", async ({ page }) => {
+test("all 108 cashier items retain image metadata without visible photo badges", async ({ page }) => {
   const { menuPreviewItems } = await import("../lib/menu-preview-items");
   expect(menuPreviewItems).toHaveLength(108);
   expect(menuPreviewItems.filter(item => !item.image)).toHaveLength(0);
@@ -278,7 +278,7 @@ test("all 108 cashier items have a picture reference and illustrative exceptions
   await page.locator(".menu-extra-toggle").click();
   await page.locator("#menu-products").getByRole("button", { name: "المشروبات" }).click();
   await expect(page.locator(".menu-product-card img")).toHaveCount(12);
-  await expect(page.locator(".menu-product-card .menu-photo-disclosure")).toHaveCount(12);
+  await expect(page.locator(".menu-product-card .menu-photo-disclosure")).toHaveCount(0);
   await expect(page.locator(".menu-product-card .menu-image-fallback")).toHaveCount(0);
 });
 
@@ -565,7 +565,7 @@ test("restaurant menu prices, categories, generated-photo labels and compact exp
   await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "سمك كريمة" })).toContainText("20");
   await menu.getByRole("button", { name: "الدجاج" }).click();
   await expect(menu.locator(".restaurant-menu-card")).toHaveCount(15);
-  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "دجاج زعتر" }).locator(".restaurant-menu-image-note")).toHaveText("صورة توضيحية");
+  await expect(menu.locator(".restaurant-menu-card .restaurant-menu-image-note")).toHaveCount(0);
   await menu.getByRole("button", { name: /الكل/ }).click();
   await menu.locator(".restaurant-menu-expand").click();
   await expect(menu.locator(".restaurant-menu-card")).toHaveCount(39);

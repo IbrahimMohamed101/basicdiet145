@@ -32,7 +32,6 @@ function DishPhoto({ dish }: { dish: RestaurantMenuItem }) {
           onError={() => setFailed(true)}
         />
       )}
-      {dish.illustrative && !failed && <span className="restaurant-menu-image-note">صورة توضيحية</span>}
     </div>
   );
 }

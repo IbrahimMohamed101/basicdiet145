@@ -511,17 +511,6 @@ body:has(.menu-page) a.skip-link:focus-visible {
   color: #fff;
   background: #11583c;
 }
-.menu-page .menu-option-grid button.menu-option-photo-button .menu-builder-photo-note {
-  display: block;
-  color: #60776a;
-  border: 0;
-  width: 100%;
-  height: auto;
-  font-size: 10px;
-  line-height: 1.25;
-  text-align: right;
-  font-weight: 500;
-}
 .menu-page .menu-option-grid button.menu-option-photo-button:disabled {
   opacity: .48;
   cursor: not-allowed;
@@ -611,7 +600,6 @@ body:has(.menu-page) a.skip-link:focus-visible {
     line-height: 1.35;
     min-height: 32px;
   }
-  .menu-page .menu-option-grid button.menu-option-photo-button .menu-builder-photo-note { font-size: 10px; }
   .menu-page .menu-option-grid button.menu-option-photo-button .menu-option-check {
     top: 13px;
     inset-inline-end: 13px;
