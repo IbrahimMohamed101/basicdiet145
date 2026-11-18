@@ -176,7 +176,7 @@
 @media (max-width: 1080px) {
   .restaurant-menu-card--featured {
     display: grid;
-    grid-template-columns: minmax(100px, 34%) minmax(0, 1fr);
+    grid-template-columns: minmax(100px, 32%) minmax(0, 1fr);
     grid-template-rows: 1fr auto;
     align-items: start;
     gap: 0 10px;
