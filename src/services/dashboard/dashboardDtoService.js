@@ -126,6 +126,16 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, 
     fulfillmentType: mode === "pickup" ? "branch_pickup" : "home_delivery",
     mealCount: Array.isArray(day.mealSlots) ? day.mealSlots.length : 0,
     plan,
+    // Purchased add-on plans are distinct from the items selected for this day.
+    // Staff must not treat an entitlement badge as a preparation instruction.
+    addonPlans: (Array.isArray(subscription?.addonSubscriptions) ? subscription.addonSubscriptions : [])
+      .map((addon) => ({
+        addonPlanId: stringifyId(addon.addonPlanId || addon.addonId),
+        label: addon.addonPlanName || addon.name || addon.displayCategory || addon.category || addon.displayKey || "",
+        labelI18n: addon.addonPlanNameI18n || null,
+        quantityPerDay: Math.max(1, Number(addon.purchasedDailyQty || addon.quantityPerDay || 1)),
+      }))
+      .filter((addon) => addon.label || addon.labelI18n?.ar || addon.labelI18n?.en),
     kitchenDetails,
     ...buildKitchenProjection(kitchenDetails),
     paymentValidity,
