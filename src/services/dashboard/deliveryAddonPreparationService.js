@@ -187,6 +187,8 @@ async function prepareDeliveryAddon({
         entitlementKey: plan.entitlementKey || "bucket:" + id(bucket._id),
         balanceBucketId: bucket._id, addonPlanId: entitlement.addonPlanId || entitlement.addonId || null,
         productId: product.productId, status: "started",
+        preparedBy: actorId ? id(actorId) : "",
+        preparedByRole: role,
       },
     }, { upsert: true, new: true, setDefaultsOnInsert: true }).lean();
   } catch (e) {
