@@ -22,6 +22,8 @@ const SubscriptionDailyAddonOperationSchema = new mongoose.Schema(
     balanceBucketId: { type: mongoose.Schema.Types.ObjectId, required: true },
     addonPlanId: { type: mongoose.Schema.Types.ObjectId, default: null },
     productId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    preparedBy: { type: String, default: "" },
+    preparedByRole: { type: String, default: "" },
     status: {
       type: String,
       enum: [
