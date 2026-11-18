@@ -55,6 +55,7 @@ jobs:
         run: |
           specs=(
             tests/menu.spec.ts
+            tests/menu-new-clubs.spec.ts
             tests/menu-nutrition.spec.ts
             tests/lead-flow.spec.ts
             tests/menu-builder-mobile.spec.ts
