@@ -34,7 +34,7 @@ const restaurantSource = read("lib/restaurant-menu-data.ts");
 const restaurantMatch = restaurantSource.match(/export const restaurantMenuItems:\s*RestaurantMenuItem\[\]\s*=\s*(\[[\s\S]*?\]);/);
 if (!restaurantMatch) fail("Restaurant menu data not parseable");
 const restaurant = JSON.parse(restaurantMatch[1]);
-if (restaurant.length !== 39) fail("Expected 39 approved restaurant-menu items");
+if (restaurant.length !== 40) fail("Expected 40 approved restaurant-menu items");
 
 const proteinItems = restaurant.filter(row => row.category === "الدجاج" || row.category === "الأسماك واللحوم");
 const sideItems = restaurant.filter(row => row.category === "الكارب");
