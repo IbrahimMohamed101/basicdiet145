@@ -40,8 +40,11 @@ for (const width of [390, 1440]) {
       await expect(card.locator(".restaurant-menu-price")).toContainText(String(item.price));
       await expect(card).toContainText(`${item.proteinGrams} جم بروتين`);
       await expect(card.locator(".restaurant-menu-description")).toBeVisible();
+      await expect(card.locator(".restaurant-menu-name-en")).toHaveCount(0);
+      await expect(card.locator("p[lang='en']")).toHaveCount(0);
+      await expect(card.locator("summary")).toHaveText("مسببات الحساسية");
       await card.locator("summary").click();
-      await expect(card.locator(".restaurant-menu-details")).toContainText("مسببات الحساسية");
+      await expect(card.locator(".restaurant-menu-details p")).not.toBeEmpty();
     }
 
     await menu.getByRole("button", { name: "الحلويات", exact: true }).click();
@@ -51,5 +54,56 @@ for (const width of [390, 1440]) {
     await expect.poll(async () => page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);
+  });
+}
+
+for (const width of [320, 360, 390, 428, 768, 1024, 1440]) {
+  test(`club cards are compact and readable with no horizontal overflow at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto("/menu", { waitUntil: "domcontentloaded" });
+    const menu = page.locator("#restaurant-menu");
+    await menu.getByRole("button", { name: "الساندوتشات", exact: true }).click();
+    const card = menu.locator(".restaurant-menu-card--featured").first();
+    await expect(card).toBeVisible();
+    await expect(card.locator(".restaurant-menu-price")).toBeVisible();
+    await expect(card.locator(".restaurant-menu-description")).toBeVisible();
+    await expect(card.locator("summary")).toHaveText("مسببات الحساسية");
+    await expect(menu.locator(".restaurant-menu-name-en, p[lang='en']")).toHaveCount(0);
+
+    const sizes = await card.evaluate(node => {
+      const outer = node.getBoundingClientRect();
+      const photo = node.querySelector(".restaurant-menu-photo")!.getBoundingClientRect();
+      const info = node.querySelector(".restaurant-menu-card-content")!.getBoundingClientRect();
+      const price = node.querySelector(".restaurant-menu-price")!.getBoundingClientRect();
+      return {
+        height: outer.height,
+        photoWidth: photo.width,
+        photoRatio: photo.width / photo.height,
+        photoRight: photo.right,
+        infoRight: info.right,
+        outerWidth: outer.width,
+        contentWidth: node.scrollWidth,
+        priceRight: price.right,
+        priceBottom: price.bottom,
+        outerRight: outer.right,
+        outerBottom: outer.bottom,
+      };
+    });
+    expect(sizes.contentWidth).toBeLessThanOrEqual(sizes.outerWidth + 1);
+    expect(sizes.photoRatio).toBeGreaterThan(1.2);
+    expect(sizes.photoRatio).toBeLessThan(1.5);
+    expect(sizes.priceBottom).toBeLessThanOrEqual(sizes.outerBottom + 1);
+    if (width <= 1080) {
+      expect(sizes.photoWidth).toBeLessThanOrEqual(155);
+      expect(sizes.photoRight).toBeGreaterThan(sizes.infoRight);
+      expect(sizes.height).toBeLessThanOrEqual(245);
+    }
+    await expect.poll(async () => page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )).toBeLessThanOrEqual(1);
+
+    if ([320, 390, 768, 1440].includes(width)) {
+      await card.screenshot({ path: `test-results/club-card-${width}.png`, animations: "disabled" });
+    }
   });
 }

@@ -28,7 +28,7 @@ function DishPhoto({ dish }: { dish: RestaurantMenuItem }) {
           src={dish.image}
           alt={dish.name + " من منيو بيسك دايت"}
           fill
-          sizes={dish.featured ? "(max-width: 630px) 100vw, (max-width: 1080px) 50vw, 25vw" : "(max-width: 540px) 96px, 112px"}
+          sizes={dish.featured ? "(max-width: 1080px) 140px, 25vw" : "(max-width: 540px) 96px, 112px"}
           loading="lazy"
           onError={() => setFailed(true)}
         />
@@ -49,7 +49,7 @@ export function RestaurantMenu({
     <section className="restaurant-menu" id="restaurant-menu" aria-labelledby="restaurant-menu-heading" dir="rtl">
       <div className="page-shell">
         <header className="restaurant-menu-intro">
-          <span className="restaurant-menu-eyebrow">BASIC DIET / RESTAURANT MENU</span>
+          <span className="restaurant-menu-eyebrow">بيسك دايت | منيو المطعم</span>
           <h2 id="restaurant-menu-heading">منيو المطعم <em>بالصور والأسعار.</em></h2>
           <p>اختار من الدجاج والسندوتشات والأسماك واللحوم والكارب والحلويات. الأسعار بالريال السعودي، والسعرات تقديرية.</p>
         </header>
@@ -84,13 +84,11 @@ export function RestaurantMenu({
                     <DishPhoto dish={dish} />
                     <div className="restaurant-menu-card-content">
                       <h4>{dish.name}</h4>
-                      {dish.nameEn && <span className="restaurant-menu-name-en" lang="en" dir="ltr">{dish.nameEn}</span>}
-                      <span>{dish.calories} سعرة حرارية تقريبًا{dish.proteinGrams != null ? ` · ${dish.proteinGrams} جم بروتين` : ""}</span>
+                      <span>{dish.calories} سعرة{dish.proteinGrams != null ? ` · ${dish.proteinGrams} جم بروتين` : ""}</span>
                       {dish.descriptionAr && <p className="restaurant-menu-description">{dish.descriptionAr}</p>}
-                      {dish.descriptionEn && <details className="restaurant-menu-details">
-                        <summary>English / مسببات الحساسية</summary>
-                        <p lang="en" dir="ltr">{dish.descriptionEn}</p>
-                        <p><strong>مسببات الحساسية:</strong> {dish.allergens}</p>
+                      {dish.allergens && <details className="restaurant-menu-details">
+                        <summary>مسببات الحساسية</summary>
+                        <p>{dish.allergens}</p>
                       </details>}
                     </div>
                     <strong className="restaurant-menu-price">{dish.price} <small>ريال</small></strong>
