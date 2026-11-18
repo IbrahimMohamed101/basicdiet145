@@ -235,6 +235,9 @@ async function run() {
   const premiumSalad = cleanDay.kitchen.cards.find((card) => card.type === "premium_large_salad");
   assert.strictEqual(premiumSalad.title, "سلطة كبيرة مميزة");
   assert(premiumSalad.sections.length > 0);
+  assert.strictEqual(cleanDay.addonPlans.length, 1);
+  assert.strictEqual(cleanDay.addonPlans[0].labelI18n.ar, "عصائر");
+  assert.strictEqual(cleanDay.addonPlans[0].addonPlanId, ids.addonPlan);
   assert.strictEqual(cleanDay.kitchen.addonGroups.length, 1);
   assert.strictEqual(cleanDay.kitchen.addonGroups[0].addonPlanId, ids.addonPlan);
   assert.strictEqual(cleanDay.kitchen.addonGroups[0].items[0].payableTotalHalala, 0);
