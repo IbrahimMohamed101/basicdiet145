@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+const { getTodayKSADate } = require("../src/utils/date");
 
 const opsController = require("../src/controllers/dashboard/opsController");
 const opsReadService = require("../src/services/dashboard/opsReadService");
@@ -57,7 +58,8 @@ async function run() {
     status: "confirmed",
     paymentStatus: "paid",
     fulfillmentMethod: "pickup",
-    fulfillmentDate: "2026-07-17",
+    // Action permissions are date-sensitive. Keep this fixture on today's KSA business date.
+    fulfillmentDate: getTodayKSADate(),
     pickup: {
       branchId: "main",
       branchName: { ar: "الفرع الرئيسي", en: "Main Branch" },
