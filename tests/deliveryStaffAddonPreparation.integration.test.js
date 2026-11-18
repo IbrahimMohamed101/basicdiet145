@@ -147,6 +147,15 @@ async function run() {
 
     await expectRejection(() => prepareDeliveryAddon({ ...args(multiple), role: "cashier" }), "FORBIDDEN");
     await expectRejection(() => prepareDeliveryAddon({ ...args(multiple), balanceBucketId: id(oid()) }), "ADDON_PLAN_AMBIGUOUS");
+    const stacked = await fixture();
+    await SubscriptionDay.updateOne(
+      { _id: stacked.day._id },
+      { $set: { stackingExtraSelectionState: { version: "subscription_stacking.extra_selection.v1", lifecycleStatus: "reserved", entries: [] } } }
+    );
+    await expectRejection(() => prepareDeliveryAddon(args(stacked)), "STACKING_EXTRA_MANAGED_SEPARATELY");
+    const stackedBalance = await balance(stacked.sub._id, stacked.bucketId);
+    assert.deepEqual([stackedBalance.remainingQty, stackedBalance.reservedQty, stackedBalance.consumedQty], [7, 0, 0]);
+
     const future = await fixture({ date: "2027-01-02" });
     await expectRejection(() => prepareDeliveryAddon(args(future)), "DAY_NOT_PREPARABLE");
 
