@@ -8,6 +8,7 @@ const SubscriptionDailyAddonOperation = require("../../models/SubscriptionDailyA
 const dailyAddonService = require("../subscription/subscriptionDailyAddonService");
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const { getTodayKSADate } = require("../../utils/date");
+const { explainSubscriptionCurrentState } = require("../subscription/subscriptionCurrentResolverService");
 
 const PREPARABLE_STATUSES = new Set(["locked", "in_preparation"]);
 const STAFF_ROLES = new Set(["admin", "superadmin", "kitchen", "courier"]);
@@ -90,8 +91,8 @@ function resolvePlanRows(subscription, day, { today = getTodayKSADate(), role = 
   const mode = resolveEffectiveFulfillmentMode({ subscription, day, date: day && day.date });
   const activeDay = Boolean(
     day && day.date === today && PREPARABLE_STATUSES.has(day.status)
-    && subscription && subscription.status === "active" && mode === "delivery"
-    && !day.stackingExtraSelectionState
+    && subscription && explainSubscriptionCurrentState(subscription, today).eligible
+    && mode === "delivery" && !day.stackingExtraSelectionState
   );
   return entitlements.filter(Boolean).map((entitlement, index) => {
     const bucket = findUniqueBucket(subscription, entitlement);
@@ -107,7 +108,8 @@ function resolvePlanRows(subscription, day, { today = getTodayKSADate(), role = 
       && !unresolved && selectedQty < dailyQty && remainingQty > 0
       && products.length > 0 && products.every((p) => p.name)
     );
-    const reason = day && day.stackingExtraSelectionState ? "STACKING_EXTRA_MANAGED_SEPARATELY"
+    const reason = !explainSubscriptionCurrentState(subscription, today).eligible ? "SUBSCRIPTION_NOT_CURRENT"
+      : day && day.stackingExtraSelectionState ? "STACKING_EXTRA_MANAGED_SEPARATELY"
       : !bucket ? "ADDON_BALANCE_MISSING"
       : unresolved ? "UNRESOLVED_OLDER_RESERVATION"
       : selectedQty >= dailyQty ? "ALREADY_SELECTED_FOR_TODAY"
@@ -158,7 +160,7 @@ async function prepareDeliveryAddon({
     throw error("DAY_NOT_PREPARABLE", "Only today's locked or preparing delivery can be modified");
   }
   const subscription = await Subscription.findById(day.subscriptionId).lean();
-  if (!subscription || subscription.status !== "active"
+  if (!subscription || !explainSubscriptionCurrentState(subscription, today).eligible
     || resolveEffectiveFulfillmentMode({ subscription, day, date: day.date }) !== "delivery") {
     throw error("SUBSCRIPTION_NOT_ELIGIBLE", "An active delivery subscription is required");
   }
