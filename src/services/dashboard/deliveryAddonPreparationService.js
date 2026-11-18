@@ -91,6 +91,7 @@ function resolvePlanRows(subscription, day, { today = getTodayKSADate(), role = 
   const activeDay = Boolean(
     day && day.date === today && PREPARABLE_STATUSES.has(day.status)
     && subscription && subscription.status === "active" && mode === "delivery"
+    && !day.stackingExtraSelectionState
   );
   return entitlements.filter(Boolean).map((entitlement, index) => {
     const bucket = findUniqueBucket(subscription, entitlement);
@@ -106,7 +107,8 @@ function resolvePlanRows(subscription, day, { today = getTodayKSADate(), role = 
       && !unresolved && selectedQty < dailyQty && remainingQty > 0
       && products.length > 0 && products.every((p) => p.name)
     );
-    const reason = !bucket ? "ADDON_BALANCE_MISSING"
+    const reason = day && day.stackingExtraSelectionState ? "STACKING_EXTRA_MANAGED_SEPARATELY"
+      : !bucket ? "ADDON_BALANCE_MISSING"
       : unresolved ? "UNRESOLVED_OLDER_RESERVATION"
       : selectedQty >= dailyQty ? "ALREADY_SELECTED_FOR_TODAY"
       : !activeDay ? "DAY_NOT_PREPARABLE"
@@ -159,6 +161,11 @@ async function prepareDeliveryAddon({
   if (!subscription || subscription.status !== "active"
     || resolveEffectiveFulfillmentMode({ subscription, day, date: day.date }) !== "delivery") {
     throw error("SUBSCRIPTION_NOT_ELIGIBLE", "An active delivery subscription is required");
+  }
+  // Stacked purchase extras are settled through a separate transactional ledger.
+  // Never debit the legacy addonBalance for an extra already owned by that ledger.
+  if (day.stackingExtraSelectionState) {
+    throw error("STACKING_EXTRA_MANAGED_SEPARATELY", "Stacked extras require their canonical fulfillment flow");
   }
 
   const rows = resolvePlanRows(subscription, day, { today, role });
