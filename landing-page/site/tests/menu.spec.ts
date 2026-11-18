@@ -15,7 +15,7 @@ for (const width of [320, 360, 390, 768, 1440]) {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);
     await expect(page.locator("main .menu-product-card")).toHaveCount(0);
-    await expect(page.locator("#restaurant-menu .restaurant-menu-card")).toHaveCount(16);
+    await expect(page.locator("#restaurant-menu .restaurant-menu-card")).toHaveCount(18);
     const missingTargets = await page.locator('a[href^="#"]').evaluateAll((links) => links
       .map((link) => link.getAttribute("href") || "")
       .filter((href) => href.length > 1 && !document.getElementById(href.slice(1))));
@@ -554,10 +554,10 @@ test("double activation of registration CTA sends only one request", async ({ pa
 test("restaurant menu prices, categories, generated-photo labels and compact expansion", async ({ page }) => {
   await page.goto("/menu");
   const menu = page.locator("#restaurant-menu");
-  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(16);
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(18);
   await menu.getByRole("button", { name: "الساندوتشات" }).click();
   await expect(menu.locator(".restaurant-menu-card")).toHaveCount(9);
-  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "بيض مسلوق" })).toContainText("11");
+  await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "كلوب بيض مسلوق وبيستو" }).locator(".restaurant-menu-price")).toContainText("9");
   await expect(menu.locator(".restaurant-menu-card").filter({ hasText: "برجر لحم" })).toContainText("23");
   await expect(menu).not.toContainText("فاهيتا");
   await menu.getByRole("button", { name: "الأسماك واللحوم" }).click();
@@ -568,7 +568,7 @@ test("restaurant menu prices, categories, generated-photo labels and compact exp
   await expect(menu.locator(".restaurant-menu-card .restaurant-menu-image-note")).toHaveCount(0);
   await menu.getByRole("button", { name: /الكل/ }).click();
   await menu.locator(".restaurant-menu-expand").click();
-  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(39);
+  await expect(menu.locator(".restaurant-menu-card")).toHaveCount(40);
 });
 
 test("new photo route is optimized, loads in browser and remains in the viewport", async ({ page, request }) => {

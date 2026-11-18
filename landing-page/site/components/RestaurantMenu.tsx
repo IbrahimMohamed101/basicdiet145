@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { restaurantMenuItems, type RestaurantMenuItem } from "@/lib/restaurant-menu-data";
 
-const categories = ["الدجاج", "الساندوتشات", "الأسماك واللحوم", "الكارب"] as const;
+const categories = ["الدجاج", "الساندوتشات", "الأسماك واللحوم", "الكارب", "الحلويات"] as const;
 type Category = typeof categories[number];
 export type RestaurantMenuTab = Category | "الكل";
 const tabs: RestaurantMenuTab[] = ["الكل", ...categories];
@@ -14,6 +14,7 @@ const notes: Record<Category, string> = {
   "الساندوتشات": "السعر للسندوتش الكامل",
   "الأسماك واللحوم": "السعر لحصة بروتين 100 جم",
   "الكارب": "جميع أصناف الكارب بسعر 7 ريال",
+  "الحلويات": "حلويات صحية جاهزة للأكل",
 };
 
 function DishPhoto({ dish }: { dish: RestaurantMenuItem }) {
@@ -27,7 +28,7 @@ function DishPhoto({ dish }: { dish: RestaurantMenuItem }) {
           src={dish.image}
           alt={dish.name + " من منيو بيسك دايت"}
           fill
-          sizes="(max-width: 540px) 96px, 112px"
+          sizes={dish.featured ? "(max-width: 630px) 100vw, (max-width: 1080px) 50vw, 25vw" : "(max-width: 540px) 96px, 112px"}
           loading="lazy"
           onError={() => setFailed(true)}
         />
@@ -50,7 +51,7 @@ export function RestaurantMenu({
         <header className="restaurant-menu-intro">
           <span className="restaurant-menu-eyebrow">BASIC DIET / RESTAURANT MENU</span>
           <h2 id="restaurant-menu-heading">منيو المطعم <em>بالصور والأسعار.</em></h2>
-          <p>اختار من الدجاج والسندوتشات والأسماك واللحوم والكارب. الأسعار بالريال السعودي، والسعرات تقديرية.</p>
+          <p>اختار من الدجاج والسندوتشات والأسماك واللحوم والكارب والحلويات. الأسعار بالريال السعودي، والسعرات تقديرية.</p>
         </header>
         <div className="restaurant-menu-filter" role="group" aria-label="تصفية أصناف منيو المطعم">
           {tabs.map((tab) => (
@@ -67,8 +68,10 @@ export function RestaurantMenu({
           ))}
         </div>
         {visibleCategories.map((category) => {
-          const dishes = restaurantMenuItems.filter((item) => item.category === category);
-          const visibleDishes = activeTab === "الكل" && !showAll ? dishes.slice(0, 4) : dishes;
+          const dishes = restaurantMenuItems.filter((item) => item.category === category)
+            .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+          const visibleDishes = activeTab === "الكل" && !showAll
+            ? dishes.slice(0, category === "الساندوتشات" ? 5 : 4) : dishes;
           return (
             <div className="restaurant-menu-group" key={category}>
               <div className="restaurant-menu-group-heading">
@@ -77,11 +80,18 @@ export function RestaurantMenu({
               </div>
               <div className="restaurant-menu-grid">
                 {visibleDishes.map((dish) => (
-                  <article className="restaurant-menu-card" key={dish.id}>
+                  <article className={"restaurant-menu-card" + (dish.featured ? " restaurant-menu-card--featured" : "")} key={dish.id}>
                     <DishPhoto dish={dish} />
                     <div className="restaurant-menu-card-content">
                       <h4>{dish.name}</h4>
-                      <span>{dish.calories} سعرة حرارية تقريبًا</span>
+                      {dish.nameEn && <span className="restaurant-menu-name-en" lang="en" dir="ltr">{dish.nameEn}</span>}
+                      <span>{dish.calories} سعرة حرارية تقريبًا{dish.proteinGrams != null ? ` · ${dish.proteinGrams} جم بروتين` : ""}</span>
+                      {dish.descriptionAr && <p className="restaurant-menu-description">{dish.descriptionAr}</p>}
+                      {dish.descriptionEn && <details className="restaurant-menu-details">
+                        <summary>English / مسببات الحساسية</summary>
+                        <p lang="en" dir="ltr">{dish.descriptionEn}</p>
+                        <p><strong>مسببات الحساسية:</strong> {dish.allergens}</p>
+                      </details>}
                     </div>
                     <strong className="restaurant-menu-price">{dish.price} <small>ريال</small></strong>
                   </article>

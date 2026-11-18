@@ -1,4 +1,9 @@
 const ALLOWED_MEAL_IMAGE_IDS = new Set([
+  "1MFxMxeMJ5fvo58QbsVZW9QC6X_XJ4x38", // Tuna Club — approved product image
+  "1mg7uyD1O50fZiU1tOe3Ux6Yu2Oyoc1ze", // Scrambled Egg Club — approved product image
+  "12f5VpHuCu9_LVKfvJ350wej5SrSl6bYX", // Boiled Egg & Pesto Club — approved product image
+  "1hJltj99qSFwFmYLKo9jK2-FtvvUb652u", // Turkey Club — approved product image
+  "1lqAQ18ZB_3dmkFg1JUqu3K3GQ-71okzl", // Healthy Areeka — approved product image
   "1VrtZmwaQaSkmVAw3iyGYpcOYbOCvQzcK", // لحم مفروم — approved restaurant preview
   "1_-GVEqxtZtww4VnHJGojzoULSJf5cTF4", // لحم مشروم — approved restaurant preview
   "11PrvdVeUBEzD2YeRZBnMo4rEJGzcgx_b",
