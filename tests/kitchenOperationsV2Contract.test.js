@@ -4,7 +4,7 @@ const assert = require("assert");
 const { getTodayKSADate } = require("../src/utils/date");
 
 const opsController = require("../src/controllers/dashboard/opsController");
-const opsReadService = require("../src/services/dashboard/opsReadService");
+const opsReadService = require("../src/services/dashboard/opsReadServiceV2");
 const { mapOrderToDTO, mapSubscriptionDayToDTO } = require("../src/services/dashboard/dashboardDtoService");
 const { serializeKitchenOperation } = require("../src/services/dashboard/kitchenOperationsContractService");
 const { listKitchenOperations } = require("../src/services/kitchenOperations/KitchenOperationsListService");
