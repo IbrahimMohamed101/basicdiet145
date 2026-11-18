@@ -15,7 +15,7 @@ for (const width of [390, 1440]) {
     const group = restaurant.locator(".restaurant-menu-group");
     await expect(group).toHaveCount(1);
     await expect(group.locator(".restaurant-menu-card")).toHaveCount(6);
-    await expect(restaurant.getByRole("button", { name: "الكل 39" })).toBeVisible();
+    await expect(restaurant.getByRole("button", { name: "الكل 40" })).toBeVisible();
 
     for (const dish of newDishes) {
       const card = group.locator(".restaurant-menu-card").filter({
