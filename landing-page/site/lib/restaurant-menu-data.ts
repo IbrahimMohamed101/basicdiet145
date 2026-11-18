@@ -368,7 +368,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "nameEn": "Healthy Areeka",
     "descriptionAr": "طبقات من الحبوب والكريمة الخفيفة مع الجبنة المبشورة في علبة جاهزة للأكل.",
     "descriptionEn": "Layers of grains and light cream topped with shredded cheese, in a ready-to-eat box.",
-    "price": 12,
+    "price": 10,
     "calories": 380,
     "proteinGrams": 13,
     "allergens": "الحليب (الجبنة)، الحبوب",
