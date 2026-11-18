@@ -1,6 +1,12 @@
 export type RestaurantMenuItem = {
   id: string;
-  category: "الدجاج" | "الساندوتشات" | "الأسماك واللحوم" | "الكارب";
+  category: "الدجاج" | "الساندوتشات" | "الأسماك واللحوم" | "الكارب" | "الحلويات";
+  nameEn?: string;
+  descriptionAr?: string;
+  descriptionEn?: string;
+  proteinGrams?: number;
+  allergens?: string;
+  featured?: boolean;
   name: string;
   price: number;
   calories: number;
@@ -146,26 +152,44 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
   {
     "id": "restaurant-17",
     "category": "الساندوتشات",
-    "name": "تونا",
+    "name": "كلوب تونة",
+    "nameEn": "Tuna Club",
+    "descriptionAr": "كلوب ساندويتش بالحبوب الكاملة بحشوة التونة والصوص الخاص الصحي",
+    "descriptionEn": "Whole-grain club sandwich filled with tuna and our special healthy sauce.",
     "price": 13,
-    "calories": 310,
-    "image": "/restaurant-menu/sandwich_2.jpg"
+    "calories": 290,
+    "proteinGrams": 26,
+    "allergens": "الأسماك، الحبوب (الجلوتين)",
+    "image": "/api/meal-image?id=1MFxMxeMJ5fvo58QbsVZW9QC6X_XJ4x38",
+    "featured": true
   },
   {
     "id": "restaurant-18",
     "category": "الساندوتشات",
-    "name": "بيض اسكرامبل",
-    "price": 13,
-    "calories": 280,
-    "image": "/restaurant-menu/sandwich_3.jpg"
+    "name": "كلوب بيض اسكرامبل",
+    "nameEn": "Scrambled Egg Club",
+    "descriptionAr": "كلوب بخبز الحبوب الكاملة محشو ببيض اسكرامبل طري وصوص خفيف، وجبة مشبعة وغنية بالبروتين.",
+    "descriptionEn": "Whole-grain club sandwich filled with soft scrambled eggs and a light sauce. A filling, high-protein meal.",
+    "price": 9,
+    "calories": 380,
+    "proteinGrams": 20,
+    "allergens": "البيض، الحبوب (الجلوتين)",
+    "image": "/api/meal-image?id=1mg7uyD1O50fZiU1tOe3Ux6Yu2Oyoc1ze",
+    "featured": true
   },
   {
     "id": "restaurant-19",
     "category": "الساندوتشات",
-    "name": "بيض مسلوق",
-    "price": 11,
-    "calories": 365,
-    "image": "/restaurant-menu/sandwich_4.jpg"
+    "name": "كلوب بيض مسلوق وبيستو",
+    "nameEn": "Boiled Egg & Pesto Club",
+    "descriptionAr": "كلوب بخبز الحبوب الكاملة مع بيض مسلوق وطماطم وخس وصوص بيستو وصوص أبيض خفيف، وجبة مشبعة ومتوازنة.",
+    "descriptionEn": "Whole-grain club sandwich with boiled egg, tomato, lettuce, pesto and a light white sauce. A filling, balanced meal.",
+    "price": 9,
+    "calories": 390,
+    "proteinGrams": 18,
+    "allergens": "الحليب، البيض، المكسرات (من البيستو)، الحبوب",
+    "image": "/api/meal-image?id=12f5VpHuCu9_LVKfvJ350wej5SrSl6bYX",
+    "featured": true
   },
   {
     "id": "restaurant-20",
@@ -178,11 +202,16 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
   {
     "id": "restaurant-21",
     "category": "الساندوتشات",
-    "name": "ساندوتش تركي",
-    "illustrative": true,
+    "name": "كلوب تركي",
+    "nameEn": "Turkey Club",
+    "descriptionAr": "كلوب بخبز الحبوب الكاملة مع شرائح تركي وطماطم وخس وصوص خفيف، وجبة خفيفة وغنية بالبروتين.",
+    "descriptionEn": "Whole-grain club sandwich with sliced turkey, tomato, lettuce and a light sauce. A light, high-protein meal.",
     "price": 13,
     "calories": 310,
-    "image": "/restaurant-menu/sandwich_new_turkey.jpg"
+    "proteinGrams": 22,
+    "allergens": "الحبوب (الجلوتين) فقط",
+    "image": "/api/meal-image?id=1hJltj99qSFwFmYLKo9jK2-FtvvUb652u",
+    "featured": true
   },
   {
     "id": "restaurant-22",
@@ -331,5 +360,19 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "price": 7,
     "calories": 87,
     "image": "/restaurant-menu/carb_left_4.jpg"
+  },
+  {
+    "id": "restaurant-40",
+    "category": "الحلويات",
+    "name": "عريكة صحية",
+    "nameEn": "Healthy Areeka",
+    "descriptionAr": "طبقات من الحبوب والكريمة الخفيفة مع الجبنة المبشورة في علبة جاهزة للأكل.",
+    "descriptionEn": "Layers of grains and light cream topped with shredded cheese, in a ready-to-eat box.",
+    "price": 12,
+    "calories": 380,
+    "proteinGrams": 13,
+    "allergens": "الحليب (الجبنة)، الحبوب",
+    "image": "/api/meal-image?id=1lqAQ18ZB_3dmkFg1JUqu3K3GQ-71okzl",
+    "featured": true
   }
 ];
