@@ -368,6 +368,26 @@ function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRa
     },
   };
 
+  if (resolveSource(item) === "subscription") {
+    // Read-only entitlement labels, separate from kitchen.addonGroups (today's selections).
+    clean.addonPlans = (Array.isArray(item.addonPlans) ? item.addonPlans : [])
+      .map((addon) => {
+        const i18n = addon && addon.labelI18n && typeof addon.labelI18n === "object"
+          ? {
+              ar: cleanText(addon.labelI18n.ar),
+              en: cleanText(addon.labelI18n.en),
+            }
+          : null;
+        return {
+          addonPlanId: asId(addon && addon.addonPlanId),
+          label: cleanText(addon && addon.label),
+          labelI18n: i18n,
+          quantityPerDay: Math.max(1, Number(addon && addon.quantityPerDay) || 1),
+        };
+      })
+      .filter((addon) => addon.label || addon.labelI18n?.ar || addon.labelI18n?.en);
+  }
+
   compactOptional(clean, "orderId", asId(item.orderId || (item.meta && item.meta.orderId)));
   compactOptional(clean, "subscriptionId", asId(item.subscriptionId || (item.meta && item.meta.subscriptionId)));
   compactOptional(clean, "orderNumber", item.orderNumber);
