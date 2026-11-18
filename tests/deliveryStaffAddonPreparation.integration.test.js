@@ -120,6 +120,10 @@ async function run() {
     b = await balance(canceled.sub._id, canceled.bucketId);
     assert.deepEqual([b.remainingQty, b.reservedQty, b.consumedQty], [7, 0, 0], "cancel returns the reservation exactly once");
 
+    const open = await fixture({ status: "open" });
+    await expectRejection(() => prepareDeliveryAddon(args(open)), "DAY_NOT_PREPARABLE");
+    const dispatched = await fixture({ status: "out_for_delivery" });
+    await expectRejection(() => prepareDeliveryAddon(args(dispatched)), "DAY_NOT_PREPARABLE");
     const skipped = await fixture({ status: "skipped" });
     await expectRejection(() => prepareDeliveryAddon(args(skipped)), "DAY_NOT_PREPARABLE");
     b = await balance(skipped.sub._id, skipped.bucketId);
@@ -155,6 +159,13 @@ async function run() {
     await expectRejection(() => prepareDeliveryAddon(args(stacked)), "STACKING_EXTRA_MANAGED_SEPARATELY");
     const stackedBalance = await balance(stacked.sub._id, stacked.bucketId);
     assert.deepEqual([stackedBalance.remainingQty, stackedBalance.reservedQty, stackedBalance.consumedQty], [7, 0, 0]);
+
+    const expired = await fixture();
+    await Subscription.updateOne(
+      { _id: expired.sub._id },
+      { $set: { validityEndDate: new Date("2026-02-01"), endDate: new Date("2026-02-01") } }
+    );
+    await expectRejection(() => prepareDeliveryAddon(args(expired)), "SUBSCRIPTION_NOT_ELIGIBLE");
 
     const future = await fixture({ date: "2027-01-02" });
     await expectRejection(() => prepareDeliveryAddon(args(future)), "DAY_NOT_PREPARABLE");
