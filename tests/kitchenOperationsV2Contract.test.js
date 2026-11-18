@@ -1,9 +1,10 @@
 "use strict";
 
 const assert = require("assert");
+const { getTodayKSADate } = require("../src/utils/date");
 
 const opsController = require("../src/controllers/dashboard/opsController");
-const opsReadService = require("../src/services/dashboard/opsReadService");
+const opsReadService = require("../src/services/dashboard/opsReadServiceV2");
 const { mapOrderToDTO, mapSubscriptionDayToDTO } = require("../src/services/dashboard/dashboardDtoService");
 const { serializeKitchenOperation } = require("../src/services/dashboard/kitchenOperationsContractService");
 const { listKitchenOperations } = require("../src/services/kitchenOperations/KitchenOperationsListService");
@@ -57,7 +58,8 @@ async function run() {
     status: "confirmed",
     paymentStatus: "paid",
     fulfillmentMethod: "pickup",
-    fulfillmentDate: "2026-07-17",
+    // Action permissions are date-sensitive. Keep this fixture on today's KSA business date.
+    fulfillmentDate: getTodayKSADate(),
     pickup: {
       branchId: "main",
       branchName: { ar: "الفرع الرئيسي", en: "Main Branch" },
@@ -235,6 +237,9 @@ async function run() {
   const premiumSalad = cleanDay.kitchen.cards.find((card) => card.type === "premium_large_salad");
   assert.strictEqual(premiumSalad.title, "سلطة كبيرة مميزة");
   assert(premiumSalad.sections.length > 0);
+  assert.strictEqual(cleanDay.addonPlans.length, 1);
+  assert.strictEqual(cleanDay.addonPlans[0].labelI18n.ar, "عصائر");
+  assert.strictEqual(cleanDay.addonPlans[0].addonPlanId, ids.addonPlan);
   assert.strictEqual(cleanDay.kitchen.addonGroups.length, 1);
   assert.strictEqual(cleanDay.kitchen.addonGroups[0].addonPlanId, ids.addonPlan);
   assert.strictEqual(cleanDay.kitchen.addonGroups[0].items[0].payableTotalHalala, 0);

@@ -4,6 +4,7 @@ const actionController = require("../controllers/dashboard/opsActionController")
 const asyncHandler = require("../middleware/asyncHandler");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 const cashierController = require("../controllers/dashboard/cashierController");
+const { prepareAddon } = require("../controllers/dashboard/deliveryAddonPreparationController");
 
 const router = Router();
 
@@ -35,6 +36,14 @@ router.put(
   dashboardAuthMiddleware,
   dashboardRoleMiddleware(["admin", "kitchen", "cashier", "courier"]),
   asyncHandler(actionController.readyForDelivery)
+);
+
+// Staff-only explicit preparation. Never invoked from queue reads or customer planning.
+router.post(
+  "/subscription-days/:id/addons/prepare",
+  dashboardAuthMiddleware,
+  dashboardRoleMiddleware(["admin", "kitchen", "courier"]),
+  asyncHandler(prepareAddon)
 );
 
 // Phase 5: Cashier Flow

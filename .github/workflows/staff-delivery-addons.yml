@@ -1,0 +1,47 @@
+name: Staff delivery add-on safety gate
+
+on:
+  pull_request:
+    paths:
+      - "src/services/dashboard/deliveryAddonPreparationService.js"
+      - "src/controllers/dashboard/deliveryAddonPreparationController.js"
+      - "src/services/dashboard/dashboardDtoService.js"
+      - "src/services/dashboard/kitchenOperationsContractService.js"
+      - "src/models/SubscriptionDailyAddonOperation.js"
+      - "src/routes/dashboardOps.js"
+      - "tests/deliveryStaffAddonPreparation.integration.test.js"
+      - "tests/kitchenOperationsV2Contract.test.js"
+      - ".github/workflows/staff-delivery-addons.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  staff-delivery-addons:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Backend syntax
+        run: npm run validate:backend
+      - name: Concurrent staff preparation, skip, cancel, and fulfillment
+        env:
+          NODE_ENV: test
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/deliveryStaffAddonPreparation.integration.test.js
+      - name: Canonical kitchen operations contract
+        env:
+          NODE_ENV: test
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/kitchenOperationsV2Contract.test.js
+      - name: Existing daily add-on reservation lifecycle
+        env:
+          NODE_ENV: test
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionDailyAddonReservationLifecycle.test.js
+      - name: Operations boundary regression
+        env:
+          NODE_ENV: test
+        run: node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/subscriptionDailyAddonOperationBoundary.test.js

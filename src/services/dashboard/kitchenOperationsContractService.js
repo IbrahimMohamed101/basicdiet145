@@ -368,6 +368,42 @@ function serializeKitchenOperation(item = {}, { includeLegacy = false, includeRa
     },
   };
 
+  if (resolveSource(item) === "subscription") {
+    // Read-only entitlement labels, separate from kitchen.addonGroups (today's selections).
+    clean.addonPlans = (Array.isArray(item.addonPlans) ? item.addonPlans : [])
+      .map((addon) => {
+        const i18n = addon && addon.labelI18n && typeof addon.labelI18n === "object"
+          ? {
+              ar: cleanText(addon.labelI18n.ar),
+              en: cleanText(addon.labelI18n.en),
+            }
+          : null;
+        return {
+          addonPlanId: asId(addon && addon.addonPlanId),
+          label: cleanText(addon && addon.label),
+          labelI18n: i18n,
+          quantityPerDay: Math.max(1, Number(addon && addon.quantityPerDay) || 1),
+          selectedTodayQty: Math.max(0, Number(addon && addon.selectedTodayQty) || 0),
+          stillNeededQty: Math.max(0, Number(addon && addon.stillNeededQty) || 0),
+          balanceBucketId: asId(addon && addon.balanceBucketId),
+          remainingQty: addon && Number.isFinite(Number(addon.remainingQty)) && addon.remainingQty !== null
+            ? Number(addon.remainingQty) : null,
+          reservedQty: addon && Number.isFinite(Number(addon.reservedQty)) && addon.reservedQty !== null
+            ? Number(addon.reservedQty) : null,
+          consumedQty: addon && Number.isFinite(Number(addon.consumedQty)) && addon.consumedQty !== null
+            ? Number(addon.consumedQty) : null,
+          canPrepare: Boolean(addon && addon.canPrepare),
+          blockReason: cleanText(addon && addon.blockReason),
+          products: (Array.isArray(addon && addon.products) ? addon.products : []).map((p) => ({
+            productId: asId(p && p.productId),
+            name: cleanText(p && p.name),
+            nameI18n: p && p.nameI18n || null,
+          })),
+        };
+      })
+      .filter((addon) => addon.label || addon.labelI18n?.ar || addon.labelI18n?.en);
+  }
+
   compactOptional(clean, "orderId", asId(item.orderId || (item.meta && item.meta.orderId)));
   compactOptional(clean, "subscriptionId", asId(item.subscriptionId || (item.meta && item.meta.subscriptionId)));
   compactOptional(clean, "orderNumber", item.orderNumber);

@@ -14,6 +14,7 @@ const {
   stringifyId,
 } = require("./opsPayloadService");
 const { buildKitchenProjection } = require("./kitchenProjectionService");
+const { buildAddonPlanSummaries } = require("./deliveryAddonPreparationService");
 const { DEFAULT_PICKUP_LOCATION } = require("../../constants/defaultPickupLocation");
 const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const { validateSubscriptionDayOperationalGate } = require("./subscriptionDayOperationalGateService");
@@ -126,6 +127,8 @@ function mapSubscriptionDayToDTO(day, delivery, subscription, user, role, lang, 
     fulfillmentType: mode === "pickup" ? "branch_pickup" : "home_delivery",
     mealCount: Array.isArray(day.mealSlots) ? day.mealSlots.length : 0,
     plan,
+    // Purchased plans remain distinct from actual choices selected for this delivery.
+    addonPlans: buildAddonPlanSummaries(subscription, day, { role }),
     kitchenDetails,
     ...buildKitchenProjection(kitchenDetails),
     paymentValidity,
