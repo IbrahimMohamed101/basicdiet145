@@ -6,7 +6,7 @@ const newProducts = [
   { id: "restaurant-19", name: "كلوب بيض مسلوق وبيستو", price: 9, calories: 390, proteinGrams: 18 },
   { id: "restaurant-21", name: "كلوب تركي", price: 13, calories: 310, proteinGrams: 22 },
   { id: "restaurant-17", name: "كلوب تونة", price: 13, calories: 290, proteinGrams: 26 },
-  { id: "restaurant-40", name: "عريكة صحية", price: 10, calories: 380, proteinGrams: 13 },
+  { id: "restaurant-40", name: "عريكة صحية", price: 12, calories: 380, proteinGrams: 13 },
 ] as const;
 
 test("five approved products have correct prices, nutrition, descriptions and approved photo paths", () => {
@@ -50,7 +50,8 @@ for (const width of [390, 1440]) {
     await menu.getByRole("button", { name: "الحلويات", exact: true }).click();
     await expect(menu.locator(".restaurant-menu-card")).toHaveCount(1);
     await expect(menu.locator(".restaurant-menu-card")).toContainText("عريكة صحية");
-    await expect(menu.locator(".restaurant-menu-card .restaurant-menu-price")).toContainText("10");
+    await expect(menu.locator(".restaurant-menu-card .restaurant-menu-description")).toContainText("عريكة صحية سعرات اقل وطعم صحي ولذيذ بقشطة لايت بدون سكر مضاف");
+    await expect(menu.locator(".restaurant-menu-card .restaurant-menu-price")).toContainText("12");
     await expect.poll(async () => page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )).toBeLessThanOrEqual(1);
