@@ -33,6 +33,10 @@ const {
   MANUAL_DEDUCTION_REVERSAL_ACTION,
 } = require("../dashboard/manualDeduction/constants");
 
+// Written by an out-of-repo correction when staff typed a deduction larger than
+// intended (e.g. 35 instead of 3): the restored meals leave the evidence.
+const EXCESS_CORRECTION_ACTION = "subscription_manual_deduction_excess_correction";
+
 const CONSUMED_DAY_STATUSES = new Set(["fulfilled", "consumed_without_preparation"]);
 const NON_CONSUMING_DAY_STATUSES = new Set(["skipped", "frozen"]);
 
@@ -229,6 +233,11 @@ function reconcileSubscriptionMealLedger({
     manualByDate.set(record.date, (manualByDate.get(record.date) || 0) + effective);
   }
 
+  const correctedMeals = deductionLogs
+    .filter((log) => log.action === EXCESS_CORRECTION_ACTION && log.meta && log.meta.status === "applied")
+    .reduce((sum, log) => sum + nonNegativeInteger(log.meta.restoredRegularMeals)
+      + nonNegativeInteger(log.meta.restoredPremiumMeals), 0);
+
   const batchEvidence = collectBatchDeductionEvidence(batches, deductionLogs);
   const dayByDate = new Map(days.map((day) => [String(day.date), day]));
   const legacyByDate = groupByDate(subscription.baseMealAllocations);
@@ -244,6 +253,7 @@ function reconcileSubscriptionMealLedger({
   let automaticMeals = 0;
   let duplicateKeys = 0;
   let staleReservedMeals = 0;
+  const staleReservations = [];
   const dayEvidence = [];
 
   for (const date of [...dates].sort()) {
@@ -263,7 +273,10 @@ function reconcileSubscriptionMealLedger({
     const manual = manualByDate.get(date) || 0;
     automaticMeals += automatic;
 
-    if (date < today && allocation.reserved > 0) staleReservedMeals += allocation.reserved;
+    if (date < today && allocation.reserved > 0) {
+      staleReservedMeals += allocation.reserved;
+      staleReservations.push({ date, dayStatus: day ? day.status || null : null, meals: allocation.reserved });
+    }
 
     const expected = requiredMeals(subscription, day);
     const nonConsuming = Boolean(day) && NON_CONSUMING_DAY_STATUSES.has(String(day.status || ""));
@@ -296,10 +309,10 @@ function reconcileSubscriptionMealLedger({
   }
 
   if (duplicateKeys > 0) add("DUPLICATE_ALLOCATION_KEY", { duplicateKeys });
-  if (staleReservedMeals > 0) add("STALE_RESERVATION", { meals: staleReservedMeals });
+  if (staleReservedMeals > 0) add("STALE_RESERVATION", { meals: staleReservedMeals, days: staleReservations });
 
   const released = nonNegativeInteger(releasedMeals);
-  const evidenceConsumed = Math.max(0, automaticMeals + manualMeals - released);
+  const evidenceConsumed = Math.max(0, automaticMeals + manualMeals - released - correctedMeals);
   const batchLedger = summarizeBatches(batches);
   const hasBatchLedger = batchLedger.count > 0;
 
@@ -347,6 +360,7 @@ function reconcileSubscriptionMealLedger({
   return {
     subscriptionId: idOf(subscription._id),
     status: subscription.status || null,
+    deliveryMode: subscription.deliveryMode || null,
     entitlementVersion,
     counters,
     equationApplies,
@@ -356,6 +370,7 @@ function reconcileSubscriptionMealLedger({
       manualMeals,
       manualViaReservations,
       releasedMeals: released,
+      correctedMeals,
       consumedMeals: evidenceConsumed,
     },
     counterConsumed,
@@ -370,5 +385,6 @@ function reconcileSubscriptionMealLedger({
 
 module.exports = {
   CHECKS,
+  EXCESS_CORRECTION_ACTION,
   reconcileSubscriptionMealLedger,
 };

@@ -34,6 +34,7 @@ const {
   MANUAL_DEDUCTION_REVERSAL_ACTION,
 } = require("../src/services/dashboard/manualDeduction/constants");
 const {
+  EXCESS_CORRECTION_ACTION,
   reconcileSubscriptionMealLedger,
 } = require("../src/services/subscription/subscriptionMealLedgerReconciliationService");
 
@@ -89,12 +90,13 @@ async function main() {
           `metadata.${DELIVERY_BATCH_JOURNAL}`,
           `metadata.${HISTORICAL_DELIVERY_BATCH_JOURNAL}`,
           "status applicationState totalMeals remainingMeals reservedMeals consumedMeals forfeitedMeals",
+          "effectiveStartDate validityEndDate activatedAt exhaustedAt expiredAt",
         ].join(" "))
         .lean(),
       ActivityLog.find({
         entityType: "subscription",
         entityId: { $in: ids },
-        action: { $in: [MANUAL_DEDUCTION_ACTION, DAILY_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION] },
+        action: { $in: [MANUAL_DEDUCTION_ACTION, DAILY_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION, EXCESS_CORRECTION_ACTION] },
       }).sort({ createdAt: 1 }).lean(),
       User.find({ _id: { $in: subscriptions.map((row) => row.userId).filter(Boolean) } })
         .select("name phone phoneE164").lean(),
@@ -241,6 +243,8 @@ async function main() {
           activityActions: actionsBySub.get(key) || {},
           batches: (batchesBySub.get(key) || []).map((batch) => ({
             status: batch.status, totalMeals: batch.totalMeals, remainingMeals: batch.remainingMeals,
+            startsOn: batch.effectiveStartDate, endsOn: batch.validityEndDate,
+            activatedAt: batch.activatedAt, exhaustedAt: batch.exhaustedAt, expiredAt: batch.expiredAt,
             reservedMeals: batch.reservedMeals, consumedMeals: batch.consumedMeals,
             forfeitedMeals: batch.forfeitedMeals,
             journals: {
@@ -259,7 +263,9 @@ async function main() {
             lastLogs: manualLogs.slice(-4),
           },
           overDeductedDayLogs: manualLogs.filter((log) => overDeductedDates.has(log.date)),
-          evidenceDays: evidenceDays.filter((day) => overDeductedDates.has(day.date)),
+          evidenceDays: values["subscription-id"]
+            ? evidenceDays.filter((day) => day.automaticMeals > 0 || day.manualMeals > 0)
+            : evidenceDays.filter((day) => overDeductedDates.has(day.date)),
         }, null, 1));
       }
       return;
@@ -311,13 +317,13 @@ async function main() {
     ].map((report) => ({ subscriptionId: report.subscriptionId, gap: -report.consumedGap }));
 
     const header = ["verdict", "code", "severity", "subscriptionId", "customer", "phone", "status",
-      "total", "available", "reserved", "consumed", "forfeited", "evidenceConsumed", "gap", "details", "action"];
+      "deliveryMode", "total", "available", "reserved", "consumed", "forfeited", "evidenceConsumed", "gap", "details", "action"];
     const lines = [header.join(",")];
     for (const report of reports.filter((row) => row.verdict !== "ok")) {
       for (const finding of report.findings) {
         lines.push([
           report.verdict, finding.code, finding.severity, report.subscriptionId, report.customer, report.phone,
-          report.status, report.counters.total, report.counters.available, report.counters.reserved,
+          report.status, report.deliveryMode, report.counters.total, report.counters.available, report.counters.reserved,
           report.counters.consumed, report.counters.forfeited, report.evidence.consumedMeals, report.consumedGap,
           JSON.stringify(finding.details), finding.action,
         ].map(csvCell).join(","));

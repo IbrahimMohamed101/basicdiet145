@@ -381,4 +381,46 @@ function legacyManualLog(id, date, meals, remainingBefore, remainingAfter) {
   assert.deepEqual(codes(released), []);
 }
 
+// 20. A mistyped staff deduction (35 instead of 3) that was corrected by
+//     restoring the excess leaves the evidence, so the counter matches again.
+{
+  const correction = {
+    _id: "c1",
+    entityId: SUB,
+    action: "subscription_manual_deduction_excess_correction",
+    createdAt: new Date("2026-08-18T23:09:00Z"),
+    meta: { status: "applied", sourceDeductedRegularMeals: 35, intendedRegularMeals: 3, restoredRegularMeals: 32, restoredPremiumMeals: 0 },
+  };
+  const base = {
+    subscription: subscription({ totalMeals: 78, remainingMeals: 0, consumedMeals: 78 }),
+    deductionLogs: [manualLog("l1", "2026-08-05", 35), manualLog("l2", "2026-08-06", 75)],
+    now: NOW,
+  };
+  assert.deepEqual(codes(reconcileSubscriptionMealLedger(base)), ["EVIDENCE_EXCEEDS_CONSUMED"]);
+  const corrected = reconcileSubscriptionMealLedger({ ...base, deductionLogs: [...base.deductionLogs, correction] });
+  assert.equal(corrected.evidence.correctedMeals, 32);
+  assert.equal(corrected.evidence.consumedMeals, 78);
+  assert.deepEqual(codes(corrected), []);
+  // A correction that was only prepared (not applied) changes nothing.
+  const prepared = reconcileSubscriptionMealLedger({
+    ...base,
+    deductionLogs: [...base.deductionLogs, { ...correction, meta: { ...correction.meta, status: "prepared" } }],
+  });
+  assert.deepEqual(codes(prepared), ["EVIDENCE_EXCEEDS_CONSUMED"]);
+}
+
+// 21. A stale reservation says which days and what state they are in.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({
+      totalMeals: 30, remainingMeals: 27, reservedMeals: 3, consumedMeals: 0,
+      baseMealAllocations: [{ allocationKey: "r1", state: "reserved", quantity: 3, date: "2026-11-20" }],
+    }),
+    days: [{ _id: "d1", date: "2026-11-20", status: "skipped" }],
+    now: NOW,
+  });
+  const stale = report.findings.find((finding) => finding.code === "STALE_RESERVATION");
+  assert.deepEqual(stale.details.days, [{ date: "2026-11-20", dayStatus: "skipped", meals: 3 }]);
+}
+
 console.log("subscriptionMealLedgerReconciliationService tests passed");
