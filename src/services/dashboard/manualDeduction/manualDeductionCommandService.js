@@ -90,8 +90,28 @@ function createManualDeductionCommandService({
   async function buildWarnings({ subscription, businessDate, confirmed, session }) {
     if (confirmed || !subscription || subscription.deliveryMode !== "delivery") return [];
     if (typeof repository.findFulfilledDeliveryDay !== "function") return [];
-    const day = await repository.findFulfilledDeliveryDay(subscription._id, businessDate, session);
-    return day ? ["DAY_ALREADY_DELIVERED_TODAY"] : [];
+    try {
+      const day = await repository.findFulfilledDeliveryDay(subscription._id, businessDate, session);
+      return day ? ["DAY_ALREADY_DELIVERED_TODAY"] : [];
+    } catch (err) {
+      // The warning is advisory. A failed lookup must never fail a deduction
+      // that already went through.
+      return [];
+    }
+  }
+
+  // Evidence that the cashier confirmed the extra meals. It is written AFTER the
+  // deduction committed and never throws: if it is lost the day simply stays in
+  // the review list, which is the safe direction (an extra alert, never a hidden one).
+  async function recordSameDayExtra({ subscriptionId, counts, actorId, actorRole, body, businessDate }) {
+    try {
+      await repository.createDeductionLog(
+        buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate }),
+        null
+      );
+    } catch (err) {
+      // Best effort by design.
+    }
   }
 
   async function manualDeduction({ subscriptionId, body, actorId, actorRole, idempotencyKey }) {
@@ -129,15 +149,7 @@ function createManualDeductionCommandService({
         idempotencyKey,
       });
       if (extraConfirmed) {
-        // Evidence only. If this write fails the day simply stays under review.
-        try {
-          await repository.createDeductionLog(
-            buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate }),
-            null
-          );
-        } catch (err) {
-          // Best effort by design; the deduction itself already succeeded.
-        }
+        await recordSameDayExtra({ subscriptionId, counts, actorId, actorRole, body, businessDate });
       }
       const stackedWarnings = await buildWarnings({ subscription, businessDate, confirmed: extraConfirmed, session: null });
       return stackedWarnings.length && stackedResult && typeof stackedResult === "object"
@@ -145,8 +157,9 @@ function createManualDeductionCommandService({
         : stackedResult;
     }
 
+    let committed;
     try {
-      return await runTransactionWithRetry(async (session) => {
+      committed = await runTransactionWithRetry(async (session) => {
         const subscription = await repository.findSubscriptionById(subscriptionId, session);
         validateSubscriptionCanDeduct(subscription, businessDate);
         await validateSubscriptionCustomerExists(subscription, session);
@@ -209,13 +222,6 @@ function createManualDeductionCommandService({
           allocationKeys,
         });
         await repository.createDeductionLog(log, session);
-        if (extraConfirmed) {
-          await repository.createDeductionLog(
-            buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate }),
-            session
-          );
-        }
-        const warnings = await buildWarnings({ subscription: updated, businessDate, confirmed: extraConfirmed, session });
 
         return {
           ...buildDeductionResponse({
@@ -225,7 +231,7 @@ function createManualDeductionCommandService({
             addonBalances: afterAddonBalances,
             businessDate,
           }),
-          ...(warnings.length ? { warnings } : {}),
+          __subscription: updated,
         };
       }, {
         label: "manual_subscription_deduction",
@@ -241,6 +247,17 @@ function createManualDeductionCommandService({
       }
       throw err;
     }
+
+    // Everything below is advisory and runs after the deduction committed, so it
+    // can never block or undo it.
+    const { __subscription: updatedSubscription, ...response } = committed;
+    if (extraConfirmed) {
+      await recordSameDayExtra({ subscriptionId, counts, actorId, actorRole, body, businessDate });
+    }
+    const warnings = await buildWarnings({
+      subscription: updatedSubscription, businessDate, confirmed: extraConfirmed, session: null,
+    });
+    return warnings.length ? { ...response, warnings } : response;
   }
 
   return { manualDeduction };

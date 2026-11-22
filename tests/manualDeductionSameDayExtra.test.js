@@ -89,7 +89,7 @@ async function main() {
   }
 
   // 2. Day delivered and the cashier confirms the extra use: no warning and a
-  //    marker is written in the same transaction as the deduction.
+  //    marker is written after the deduction committed (never inside it).
   {
     const logs = [];
     const result = await call(makeService(makeRepository({ delivered: true, logs })), { confirmExtraBalanceUse: true });
@@ -97,7 +97,9 @@ async function main() {
     assert.equal(logs.length, 2);
     const marker = logs.find((entry) => entry.log.action === SAME_DAY_EXTRA_ACTION);
     assert.ok(marker, "marker log written");
-    assert.deepEqual(marker.session, { id: "session" }, "marker shares the deduction transaction");
+    assert.equal(marker.session, null, "marker is written outside the deduction transaction");
+    assert.ok(logs.indexOf(marker) > logs.findIndex((entry) => entry.log.action === MANUAL_DEDUCTION_ACTION),
+      "marker comes after the deduction log");
     assert.equal(marker.log.meta.businessDate, "2026-08-03");
     assert.equal(marker.log.meta.confirmed, true);
     assert.equal(marker.log.meta.deductedTotalMeals, 2);
@@ -175,6 +177,56 @@ async function main() {
       stackedManualDeductionExecutor: async () => executed,
     });
     assert.deepEqual(await call(service, { confirmExtraBalanceUse: true }), executed);
+  }
+
+  // 9. The deduction can never be blocked by the new code (legacy path).
+  //    A failing warning lookup or a failing marker write leaves the deduction
+  //    intact; the warning is simply missing.
+  {
+    const logs = [];
+    const repo = makeRepository({ delivered: true, logs });
+    repo.findFulfilledDeliveryDay = async () => { throw new Error("lookup failed"); };
+    const result = await call(makeService(repo), {});
+    assert.equal(result.warnings, undefined);
+    assert.equal(result.deducted.total, 2);
+    assert.equal(logs.length, 1);
+  }
+  {
+    const logs = [];
+    const repo = makeRepository({ delivered: true, logs });
+    const base = repo.createDeductionLog;
+    repo.createDeductionLog = async (log, session) => {
+      if (log.action === SAME_DAY_EXTRA_ACTION) throw new Error("marker write failed");
+      return base(log, session);
+    };
+    const result = await call(makeService(repo), { confirmExtraBalanceUse: true });
+    assert.equal(result.deducted.total, 2);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0].log.action, MANUAL_DEDUCTION_ACTION);
+  }
+
+  // 10. Stacked path: a failing warning lookup never turns a successful
+  //     deduction into an error.
+  {
+    const logs = [];
+    const repo = makeRepository({ delivered: true, logs });
+    repo.findFulfilledDeliveryDay = async () => { throw new Error("lookup failed"); };
+    const executed = { deducted: { total: 2 } };
+    const service = makeService(repo, {
+      entitlementBatchDetector: async () => true,
+      stackedManualDeductionExecutor: async () => executed,
+    });
+    assert.deepEqual(await call(service, {}), executed);
+  }
+
+  // 11. A failed deduction (insufficient balance) still fails and writes no
+  //     marker or warning.
+  {
+    const logs = [];
+    const repo = makeRepository({ delivered: true, logs });
+    repo.deductAtomically = async () => { throw new Error("INSUFFICIENT"); };
+    await assert.rejects(() => call(makeService(repo), { confirmExtraBalanceUse: true }), /INSUFFICIENT/);
+    assert.equal(logs.length, 0);
   }
 
   console.log("manualDeductionSameDayExtra tests passed");

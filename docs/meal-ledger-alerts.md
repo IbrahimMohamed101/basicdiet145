@@ -55,9 +55,12 @@ balance. The system must not block that. Instead:
 * `POST` manual deduction accepts an optional `confirmExtraBalanceUse: true`. The
   cashier ticks it when the extra meals are on purpose.
 * When it is sent, an evidence-only log `subscription_manual_deduction_same_day_extra`
-  is written for that business date (same transaction on the legacy path, right
-  after success on the stacked path). It never moves a balance.
-* The reconciliation does not report a double deduction on a confirmed date.
+  is written for that business date and meal count, AFTER the deduction committed
+  (both paths). It never moves a balance and a failure to write it never fails or
+  undoes the deduction; the day then simply stays in the review list.
+* The reconciliation explains only the confirmed number of meals on that date. A
+  larger or additional deduction on the same date is still reported.
+* The warning lookup is advisory too: if it fails, the deduction succeeds without it.
 * When it is **not** sent and the delivery day was already fulfilled, the deduction
   still goes through and the response carries `warnings: ["DAY_ALREADY_DELIVERED_TODAY"]`
   so the dashboard can ask. If it stays unexplained, the daily scan raises a

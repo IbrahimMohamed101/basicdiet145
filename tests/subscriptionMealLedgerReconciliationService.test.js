@@ -432,9 +432,9 @@ function legacyManualLog(id, date, meals, remainingBefore, remainingAfter) {
     days: [{ ...legacyDay("2026-11-15", "d1", 2), plannerMeta: { requiredSlotCount: 2 } }, ...Array.from({ length: 14 }, (_, i) => legacyDay(`2026-10-${String(i + 1).padStart(2, "0")}`, `x${i}`, 2))],
     now: NOW,
   };
-  const marker = (date) => ({
+  const marker = (date, meals = 2) => ({
     _id: "m1", entityId: SUB, action: "subscription_manual_deduction_same_day_extra",
-    createdAt: new Date(`${date}T09:00:00Z`), meta: { businessDate: date, confirmed: true },
+    createdAt: new Date(`${date}T09:00:00Z`), meta: { businessDate: date, confirmed: true, deductedTotalMeals: meals },
   });
   const log = legacyManualLog("l1", "2026-11-15", 2, 20, 18);
   const confirmed = reconcileSubscriptionMealLedger({ ...input, deductionLogs: [log, marker("2026-11-15")] });
@@ -446,6 +446,15 @@ function legacyManualLog(id, date, meals, remainingBefore, remainingAfter) {
   assert.deepEqual(codes(other), ["DAY_OVER_DEDUCTED"]);
   // The marker never counts as a deduction.
   assert.equal(confirmed.evidence.manualMeals, 2);
+  // It explains only the meals it confirmed: a marker for fewer meals than were
+  // deducted, or one that carries no meal count, does not hide the day.
+  const partial = reconcileSubscriptionMealLedger({ ...input, deductionLogs: [log, marker("2026-11-15", 1)] });
+  assert.deepEqual(codes(partial), ["DAY_OVER_DEDUCTED"]);
+  const uncounted = reconcileSubscriptionMealLedger({
+    ...input,
+    deductionLogs: [log, { ...marker("2026-11-15"), meta: { businessDate: "2026-11-15", confirmed: true } }],
+  });
+  assert.deepEqual(codes(uncounted), ["DAY_OVER_DEDUCTED"]);
 }
 
 console.log("subscriptionMealLedgerReconciliationService tests passed");

@@ -239,12 +239,18 @@ function reconcileSubscriptionMealLedger({
     .reduce((sum, log) => sum + nonNegativeInteger(log.meta.restoredRegularMeals)
       + nonNegativeInteger(log.meta.restoredPremiumMeals), 0);
 
-  // Business dates on which staff confirmed that the customer took extra meals
-  // from the balance on top of the delivery. Those days are intentional, so the
-  // double-deduction suspicion does not apply to them.
-  const confirmedExtraDates = new Set(deductionLogs
-    .filter((log) => log.action === SAME_DAY_EXTRA_ACTION && log.meta && log.meta.businessDate)
-    .map((log) => String(log.meta.businessDate)));
+  // Meals per business date that staff confirmed as extras the customer took
+  // from the balance on top of the delivery. Only that many meals are explained:
+  // a larger or second deduction on the same date still counts as suspicious.
+  const confirmedExtraMealsByDate = new Map();
+  for (const log of deductionLogs) {
+    if (log.action !== SAME_DAY_EXTRA_ACTION || !log.meta || !log.meta.businessDate) continue;
+    const date = String(log.meta.businessDate);
+    confirmedExtraMealsByDate.set(
+      date,
+      (confirmedExtraMealsByDate.get(date) || 0) + nonNegativeInteger(log.meta.deductedTotalMeals)
+    );
+  }
 
   const batchEvidence = collectBatchDeductionEvidence(batches, deductionLogs);
   const dayByDate = new Map(days.map((day) => [String(day.date), day]));
@@ -307,9 +313,10 @@ function reconcileSubscriptionMealLedger({
     // automatic consumption can be a double deduction.
     // A staff deduction larger than one day's meals is a bulk/backfill deduction
     // (it cannot duplicate a single delivery), so only <= expected is suspicious.
+    const unconfirmedManual = Math.max(0, manual - (confirmedExtraMealsByDate.get(date) || 0));
     if (!nonConsuming && expected > 0 && automatic > 0 && manual > 0
-      && manual <= expected && automatic + manual > expected
-      && !confirmedExtraDates.has(date)) {
+      && manual <= expected && unconfirmedManual > 0
+      && automatic + unconfirmedManual > expected) {
       add("DAY_OVER_DEDUCTED", { ...row, deductedMeals: automatic + manual });
     }
     if (dayConsumed && date <= today && automatic + manual === 0) {
