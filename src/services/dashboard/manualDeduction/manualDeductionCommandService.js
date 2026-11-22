@@ -1,5 +1,7 @@
 "use strict";
 
+const crypto = require("node:crypto");
+const mongoose = require("mongoose");
 const { ManualDeductionError, assertCashierOrAdminRole } = require("./ManualDeductionError");
 const {
   resolveAddonBalances,
@@ -38,8 +40,23 @@ function isExtraBalanceUseConfirmed(body) {
   return value === true || String(value || "").trim().toLowerCase() === "true";
 }
 
-function buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason, businessDate }) {
+// A retried request (same idempotency key) must not add a second marker, or the
+// confirmed meal count would double. The id is derived from the key, so the
+// second insert is rejected as a duplicate and ignored.
+function sameDayExtraLogId(subscriptionId, idempotencyKey) {
+  const key = String(idempotencyKey || "").trim();
+  if (!key) return undefined;
+  const hex = crypto.createHash("sha256")
+    .update(`same-day-extra:${subscriptionId}:${key}`)
+    .digest("hex")
+    .slice(0, 24);
+  return new mongoose.Types.ObjectId(hex);
+}
+
+function buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason, businessDate, idempotencyKey }) {
+  const _id = sameDayExtraLogId(subscriptionId, idempotencyKey);
   return {
+    ...(_id ? { _id } : {}),
     entityType: "subscription",
     entityId: subscriptionId,
     action: SAME_DAY_EXTRA_ACTION,
@@ -103,10 +120,12 @@ function createManualDeductionCommandService({
   // Evidence that the cashier confirmed the extra meals. It is written AFTER the
   // deduction committed and never throws: if it is lost the day simply stays in
   // the review list, which is the safe direction (an extra alert, never a hidden one).
-  async function recordSameDayExtra({ subscriptionId, counts, actorId, actorRole, body, businessDate }) {
+  async function recordSameDayExtra({ subscriptionId, counts, actorId, actorRole, body, businessDate, idempotencyKey }) {
     try {
       await repository.createDeductionLog(
-        buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate }),
+        buildSameDayExtraLog({
+          subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate, idempotencyKey,
+        }),
         null
       );
     } catch (err) {
@@ -149,7 +168,14 @@ function createManualDeductionCommandService({
         idempotencyKey,
       });
       if (extraConfirmed) {
-        await recordSameDayExtra({ subscriptionId, counts, actorId, actorRole, body, businessDate });
+        // A replayed request returns the originally committed response, so the
+        // marker uses the date of that deduction, not the date of the retry.
+        const deductionDate = stackedResult && typeof stackedResult === "object" && stackedResult.businessDate
+          ? String(stackedResult.businessDate)
+          : businessDate;
+        await recordSameDayExtra({
+          subscriptionId, counts, actorId, actorRole, body, businessDate: deductionDate, idempotencyKey,
+        });
       }
       const stackedWarnings = await buildWarnings({ subscription, businessDate, confirmed: extraConfirmed, session: null });
       return stackedWarnings.length && stackedResult && typeof stackedResult === "object"

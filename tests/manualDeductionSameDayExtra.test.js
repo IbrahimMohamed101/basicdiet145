@@ -229,6 +229,38 @@ async function main() {
     assert.equal(logs.length, 0);
   }
 
+  // 12. Stacked path replay: a retry with the same idempotency key gets the
+  //     originally committed response back. The marker must carry the date of
+  //     that deduction (not the retry's date) and must not be added twice.
+  {
+    const stored = new Map();
+    const repo = makeRepository({ delivered: false, logs: [] });
+    repo.createDeductionLog = async (log) => {
+      const id = String(log._id);
+      if (stored.has(id)) { const e = new Error("E11000 duplicate key"); e.code = 11000; throw e; }
+      stored.set(id, log);
+    };
+    const snapshot = { subscriptionId: String(subscriptionId), businessDate: "2026-08-01", deducted: { total: 2 } };
+    const service = makeService(repo, {
+      entitlementBatchDetector: async () => true,
+      stackedManualDeductionExecutor: async () => snapshot,
+    });
+    assert.deepEqual(await call(service, { confirmExtraBalanceUse: true }), snapshot);
+    assert.deepEqual(await call(service, { confirmExtraBalanceUse: true }), snapshot);
+    assert.equal(stored.size, 1, "retry does not add a second marker");
+    const [marker] = [...stored.values()];
+    assert.equal(marker.meta.businessDate, "2026-08-01", "marker uses the original deduction date");
+    // A different idempotency key is a different deduction and gets its own marker.
+    await service.manualDeduction({
+      subscriptionId: String(subscriptionId),
+      body: { regularMeals: 2, premiumMeals: 0, reason: "cashier_walk_in", confirmExtraBalanceUse: true },
+      actorId: new mongoose.Types.ObjectId(),
+      actorRole: "admin",
+      idempotencyKey: "another-key-0000000002",
+    });
+    assert.equal(stored.size, 2);
+  }
+
   console.log("manualDeductionSameDayExtra tests passed");
 }
 
