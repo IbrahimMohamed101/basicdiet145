@@ -13,6 +13,8 @@ on:
       - "src/services/subscription/subscriptionMealLedgerReconciliationService.js"
       - "tests/subscriptionMealLedgerReconciliationService.test.js"
       - "scripts/reconcile-meal-balances.js"
+      - "scripts/settle-stuck-delivered-days.js"
+      - "tests/settleStuckDeliveredDays.test.js"
       - ".github/workflows/subscription-operations-audit.yml"
   pull_request:
     paths:
@@ -25,6 +27,8 @@ on:
       - "src/services/subscription/subscriptionMealLedgerReconciliationService.js"
       - "tests/subscriptionMealLedgerReconciliationService.test.js"
       - "scripts/reconcile-meal-balances.js"
+      - "scripts/settle-stuck-delivered-days.js"
+      - "tests/settleStuckDeliveredDays.test.js"
       - ".github/workflows/subscription-operations-audit.yml"
   workflow_dispatch:
 
@@ -47,8 +51,10 @@ jobs:
           node --check src/routes/dashboardAccounting.js
           node --check src/services/subscription/subscriptionMealLedgerReconciliationService.js
           node --check scripts/reconcile-meal-balances.js
+          node --check scripts/settle-stuck-delivered-days.js
       - name: Focused audit tests
         run: |
           NODE_ENV=test node tests/subscriptionOperationsAuditService.test.js
           NODE_ENV=test node tests/subscriptionOperationsDailyDeliveryService.test.js
           NODE_ENV=test node tests/subscriptionMealLedgerReconciliationService.test.js
+          NODE_ENV=test node tests/settleStuckDeliveredDays.test.js
