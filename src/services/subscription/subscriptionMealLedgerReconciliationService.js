@@ -210,7 +210,10 @@ function reconcileSubscriptionMealLedger({
     };
     dayEvidence.push(row);
 
-    if (!nonConsuming && expected > 0 && automatic + manual > expected && (dayConsumed || manual > 0)) {
+    // Staff bulk deductions (pickup quick deduction = days x meals on one date)
+    // legitimately exceed one day's meals, so only a day that also has
+    // automatic consumption can be a double deduction.
+    if (!nonConsuming && expected > 0 && automatic > 0 && automatic + manual > expected) {
       add("DAY_OVER_DEDUCTED", { ...row, deductedMeals: automatic + manual });
     }
     if (dayConsumed && date <= today && automatic + manual === 0) {

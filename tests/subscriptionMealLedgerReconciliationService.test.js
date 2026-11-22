@@ -164,6 +164,17 @@ const codes = (report) => report.findings.map((finding) => finding.code).sort();
   assert.deepEqual(codes(report), ["DAY_OVER_DEDUCTED"]);
 }
 
+// 7b. A staff bulk deduction (several days at once) is not a double deduction.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ remainingMeals: 15, consumedMeals: 15 }),
+    days: [{ _id: "d1", date: "2026-11-21", status: "open" }],
+    deductionLogs: [manualLog("l1", "2026-11-21", 15, { source: "pickup_quick_deduction", days: 5, mealsPerDay: 3 })],
+    now: NOW,
+  });
+  assert.deepEqual(codes(report), []);
+}
+
 // 8. Reservation left on a day that already ended.
 {
   const report = reconcileSubscriptionMealLedger({

@@ -58,6 +58,7 @@ async function main() {
       "all-statuses": { type: "boolean", default: false },
       "subscription-id": { type: "string" },
       out: { type: "string" },
+      explain: { type: "boolean", default: false },
     },
   });
   if (!process.env.MONGO_URI) throw new Error("Set MONGO_URI to the intended environment's database.");
@@ -86,6 +87,7 @@ async function main() {
           `metadata.${MANUAL_BATCH_JOURNAL}`,
           `metadata.${DELIVERY_BATCH_JOURNAL}`,
           `metadata.${HISTORICAL_DELIVERY_BATCH_JOURNAL}`,
+          "status applicationState totalMeals remainingMeals",
         ].join(" "))
         .lean(),
       ActivityLog.find({
@@ -117,6 +119,42 @@ async function main() {
       const user = usersById.get(String(subscription.userId)) || {};
       return { ...report, customer: user.name || "", phone: user.phoneE164 || user.phone || "" };
     });
+
+    if (values.explain) {
+      // Per-subscription detail without customer data, for diagnosing findings.
+      let selected = reports;
+      if (!values["subscription-id"]) {
+        const exceeding = reports
+          .filter((report) => report.findings.some((finding) => finding.code === "EVIDENCE_EXCEEDS_CONSUMED"))
+          .sort((left, right) => right.consumedGap - left.consumedGap);
+        const zeroCounter = exceeding.filter((report) => report.counterConsumed === 0).slice(0, 1);
+        selected = [...new Set([...exceeding.slice(0, 2), ...exceeding.slice(-1), ...zeroCounter])];
+      }
+      for (const report of selected) {
+        const key = report.subscriptionId;
+        const { customer, phone, ...rest } = report;
+        console.log(JSON.stringify({
+          ...rest,
+          batches: (batchesBySub.get(key) || []).map((batch) => ({
+            status: batch.status, applicationState: batch.applicationState,
+            totalMeals: batch.totalMeals, remainingMeals: batch.remainingMeals,
+            journals: {
+              manual: (batch.metadata?.[MANUAL_BATCH_JOURNAL] || []).length,
+              delivery: (batch.metadata?.[DELIVERY_BATCH_JOURNAL] || []).length,
+              historical: (batch.metadata?.[HISTORICAL_DELIVERY_BATCH_JOURNAL] || []).length,
+            },
+          })),
+          stackedAllocations: (stackedBySub.get(key) || []).length,
+          manualLogs: (logsBySub.get(key) || []).map((log) => ({
+            action: log.action, date: log.meta?.businessDate || null, meals: log.meta?.deductedTotalMeals ?? null,
+            status: log.meta?.status || null, source: log.meta?.source || null,
+            days: log.meta?.days ?? null, createdAt: log.createdAt,
+          })),
+          days: report.days.filter((day) => day.automaticMeals > 0 || day.manualMeals > 0),
+        }, null, 2));
+      }
+      return;
+    }
 
     const byVerdict = { ok: 0, review: 0, critical: 0 };
     const byCode = {};
@@ -150,6 +188,13 @@ async function main() {
         }
       }
     }
+
+    const sampleIds = reports
+      .filter((report) => report.findings.some((finding) => finding.code === "EVIDENCE_EXCEEDS_CONSUMED"))
+      .sort((left, right) => left.consumedGap - right.consumedGap);
+    diagnostics.sampleEvidenceExceeds = [
+      ...sampleIds.slice(-3), ...sampleIds.slice(0, 3),
+    ].map((report) => ({ subscriptionId: report.subscriptionId, gap: -report.consumedGap }));
 
     const header = ["verdict", "code", "severity", "subscriptionId", "customer", "phone", "status",
       "total", "available", "reserved", "consumed", "forfeited", "evidenceConsumed", "gap", "details", "action"];
