@@ -43,7 +43,12 @@ assert.throws(() => plan({ subscription: subscription({ deliveryMode: "pickup" }
 assert.throws(() => plan({ day: day({ pickupRequested: true }) }), /only delivery/);
 assert.throws(() => plan({ allocations: [] }), /no reserved meals/);
 assert.throws(() => plan({ allocations: [alloc("consumed")] }), /no reserved meals/);
-assert.throws(() => plan({ allocations: [...reserved(1), alloc("consumed")] }), /already has consumed/);
+{
+  // Partly consumed day: only the reserved remainder is settled.
+  const partial = plan({ allocations: [...reserved(1), alloc("consumed")] });
+  assert.equal(partial.expectedConsumed, 1);
+  assert.equal(partial.alreadyConsumed, 1);
+}
 assert.throws(() => plan({ day: day({ subscriptionId: "0000000000000000000000ff" }) }), /another subscription/);
 
 // 4) Allocations of other days are ignored; date-booked ones with no day link count.

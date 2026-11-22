@@ -104,7 +104,6 @@ function planDaySettlement({ subscription, day, allocations, today }) {
   const forDay = dayAllocationRows({ subscription, day, stackedAllocations: allocations });
   const counts = countByState(forDay);
   if (counts.reserved <= 0) throw new Error("day has no reserved meals to settle");
-  if (counts.consumed > 0) throw new Error("day already has consumed meals; manual review needed");
   if (forDay.some((row) => row.state === "reserved" && !row.linked)) {
     throw new Error("a reserved meal is booked on this date but not linked to the day; manual review needed");
   }
@@ -114,6 +113,9 @@ function planDaySettlement({ subscription, day, allocations, today }) {
     fromStatus: day.status,
     statusPath: PATH_TO_READY[day.status] || [],
     expectedConsumed: counts.reserved,
+    // Meals of this day that were already consumed earlier (e.g. by a staff
+    // deduction). They stay as they are; only the reserved remainder moves.
+    alreadyConsumed: counts.consumed,
     legacyReserved: forDay.filter((row) => row.source === "legacy" && row.state === "reserved").length,
     perBatchReserved: perBatchReserved(forDay.filter((row) => row.source === "stacked")),
   };
@@ -298,6 +300,7 @@ async function settleOne({ subscriptionId, date, reason, apply }) {
         reason,
         fromStatus: inTxn.day.status,
         settledMeals: txnPlan.expectedConsumed,
+        alreadyConsumedOnDay: txnPlan.alreadyConsumed,
         before: { subscription: inTxn.subscription, allocations: inTxn.allocations, batches: inTxn.batches },
         after: { subscription: post.subscription, allocations: post.allocations, batches: post.batches },
       },
