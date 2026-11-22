@@ -7,14 +7,23 @@ const Delivery = require("../../models/Delivery");
 const Payment = require("../../models/Payment");
 const Subscription = require("../../models/Subscription");
 const SubscriptionDay = require("../../models/SubscriptionDay");
+const SubscriptionEntitlementAllocation = require("../../models/SubscriptionEntitlementAllocation");
+const SubscriptionEntitlementBatch = require("../../models/SubscriptionEntitlementBatch");
 const SubscriptionPickupRequest = require("../../models/SubscriptionPickupRequest");
 const dateUtils = require("../../utils/date");
+const { resolveEffectiveFulfillmentMode } = require("../subscription/subscriptionFulfillmentPolicyService");
 const {
+  DAILY_DEDUCTION_ACTION,
+  DELIVERY_BATCH_JOURNAL,
+  HISTORICAL_DELIVERY_BATCH_JOURNAL,
   MANUAL_DEDUCTION_ACTION,
   MANUAL_DEDUCTION_REVERSAL_ACTION,
+  MANUAL_BATCH_JOURNAL,
 } = require("./manualDeduction/constants");
 
 const MAX_RANGE_DAYS = 31;
+const STAFF_DEDUCTION_ACTIONS = [MANUAL_DEDUCTION_ACTION, DAILY_DEDUCTION_ACTION];
+const DEDUCTION_AUDIT_ACTIONS = [...STAFF_DEDUCTION_ACTIONS, MANUAL_DEDUCTION_REVERSAL_ACTION];
 const DAY_TERMINAL_CONSUMED_STATUSES = new Set([
   "fulfilled",
   "consumed_without_preparation",
@@ -214,6 +223,7 @@ function expectedMealCount(subscription, day) {
   const dayRequired = nonNegativeInteger(
     day && day.plannerMeta && day.plannerMeta.requiredSlotCount
       || day && day.planningMeta && day.planningMeta.requiredMealCount
+      || day && day.lockedSnapshot && day.lockedSnapshot.requiredMealCount
       || day && day.lockedSnapshot && day.lockedSnapshot.mealsPerDay
   );
   return dayRequired || nonNegativeInteger(subscription.selectedMealsPerDay || subscription.planId?.mealsPerDay);
@@ -235,6 +245,64 @@ function allocationCounters(allocations = []) {
     result.total += quantity;
   }
   return { ...result, duplicateKeys };
+}
+
+function mergeDayAllocations(legacy, stacked, staffAllocationKeys) {
+  const byKey = new Map();
+  const unkeyed = [];
+  for (const row of [...legacy, ...stacked]) {
+    if (!row) continue;
+    const key = String(row.allocationKey || "").trim();
+    if (key) byKey.set(key, row);
+    else unkeyed.push(row);
+  }
+  let hasStaffConsumption = false;
+  for (const [key, row] of byKey) {
+    if (row.state !== "consumed" || !staffAllocationKeys.has(key)) continue;
+    byKey.delete(key);
+    hasStaffConsumption = true;
+  }
+  const allocation = allocationCounters([...byKey.values(), ...unkeyed]);
+  allocation.duplicateKeys = allocationCounters(legacy).duplicateKeys + allocationCounters(stacked).duplicateKeys;
+  return { allocation, hasStaffConsumption };
+}
+
+function collectBatchDeductionEvidence(batches, deductionLogs) {
+  const staffAllocationKeys = new Set(
+    deductionLogs
+      .filter((log) => STAFF_DEDUCTION_ACTIONS.includes(log.action))
+      .flatMap((log) => log.meta?.allocationKeys || [])
+  );
+  const deliveryMealsByDay = new Map();
+
+  for (const batch of batches) {
+    const metadata = batch.metadata || {};
+    for (const entry of metadata[MANUAL_BATCH_JOURNAL] || []) {
+      for (const key of entry.allocationKeys || []) staffAllocationKeys.add(key);
+    }
+
+    const entries = [
+      ...(metadata[DELIVERY_BATCH_JOURNAL] || []).map((entry) => ({
+        dayId: entry.idempotencyKey,
+        quantity: entry.quantity,
+      })),
+      ...(metadata[HISTORICAL_DELIVERY_BATCH_JOURNAL] || [])
+        .flatMap((entry) => entry.deliveries || []),
+    ];
+    const batchQuantitiesByDay = new Map();
+    for (const entry of entries) {
+      const dayId = id(entry.dayId);
+      const quantity = nonNegativeInteger(entry.quantity);
+      if (!dayId || !quantity) continue;
+      // A batch contributes once to a delivery. Different batches can supply
+      // separate portions of that delivery.
+      batchQuantitiesByDay.set(dayId, Math.max(batchQuantitiesByDay.get(dayId) || 0, quantity));
+    }
+    for (const [dayId, quantity] of batchQuantitiesByDay) {
+      deliveryMealsByDay.set(dayId, (deliveryMealsByDay.get(dayId) || 0) + quantity);
+    }
+  }
+  return { staffAllocationKeys, deliveryMealsByDay };
 }
 
 function manualDeductionRow(log) {
@@ -294,23 +362,26 @@ function manualDeductionLedger(deductionLogs = [], reversalLogs = []) {
     }
   }
 
-  const records = deductionLogs.map(manualDeductionRow).map((row) => {
-    const reversalIds = reversalIdsByDeduction.get(row.id) || [];
-    const reversedTotalMeals = reversalIds.length ? row.totalMeals : 0;
-    const reversedRegularMeals = reversalIds.length ? row.regularMeals : 0;
-    const reversedPremiumMeals = reversalIds.length ? row.premiumMeals : 0;
-    return {
-      ...row,
-      reversed: reversalIds.length > 0,
-      reversalActivityLogIds: reversalIds,
-      reversedTotalMeals,
-      reversedRegularMeals,
-      reversedPremiumMeals,
-      netTotalMeals: row.totalMeals - reversedTotalMeals,
-      netRegularMeals: row.regularMeals - reversedRegularMeals,
-      netPremiumMeals: row.premiumMeals - reversedPremiumMeals,
-    };
-  });
+  const records = deductionLogs
+    .filter((log) => !log.meta?.status || log.meta.status === "committed")
+    .map((log) => {
+      const row = manualDeductionRow(log);
+      const reversalIds = reversalIdsByDeduction.get(row.id) || [];
+      const reversedTotalMeals = reversalIds.length ? row.totalMeals : 0;
+      const reversedRegularMeals = reversalIds.length ? row.regularMeals : 0;
+      const reversedPremiumMeals = reversalIds.length ? row.premiumMeals : 0;
+      return {
+        ...row,
+        reversed: reversalIds.length > 0,
+        reversalActivityLogIds: reversalIds,
+        reversedTotalMeals,
+        reversedRegularMeals,
+        reversedPremiumMeals,
+        netTotalMeals: row.totalMeals - reversedTotalMeals,
+        netRegularMeals: row.regularMeals - reversedRegularMeals,
+        netPremiumMeals: row.premiumMeals - reversedPremiumMeals,
+      };
+    });
 
   const sum = (field) => records.reduce((total, row) => total + nonNegativeInteger(row[field]), 0);
   const grossManualDeductions = sum("totalMeals");
@@ -401,14 +472,19 @@ function buildDayAudit({
   day,
   delivery,
   pickupRequests,
-  allocations,
+  allocations = [],
+  stackedAllocations = [],
+  staffAllocationKeys = new Set(),
+  journaledDeliveryMeals = 0,
   manualDeductions,
   range,
 }) {
-  const fulfillmentMethod = String(subscription.deliveryMode || "");
+  const fulfillmentMethod = day?.fulfillmentModeOverride
+    ? resolveEffectiveFulfillmentMode({ subscription, day, date })
+    : String(subscription.deliveryMode || "");
   const expectedMeals = expectedMealCount(subscription, day);
   const selectedMeals = completeMealCount(day);
-  const allocation = allocationCounters(allocations);
+  const { allocation, hasStaffConsumption } = mergeDayAllocations(allocations, stackedAllocations, staffAllocationKeys);
   const grossManualDeductions = manualDeductions.reduce(
     (sum, row) => sum + nonNegativeInteger(row.totalMeals),
     0
@@ -425,6 +501,13 @@ function buildDayAudit({
   const pickupFulfilled = pickupRequests.some((request) => request.status === "fulfilled");
   const deliveryDelivered = Boolean(delivery && delivery.status === "delivered");
   const dayConsumed = DAY_TERMINAL_CONSUMED_STATUSES.has(String(day && day.status || ""));
+  const legacyDeliveryDebit = fulfillmentMethod === "delivery" && dayConsumed
+    && day?.creditsDeducted && !hasStaffConsumption
+    ? nonNegativeInteger(day.fulfilledSnapshot?.deductedCredits)
+    : 0;
+  // The journal and the legacy snapshot can describe the same debit. Prefer
+  // durable ledger evidence, with the snapshot as a fallback for older days.
+  const automaticConsumedMeals = Math.max(allocation.consumed, journaledDeliveryMeals) || legacyDeliveryDebit;
   const fulfilled = fulfillmentMethod === "delivery"
     ? deliveryDelivered || dayConsumed
     : pickupFulfilled || dayConsumed;
@@ -451,7 +534,11 @@ function buildDayAudit({
     ));
   }
 
-  if (manualMeals > 0 && (allocation.reserved + allocation.consumed + allocation.forfeited) > 0) {
+  const observedConsumedMeals = automaticConsumedMeals + manualMeals;
+  if (manualMeals > 0 && (
+    allocation.reserved > 0 || allocation.forfeited > 0
+    || (automaticConsumedMeals > 0 && (expectedMeals === 0 || observedConsumedMeals > expectedMeals))
+  )) {
     issues.push(issue(
       "MANUAL_AND_LEDGER_DEDUCTION_SAME_DAY",
       "critical",
@@ -459,7 +546,7 @@ function buildDayAudit({
       {
         manualMeals,
         reservedMeals: allocation.reserved,
-        consumedMeals: allocation.consumed,
+        consumedMeals: automaticConsumedMeals,
         forfeitedMeals: allocation.forfeited,
       }
     ));
@@ -476,7 +563,7 @@ function buildDayAudit({
     ));
   }
 
-  if (fulfilled && allocation.consumed === 0 && manualMeals === 0) {
+  if (fulfilled && automaticConsumedMeals === 0 && manualMeals === 0) {
     issues.push(issue(
       "FULFILLED_WITHOUT_RECORDED_CONSUMPTION",
       "critical",
@@ -494,25 +581,25 @@ function buildDayAudit({
     ));
   }
 
-  if (!fulfilled && allocation.consumed > 0 && !nonConsuming) {
+  if (!fulfilled && automaticConsumedMeals > 0 && !nonConsuming) {
     issues.push(issue(
       "CONSUMED_WITHOUT_FULFILLMENT",
       "critical",
       "تم استهلاك وجبات بدون وجود تنفيذ توصيل أو استلام مكتمل.",
-      { consumedMeals: allocation.consumed }
+      { consumedMeals: automaticConsumedMeals }
     ));
   }
 
-  if (fulfilled && expectedMeals > 0 && allocation.consumed + manualMeals > expectedMeals) {
+  if (fulfilled && expectedMeals > 0 && observedConsumedMeals > expectedMeals) {
     issues.push(issue(
       "DAY_DEDUCTION_EXCEEDS_EXPECTED",
       "critical",
       "إجمالي خصم اليوم أكبر من عدد الوجبات المتوقع.",
       {
         expectedMeals,
-        automaticConsumedMeals: allocation.consumed,
+        automaticConsumedMeals,
         manualMeals,
-        deductedMeals: allocation.consumed + manualMeals,
+        deductedMeals: observedConsumedMeals,
       }
     ));
   }
@@ -575,7 +662,11 @@ function buildDayAudit({
       creditsConsumedAt: request.creditsConsumedAt || null,
       fulfilledAt: request.fulfilledAt || null,
     })),
-    allocation,
+    allocation: {
+      ...allocation,
+      consumed: automaticConsumedMeals,
+      total: allocation.total - allocation.consumed + automaticConsumedMeals,
+    },
     manualDeduction: {
       count: manualCount,
       grossCount: manualDeductions.length,
@@ -587,7 +678,7 @@ function buildDayAudit({
     },
     fulfilled,
     nonConsuming,
-    deductedMealsObserved: allocation.consumed + manualMeals,
+    deductedMealsObserved: observedConsumedMeals,
     issues,
     risk: issues.some((row) => row.severity === "critical")
       ? "critical"
@@ -664,7 +755,7 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
     SubscriptionPickupRequest.find({ date: dateFilter }).lean(),
     ActivityLog.find({
       entityType: "subscription",
-      action: { $in: [MANUAL_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION] },
+      action: { $in: DEDUCTION_AUDIT_ACTIONS },
       $or: [
         { "meta.businessDate": dateFilter },
         { createdAt: createdAtFilter },
@@ -716,7 +807,7 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
   }
 
   const objectIds = [...subscriptionIds];
-  const [subscriptions, payments, allManualLogs] = await Promise.all([
+  const [subscriptions, payments, allManualLogs, batches, stackedAllocations] = await Promise.all([
     Subscription.find({ _id: { $in: objectIds } })
       .populate("userId", "name phone phoneE164 email")
       .populate("planId", "name daysCount mealsPerDay")
@@ -728,8 +819,22 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
     ActivityLog.find({
       entityType: "subscription",
       entityId: { $in: objectIds },
-      action: { $in: [MANUAL_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION] },
+      action: { $in: DEDUCTION_AUDIT_ACTIONS },
     }).sort({ createdAt: 1 }).lean(),
+    SubscriptionEntitlementBatch.find({
+      containerSubscriptionId: { $in: objectIds },
+      applicationState: "applied",
+    }).select([
+      "containerSubscriptionId",
+      "metadata." + MANUAL_BATCH_JOURNAL,
+      "metadata." + DELIVERY_BATCH_JOURNAL,
+      "metadata." + HISTORICAL_DELIVERY_BATCH_JOURNAL,
+    ].join(" ")).lean(),
+    SubscriptionEntitlementAllocation.find({
+      containerSubscriptionId: { $in: objectIds },
+      state: { $in: SubscriptionEntitlementAllocation.ALLOCATION_STATES },
+      date: dateFilter,
+    }).select("containerSubscriptionId date allocationKey state quantity").lean(),
   ]);
 
   const paymentsBySubscription = groupBy(payments, (row) => id(row.subscriptionId));
@@ -737,6 +842,8 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
   const deliveriesBySubscription = groupBy(deliveries, (row) => id(row.subscriptionId));
   const pickupBySubscription = groupBy(pickupRequests, (row) => id(row.subscriptionId));
   const allManualLogsBySubscription = groupBy(allManualLogs, (row) => id(row.entityId));
+  const batchesBySubscription = groupBy(batches, (row) => id(row.containerSubscriptionId));
+  const stackedAllocationsBySubscription = groupBy(stackedAllocations, (row) => id(row.containerSubscriptionId));
   const manualInRangeIds = new Set(manualLogsInRange.map((row) => id(row._id)));
   const newSubscriptionIdSet = new Set(newSubscriptionIds.map(id));
 
@@ -754,8 +861,12 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
     const fulfillmentMethod = String(subscription.deliveryMode || "unknown");
     const subscriptionManualLogs = allManualLogsBySubscription.get(subscriptionId) || [];
     const allManualLedger = manualDeductionLedger(
-      subscriptionManualLogs.filter((row) => row.action === MANUAL_DEDUCTION_ACTION),
+      subscriptionManualLogs.filter((row) => STAFF_DEDUCTION_ACTIONS.includes(row.action)),
       subscriptionManualLogs.filter((row) => row.action === MANUAL_DEDUCTION_REVERSAL_ACTION)
+    );
+    const batchDeductionEvidence = collectBatchDeductionEvidence(
+      batchesBySubscription.get(subscriptionId) || [],
+      subscriptionManualLogs
     );
     const allManualRows = allManualLedger.records;
     const rangeManualRows = allManualRows.filter((row) =>
@@ -801,6 +912,10 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
       ),
       (row) => String(row.date)
     );
+    const stackedAllocationsByDate = groupBy(
+      stackedAllocationsBySubscription.get(subscriptionId) || [],
+      (row) => String(row.date)
+    );
     const manualByDate = groupBy(rangeManualRows, (row) => row.date);
 
     const activityDates = new Set([
@@ -809,6 +924,7 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
       ...subscriptionPickups.map((row) => String(row.date)),
       ...rangeManualRows.map((row) => row.date),
       ...[...allocationsByDate.keys()],
+      ...stackedAllocationsByDate.keys(),
     ].filter((date) => date >= range.from && date <= range.to));
 
     if (fulfillmentMethod === "delivery" && overlapsDateRange(subscription, range)) {
@@ -824,6 +940,11 @@ async function buildSubscriptionOperationsAudit({ from, to, includeDetails = tru
         delivery: deliveryByDate.get(date) || null,
         pickupRequests: pickupByDate.get(date) || [],
         allocations: allocationsByDate.get(date) || [],
+        stackedAllocations: stackedAllocationsByDate.get(date) || [],
+        staffAllocationKeys: batchDeductionEvidence.staffAllocationKeys,
+        journaledDeliveryMeals: batchDeductionEvidence.deliveryMealsByDay.get(
+          id(dayByDate.get(date)?._id || deliveryByDate.get(date)?.dayId)
+        ) || 0,
         manualDeductions: manualByDate.get(date) || [],
         range,
       }));
@@ -994,6 +1115,7 @@ module.exports = {
   balanceSummary,
   buildDayAudit,
   buildSubscriptionOperationsAudit,
+  collectBatchDeductionEvidence,
   classifyAcquisitionSource,
   manualDeductionLedger,
   manualReversalRow,

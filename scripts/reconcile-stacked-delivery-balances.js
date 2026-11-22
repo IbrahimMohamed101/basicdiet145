@@ -15,7 +15,10 @@ const {
   normalizeDateString,
 } = require("../src/services/subscription/subscriptionEntitlementProjectionService");
 
-const JOURNAL = "historicalParentDeliveryReconciliations";
+const {
+  HISTORICAL_DELIVERY_BATCH_JOURNAL: JOURNAL,
+  DELIVERY_BATCH_JOURNAL,
+} = require("../src/services/dashboard/manualDeduction/constants");
 const COUNTERS = ["totalMeals", "remainingMeals", "reservedMeals", "consumedMeals", "forfeitedMeals"];
 
 function counters(row) {
@@ -69,7 +72,7 @@ function historicalDeliveries({ subscription, batches, drift, deliveries, days, 
   const allocatedDates = new Set(allocations.map((row) => row.date));
   const baseDays = new Set((subscription.baseMealAllocations || []).map((row) => String(row.dayId)));
   const journaledDays = new Set(batches.flatMap((row) => [
-    ...(row.metadata?.chefChoiceDeliveryDeductions || []).map((entry) => String(entry.idempotencyKey)),
+    ...(row.metadata?.[DELIVERY_BATCH_JOURNAL] || []).map((entry) => String(entry.idempotencyKey)),
     ...(row.metadata?.[JOURNAL] || []).flatMap((entry) => entry.deliveries.map(({ dayId }) => dayId)),
   ]));
 

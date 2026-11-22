@@ -106,6 +106,7 @@ function createManualDeductionCommandService({
         // remainingMeals non-negative and prevents double-debiting a reservation.
         let mutationSubscription = subscription;
         let writeCounts = counts;
+        let allocationKeys = [];
         if (
           counts.regularMeals > 0
           && Number(subscription.entitlementVersion || 0) >= 2
@@ -120,6 +121,7 @@ function createManualDeductionCommandService({
             reservedConsumption && reservedConsumption.consumedMeals || 0
           );
           if (consumedReservedMeals > 0) {
+            allocationKeys = reservedConsumption.allocationKeys || [];
             writeCounts = buildResidualCounts(counts, consumedReservedMeals);
             mutationSubscription = await repository.findSubscriptionById(subscriptionId, session);
             if (!mutationSubscription) {
@@ -151,6 +153,7 @@ function createManualDeductionCommandService({
           reason: body && body.reason,
           notes: body && body.notes,
           businessDate,
+          allocationKeys,
         });
         await repository.createDeductionLog(log, session);
 

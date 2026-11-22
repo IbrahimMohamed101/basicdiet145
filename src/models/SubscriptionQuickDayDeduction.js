@@ -3,7 +3,7 @@
 const mongoose = require("mongoose");
 const ActivityLog = require("./ActivityLog");
 
-const DAILY_DEDUCTION_ACTION = "subscription_daily_meal_deduction";
+const { DAILY_DEDUCTION_ACTION } = require("../services/dashboard/manualDeduction/constants");
 
 const SubscriptionQuickDayDeductionSchema = new mongoose.Schema(
   {

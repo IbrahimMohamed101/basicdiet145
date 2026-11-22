@@ -40,7 +40,7 @@ function serializeSubscription(subscription, plan, lang = "en") {
   };
 }
 
-function buildDeductionLog({ subscription, counts, before, after, actorId, actorRole, reason, notes, businessDate }) {
+function buildDeductionLog({ subscription, counts, before, after, actorId, actorRole, reason, notes, businessDate, allocationKeys = [] }) {
   const deductedAddons = before.beforeAddons ? before.beforeAddons.map((addon) => ({
     addonId: String(addon.addonId),
     qty: addon.qty,
@@ -60,6 +60,7 @@ function buildDeductionLog({ subscription, counts, before, after, actorId, actor
       deductedRegularMeals: counts.regularMeals,
       deductedPremiumMeals: counts.premiumMeals,
       deductedTotalMeals: counts.total,
+      ...(allocationKeys.length ? { allocationKeys } : {}),
       deductedAddons,
       before: {
         remainingRegularMeals: before.remainingRegularMeals,

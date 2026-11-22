@@ -262,6 +262,7 @@ async function testLegacyReservedPathWithAddons() {
   );
   assert(logged, "manual deduction audit log must still be written");
   assert.equal(logged.meta.deductedRegularMeals, 2);
+  assert.deepEqual(logged.meta.allocationKeys, selectedKeys);
   assert.equal(logged.meta.deductedAddons.length, 2);
 }
 

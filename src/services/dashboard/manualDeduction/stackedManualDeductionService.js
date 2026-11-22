@@ -29,11 +29,13 @@ const {
   buildDeductionResponse,
 } = require("./manualDeductionPresenter");
 const { ManualDeductionError } = require("./ManualDeductionError");
-const { MANUAL_DEDUCTION_ACTION } = require("./constants");
+const {
+  MANUAL_DEDUCTION_ACTION,
+  MANUAL_BATCH_JOURNAL: JOURNAL_KEY,
+  DELIVERY_BATCH_JOURNAL: DELIVERY_JOURNAL_KEY,
+} = require("./constants");
 
 const LEASE_MS = 30000;
-const JOURNAL_KEY = "manualDeductions";
-const DELIVERY_JOURNAL_KEY = "chefChoiceDeliveryDeductions";
 const PARENT_OPERATION_FIELD = "legacyMealBalanceOperationKeys";
 
 function manualError(code, message, status = 409, details = {}) {
