@@ -121,23 +121,87 @@ async function main() {
     });
 
     if (values.explain) {
-      // Per-subscription detail without customer data, for diagnosing findings.
-      let selected = reports;
-      if (!values["subscription-id"]) {
-        const exceeding = reports
-          .filter((report) => report.findings.some((finding) => finding.code === "EVIDENCE_EXCEEDS_CONSUMED"))
-          .sort((left, right) => right.consumedGap - left.consumedGap);
-        const zeroCounter = exceeding.filter((report) => report.counterConsumed === 0).slice(0, 1);
-        selected = [...new Set([...exceeding.slice(0, 2), ...exceeding.slice(-1), ...zeroCounter])];
+      // Compact per-subscription detail WITHOUT customer data, to tell real
+      // balance errors from rule artifacts. With --subscription-id it explains
+      // that subscription; otherwise it samples a few subscriptions per finding.
+      const has = (report, code, predicate = () => true) =>
+        report.findings.some((finding) => finding.code === code && predicate(finding.details || {}));
+      const sample = (rows, size) => {
+        if (rows.length <= size) return rows;
+        const picked = [rows[0], rows[rows.length - 1], rows[Math.floor(rows.length / 2)]];
+        return [...new Set(picked)].slice(0, size);
+      };
+      const bySize = (code) => (left, right) =>
+        (left.findings.find((f) => f.code === code)?.details?.meals || 0)
+        - (right.findings.find((f) => f.code === code)?.details?.meals || 0);
+      const overSignature = (report) => {
+        const d = report.findings.find((f) => f.code === "DAY_OVER_DEDUCTED")?.details || {};
+        const src = d.sources || {};
+        return [src.allocationConsumed > 0 ? "alloc" : "-", src.legacySnapshotMeals > 0 ? "legacy" : "-",
+          d.manualMeals > 0 ? "manual" : "-", d.dayStatus].join("+");
+      };
+
+      let selected;
+      if (values["subscription-id"]) {
+        selected = reports;
+      } else {
+        const groups = [
+          reports.filter((r) => has(r, "EVIDENCE_EXCEEDS_CONSUMED", (d) => d.counterBasis === "consumedMeals"))
+            .sort(bySize("EVIDENCE_EXCEEDS_CONSUMED")),
+          reports.filter((r) => has(r, "EVIDENCE_EXCEEDS_CONSUMED", (d) => d.counterBasis === "batches"))
+            .sort(bySize("EVIDENCE_EXCEEDS_CONSUMED")),
+          reports.filter((r) => has(r, "CONSUMED_EXCEEDS_EVIDENCE")),
+          reports.filter((r) => has(r, "COUNTERS_DIFFER_FROM_ACTIVE_BATCHES")),
+          reports.filter((r) => has(r, "STALE_RESERVATION")),
+        ];
+        selected = groups.flatMap((rows) => sample(rows, 3));
+        const bySig = new Map();
+        for (const report of reports.filter((r) => has(r, "DAY_OVER_DEDUCTED"))) {
+          const sig = overSignature(report);
+          if (!bySig.has(sig)) bySig.set(sig, []);
+          bySig.get(sig).push(report);
+        }
+        for (const rows of bySig.values()) selected.push(...sample(rows, 2));
+        selected = [...new Set(selected)];
       }
+
+      const selectedIds = selected.map((report) => report.subscriptionId);
+      const actionCounts = await ActivityLog.aggregate([
+        { $match: { entityType: "subscription", entityId: { $in: selectedIds.map((id) => new mongoose.Types.ObjectId(id)) } } },
+        { $group: { _id: { id: "$entityId", action: "$action" }, count: { $sum: 1 } } },
+      ]);
+      const actionsBySub = new Map();
+      for (const row of actionCounts) {
+        const id = String(row._id.id);
+        if (!actionsBySub.has(id)) actionsBySub.set(id, {});
+        actionsBySub.get(id)[row._id.action] = row.count;
+      }
+      const subscriptionsById = new Map(subscriptions.map((row) => [String(row._id), row]));
+
       for (const report of selected) {
         const key = report.subscriptionId;
-        const { customer, phone, ...rest } = report;
+        const { customer, phone, days: evidenceDays, findings, ...rest } = report;
+        const sub = subscriptionsById.get(key) || {};
+        const manualLogs = (logsBySub.get(key) || []).map((log) => {
+          const meta = log.meta || {};
+          const deducted = Number(meta.deductedTotalMeals ?? 0);
+          const delta = meta.before && meta.after
+            ? Number(meta.before.remainingMeals) - Number(meta.after.remainingMeals) : null;
+          return {
+            action: log.action, date: meta.businessDate || null, deducted, delta,
+            reserved: Array.isArray(meta.allocationKeys) ? meta.allocationKeys.length : 0,
+            status: meta.status || null, source: meta.source || null, createdAt: log.createdAt,
+          };
+        });
+        const overDeductedDates = new Set(report.findings
+          .filter((finding) => finding.code === "DAY_OVER_DEDUCTED").map((finding) => finding.details.date));
         console.log(JSON.stringify({
           ...rest,
+          findings: findings.map((finding) => ({ code: finding.code, details: finding.details })),
+          legacyMealBalanceOperationKeys: (sub.legacyMealBalanceOperationKeys || []).length,
+          activityActions: actionsBySub.get(key) || {},
           batches: (batchesBySub.get(key) || []).map((batch) => ({
-            status: batch.status, applicationState: batch.applicationState,
-            totalMeals: batch.totalMeals, remainingMeals: batch.remainingMeals,
+            status: batch.status, totalMeals: batch.totalMeals, remainingMeals: batch.remainingMeals,
             reservedMeals: batch.reservedMeals, consumedMeals: batch.consumedMeals,
             forfeitedMeals: batch.forfeitedMeals,
             journals: {
@@ -147,13 +211,17 @@ async function main() {
             },
           })),
           stackedAllocations: (stackedBySub.get(key) || []).length,
-          manualLogs: (logsBySub.get(key) || []).map((log) => ({
-            action: log.action, date: log.meta?.businessDate || null, meals: log.meta?.deductedTotalMeals ?? null,
-            status: log.meta?.status || null, source: log.meta?.source || null,
-            days: log.meta?.days ?? null, createdAt: log.createdAt,
-          })),
-          days: report.days.filter((day) => day.automaticMeals > 0 || day.manualMeals > 0),
-        }, null, 2));
+          manualSummary: {
+            logs: manualLogs.length,
+            deductedTotal: manualLogs.reduce((sum, log) => sum + log.deducted, 0),
+            logsWithNoCounterMove: manualLogs.filter((log) => log.delta !== null && log.delta === 0 && log.reserved === 0).length,
+            logsWhereCounterMovedLess: manualLogs.filter((log) => log.delta !== null && log.delta < log.deducted && log.reserved === 0).length,
+            logsWithBeforeAfter: manualLogs.filter((log) => log.delta !== null).length,
+            lastLogs: manualLogs.slice(-4),
+          },
+          overDeductedDayLogs: manualLogs.filter((log) => overDeductedDates.has(log.date)),
+          evidenceDays: evidenceDays.filter((day) => overDeductedDates.has(day.date)),
+        }, null, 1));
       }
       return;
     }
