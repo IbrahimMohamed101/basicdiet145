@@ -125,6 +125,32 @@ async function main() {
       for (const finding of report.findings) byCode[finding.code] = (byCode[finding.code] || 0) + 1;
     }
 
+    // Aggregate-only diagnostics (no customer data) to tell real problems from
+    // rule artifacts: which evidence sources a finding comes from, by version.
+    const tally = (map, key) => { map[key] = (map[key] || 0) + 1; };
+    const diagnostics = { byVersion: {}, overDeductedBySources: {}, overDeductedBySize: {}, evidenceExceeds: {}, consumedExceeds: {} };
+    for (const report of reports) {
+      const version = `v${report.entitlementVersion}`;
+      const bucket = diagnostics.byVersion[version] || (diagnostics.byVersion[version] = { subscriptions: 0, ok: 0, review: 0, critical: 0 });
+      bucket.subscriptions += 1;
+      bucket[report.verdict] += 1;
+      for (const finding of report.findings) {
+        const d = finding.details || {};
+        if (finding.code === "DAY_OVER_DEDUCTED") {
+          const src = d.sources || {};
+          const sig = [src.allocationConsumed > 0 ? "alloc" : "-", src.journalMeals > 0 ? "journal" : "-",
+            src.legacySnapshotMeals > 0 ? "legacy" : "-", d.manualMeals > 0 ? "manual" : "-"].join("+");
+          tally(diagnostics.overDeductedBySources, `${version} ${sig} dayStatus=${d.dayStatus}`);
+          tally(diagnostics.overDeductedBySize, `over by ${d.deductedMeals - d.expectedMeals}`);
+        } else if (finding.code === "EVIDENCE_EXCEEDS_CONSUMED") {
+          tally(diagnostics.evidenceExceeds,
+            `${version} basis=${d.counterBasis} counter=${d.counterConsumed === 0 ? 0 : ">0"} manual=${report.evidence.manualMeals > 0 ? "yes" : "no"} gap=${d.meals}`);
+        } else if (finding.code === "CONSUMED_EXCEEDS_EVIDENCE") {
+          tally(diagnostics.consumedExceeds, `${version} gap=${d.meals}`);
+        }
+      }
+    }
+
     const header = ["verdict", "code", "severity", "subscriptionId", "customer", "phone", "status",
       "total", "available", "reserved", "consumed", "forfeited", "evidenceConsumed", "gap", "details", "action"];
     const lines = [header.join(",")];
@@ -146,6 +172,7 @@ async function main() {
       subscriptionsScanned: reports.length,
       verdicts: byVerdict,
       findingsByCode: byCode,
+      diagnostics,
       csv: out,
     }, null, 2));
     if (byVerdict.critical > 0) process.exitCode = 2;

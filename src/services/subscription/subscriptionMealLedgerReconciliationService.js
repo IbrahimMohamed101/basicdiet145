@@ -222,9 +222,15 @@ function reconcileSubscriptionMealLedger({
   if (staleReservedMeals > 0) add("STALE_RESERVATION", { meals: staleReservedMeals });
 
   const evidenceConsumed = automaticMeals + manualMeals;
-  const consumedGap = counters.consumed - evidenceConsumed;
-  if (consumedGap > 0) add("CONSUMED_EXCEEDS_EVIDENCE", { counterConsumed: counters.consumed, evidenceConsumed, meals: consumedGap });
-  if (consumedGap < 0) add("EVIDENCE_EXCEEDS_CONSUMED", { counterConsumed: counters.consumed, evidenceConsumed, meals: -consumedGap });
+  // Subscriptions below entitlement v2 do not maintain consumedMeals; the only
+  // live counter is remainingMeals, so consumption is total - remaining.
+  const counterBasis = equationApplies ? "consumedMeals" : "total-remaining";
+  const counterConsumed = equationApplies
+    ? counters.consumed
+    : Math.max(0, counters.total - counters.available);
+  const consumedGap = counterConsumed - evidenceConsumed;
+  if (consumedGap > 0) add("CONSUMED_EXCEEDS_EVIDENCE", { counterConsumed, counterBasis, evidenceConsumed, meals: consumedGap });
+  if (consumedGap < 0) add("EVIDENCE_EXCEEDS_CONSUMED", { counterConsumed, counterBasis, evidenceConsumed, meals: -consumedGap });
 
   const severities = new Set(findings.map((finding) => finding.severity));
   return {
@@ -235,6 +241,8 @@ function reconcileSubscriptionMealLedger({
     equationApplies,
     equationDifference,
     evidence: { automaticMeals, manualMeals, consumedMeals: evidenceConsumed },
+    counterConsumed,
+    counterBasis,
     consumedGap,
     findings,
     verdict: severities.has("critical") ? "critical" : severities.has("high") ? "review" : "ok",

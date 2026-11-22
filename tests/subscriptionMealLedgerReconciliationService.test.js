@@ -116,12 +116,23 @@ const codes = (report) => report.findings.map((finding) => finding.code).sort();
   assert.deepEqual(codes(mismatch), ["EQUATION_MISMATCH"]);
   assert.equal(mismatch.equationDifference, 4);
 
+  // Legacy subscription: consumedMeals is not maintained, remaining is.
   const legacyVersion = reconcileSubscriptionMealLedger({
-    subscription: subscription({ entitlementVersion: 0, remainingMeals: 20 }),
+    subscription: subscription({ entitlementVersion: 0, remainingMeals: 24, consumedMeals: undefined }),
     days: [legacyDay("2026-11-21", "d1"), legacyDay("2026-11-22", "d2")],
     now: NOW,
   });
   assert.deepEqual(codes(legacyVersion), []);
+  assert.equal(legacyVersion.counterBasis, "total-remaining");
+  assert.equal(legacyVersion.counterConsumed, 6);
+
+  const legacyWrong = reconcileSubscriptionMealLedger({
+    subscription: subscription({ entitlementVersion: 0, remainingMeals: 20, consumedMeals: undefined }),
+    days: [legacyDay("2026-11-21", "d1"), legacyDay("2026-11-22", "d2")],
+    now: NOW,
+  });
+  assert.deepEqual(codes(legacyWrong), ["CONSUMED_EXCEEDS_EVIDENCE"]);
+  assert.equal(legacyWrong.consumedGap, 4);
 }
 
 // 6. A staff deduction that consumed a reserved allocation is one movement.
