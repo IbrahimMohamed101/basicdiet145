@@ -272,8 +272,12 @@ function batch(overrides = {}) {
 // 14. Subscription counters must equal the sum of the active batches.
 {
   const active = batch({ status: "active", totalMeals: 78, remainingMeals: 4, consumedMeals: 74 });
+  const aggregate = (overrides = {}) => ({
+    hasEntitlementBatches: true,
+    aggregateBalance: { totalMeals: 78, remainingMeals: 4, reservedMeals: 0, consumedMeals: 74, forfeitedMeals: 0, ...overrides },
+  });
   const matching = reconcileSubscriptionMealLedger({
-    subscription: subscription({ totalMeals: 78, remainingMeals: 4, consumedMeals: 74 }),
+    subscription: subscription({ totalMeals: 78, remainingMeals: 4, consumedMeals: 74, stacking: aggregate() }),
     batches: [batch({ totalMeals: 78, consumedMeals: 78 }), active],
     deductionLogs: [manualLog("l1", "2026-11-17", 152)],
     now: NOW,
@@ -281,13 +285,22 @@ function batch(overrides = {}) {
   assert.deepEqual(codes(matching), []);
 
   const drifted = reconcileSubscriptionMealLedger({
-    subscription: subscription({ totalMeals: 78, remainingMeals: 9, consumedMeals: 69 }),
+    subscription: subscription({ totalMeals: 78, remainingMeals: 9, consumedMeals: 69, stacking: aggregate({ remainingMeals: 9, consumedMeals: 69 }) }),
     batches: [batch({ totalMeals: 78, consumedMeals: 78 }), active],
     deductionLogs: [manualLog("l1", "2026-11-17", 152)],
     now: NOW,
   });
   assert.deepEqual(codes(drifted), ["COUNTERS_DIFFER_FROM_ACTIVE_BATCHES"]);
   assert.deepEqual(Object.keys(drifted.findings[0].details.differences).sort(), ["available", "consumed"]);
+
+  // A stale top-level mirror alone (aggregate is right) is not a finding.
+  const staleMirror = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 0, remainingMeals: 0, consumedMeals: 0, stacking: aggregate() }),
+    batches: [batch({ totalMeals: 78, consumedMeals: 78 }), active],
+    deductionLogs: [manualLog("l1", "2026-11-17", 152)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(staleMirror), []);
 }
 
 // 15. A batch whose meals are not fully accounted for is reported.
@@ -300,6 +313,72 @@ function batch(overrides = {}) {
   });
   assert.deepEqual(codes(report), ["BATCH_UNACCOUNTED_MEALS"]);
   assert.equal(report.findings[0].details.batches[0].unaccountedMeals, 2);
+}
+
+function legacyManualLog(id, date, meals, remainingBefore, remainingAfter) {
+  return manualLog(id, date, meals, {
+    status: undefined,
+    before: { remainingMeals: remainingBefore },
+    after: { remainingMeals: remainingAfter },
+  });
+}
+
+// 16. A staff deduction that consumed RESERVED meals (remaining unchanged) is
+//     the same movement as the allocation consumption: not counted twice.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({
+      totalMeals: 21, remainingMeals: 11, reservedMeals: 6, consumedMeals: 4,
+      baseMealAllocations: [{ allocationKey: "a1", state: "consumed", quantity: 4, date: "2026-11-07" }],
+    }),
+    days: [{ _id: "d1", date: "2026-11-07", status: "open", plannerMeta: { requiredSlotCount: 3 } }],
+    deductionLogs: [legacyManualLog("l1", "2026-11-07", 4, 15, 15)],
+    now: NOW,
+  });
+  assert.equal(report.evidence.manualMeals, 0);
+  assert.equal(report.evidence.manualViaReservations, 4);
+  assert.equal(report.consumedGap, 0);
+  assert(!codes(report).includes("DAY_OVER_DEDUCTED"));
+  assert(!codes(report).includes("EVIDENCE_EXCEEDS_CONSUMED"));
+}
+
+// 17. Delivery already deducted the day and staff deducted it again from the
+//     balance: counters agree with the evidence, but the day is double deducted.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 52, remainingMeals: 20, consumedMeals: 32 }),
+    days: [{ ...legacyDay("2026-11-15", "d1", 2), plannerMeta: { requiredSlotCount: 2 } }, ...Array.from({ length: 14 }, (_, i) => legacyDay(`2026-10-${String(i + 1).padStart(2, "0")}`, `x${i}`, 2))],
+    deductionLogs: [legacyManualLog("l1", "2026-11-15", 2, 20, 18)],
+    now: NOW,
+  });
+  assert.equal(report.consumedGap, 0);
+  assert.deepEqual(codes(report), ["DAY_OVER_DEDUCTED"]);
+  assert.equal(report.verdict, "review");
+}
+
+// 18. A bulk staff deduction (larger than one day) beside a delivered day is
+//     a backfill, not a duplicate of that day.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 21, remainingMeals: 0, consumedMeals: 21 }),
+    days: [{ ...legacyDay("2026-08-03", "d1", 3), plannerMeta: { requiredSlotCount: 3 } }],
+    deductionLogs: [legacyManualLog("l1", "2026-08-03", 18, 18, 0)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(report), []);
+}
+
+// 19. Meals given back by a pickup release leave the consumed evidence.
+{
+  const base = {
+    subscription: subscription({ totalMeals: 30, remainingMeals: 24, consumedMeals: 6 }),
+    days: [legacyDay("2026-11-20", "d1"), legacyDay("2026-11-21", "d2"), legacyDay("2026-11-22", "d3")],
+    now: NOW,
+  };
+  assert.deepEqual(codes(reconcileSubscriptionMealLedger(base)), ["EVIDENCE_EXCEEDS_CONSUMED"]);
+  const released = reconcileSubscriptionMealLedger({ ...base, releasedMeals: 3 });
+  assert.equal(released.evidence.releasedMeals, 3);
+  assert.deepEqual(codes(released), []);
 }
 
 console.log("subscriptionMealLedgerReconciliationService tests passed");

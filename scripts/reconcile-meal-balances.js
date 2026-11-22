@@ -23,6 +23,7 @@ const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
 const SubscriptionEntitlementAllocation = require("../src/models/SubscriptionEntitlementAllocation");
 const SubscriptionEntitlementBatch = require("../src/models/SubscriptionEntitlementBatch");
+const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
 const User = require("../src/models/User");
 const {
   DAILY_DEDUCTION_ACTION,
@@ -99,6 +100,20 @@ async function main() {
         .select("name phone phoneE164").lean(),
     ]);
 
+    // Meals given back by legacy pickup releases leave the consumed counter, so
+    // they must leave the evidence too. Keys look like "pickup_release:<requestId>".
+    const releaseKeyIds = subscriptions.flatMap((row) => (row.legacyMealBalanceOperationKeys || [])
+      .map((key) => /^pickup_release:([0-9a-f]{24})$/i.exec(String(key)))
+      .filter(Boolean).map((match) => match[1]));
+    const pickupRequests = releaseKeyIds.length
+      ? await SubscriptionPickupRequest.find({ _id: { $in: releaseKeyIds } }).select("mealCount status").lean()
+      : [];
+    const pickupRequestById = new Map(pickupRequests.map((row) => [String(row._id), row]));
+    const releasesFor = (subscription) => (subscription.legacyMealBalanceOperationKeys || [])
+      .map((key) => /^pickup_release:([0-9a-f]{24})$/i.exec(String(key)))
+      .filter(Boolean)
+      .map((match) => ({ id: match[1], request: pickupRequestById.get(match[1]) || null }));
+
     const daysBySub = group(days, (row) => row.subscriptionId);
     const stackedBySub = group(stacked, (row) => row.containerSubscriptionId);
     const batchesBySub = group(batches, (row) => row.containerSubscriptionId);
@@ -114,6 +129,8 @@ async function main() {
         stackedAllocations: stackedBySub.get(key) || [],
         batches: batchesBySub.get(key) || [],
         deductionLogs: logsBySub.get(key) || [],
+        releasedMeals: releasesFor(subscription)
+          .reduce((sum, release) => sum + Number(release.request && release.request.mealCount || 0), 0),
         now,
       });
       const user = usersById.get(String(subscription.userId)) || {};
@@ -177,6 +194,19 @@ async function main() {
         actionsBySub.get(id)[row._id.action] = row.count;
       }
       const subscriptionsById = new Map(subscriptions.map((row) => [String(row._id), row]));
+      // Unknown correction/repair operations written outside this repo: show only
+      // numeric facts and short labels (no free text that could hold customer data).
+      const correctionRows = await ActivityLog.find({
+        entityType: "subscription",
+        entityId: { $in: selectedIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        action: { $regex: /correction|repair|restore|release|adjust|refund/i },
+      }).lean();
+      const correctionsBySub = group(correctionRows, (row) => row.entityId);
+      const safeMeta = (meta) => Object.fromEntries(Object.entries(meta || {})
+        .filter(([key, value]) => !/notes|reason|customer|phone|name/i.test(key)
+          && (typeof value === "number" || typeof value === "boolean"
+            || (typeof value === "string" && value.length <= 40)))
+        .slice(0, 25));
 
       for (const report of selected) {
         const key = report.subscriptionId;
@@ -199,6 +229,15 @@ async function main() {
           ...rest,
           findings: findings.map((finding) => ({ code: finding.code, details: finding.details })),
           legacyMealBalanceOperationKeys: (sub.legacyMealBalanceOperationKeys || []).length,
+          pickupReleases: releasesFor(sub).map((release) => ({
+            mealCount: release.request ? release.request.mealCount : null,
+            status: release.request ? release.request.status : "request-not-found",
+          })),
+          stackingAggregate: sub.stacking && sub.stacking.hasEntitlementBatches
+            ? sub.stacking.aggregateBalance || "missing" : null,
+          corrections: (correctionsBySub.get(key) || []).map((row) => ({
+            action: row.action, createdAt: row.createdAt, meta: safeMeta(row.meta),
+          })),
           activityActions: actionsBySub.get(key) || {},
           batches: (batchesBySub.get(key) || []).map((batch) => ({
             status: batch.status, totalMeals: batch.totalMeals, remainingMeals: batch.remainingMeals,

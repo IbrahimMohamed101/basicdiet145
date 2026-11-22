@@ -58,9 +58,9 @@ const CHECKS = {
     action: "راجع الأيام المنفذة وأكمل الخصم الناقص بعملية مسجلة بعد التأكد من عدم تكرار الخصم.",
   },
   DAY_OVER_DEDUCTED: {
-    severity: "critical",
-    message: "إجمالي خصم يوم واحد أكبر من وجبات اليوم المتوقعة (اشتباه خصم مزدوج).",
-    action: "قارن حركات اليوم، وأرجع الوجبات الزائدة بعملية عكس مسجلة.",
+    severity: "high",
+    message: "يوم فيه خصم تلقائي وخصم يدوي معًا ومجموعهما أكبر من وجبات اليوم (اشتباه خصم مزدوج).",
+    action: "راجع الموظف والعميل: هل الخصم اليدوي كان ليوم آخر؟ إن لم يكن فأرجع الوجبات الزائدة بعملية عكس مسجلة.",
   },
   FULFILLED_DAY_WITHOUT_EVIDENCE: {
     severity: "high",
@@ -74,7 +74,7 @@ const CHECKS = {
   },
   COUNTERS_DIFFER_FROM_ACTIVE_BATCHES: {
     severity: "high",
-    message: "عدّادات الاشتراك لا تساوي مجموع الباتشات النشطة (المصدر الفعلي للرصيد الحالي).",
+    message: "رصيد الاشتراك المجمّع (stacking.aggregateBalance) لا يساوي مجموع الباتشات النشطة.",
     action: "قارن العدّاد بكل باتش نشط، وصحّح العدّاد من الباتشات بعملية مسجلة لا بتعديل مباشر.",
   },
   BATCH_UNACCOUNTED_MEALS: {
@@ -169,6 +169,7 @@ function reconcileSubscriptionMealLedger({
   stackedAllocations = [],
   batches = [],
   deductionLogs = [],
+  releasedMeals = 0,
   now = new Date(),
 }) {
   const today = dateUtils.getTodayKSADate(now);
@@ -203,13 +204,30 @@ function reconcileSubscriptionMealLedger({
     deductionLogs.filter((log) => [MANUAL_DEDUCTION_ACTION, DAILY_DEDUCTION_ACTION].includes(log.action)),
     deductionLogs.filter((log) => log.action === MANUAL_DEDUCTION_REVERSAL_ACTION)
   );
+  // A legacy-path staff deduction first consumes the customer's RESERVED meals
+  // (reserved -> consumed on the allocation, remainingMeals untouched) and only
+  // debits remainingMeals for the residual. The reserved part is already in the
+  // allocation evidence, so counting the whole log again would double count it.
+  // For those logs the balance really moved by before.remaining - after.remaining.
+  const logsById = new Map(deductionLogs.map((log) => [idOf(log), log]));
   const manualByDate = new Map();
+  let manualMeals = 0;
+  let manualViaReservations = 0;
   for (const record of manualLedger.records) {
     const net = nonNegativeInteger(record.netTotalMeals);
     if (!net) continue;
-    manualByDate.set(record.date, (manualByDate.get(record.date) || 0) + net);
+    const log = logsById.get(String(record.id)) || {};
+    const beforeRemaining = Number(record.before && record.before.remainingMeals);
+    const afterRemaining = Number(record.after && record.after.remainingMeals);
+    const legacyPath = log.action === MANUAL_DEDUCTION_ACTION && !(log.meta && log.meta.status);
+    let effective = net;
+    if (legacyPath && !record.reversed && Number.isFinite(beforeRemaining) && Number.isFinite(afterRemaining)) {
+      effective = Math.max(0, Math.min(net, beforeRemaining - afterRemaining));
+      manualViaReservations += net - effective;
+    }
+    manualMeals += effective;
+    manualByDate.set(record.date, (manualByDate.get(record.date) || 0) + effective);
   }
-  const manualMeals = nonNegativeInteger(manualLedger.netManualDeductions);
 
   const batchEvidence = collectBatchDeductionEvidence(batches, deductionLogs);
   const dayByDate = new Map(days.map((day) => [String(day.date), day]));
@@ -266,7 +284,10 @@ function reconcileSubscriptionMealLedger({
     // Staff bulk deductions (pickup quick deduction = days x meals on one date)
     // legitimately exceed one day's meals, so only a day that also has
     // automatic consumption can be a double deduction.
-    if (!nonConsuming && expected > 0 && automatic > 0 && automatic + manual > expected) {
+    // A staff deduction larger than one day's meals is a bulk/backfill deduction
+    // (it cannot duplicate a single delivery), so only <= expected is suspicious.
+    if (!nonConsuming && expected > 0 && automatic > 0 && manual > 0
+      && manual <= expected && automatic + manual > expected) {
       add("DAY_OVER_DEDUCTED", { ...row, deductedMeals: automatic + manual });
     }
     if (dayConsumed && date <= today && automatic + manual === 0) {
@@ -277,7 +298,8 @@ function reconcileSubscriptionMealLedger({
   if (duplicateKeys > 0) add("DUPLICATE_ALLOCATION_KEY", { duplicateKeys });
   if (staleReservedMeals > 0) add("STALE_RESERVATION", { meals: staleReservedMeals });
 
-  const evidenceConsumed = automaticMeals + manualMeals;
+  const released = nonNegativeInteger(releasedMeals);
+  const evidenceConsumed = Math.max(0, automaticMeals + manualMeals - released);
   const batchLedger = summarizeBatches(batches);
   const hasBatchLedger = batchLedger.count > 0;
 
@@ -287,17 +309,27 @@ function reconcileSubscriptionMealLedger({
     // Stacked subscription: lifetime consumption lives in the batches.
     counterBasis = "batches";
     counterConsumed = batchLedger.lifetime.consumed;
-    const active = batchLedger.active;
-    const differences = {};
-    const pairs = [["total", counters.total, active.total], ["available", counters.available, active.remaining],
-      ["reserved", counters.reserved, active.reserved]];
-    if (equationApplies) {
-      pairs.push(["consumed", counters.consumed, active.consumed], ["forfeited", counters.forfeited, active.forfeited]);
+    // The authoritative balance of a stacked subscription is
+    // stacking.aggregateBalance (the top-level counters are a legacy mirror).
+    const stacking = subscription.stacking && typeof subscription.stacking === "object" ? subscription.stacking : null;
+    const aggregate = stacking && stacking.hasEntitlementBatches === true
+      && stacking.aggregateBalance && typeof stacking.aggregateBalance === "object"
+      ? stacking.aggregateBalance : null;
+    if (aggregate) {
+      const active = batchLedger.active;
+      const differences = {};
+      const pairs = [
+        ["total", nonNegativeInteger(aggregate.totalMeals), active.total],
+        ["available", nonNegativeInteger(aggregate.remainingMeals), active.remaining],
+        ["reserved", nonNegativeInteger(aggregate.reservedMeals), active.reserved],
+        ["consumed", nonNegativeInteger(aggregate.consumedMeals), active.consumed],
+        ["forfeited", nonNegativeInteger(aggregate.forfeitedMeals), active.forfeited],
+      ];
+      for (const [name, aggregateValue, batchValue] of pairs) {
+        if (aggregateValue !== batchValue) differences[name] = { aggregate: aggregateValue, activeBatches: batchValue };
+      }
+      if (Object.keys(differences).length > 0) add("COUNTERS_DIFFER_FROM_ACTIVE_BATCHES", { differences });
     }
-    for (const [name, subscriptionValue, batchValue] of pairs) {
-      if (subscriptionValue !== batchValue) differences[name] = { subscription: subscriptionValue, activeBatches: batchValue };
-    }
-    if (Object.keys(differences).length > 0) add("COUNTERS_DIFFER_FROM_ACTIVE_BATCHES", { differences });
     if (batchLedger.unaccounted.length > 0) add("BATCH_UNACCOUNTED_MEALS", { batches: batchLedger.unaccounted });
   } else {
     // Subscriptions below entitlement v2 do not maintain consumedMeals; the only
@@ -319,7 +351,13 @@ function reconcileSubscriptionMealLedger({
     counters,
     equationApplies,
     equationDifference,
-    evidence: { automaticMeals, manualMeals, consumedMeals: evidenceConsumed },
+    evidence: {
+      automaticMeals,
+      manualMeals,
+      manualViaReservations,
+      releasedMeals: released,
+      consumedMeals: evidenceConsumed,
+    },
     counterConsumed,
     counterBasis,
     consumedGap,
