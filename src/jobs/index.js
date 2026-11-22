@@ -9,6 +9,7 @@ const { cleanupAbandonedPromoReservations } = require("../services/promoCodeServ
 const {
   processPaidSubscriptionPaymentRecoveries,
 } = require("../services/subscription/subscriptionPaymentRecoveryService");
+const { runMealLedgerAlertScan } = require("../services/subscription/mealLedgerAlertService");
 const Setting = require("../models/Setting");
 const { KSA_TIMEZONE } = require("../utils/date");
 const { logger } = require("../utils/logger");
@@ -28,6 +29,8 @@ function startJobs() {
   let lastMealReminderRunDate = null;
   let lastExpiryReminderRunDate = null;
   let lastPromoCleanupRunTime = 0;
+  let lastMealLedgerScanDate = null;
+  let lastMealLedgerAttemptTime = 0;
   let inProgress = false;
 
   // Process all recurring jobs every minute in a single guarded loop.
@@ -84,6 +87,26 @@ function startJobs() {
       if (nowTime >= "09:00" && lastExpiryReminderRunDate !== todayKSA) {
         await processSubscriptionExpiryReminders(now);
         lastExpiryReminderRunDate = todayKSA;
+      }
+
+      // Daily meal-ledger check (read-only on balances; it only keeps the alert
+      // list for dashboard staff up to date). Runs before the day starts and is
+      // retried every 30 minutes if it fails. Set MEAL_LEDGER_ALERTS_ENABLED=false
+      // to turn it off.
+      if (
+        process.env.MEAL_LEDGER_ALERTS_ENABLED !== "false"
+        && nowTime >= "05:30"
+        && lastMealLedgerScanDate !== todayKSA
+        && now.getTime() - lastMealLedgerAttemptTime >= 30 * 60 * 1000
+      ) {
+        lastMealLedgerAttemptTime = now.getTime();
+        try {
+          const stats = await runMealLedgerAlertScan({ now });
+          lastMealLedgerScanDate = todayKSA;
+          logger.info("Meal ledger alert scan completed", stats);
+        } catch (err) {
+          logger.error("Meal ledger alert scan failed", { error: err.message, stack: err.stack });
+        }
       }
     } catch (err) {
       logger.error("Jobs error", { error: err.message, stack: err.stack });

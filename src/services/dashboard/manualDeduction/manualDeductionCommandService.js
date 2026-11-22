@@ -9,6 +9,7 @@ const {
   validateSubscriptionCanDeduct,
 } = require("./manualDeductionPolicy");
 const { buildDeductionLog, buildDeductionResponse } = require("./manualDeductionPresenter");
+const { SAME_DAY_EXTRA_ACTION } = require("./constants");
 const {
   executeStackedManualDeduction,
   hasEntitlementBatches,
@@ -27,6 +28,32 @@ function buildResidualCounts(counts, consumedReservedRegularMeals = 0) {
     ...counts,
     regularMeals,
     total: regularMeals + counts.premiumMeals,
+  };
+}
+
+// The cashier ticks "the customer took extra meals from the balance on top of
+// today's delivery". Only an explicit true counts.
+function isExtraBalanceUseConfirmed(body) {
+  const value = body && body.confirmExtraBalanceUse;
+  return value === true || String(value || "").trim().toLowerCase() === "true";
+}
+
+function buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason, businessDate }) {
+  return {
+    entityType: "subscription",
+    entityId: subscriptionId,
+    action: SAME_DAY_EXTRA_ACTION,
+    byUserId: actorId,
+    byRole: actorRole,
+    meta: {
+      subscriptionId: String(subscriptionId),
+      businessDate,
+      confirmed: true,
+      deductedTotalMeals: counts.total,
+      actorId: actorId ? String(actorId) : null,
+      actorRole,
+      reason: String(reason || ""),
+    },
   };
 }
 
@@ -57,6 +84,16 @@ function createManualDeductionCommandService({
     }
   }
 
+  // Never blocks. When the day was already delivered and the cashier did not say
+  // the extra meals are on purpose, the response carries a warning so the
+  // dashboard can ask, and the day is surfaced for review if it stays unexplained.
+  async function buildWarnings({ subscription, businessDate, confirmed, session }) {
+    if (confirmed || !subscription || subscription.deliveryMode !== "delivery") return [];
+    if (typeof repository.findFulfilledDeliveryDay !== "function") return [];
+    const day = await repository.findFulfilledDeliveryDay(subscription._id, businessDate, session);
+    return day ? ["DAY_ALREADY_DELIVERED_TODAY"] : [];
+  }
+
   async function manualDeduction({ subscriptionId, body, actorId, actorRole, idempotencyKey }) {
     assertCashierOrAdminRole(actorRole);
     if (!repository.isValidObjectId(subscriptionId)) {
@@ -65,6 +102,7 @@ function createManualDeductionCommandService({
 
     const counts = validateCounts(body || {});
     const businessDate = await getBusinessDate();
+    const extraConfirmed = isExtraBalanceUseConfirmed(body);
 
     // Stacked subscriptions use entitlement batches as their balance/date
     // source of truth. Keep the parent subscription as the lifecycle/identity
@@ -81,7 +119,7 @@ function createManualDeductionCommandService({
         throw new ManualDeductionError("SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", 409);
       }
       await validateSubscriptionCustomerExists(subscription, null);
-      return stackedManualDeductionExecutor({
+      const stackedResult = await stackedManualDeductionExecutor({
         subscriptionId,
         counts,
         body: body || {},
@@ -90,6 +128,21 @@ function createManualDeductionCommandService({
         businessDate,
         idempotencyKey,
       });
+      if (extraConfirmed) {
+        // Evidence only. If this write fails the day simply stays under review.
+        try {
+          await repository.createDeductionLog(
+            buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate }),
+            null
+          );
+        } catch (err) {
+          // Best effort by design; the deduction itself already succeeded.
+        }
+      }
+      const stackedWarnings = await buildWarnings({ subscription, businessDate, confirmed: extraConfirmed, session: null });
+      return stackedWarnings.length && stackedResult && typeof stackedResult === "object"
+        ? { ...stackedResult, warnings: stackedWarnings }
+        : stackedResult;
     }
 
     try {
@@ -156,14 +209,24 @@ function createManualDeductionCommandService({
           allocationKeys,
         });
         await repository.createDeductionLog(log, session);
+        if (extraConfirmed) {
+          await repository.createDeductionLog(
+            buildSameDayExtraLog({ subscriptionId, counts, actorId, actorRole, reason: body && body.reason, businessDate }),
+            session
+          );
+        }
+        const warnings = await buildWarnings({ subscription: updated, businessDate, confirmed: extraConfirmed, session });
 
-        return buildDeductionResponse({
-          subscription: updated,
-          counts,
-          balances: after,
-          addonBalances: afterAddonBalances,
-          businessDate,
-        });
+        return {
+          ...buildDeductionResponse({
+            subscription: updated,
+            counts,
+            balances: after,
+            addonBalances: afterAddonBalances,
+            businessDate,
+          }),
+          ...(warnings.length ? { warnings } : {}),
+        };
       }, {
         label: "manual_subscription_deduction",
         context: { subscriptionId: String(subscriptionId) },
@@ -185,5 +248,7 @@ function createManualDeductionCommandService({
 
 module.exports = {
   buildResidualCounts,
+  buildSameDayExtraLog,
+  isExtraBalanceUseConfirmed,
   createManualDeductionCommandService,
 };

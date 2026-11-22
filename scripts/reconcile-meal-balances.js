@@ -23,37 +23,16 @@
 const fs = require("node:fs");
 const { parseArgs } = require("node:util");
 const mongoose = require("mongoose");
-const dateUtils = require("../src/utils/date");
 const ActivityLog = require("../src/models/ActivityLog");
-const Subscription = require("../src/models/Subscription");
-const SubscriptionDay = require("../src/models/SubscriptionDay");
-const SubscriptionEntitlementAllocation = require("../src/models/SubscriptionEntitlementAllocation");
-const SubscriptionEntitlementBatch = require("../src/models/SubscriptionEntitlementBatch");
-const SubscriptionPickupRequest = require("../src/models/SubscriptionPickupRequest");
-const User = require("../src/models/User");
 const {
-  DAILY_DEDUCTION_ACTION,
   DELIVERY_BATCH_JOURNAL,
   HISTORICAL_DELIVERY_BATCH_JOURNAL,
   MANUAL_BATCH_JOURNAL,
-  MANUAL_DEDUCTION_ACTION,
-  MANUAL_DEDUCTION_REVERSAL_ACTION,
 } = require("../src/services/dashboard/manualDeduction/constants");
 const {
-  EXCESS_CORRECTION_ACTION,
-  reconcileSubscriptionMealLedger,
-} = require("../src/services/subscription/subscriptionMealLedgerReconciliationService");
-
-function group(rows, keyFn) {
-  const map = new Map();
-  for (const row of rows) {
-    const key = String(keyFn(row) || "");
-    if (!key) continue;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(row);
-  }
-  return map;
-}
+  group,
+  loadReconciliationReports,
+} = require("../src/services/subscription/subscriptionMealLedgerRunner");
 
 function csvCell(value) {
   const text = value === undefined || value === null ? "" : String(value);
@@ -78,84 +57,14 @@ async function main() {
 
   await mongoose.connect(process.env.MONGO_URI, { readPreference: "secondaryPreferred" });
   try {
-    const query = {};
-    if (values["subscription-id"]) query._id = values["subscription-id"];
-    if (!values["all-statuses"]) query.status = "active";
-    const allMatching = await Subscription.find(query).lean();
-    // Current subscriptions only: a subscription whose validity already ended is
-    // history even if its status was never moved off "active".
-    const today = dateUtils.getTodayKSADate(new Date());
-    const hasEnded = (row) => {
-      const end = row.validityEndDate || row.endDate;
-      return Boolean(end) && dateUtils.toKSADateString(end) < today;
-    };
-    const skippedEnded = values["include-ended"] || values["subscription-id"]
-      ? 0 : allMatching.filter(hasEnded).length;
-    const subscriptions = values["include-ended"] || values["subscription-id"]
-      ? allMatching : allMatching.filter((row) => !hasEnded(row));
-    const ids = subscriptions.map((row) => row._id);
-
-    const [days, stacked, batches, logs, users] = await Promise.all([
-      SubscriptionDay.find({ subscriptionId: { $in: ids } })
-        .select("subscriptionId date status creditsDeducted fulfilledSnapshot plannerMeta planningMeta lockedSnapshot")
-        .lean(),
-      SubscriptionEntitlementAllocation.find({ containerSubscriptionId: { $in: ids } })
-        .select("containerSubscriptionId date allocationKey state quantity")
-        .lean(),
-      SubscriptionEntitlementBatch.find({ containerSubscriptionId: { $in: ids }, applicationState: "applied" })
-        .select([
-          "containerSubscriptionId",
-          `metadata.${MANUAL_BATCH_JOURNAL}`,
-          `metadata.${DELIVERY_BATCH_JOURNAL}`,
-          `metadata.${HISTORICAL_DELIVERY_BATCH_JOURNAL}`,
-          "status applicationState totalMeals remainingMeals reservedMeals consumedMeals forfeitedMeals",
-          "effectiveStartDate validityEndDate activatedAt exhaustedAt expiredAt",
-        ].join(" "))
-        .lean(),
-      ActivityLog.find({
-        entityType: "subscription",
-        entityId: { $in: ids },
-        action: { $in: [MANUAL_DEDUCTION_ACTION, DAILY_DEDUCTION_ACTION, MANUAL_DEDUCTION_REVERSAL_ACTION, EXCESS_CORRECTION_ACTION] },
-      }).sort({ createdAt: 1 }).lean(),
-      User.find({ _id: { $in: subscriptions.map((row) => row.userId).filter(Boolean) } })
-        .select("name phone phoneE164").lean(),
-    ]);
-
-    // Meals given back by legacy pickup releases leave the consumed counter, so
-    // they must leave the evidence too. Keys look like "pickup_release:<requestId>".
-    const releaseKeyIds = subscriptions.flatMap((row) => (row.legacyMealBalanceOperationKeys || [])
-      .map((key) => /^pickup_release:([0-9a-f]{24})$/i.exec(String(key)))
-      .filter(Boolean).map((match) => match[1]));
-    const pickupRequests = releaseKeyIds.length
-      ? await SubscriptionPickupRequest.find({ _id: { $in: releaseKeyIds } }).select("mealCount status").lean()
-      : [];
-    const pickupRequestById = new Map(pickupRequests.map((row) => [String(row._id), row]));
-    const releasesFor = (subscription) => (subscription.legacyMealBalanceOperationKeys || [])
-      .map((key) => /^pickup_release:([0-9a-f]{24})$/i.exec(String(key)))
-      .filter(Boolean)
-      .map((match) => ({ id: match[1], request: pickupRequestById.get(match[1]) || null }));
-
-    const daysBySub = group(days, (row) => row.subscriptionId);
-    const stackedBySub = group(stacked, (row) => row.containerSubscriptionId);
-    const batchesBySub = group(batches, (row) => row.containerSubscriptionId);
-    const logsBySub = group(logs, (row) => row.entityId);
-    const usersById = new Map(users.map((row) => [String(row._id), row]));
     const now = new Date();
-
-    const reports = subscriptions.map((subscription) => {
-      const key = String(subscription._id);
-      const report = reconcileSubscriptionMealLedger({
-        subscription,
-        days: daysBySub.get(key) || [],
-        stackedAllocations: stackedBySub.get(key) || [],
-        batches: batchesBySub.get(key) || [],
-        deductionLogs: logsBySub.get(key) || [],
-        releasedMeals: releasesFor(subscription)
-          .reduce((sum, release) => sum + Number(release.request && release.request.mealCount || 0), 0),
-        now,
-      });
-      const user = usersById.get(String(subscription.userId)) || {};
-      return { ...report, customer: user.name || "", phone: user.phoneE164 || user.phone || "" };
+    const {
+      subscriptions, skippedEnded, reports, stackedBySub, batchesBySub, logsBySub, releasesFor,
+    } = await loadReconciliationReports({
+      subscriptionId: values["subscription-id"] || null,
+      allStatuses: values["all-statuses"],
+      includeEnded: values["include-ended"],
+      now,
     });
 
     if (values.explain) {

@@ -423,4 +423,29 @@ function legacyManualLog(id, date, meals, remainingBefore, remainingAfter) {
   assert.deepEqual(stale.details.days, [{ date: "2026-11-20", dayStatus: "skipped", meals: 3 }]);
 }
 
+// 23. Staff confirmed the customer took extra meals from the balance on a day
+//     that was also delivered: intentional, not a double deduction. The marker
+//     is evidence only and applies to its own business date.
+{
+  const input = {
+    subscription: subscription({ totalMeals: 52, remainingMeals: 20, consumedMeals: 32 }),
+    days: [{ ...legacyDay("2026-11-15", "d1", 2), plannerMeta: { requiredSlotCount: 2 } }, ...Array.from({ length: 14 }, (_, i) => legacyDay(`2026-10-${String(i + 1).padStart(2, "0")}`, `x${i}`, 2))],
+    now: NOW,
+  };
+  const marker = (date) => ({
+    _id: "m1", entityId: SUB, action: "subscription_manual_deduction_same_day_extra",
+    createdAt: new Date(`${date}T09:00:00Z`), meta: { businessDate: date, confirmed: true },
+  });
+  const log = legacyManualLog("l1", "2026-11-15", 2, 20, 18);
+  const confirmed = reconcileSubscriptionMealLedger({ ...input, deductionLogs: [log, marker("2026-11-15")] });
+  assert.deepEqual(codes(confirmed), []);
+  assert.equal(confirmed.consumedGap, 0);
+  assert.equal(confirmed.verdict, "ok");
+  // Marker on another date does not excuse this day.
+  const other = reconcileSubscriptionMealLedger({ ...input, deductionLogs: [log, marker("2026-11-14")] });
+  assert.deepEqual(codes(other), ["DAY_OVER_DEDUCTED"]);
+  // The marker never counts as a deduction.
+  assert.equal(confirmed.evidence.manualMeals, 2);
+}
+
 console.log("subscriptionMealLedgerReconciliationService tests passed");

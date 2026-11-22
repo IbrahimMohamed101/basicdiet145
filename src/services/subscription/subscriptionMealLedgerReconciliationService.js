@@ -31,6 +31,7 @@ const {
   DAILY_DEDUCTION_ACTION,
   MANUAL_DEDUCTION_ACTION,
   MANUAL_DEDUCTION_REVERSAL_ACTION,
+  SAME_DAY_EXTRA_ACTION,
 } = require("../dashboard/manualDeduction/constants");
 
 // Written by an out-of-repo correction when staff typed a deduction larger than
@@ -238,6 +239,13 @@ function reconcileSubscriptionMealLedger({
     .reduce((sum, log) => sum + nonNegativeInteger(log.meta.restoredRegularMeals)
       + nonNegativeInteger(log.meta.restoredPremiumMeals), 0);
 
+  // Business dates on which staff confirmed that the customer took extra meals
+  // from the balance on top of the delivery. Those days are intentional, so the
+  // double-deduction suspicion does not apply to them.
+  const confirmedExtraDates = new Set(deductionLogs
+    .filter((log) => log.action === SAME_DAY_EXTRA_ACTION && log.meta && log.meta.businessDate)
+    .map((log) => String(log.meta.businessDate)));
+
   const batchEvidence = collectBatchDeductionEvidence(batches, deductionLogs);
   const dayByDate = new Map(days.map((day) => [String(day.date), day]));
   const legacyByDate = groupByDate(subscription.baseMealAllocations);
@@ -300,7 +308,8 @@ function reconcileSubscriptionMealLedger({
     // A staff deduction larger than one day's meals is a bulk/backfill deduction
     // (it cannot duplicate a single delivery), so only <= expected is suspicious.
     if (!nonConsuming && expected > 0 && automatic > 0 && manual > 0
-      && manual <= expected && automatic + manual > expected) {
+      && manual <= expected && automatic + manual > expected
+      && !confirmedExtraDates.has(date)) {
       add("DAY_OVER_DEDUCTED", { ...row, deductedMeals: automatic + manual });
     }
     if (dayConsumed && date <= today && automatic + manual === 0) {
