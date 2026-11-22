@@ -9,12 +9,14 @@
  * issues find queries and writes a CSV file on the machine running it.
  *
  *   MONGO_URI="<connection string>" node scripts/reconcile-meal-balances.js \
- *     [--all-statuses] [--include-ended] [--subscription-id <id>] [--out report.csv]
+ *     [--all-statuses] [--include-ended] [--subscription-id <id>] [--out report.csv] [--include-pii]
  *
  * By default only CURRENT subscriptions are checked: status "active" and a
  * validity end date that has not passed. --include-ended also checks the rest.
  *
- * The CSV contains customer names and phone numbers: keep it private.
+ * The CSV contains NO customer names or phone numbers by default (subscription
+ * ids are enough to look a customer up in the dashboard). --include-pii adds
+ * them; the file is then private data and must not be shared or committed.
  * Exit code 2 means at least one critical finding.
  */
 
@@ -66,6 +68,7 @@ async function main() {
       "subscription-id": { type: "string" },
       out: { type: "string" },
       explain: { type: "boolean", default: false },
+      "include-pii": { type: "boolean", default: false },
     },
   });
   if (!process.env.MONGO_URI) throw new Error("Set MONGO_URI to the intended environment's database.");
@@ -332,13 +335,15 @@ async function main() {
       ...sampleIds.slice(-3), ...sampleIds.slice(0, 3),
     ].map((report) => ({ subscriptionId: report.subscriptionId, gap: -report.consumedGap }));
 
-    const header = ["verdict", "code", "severity", "subscriptionId", "customer", "phone", "status",
+    const includePii = values["include-pii"] === true;
+    const header = ["verdict", "code", "severity", "subscriptionId", ...(includePii ? ["customer", "phone"] : []), "status",
       "deliveryMode", "total", "available", "reserved", "consumed", "forfeited", "evidenceConsumed", "gap", "details", "action"];
     const lines = [header.join(",")];
     for (const report of reports.filter((row) => row.verdict !== "ok")) {
       for (const finding of report.findings) {
         lines.push([
-          report.verdict, finding.code, finding.severity, report.subscriptionId, report.customer, report.phone,
+          report.verdict, finding.code, finding.severity, report.subscriptionId,
+          ...(includePii ? [report.customer, report.phone] : []),
           report.status, report.deliveryMode, report.counters.total, report.counters.available, report.counters.reserved,
           report.counters.consumed, report.counters.forfeited, report.evidence.consumedMeals, report.consumedGap,
           JSON.stringify(finding.details), finding.action,
