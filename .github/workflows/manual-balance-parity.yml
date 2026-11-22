@@ -26,6 +26,7 @@ jobs:
     env:
       NODE_ENV: test
       MONGO_URI: mongodb://127.0.0.1:27017/basicdiet_test_manual_balance_parity
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/basicdiet_test_manual_balance_parity
       DASHBOARD_UNCONSUMED_MEAL_BALANCE_ENABLED: "true"
     steps:
       - name: Checkout
