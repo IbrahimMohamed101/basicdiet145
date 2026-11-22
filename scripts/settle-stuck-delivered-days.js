@@ -74,7 +74,11 @@ function planDaySettlement({ subscription, day, allocations, today }) {
   if (!SETTLEABLE_STATUSES.includes(day.status)) throw new Error(`day status ${day.status} cannot be settled`);
   if (!(String(day.date) < String(today))) throw new Error("day is not in the past");
 
-  const forDay = allocations.filter((row) => String(row.subscriptionDayId) === String(day._id));
+  // Same matching rule the stacking runtime uses to find a day's allocations:
+  // linked to the day id OR booked on the day's date.
+  const forDay = allocations.filter((row) => (
+    String(row.subscriptionDayId) === String(day._id) || String(row.date) === String(day.date)
+  ));
   const counts = countByState(forDay);
   if (counts.reserved <= 0) throw new Error("day has no reserved meals to settle");
   if (counts.consumed > 0) throw new Error("day already has consumed meals; manual review needed");
@@ -115,11 +119,15 @@ function verifySettlement({ plan, before, after }) {
 
 async function takeSnapshot({ subscriptionId, dayId, session }) {
   const opts = session ? { session } : {};
-  const [sub, day, allocations] = await Promise.all([
+  const [sub, day] = await Promise.all([
     Subscription.findById(subscriptionId, null, opts).lean(),
     SubscriptionDay.findById(dayId, null, opts).lean(),
-    SubscriptionEntitlementAllocation.find({ subscriptionDayId: dayId }, null, opts).lean(),
   ]);
+  const clauses = [{ subscriptionDayId: dayId }];
+  if (day && day.date) clauses.push({ date: day.date });
+  const allocations = await SubscriptionEntitlementAllocation.find(
+    { containerSubscriptionId: subscriptionId, $or: clauses }, null, opts
+  ).lean();
   const batchIds = [...new Set(allocations.map((row) => String(row.entitlementBatchId)))];
   const batchRows = batchIds.length
     ? await SubscriptionEntitlementBatch.find({ _id: { $in: batchIds } }, null, opts).lean()
@@ -149,6 +157,31 @@ async function takeSnapshot({ subscriptionId, dayId, session }) {
   };
 }
 
+/**
+ * The server routes stacked subscriptions to the batch ledger through wrappers
+ * that are installed at startup and gated by environment flags. This script runs
+ * in its own process, so it installs the same wrappers with the gate forced open.
+ * The wrapper still falls back to the legacy path for subscriptions that have no
+ * entitlement batch. Nothing outside this process is affected.
+ */
+function installStackingRouteForThisProcess() {
+  const entitlementService = require("../src/services/subscription/subscriptionMealEntitlementService");
+  const {
+    createStackingEntitlementWrappers,
+  } = require("../src/services/subscription/subscriptionStackingEntitlementRouterService");
+  const names = [
+    "reserveDayEntitlements", "transitionDayEntitlements", "reopenDayEntitlements",
+    "transitionAllocation", "reacquireAllocation", "reservePickupEntitlements", "transitionPickupEntitlements",
+  ];
+  const originals = {};
+  for (const name of names) originals[name] = entitlementService[name];
+  const wrappers = createStackingEntitlementWrappers(originals, {
+    globallyEnabled: () => true,
+    writeEnabledForUser: () => true,
+  });
+  entitlementService.transitionDayEntitlements = wrappers.transitionDayEntitlements;
+}
+
 async function settleOne({ subscriptionId, date, reason, apply }) {
   const today = dateUtils.getTodayKSADate(new Date());
   const day = await SubscriptionDay.findOne({ subscriptionId, date }).lean();
@@ -168,6 +201,7 @@ async function settleOne({ subscriptionId, date, reason, apply }) {
 
   const { runMongoTransactionWithRetry } = require("../src/services/mongoTransactionRetryService");
   const { fulfillSubscriptionDay } = require("../src/services/fulfillmentService");
+  installStackingRouteForThisProcess();
 
   const after = await runMongoTransactionWithRetry(async (session, { transactional }) => {
     if (!transactional) throw new Error("Refusing to write: this database has no transaction support (no rollback).");

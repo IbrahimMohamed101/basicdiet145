@@ -46,10 +46,14 @@ assert.throws(() => plan({ allocations: [alloc("consumed")] }), /no reserved mea
 assert.throws(() => plan({ allocations: [...reserved(1), alloc("consumed")] }), /already has consumed/);
 assert.throws(() => plan({ day: day({ subscriptionId: "0000000000000000000000ff" }) }), /another subscription/);
 
-// 4) Allocations of other days are ignored.
+// 4) Allocations of other days are ignored; date-booked ones with no day link count.
 {
-  const other = { ...alloc("reserved"), subscriptionDayId: "0000000000000000000000d2" };
+  const other = { ...alloc("reserved"), subscriptionDayId: "0000000000000000000000d2", date: "2026-11-18" };
   assert.equal(plan({ allocations: [...reserved(1), other] }).expectedConsumed, 1);
+  const byDate = { ...alloc("reserved"), subscriptionDayId: null, date: "2026-11-17" };
+  const p = plan({ allocations: [byDate, { ...byDate }, { ...byDate }] });
+  assert.equal(p.expectedConsumed, 3);
+  assert.deepEqual(p.perBatchReserved, { [BATCH]: 3 });
 }
 
 // 5) Verification: the exact expected movement passes.
