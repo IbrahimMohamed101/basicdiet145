@@ -7,6 +7,7 @@ const {
   buildSubscriptionOperationsAudit,
 } = require("./subscriptionOperationsAuditService");
 const {
+  hasFirstDayPickupOverride,
   resolveEffectiveFulfillmentMode,
 } = require("../subscription/subscriptionFulfillmentPolicyService");
 
@@ -88,12 +89,15 @@ function classifyDailyDeliveryRow(row) {
     );
   }
 
-  if (row.automaticConsumedMeals > 0 && row.manualDeductedMeals > 0) {
+  if (
+    row.automaticConsumedMeals > 0 && row.manualDeductedMeals > 0
+    && (row.expectedConsumedMeals === 0 || row.consumptionDifference > 0)
+  ) {
     return result(
       "DOUBLE_DEDUCTION_SUSPECTED",
       "اشتباه خصم مزدوج",
       "critical",
-      "يوجد استهلاك تلقائي وخصم يدوي لنفس الاشتراك في نفس اليوم."
+      "اجتمع الاستهلاك التلقائي والخصم اليدوي وتجاوز الإجمالي المتوقع لهذا اليوم."
     );
   }
 
@@ -184,16 +188,16 @@ function classifyDailyDeliveryRow(row) {
 function buildDailyDeliveryRow({ subscription, day, dayEvidence, logs, usersById }) {
   const evidence = dayEvidence || {};
   const rootFulfillmentMethod = String(subscription.fulfillmentMethod || "").trim();
-  const effectiveFulfillmentMethod = resolveEffectiveFulfillmentMode({
+  const fulfillmentContext = {
     subscription: {
       deliveryMode: rootFulfillmentMethod,
       startDate: subscription.startDate,
     },
     day: evidence,
     date: day.date,
-  });
-  const firstDayPickupOverride = rootFulfillmentMethod === "delivery"
-    && effectiveFulfillmentMethod === "pickup";
+  };
+  const effectiveFulfillmentMethod = day.fulfillmentMethod || resolveEffectiveFulfillmentMode(fulfillmentContext);
+  const firstDayPickupOverride = hasFirstDayPickupOverride(fulfillmentContext);
   const deliveryExpected = effectiveFulfillmentMethod === "delivery" && !Boolean(day.nonConsuming);
   const deliveryStatus = deliveryStatusOf(day);
   const dashboardDelivered = deliveryStatus === "delivered";
@@ -203,7 +207,7 @@ function buildDailyDeliveryRow({ subscription, day, dayEvidence, logs, usersById
   const forfeitedMeals = nonNegativeInteger(day.allocation && day.allocation.forfeited);
   const releasedMeals = nonNegativeInteger(day.allocation && day.allocation.released);
   const manualDeductedMeals = nonNegativeInteger(day.manualDeduction && day.manualDeduction.totalMeals);
-  const observedConsumedMeals = automaticConsumedMeals + manualDeductedMeals;
+  const observedConsumedMeals = day.deductedMealsObserved ?? automaticConsumedMeals + manualDeductedMeals;
   const expectedConsumedMeals = dashboardDelivered ? expectedMeals : 0;
   const consumptionDifference = observedConsumedMeals - expectedConsumedMeals;
   const entitlementImpactObserved = reservedMeals
@@ -347,13 +351,13 @@ async function loadEvidence(report) {
 }
 
 async function buildSubscriptionOperationsAuditWithDailyDelivery(options = {}) {
-  const report = await buildSubscriptionOperationsAudit(options);
+  const report = await buildSubscriptionOperationsAudit({ ...options, includeDetails: true });
   const { dayEvidenceById, logsByDayId, usersById } = await loadEvidence(report);
   const rowsByDate = new Map();
 
   for (const subscription of report.subscriptionAudits || []) {
-    if (subscription.fulfillmentMethod !== "delivery") continue;
     for (const day of subscription.days || []) {
+      if (subscription.fulfillmentMethod !== "delivery" && day.fulfillmentMethod !== "delivery") continue;
       const dayId = id(day.day && day.day.id);
       const row = buildDailyDeliveryRow({
         subscription,
@@ -409,6 +413,10 @@ async function buildSubscriptionOperationsAuditWithDailyDelivery(options = {}) {
       (row) => row.result.code === "DEDUCTED_WITHOUT_DASHBOARD_DELIVERY"
     ).length,
   };
+  if (options.includeDetails === false) {
+    for (const subscription of report.subscriptionAudits) subscription.days = [];
+    for (const day of report.dailyDeliveryOperations) day.customers = [];
+  }
 
   return report;
 }
