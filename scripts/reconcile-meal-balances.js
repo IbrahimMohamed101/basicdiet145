@@ -9,7 +9,10 @@
  * issues find queries and writes a CSV file on the machine running it.
  *
  *   MONGO_URI="<connection string>" node scripts/reconcile-meal-balances.js \
- *     [--all-statuses] [--subscription-id <id>] [--out report.csv]
+ *     [--all-statuses] [--include-ended] [--subscription-id <id>] [--out report.csv]
+ *
+ * By default only CURRENT subscriptions are checked: status "active" and a
+ * validity end date that has not passed. --include-ended also checks the rest.
  *
  * The CSV contains customer names and phone numbers: keep it private.
  * Exit code 2 means at least one critical finding.
@@ -18,6 +21,7 @@
 const fs = require("node:fs");
 const { parseArgs } = require("node:util");
 const mongoose = require("mongoose");
+const dateUtils = require("../src/utils/date");
 const ActivityLog = require("../src/models/ActivityLog");
 const Subscription = require("../src/models/Subscription");
 const SubscriptionDay = require("../src/models/SubscriptionDay");
@@ -58,6 +62,7 @@ async function main() {
   const { values } = parseArgs({
     options: {
       "all-statuses": { type: "boolean", default: false },
+      "include-ended": { type: "boolean", default: false },
       "subscription-id": { type: "string" },
       out: { type: "string" },
       explain: { type: "boolean", default: false },
@@ -73,7 +78,18 @@ async function main() {
     const query = {};
     if (values["subscription-id"]) query._id = values["subscription-id"];
     if (!values["all-statuses"]) query.status = "active";
-    const subscriptions = await Subscription.find(query).lean();
+    const allMatching = await Subscription.find(query).lean();
+    // Current subscriptions only: a subscription whose validity already ended is
+    // history even if its status was never moved off "active".
+    const today = dateUtils.getTodayKSADate(new Date());
+    const hasEnded = (row) => {
+      const end = row.validityEndDate || row.endDate;
+      return Boolean(end) && dateUtils.toKSADateString(end) < today;
+    };
+    const skippedEnded = values["include-ended"] || values["subscription-id"]
+      ? 0 : allMatching.filter(hasEnded).length;
+    const subscriptions = values["include-ended"] || values["subscription-id"]
+      ? allMatching : allMatching.filter((row) => !hasEnded(row));
     const ids = subscriptions.map((row) => row._id);
 
     const [days, stacked, batches, logs, users] = await Promise.all([
@@ -335,6 +351,7 @@ async function main() {
     console.log(JSON.stringify({
       readOnly: true,
       subscriptionsScanned: reports.length,
+      endedButStillActiveSkipped: skippedEnded,
       verdicts: byVerdict,
       findingsByCode: byCode,
       diagnostics,
