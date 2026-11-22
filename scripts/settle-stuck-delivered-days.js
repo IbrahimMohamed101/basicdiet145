@@ -224,9 +224,21 @@ async function settleOne({ subscriptionId, date, reason, apply }) {
   if (!day) throw new Error(`no day ${date} for subscription ${subscriptionId}`);
 
   const snap = await takeSnapshot({ subscriptionId, dayId: day._id });
-  const plan = planDaySettlement({
-    subscription: snap.sub, day: snap.day, allocations: snap.allocationRows, today,
-  });
+  let plan;
+  try {
+    plan = planDaySettlement({
+      subscription: snap.sub, day: snap.day, allocations: snap.allocationRows, today,
+    });
+  } catch (err) {
+    // Show what the day holds so the refusal can be understood without guessing.
+    err.detail = {
+      dayStatus: snap.day.status,
+      counts: snap.allocations,
+      rows: dayAllocationRows({ subscription: snap.sub, day: snap.day, stackedAllocations: snap.allocationRows })
+        .map((row) => ({ source: row.source, state: row.state, linked: row.linked, key: row.allocationKey })),
+    };
+    throw err;
+  }
   const summary = {
     subscriptionId: String(subscriptionId),
     date,
@@ -320,7 +332,7 @@ async function main() {
       try {
         out.push(await settleOne({ subscriptionId, date, reason: values.reason, apply: values.apply }));
       } catch (err) {
-        out.push({ subscriptionId, date, error: err.message });
+        out.push({ subscriptionId, date, error: err.message, detail: err.detail });
         // Stop at the first failure so nothing later is applied on top of it.
         break;
       }
