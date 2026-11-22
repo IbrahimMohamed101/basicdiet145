@@ -61,6 +61,33 @@ function perBatchReserved(allocations) {
   return map;
 }
 
+/**
+ * Pure: every allocation that belongs to the day, from both ledgers.
+ *  - legacy: subscription.baseMealAllocations (embedded array)
+ *  - stacked: SubscriptionEntitlementAllocation collection
+ * Matching mirrors the services: linked to the day id OR booked on the day's date.
+ */
+function dayAllocationRows({ subscription, day, stackedAllocations }) {
+  const dayId = String(day._id);
+  const keys = new Set(Array.isArray(day.baseAllocationKeys) ? day.baseAllocationKeys : []);
+  const rows = [];
+  for (const entry of (subscription && subscription.baseMealAllocations) || []) {
+    const linked = String(entry.dayId || "") === dayId || keys.has(entry.allocationKey);
+    if (linked || String(entry.date) === String(day.date)) {
+      rows.push({ source: "legacy", state: entry.state, quantity: 1, linked, allocationKey: entry.allocationKey });
+    }
+  }
+  for (const row of stackedAllocations || []) {
+    if (String(row.subscriptionDayId) === dayId || String(row.date) === String(day.date)) {
+      rows.push({
+        source: "stacked", state: row.state, quantity: Number(row.quantity) || 1, linked: true,
+        entitlementBatchId: String(row.entitlementBatchId), allocationKey: row.allocationKey,
+      });
+    }
+  }
+  return rows;
+}
+
 /** Pure: decide whether a day may be settled and what must happen. Throws if not. */
 function planDaySettlement({ subscription, day, allocations, today }) {
   if (!subscription) throw new Error("subscription not found");
@@ -74,21 +101,21 @@ function planDaySettlement({ subscription, day, allocations, today }) {
   if (!SETTLEABLE_STATUSES.includes(day.status)) throw new Error(`day status ${day.status} cannot be settled`);
   if (!(String(day.date) < String(today))) throw new Error("day is not in the past");
 
-  // Same matching rule the stacking runtime uses to find a day's allocations:
-  // linked to the day id OR booked on the day's date.
-  const forDay = allocations.filter((row) => (
-    String(row.subscriptionDayId) === String(day._id) || String(row.date) === String(day.date)
-  ));
+  const forDay = dayAllocationRows({ subscription, day, stackedAllocations: allocations });
   const counts = countByState(forDay);
   if (counts.reserved <= 0) throw new Error("day has no reserved meals to settle");
   if (counts.consumed > 0) throw new Error("day already has consumed meals; manual review needed");
+  if (forDay.some((row) => row.state === "reserved" && !row.linked)) {
+    throw new Error("a reserved meal is booked on this date but not linked to the day; manual review needed");
+  }
 
   return {
     date: day.date,
     fromStatus: day.status,
     statusPath: PATH_TO_READY[day.status] || [],
     expectedConsumed: counts.reserved,
-    perBatchReserved: perBatchReserved(forDay),
+    legacyReserved: forDay.filter((row) => row.source === "legacy" && row.state === "reserved").length,
+    perBatchReserved: perBatchReserved(forDay.filter((row) => row.source === "stacked")),
   };
 }
 
@@ -105,6 +132,15 @@ function verifySettlement({ plan, before, after }) {
   }
   if (after.subscription.totalMeals !== before.subscription.totalMeals) {
     problems.push("subscription totalMeals changed");
+  }
+  if (plan.legacyReserved > 0) {
+    const moved = plan.legacyReserved;
+    if (after.subscription.reservedMeals !== before.subscription.reservedMeals - moved) {
+      problems.push(`subscription reservedMeals ${before.subscription.reservedMeals} -> ${after.subscription.reservedMeals}, expected -${moved}`);
+    }
+    if (after.subscription.consumedMeals !== before.subscription.consumedMeals + moved) {
+      problems.push(`subscription consumedMeals ${before.subscription.consumedMeals} -> ${after.subscription.consumedMeals}, expected +${moved}`);
+    }
   }
   for (const [batchId, moved] of Object.entries(plan.perBatchReserved)) {
     const b = before.batches[batchId];
@@ -143,7 +179,7 @@ async function takeSnapshot({ subscriptionId, dayId, session }) {
   }
   return {
     dayStatus: day && day.status,
-    allocations: countByState(allocations),
+    allocations: countByState(day ? dayAllocationRows({ subscription: sub, day, stackedAllocations: allocations }) : []),
     allocationRows: allocations,
     subscription: sub && {
       totalMeals: sub.totalMeals,
@@ -296,7 +332,7 @@ async function main() {
   }
 }
 
-module.exports = { SETTLEMENT_ACTION, planDaySettlement, verifySettlement, countByState };
+module.exports = { SETTLEMENT_ACTION, planDaySettlement, verifySettlement, countByState, dayAllocationRows };
 
 if (require.main === module) {
   main().catch((err) => {

@@ -117,4 +117,34 @@ assert.deepEqual(verifySettlement({ plan: p, before: before(), after: good() }),
   assert.deepEqual(verifySettlement({ plan: p2, before: b, after: a }), []);
 }
 
+// 8) Legacy embedded ledger (subscription.baseMealAllocations).
+{
+  const legacy = (state, o = {}) => ({ allocationKey: `k-${Math.random()}`, dayId: DAY, date: "2026-11-17", state, ...o });
+  const sub = subscription({ baseMealAllocations: [legacy("reserved"), legacy("reserved"), legacy("reserved")] });
+  const p3 = planDaySettlement({ subscription: sub, day: day({ status: "open" }), allocations: [], today: TODAY });
+  assert.equal(p3.expectedConsumed, 3);
+  assert.equal(p3.legacyReserved, 3);
+  assert.deepEqual(p3.perBatchReserved, {});
+
+  // booked on the date but not linked to the day: transition would skip it -> refuse
+  const unlinked = subscription({ baseMealAllocations: [legacy("reserved", { dayId: null })] });
+  assert.throws(() => planDaySettlement({ subscription: unlinked, day: day(), allocations: [], today: TODAY }), /not linked/);
+  // linked through the day's projected keys is fine
+  const keyed = subscription({ baseMealAllocations: [legacy("reserved", { dayId: null, allocationKey: "K1" })] });
+  assert.equal(planDaySettlement({ subscription: keyed, day: day({ baseAllocationKeys: ["K1"] }), allocations: [], today: TODAY }).legacyReserved, 1);
+  // other days ignored
+  const otherDay = subscription({ baseMealAllocations: [legacy("reserved", { dayId: "0000000000000000000000d9", date: "2026-11-20" })] });
+  assert.throws(() => planDaySettlement({ subscription: otherDay, day: day(), allocations: [], today: TODAY }), /no reserved meals/);
+
+  const b = { dayStatus: "ready_for_delivery", allocations: { reserved: 3, consumed: 0, released: 0, forfeited: 0 },
+    subscription: { totalMeals: 52, remainingMeals: 31, reservedMeals: 5, consumedMeals: 16 }, batches: {} };
+  const a = { dayStatus: "fulfilled", allocations: { reserved: 0, consumed: 3, released: 0, forfeited: 0 },
+    subscription: { totalMeals: 52, remainingMeals: 31, reservedMeals: 2, consumedMeals: 19 }, batches: {} };
+  assert.deepEqual(verifySettlement({ plan: p3, before: b, after: a }), []);
+  const bad = { ...a, subscription: { ...a.subscription, reservedMeals: 3, consumedMeals: 18 } };
+  const problems = verifySettlement({ plan: p3, before: b, after: bad });
+  assert.ok(problems.some((x) => /subscription reservedMeals/.test(x)));
+  assert.ok(problems.some((x) => /subscription consumedMeals/.test(x)));
+}
+
 console.log("settleStuckDeliveredDays tests passed");
