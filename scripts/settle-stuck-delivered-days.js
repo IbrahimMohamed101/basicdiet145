@@ -20,8 +20,19 @@
  *     [--reason "تأكيد الموظف: تم التسليم"] [--apply]
  */
 
+const fs = require("node:fs");
+const path = require("node:path");
 const { parseArgs } = require("node:util");
 const mongoose = require("mongoose");
+// This script must never create indexes or collections on the real database.
+mongoose.set("autoIndex", false);
+mongoose.set("autoCreate", false);
+// The fulfillment code populates other models (e.g. planId). Register them all,
+// the way the server does, so populate() does not fail.
+const MODELS_DIR = path.join(__dirname, "..", "src", "models");
+for (const file of fs.readdirSync(MODELS_DIR)) {
+  if (file.endsWith(".js")) require(path.join(MODELS_DIR, file));
+}
 const dateUtils = require("../src/utils/date");
 const ActivityLog = require("../src/models/ActivityLog");
 const Subscription = require("../src/models/Subscription");
