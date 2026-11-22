@@ -87,7 +87,7 @@ async function main() {
           `metadata.${MANUAL_BATCH_JOURNAL}`,
           `metadata.${DELIVERY_BATCH_JOURNAL}`,
           `metadata.${HISTORICAL_DELIVERY_BATCH_JOURNAL}`,
-          "status applicationState totalMeals remainingMeals",
+          "status applicationState totalMeals remainingMeals reservedMeals consumedMeals forfeitedMeals",
         ].join(" "))
         .lean(),
       ActivityLog.find({
@@ -138,6 +138,8 @@ async function main() {
           batches: (batchesBySub.get(key) || []).map((batch) => ({
             status: batch.status, applicationState: batch.applicationState,
             totalMeals: batch.totalMeals, remainingMeals: batch.remainingMeals,
+            reservedMeals: batch.reservedMeals, consumedMeals: batch.consumedMeals,
+            forfeitedMeals: batch.forfeitedMeals,
             journals: {
               manual: (batch.metadata?.[MANUAL_BATCH_JOURNAL] || []).length,
               delivery: (batch.metadata?.[DELIVERY_BATCH_JOURNAL] || []).length,
@@ -166,12 +168,13 @@ async function main() {
     // Aggregate-only diagnostics (no customer data) to tell real problems from
     // rule artifacts: which evidence sources a finding comes from, by version.
     const tally = (map, key) => { map[key] = (map[key] || 0) + 1; };
-    const diagnostics = { byVersion: {}, overDeductedBySources: {}, overDeductedBySize: {}, evidenceExceeds: {}, consumedExceeds: {} };
+    const diagnostics = { byVersion: {}, byBasis: {}, overDeductedBySources: {}, overDeductedBySize: {}, evidenceExceeds: {}, consumedExceeds: {}, counterDifferences: {}, unaccountedBatches: {} };
     for (const report of reports) {
       const version = `v${report.entitlementVersion}`;
       const bucket = diagnostics.byVersion[version] || (diagnostics.byVersion[version] = { subscriptions: 0, ok: 0, review: 0, critical: 0 });
       bucket.subscriptions += 1;
       bucket[report.verdict] += 1;
+      tally(diagnostics.byBasis, `${version} basis=${report.counterBasis}`);
       for (const finding of report.findings) {
         const d = finding.details || {};
         if (finding.code === "DAY_OVER_DEDUCTED") {
@@ -184,7 +187,11 @@ async function main() {
           tally(diagnostics.evidenceExceeds,
             `${version} basis=${d.counterBasis} counter=${d.counterConsumed === 0 ? 0 : ">0"} manual=${report.evidence.manualMeals > 0 ? "yes" : "no"} gap=${d.meals}`);
         } else if (finding.code === "CONSUMED_EXCEEDS_EVIDENCE") {
-          tally(diagnostics.consumedExceeds, `${version} gap=${d.meals}`);
+          tally(diagnostics.consumedExceeds, `${version} basis=${d.counterBasis} gap=${d.meals}`);
+        } else if (finding.code === "COUNTERS_DIFFER_FROM_ACTIVE_BATCHES") {
+          tally(diagnostics.counterDifferences, `${version} ${Object.keys(d.differences).join("+")}`);
+        } else if (finding.code === "BATCH_UNACCOUNTED_MEALS") {
+          for (const batch of d.batches) tally(diagnostics.unaccountedBatches, `${batch.status} unaccounted=${batch.unaccountedMeals}`);
         }
       }
     }

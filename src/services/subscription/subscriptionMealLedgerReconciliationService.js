@@ -14,6 +14,10 @@
  *   manual    = net committed staff deductions (after reversals)
  * Consumed evidence = sum(automatic) + sum(manual).
  *
+ * Stacked subscriptions keep their lifetime ledger in entitlement batches, so
+ * evidence is compared with the sum of batch.consumedMeals; subscription
+ * counters are only checked against the ACTIVE batches they project.
+ *
  * No function here touches the database; callers pass the loaded documents.
  */
 
@@ -68,6 +72,16 @@ const CHECKS = {
     message: "وجبات ما زالت محجوزة في يوم انتهى، فهي غير متاحة للعميل وغير مستهلكة.",
     action: "حوّل الحجز إلى مستهلك إن تم التنفيذ، أو حرّره إلى المتاح إن لم يتم.",
   },
+  COUNTERS_DIFFER_FROM_ACTIVE_BATCHES: {
+    severity: "high",
+    message: "عدّادات الاشتراك لا تساوي مجموع الباتشات النشطة (المصدر الفعلي للرصيد الحالي).",
+    action: "قارن العدّاد بكل باتش نشط، وصحّح العدّاد من الباتشات بعملية مسجلة لا بتعديل مباشر.",
+  },
+  BATCH_UNACCOUNTED_MEALS: {
+    severity: "high",
+    message: "باتش فيه وجبات غير مسجلة كمتبقية أو محجوزة أو مستهلكة أو منتهية.",
+    action: "حدّد مصير الوجبات الناقصة في الباتش (مستهلكة أم منتهية) وسجّلها بعملية واضحة.",
+  },
   DUPLICATE_ALLOCATION_KEY: {
     severity: "critical",
     message: "مفتاح استحقاق مكرر داخل سجل واحد.",
@@ -108,6 +122,45 @@ function requiredMeals(subscription, day) {
 function rawCounter(value) {
   if (value === undefined || value === null) return 0;
   return Number(value);
+}
+
+const ACTIVE_BATCH_STATUSES = new Set(["paid_scheduled", "active"]);
+
+function zeroCounters() {
+  return { total: 0, remaining: 0, reserved: 0, consumed: 0, forfeited: 0 };
+}
+
+/**
+ * Entitlement batches are the source of truth for stacked subscriptions: each
+ * batch keeps its own counters for its whole life. Subscription counters are a
+ * projection of the ACTIVE batches only (exhausted/expired batches drop out), so
+ * lifetime consumption must be read from all batches, not from the subscription.
+ */
+function summarizeBatches(batches) {
+  const ledgerBatches = (batches || []).filter((batch) => batch
+    && batch.totalMeals !== undefined
+    && batch.status !== "canceled"
+    && (batch.applicationState === undefined || batch.applicationState === "applied"));
+  const lifetime = zeroCounters();
+  const active = zeroCounters();
+  const unaccounted = [];
+  for (const batch of ledgerBatches) {
+    const row = {
+      total: nonNegativeInteger(batch.totalMeals),
+      remaining: nonNegativeInteger(batch.remainingMeals),
+      reserved: nonNegativeInteger(batch.reservedMeals),
+      consumed: nonNegativeInteger(batch.consumedMeals),
+      forfeited: nonNegativeInteger(batch.forfeitedMeals),
+    };
+    for (const key of Object.keys(lifetime)) lifetime[key] += row[key];
+    const isActive = ACTIVE_BATCH_STATUSES.has(String(batch.status || ""));
+    if (isActive) for (const key of Object.keys(active)) active[key] += row[key];
+    const accounted = row.remaining + row.reserved + row.consumed + row.forfeited;
+    if (accounted !== row.total) {
+      unaccounted.push({ status: batch.status || null, ...row, unaccountedMeals: row.total - accounted });
+    }
+  }
+  return { count: ledgerBatches.length, lifetime, active, unaccounted };
 }
 
 function reconcileSubscriptionMealLedger({
@@ -225,12 +278,35 @@ function reconcileSubscriptionMealLedger({
   if (staleReservedMeals > 0) add("STALE_RESERVATION", { meals: staleReservedMeals });
 
   const evidenceConsumed = automaticMeals + manualMeals;
-  // Subscriptions below entitlement v2 do not maintain consumedMeals; the only
-  // live counter is remainingMeals, so consumption is total - remaining.
-  const counterBasis = equationApplies ? "consumedMeals" : "total-remaining";
-  const counterConsumed = equationApplies
-    ? counters.consumed
-    : Math.max(0, counters.total - counters.available);
+  const batchLedger = summarizeBatches(batches);
+  const hasBatchLedger = batchLedger.count > 0;
+
+  let counterBasis;
+  let counterConsumed;
+  if (hasBatchLedger) {
+    // Stacked subscription: lifetime consumption lives in the batches.
+    counterBasis = "batches";
+    counterConsumed = batchLedger.lifetime.consumed;
+    const active = batchLedger.active;
+    const differences = {};
+    const pairs = [["total", counters.total, active.total], ["available", counters.available, active.remaining],
+      ["reserved", counters.reserved, active.reserved]];
+    if (equationApplies) {
+      pairs.push(["consumed", counters.consumed, active.consumed], ["forfeited", counters.forfeited, active.forfeited]);
+    }
+    for (const [name, subscriptionValue, batchValue] of pairs) {
+      if (subscriptionValue !== batchValue) differences[name] = { subscription: subscriptionValue, activeBatches: batchValue };
+    }
+    if (Object.keys(differences).length > 0) add("COUNTERS_DIFFER_FROM_ACTIVE_BATCHES", { differences });
+    if (batchLedger.unaccounted.length > 0) add("BATCH_UNACCOUNTED_MEALS", { batches: batchLedger.unaccounted });
+  } else {
+    // Subscriptions below entitlement v2 do not maintain consumedMeals; the only
+    // live counter is remainingMeals, so consumption is total - remaining.
+    counterBasis = equationApplies ? "consumedMeals" : "total-remaining";
+    counterConsumed = equationApplies
+      ? counters.consumed
+      : Math.max(0, counters.total - counters.available);
+  }
   const consumedGap = counterConsumed - evidenceConsumed;
   if (consumedGap > 0) add("CONSUMED_EXCEEDS_EVIDENCE", { counterConsumed, counterBasis, evidenceConsumed, meals: consumedGap });
   if (consumedGap < 0) add("EVIDENCE_EXCEEDS_CONSUMED", { counterConsumed, counterBasis, evidenceConsumed, meals: -consumedGap });
@@ -247,6 +323,7 @@ function reconcileSubscriptionMealLedger({
     counterConsumed,
     counterBasis,
     consumedGap,
+    batchLedger: hasBatchLedger ? batchLedger : null,
     findings,
     verdict: severities.has("critical") ? "critical" : severities.has("high") ? "review" : "ok",
     days: dayEvidence,

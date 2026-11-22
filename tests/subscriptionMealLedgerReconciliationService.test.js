@@ -208,4 +208,98 @@ const codes = (report) => report.findings.map((finding) => finding.code).sort();
   assert.deepEqual(codes(report), ["FULFILLED_DAY_WITHOUT_EVIDENCE"]);
 }
 
+function batch(overrides = {}) {
+  return {
+    status: "exhausted",
+    applicationState: "applied",
+    totalMeals: 7,
+    remainingMeals: 0,
+    reservedMeals: 0,
+    consumedMeals: 7,
+    forfeitedMeals: 0,
+    ...overrides,
+  };
+}
+
+// 11. Production shape: counters belong to ACTIVE batches only. A subscription
+//     whose batches are exhausted/expired has zero counters while the staff
+//     deductions of its whole life match the batches' lifetime consumption.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 0, remainingMeals: 0, consumedMeals: 0 }),
+    batches: [
+      batch({ status: "expired", remainingMeals: 0, consumedMeals: 5, forfeitedMeals: 2 }),
+      batch(),
+    ],
+    deductionLogs: [
+      manualLog("l1", "2026-10-31", 3),
+      manualLog("l2", "2026-11-07", 2),
+      manualLog("l3", "2026-11-17", 7),
+    ],
+    now: NOW,
+  });
+  assert.equal(report.counterBasis, "batches");
+  assert.equal(report.counterConsumed, 12);
+  assert.equal(report.evidence.consumedMeals, 12);
+  assert.deepEqual(codes(report), []);
+  assert.equal(report.verdict, "ok");
+}
+
+// 12. Evidence above the batches' lifetime consumption is still caught.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 0, remainingMeals: 0, consumedMeals: 0 }),
+    batches: [batch()],
+    deductionLogs: [manualLog("l1", "2026-11-17", 9)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(report), ["EVIDENCE_EXCEEDS_CONSUMED"]);
+  assert.equal(report.consumedGap, -2);
+}
+
+// 13. Batches consumed more than any evidence: reported the other way.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 0, remainingMeals: 0, consumedMeals: 0 }),
+    batches: [batch()],
+    deductionLogs: [manualLog("l1", "2026-11-17", 5)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(report), ["CONSUMED_EXCEEDS_EVIDENCE"]);
+  assert.equal(report.consumedGap, 2);
+}
+
+// 14. Subscription counters must equal the sum of the active batches.
+{
+  const active = batch({ status: "active", totalMeals: 78, remainingMeals: 4, consumedMeals: 74 });
+  const matching = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 78, remainingMeals: 4, consumedMeals: 74 }),
+    batches: [batch({ totalMeals: 78, consumedMeals: 78 }), active],
+    deductionLogs: [manualLog("l1", "2026-11-17", 152)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(matching), []);
+
+  const drifted = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 78, remainingMeals: 9, consumedMeals: 69 }),
+    batches: [batch({ totalMeals: 78, consumedMeals: 78 }), active],
+    deductionLogs: [manualLog("l1", "2026-11-17", 152)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(drifted), ["COUNTERS_DIFFER_FROM_ACTIVE_BATCHES"]);
+  assert.deepEqual(Object.keys(drifted.findings[0].details.differences).sort(), ["available", "consumed"]);
+}
+
+// 15. A batch whose meals are not fully accounted for is reported.
+{
+  const report = reconcileSubscriptionMealLedger({
+    subscription: subscription({ totalMeals: 0, remainingMeals: 0, consumedMeals: 0 }),
+    batches: [batch({ status: "expired", consumedMeals: 5, forfeitedMeals: 0 })],
+    deductionLogs: [manualLog("l1", "2026-10-31", 5)],
+    now: NOW,
+  });
+  assert.deepEqual(codes(report), ["BATCH_UNACCOUNTED_MEALS"]);
+  assert.equal(report.findings[0].details.batches[0].unaccountedMeals, 2);
+}
+
 console.log("subscriptionMealLedgerReconciliationService tests passed");
