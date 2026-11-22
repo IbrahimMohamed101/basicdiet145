@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const ActivityLog = require("../../../models/ActivityLog");
 const Plan = require("../../../models/Plan");
 const Subscription = require("../../../models/Subscription");
+const SubscriptionDay = require("../../../models/SubscriptionDay");
 const User = require("../../../models/User");
 const {
   transitionPickupEntitlements,
@@ -28,6 +29,14 @@ async function findLastManualDeduction(subscriptionId, businessDate = null, sess
   let cursor = ActivityLog.findOne(query).sort({ createdAt: -1 });
   if (session) cursor = cursor.session(session);
   return cursor.lean();
+}
+
+async function findFulfilledDeliveryDay(subscriptionId, date, session = null) {
+  let cursor = SubscriptionDay.findOne({
+    subscriptionId, date, status: "fulfilled", creditsDeducted: true,
+  }).select("_id").lean();
+  if (session) cursor = cursor.session(session);
+  return cursor;
 }
 
 function findUserByPhone(phone) {
@@ -256,6 +265,7 @@ module.exports = {
   customerExists,
   deductAtomically,
   findActiveSubscriptionsByUserId,
+  findFulfilledDeliveryDay,
   findLastManualDeduction,
   findPlansByIds,
   findSubscriptionById,

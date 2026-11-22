@@ -169,6 +169,7 @@ const kitchenRoutes = require("./kitchen");
 const dashboardOpsRoutes = require("./dashboardOps");
 const dashboardSubscriptionRoutes = require("./dashboardSubscriptions");
 const dashboardAccountingRoutes = require("./dashboardAccounting");
+const dashboardMealLedgerAlertRoutes = require("./dashboardMealLedgerAlerts");
 const dashboardDailyCashClosingRoutes = require("./dashboardDailyCashClosings");
 const dashboardOrderRoutes = require("./dashboardOrders");
 const dashboardBoardRoutes = require("./dashboardBoards");
@@ -248,6 +249,7 @@ router.use(
 );
 router.use("/dashboard/subscriptions", dashboardSubscriptionRoutes);
 router.use("/dashboard/accounting", dashboardAccountingRoutes);
+router.use("/dashboard/meal-ledger-alerts", dashboardMealLedgerAlertRoutes);
 router.use("/dashboard/daily-closings", dashboardDailyCashClosingRoutes);
 router.use("/dashboard/orders", dashboardOrderRoutes);
 router.use("/dashboard", dashboardBoardRoutes);

@@ -6,6 +6,7 @@ const User = require("../src/models/User");
 const Addon = require("../src/models/Addon");
 const BuilderProtein = require("../src/models/BuilderProtein");
 const ActivityLog = require("../src/models/ActivityLog");
+const MealLedgerAlert = require("../src/models/MealLedgerAlert");
 const EmailOtpChallenge = require("../src/models/EmailOtpChallenge");
 const PromoCode = require("../src/models/PromoCode");
 const SubscriptionQuickDayDeduction = require(
@@ -67,6 +68,18 @@ const INDEX_DEFINITIONS = [
         "meta.fulfillmentMethod": "delivery",
       },
     },
+  },
+  {
+    model: MealLedgerAlert,
+    name: "meal_ledger_alert_identity",
+    key: { subscriptionId: 1, dedupeKey: 1 },
+    options: { unique: true },
+  },
+  {
+    model: MealLedgerAlert,
+    name: "meal_ledger_alert_board",
+    key: { status: 1, severity: 1, lastSeenAt: -1 },
+    options: {},
   },
   {
     model: EmailOtpChallenge,
