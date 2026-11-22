@@ -1118,6 +1118,7 @@ module.exports = {
   collectBatchDeductionEvidence,
   classifyAcquisitionSource,
   manualDeductionLedger,
+  mergeDayAllocations,
   manualReversalRow,
   resolveRange,
 };
