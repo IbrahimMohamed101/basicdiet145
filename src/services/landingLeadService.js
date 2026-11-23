@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const Plan = require("../models/Plan");
 const LandingLead = require("../models/LandingLead");
+const { queueConsentedMetaLead } = require("./metaLandingConversionsService");
 const { attachVerifiedSubscriptionsToLeads } = require("./landingLeadConversionReadService");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -27,6 +28,7 @@ function isValidRequest(body) {
   return body && typeof body === "object" && !Array.isArray(body)
     && UUID.test(body.requestId || "")
     && body.contactConsent === true
+    && (body.adsTrackingConsent === undefined || typeof body.adsTrackingConsent === "boolean")
     && normalizeSaudiPhone(body.phone)
     && (body.planUnselected === true
       ? body.planId == null && body.daysCount == null && body.grams == null && body.mealsPerDay == null
@@ -82,7 +84,8 @@ async function submitLead(body) {
       grams: planUnselected ? null : body.grams,
       mealsPerDay: planUnselected ? null : body.mealsPerDay,
       fulfillmentMethod: planUnselected ? "unspecified" : (body.fulfillmentMethod || "unspecified"), contactConsent: true,
-      marketingConsent: body.marketingConsent === true, consentAt: now,
+      marketingConsent: body.marketingConsent === true,
+      adsTrackingConsent: body.adsTrackingConsent === true, consentAt: now,
       source: clean(body.source), medium: clean(body.medium),
       campaign: clean(body.campaign, 100), content: clean(body.content, 100),
       referrerHost: validSourceHost(body.referrerHost),
@@ -90,6 +93,9 @@ async function submitLead(body) {
       sessionId: UUID.test(body.sessionId || "") ? body.sessionId.toLowerCase() : "",
       expiresAt: new Date(now.getTime() + 180 * 86400000),
     });
+    // Optional Meta outbox runs only after a brand-new lead is durably saved.
+    // Never block customer registration on third-party tracking failures.
+    try { await queueConsentedMetaLead(body); } catch { /* fail open for customer */ }
     return { ok: true, created: true };
   } catch (error) {
     if (error.code === 11000) return { ok: true, created: false };

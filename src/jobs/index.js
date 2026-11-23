@@ -6,6 +6,7 @@ const {
   processSubscriptionExpiryReminders,
 } = require("../services/notificationSchedulerService");
 const { cleanupAbandonedPromoReservations } = require("../services/promoCodeService");
+const { processMetaLandingOutbox } = require("../services/metaLandingConversionsService");
 const {
   processPaidSubscriptionPaymentRecoveries,
 } = require("../services/subscription/subscriptionPaymentRecoveryService");
@@ -32,6 +33,18 @@ function startJobs() {
   let lastMealLedgerScanDate = null;
   let lastMealLedgerAttemptTime = 0;
   let inProgress = false;
+  let metaInProgress = false;
+
+  // Independent bounded worker: never delay kitchen, subscription or billing jobs.
+  setInterval(async () => {
+    if (metaInProgress) return;
+    metaInProgress = true;
+    try {
+      const stats = await processMetaLandingOutbox({ maxItems: 3 });
+      if (stats.sent || stats.failed) logger.info("Meta conversion outbox delivery", stats);
+    } catch { logger.warn("Meta conversion outbox processing failed"); }
+    finally { metaInProgress = false; }
+  }, 60 * 1000);
 
   // Process all recurring jobs every minute in a single guarded loop.
   setInterval(async () => {

@@ -30,6 +30,8 @@ async function run() {
   assert.equal(service.normalizeSaudiPhone("0112345678"), null);
   assert.equal(service.normalizeSaudiPhone("some+966501234567"), null);
   assert.ok(service.isValidRequest(base()));
+  assert.ok(service.isValidRequest({ ...base(), adsTrackingConsent: true }));
+  assert.equal(Boolean(service.isValidRequest({ ...base(), adsTrackingConsent: "true" })), false);
   assert.equal(Boolean(service.isValidRequest({ ...base(), contactConsent: false })), false);
   assert.equal(Boolean(service.isValidRequest({ ...base(), planId: "__proto__" })), false);
   assert.equal(Boolean(service.isValidRequest({ ...base(), daysCount: 14 })), false);
@@ -68,6 +70,12 @@ async function run() {
     assert.equal(saved.phone, "+966501234567");
     assert.equal(saved.contactConsent, true);
     assert.equal(saved.marketingConsent, false);
+    assert.equal(saved.adsTrackingConsent, false);
+    const optedIn = await service.submitLead({ ...base(), adsTrackingConsent: true });
+    assert.equal(optedIn.ok, true);
+    assert.equal(saved.adsTrackingConsent, true);
+    assert.equal(saved.marketingConsent, false);
+    assert.equal(saved.contactConsent, true);
     assert.equal(saved.campaign, "حملة_جدة");
     assert.equal(saved.fulfillmentMethod, "pickup");
     assert.equal(saved.location, "benefits");
