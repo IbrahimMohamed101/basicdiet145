@@ -28,6 +28,16 @@ const PROMO_ERROR_MESSAGES = {
   PROMO_ALREADY_EXISTS: "Promo code already exists",
 };
 
+// Decide how an existing PromoUsage row for (checkoutDraftId, promoCodeId)
+// affects a new reservation: "reuse" an active one, "expired" for a
+// cancelled one (no second row may be inserted), "none" when absent.
+function resolveExistingPromoUsageDecision(usage) {
+  if (!usage) return "none";
+  const status = String(usage.status || "").toLowerCase();
+  if (status === "reserved" || status === "consumed") return "reuse";
+  return "expired";
+}
+
 function createPromoError(code, message = null, extra = {}) {
   const err = new Error(message || PROMO_ERROR_MESSAGES[code] || "Promo code could not be applied");
   err.code = code;
@@ -391,11 +401,23 @@ async function reservePromoCodeUsageForCheckout({
       throw createPromoError("PROMO_NOT_ELIGIBLE", "Checkout draft not found for promo reservation");
     }
 
-    const existingUsage = await PromoUsage.findOne({
+    // The unique (checkoutDraftId, promoCodeId) index covers every status, so
+    // look across all of them. A cancelled reservation keeps its history and
+    // is never replaced by a second row for the same key (that insert always
+    // fails with E11000); the caller gets an explicit, retryable promo error.
+    const priorUsage = await PromoUsage.findOne({
       checkoutDraftId,
       promoCodeId: promo._id,
-      status: { $in: ["reserved", "consumed"] },
     }).session(session);
+    const priorDecision = resolveExistingPromoUsageDecision(priorUsage);
+    if (priorDecision === "expired") {
+      throw createPromoError(
+        "PROMO_RESERVATION_EXPIRED",
+        "The promo reservation for this checkout has expired. Please start a new checkout.",
+        { status: 409, details: { checkoutDraftId: String(checkoutDraftId) } }
+      );
+    }
+    const existingUsage = priorDecision === "reuse" ? priorUsage : null;
 
     if (existingUsage) {
       draft.promo = {
@@ -904,6 +926,7 @@ module.exports = {
   reservePromoCodeUsageForCheckout,
   releasePromoCodeUsageReservation,
   consumePromoCodeUsageReservation,
+  resolveExistingPromoUsageDecision,
   buildPromoResponseBlock,
   serializePromoCodeForAdmin,
   normalizeAppDisplay,
