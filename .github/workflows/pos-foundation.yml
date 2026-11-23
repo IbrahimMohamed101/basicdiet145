@@ -1,0 +1,29 @@
+name: POS foundation (isolated and read-only)
+on:
+  pull_request:
+    paths:
+      - 'src/modules/pos/**'
+      - 'src/routes/index.js'
+      - 'scripts/pos-indexes.js'
+      - 'tests/posFoundation.test.js'
+      - '.github/workflows/pos-foundation.yml'
+permissions:
+  contents: read
+jobs:
+  pos-safety-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Isolated POS schema and safety tests
+        run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/posFoundation.test.js
+      - name: Syntax checks
+        run: |
+          find src/modules/pos -name '*.js' -print0 | xargs -0 -n1 node --check
+          node --check src/routes/index.js
+          node --check scripts/pos-indexes.js
