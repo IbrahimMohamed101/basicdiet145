@@ -38,9 +38,11 @@ async function run() {
     assert.equal(report.completed, 2);
     assert.equal(report.renewalPayments, 1);
     assert.equal(report.activationPayments, 1);
-    assert.equal(report.leadMatched, 2);
+    assert.equal(report.leadMatched, 1);
+    assert.equal(report.unmatched, 1);
+    assert.equal(report.leadMatchedAmountHalala, 118600);
     assert.equal(report.amountHalala, 237200);
-    assert.deepEqual(report.sources, [{ source:"instagram", completed:2, amountHalala:237200 }]);
+    assert.deepEqual(report.sources, [{ source:"instagram", completed:1, amountHalala:118600 }]);
     assert.equal(JSON.stringify(report).includes("+966500000000"), false);
     const empty = await buildLandingPaidConversionReport({from:"2026-11-25",to:"2026-11-25"});
     assert.equal(empty.completed, 0);

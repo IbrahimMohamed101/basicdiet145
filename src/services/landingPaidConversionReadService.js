@@ -66,10 +66,13 @@ function summarizeCompleted(rows, leads, users, prior) {
     totals.amountHalala += row.amount;
     if (row.type === TYPES[0]) totals.activationPayments++;
     else totals.renewalPayments++;
+    const firstPurchase = row.type === TYPES[0] && firstByUser.get(uid) === id;
     if (row.type === TYPES[1]) totals.repeatOrRenewalPurchases++;
     else if (!firstByUser.get(uid)) totals.unknownPurchaseHistory++;
     else if (firstByUser.get(uid) === id) totals.firstRecordedPaidPurchases++;
     else totals.repeatOrRenewalPurchases++;
+    // Acquisition attribution is restricted to verified first recorded purchases.
+    if (!firstPurchase) { totals.unmatched++; continue; }
     const phone = phoneById.get(uid);
     // Only use an unambiguous account and a lead prior to actual payment.
     // Latest eligible lead is a heuristic, not proof of install attribution.
@@ -90,7 +93,7 @@ function summarizeCompleted(rows, leads, users, prior) {
     sources.set(source, current);
   }
   return { ...totals, sources: [...sources.values()].sort((a,b) => b.completed - a.completed || a.source.localeCompare(b.source)),
-    attributionMethod: "latest_consented_same_phone_lead_within_30_days_before_payment",
+    attributionMethod: "first_recorded_purchase_latest_consented_same_phone_lead_within_30_days_before_payment",
     historyBasis: "earliest_recorded_paid_or_refunded_subscription_payment_across_channels_with_paidAt",
     event: "subscription_paid_completed", currency: "SAR" };
 }
@@ -123,6 +126,6 @@ async function buildLandingPaidConversionReport({ from, to }) {
   ]) : [[], []];
   return { range: { from: period.from, to: period.to, timezone: "Asia/Riyadh" },
     ...summarizeCompleted(rows, leads, users, prior),
-    note: "Counts unique currently paid, applied app payments with a consistent completed checkout. Refunded or incomplete purchases excluded. Lead matching is inferred, not causal; store-only purchases are unmatched. First recorded paid purchase is not a guarantee of complete historical customer identity." };
+    note: "Counts unique currently paid, applied app payments with a consistent completed checkout. Refunded or incomplete purchases excluded. Only first recorded purchases qualify for inferred lead acquisition attribution; renewals, repeat, unknown history and unmatched first purchases are not attributed. First recorded paid purchase is not a guarantee of complete historical customer identity." };
 }
 module.exports = { completedPipeline, summarizeCompleted, buildLandingPaidConversionReport };
