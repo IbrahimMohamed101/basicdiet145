@@ -177,9 +177,9 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
             {status === "ready" && matched && offerPrice && savingPrice && (
               <div className="bd-calculator-offer" aria-label="السعر المتوقع بعد عرض التسجيل">
                 <span className="bd-calculator-offer-tag">عرض التسجيل من الموقع · وفر 15%</span>
-                <div className="bd-calculator-offer-price"><small>بعد خصم العرض</small><strong>{offerPrice}</strong></div>
-                <div className="bd-calculator-offer-savings">توفيرك المتوقع ({PROMO_PERCENT}%) <b>{savingPrice}</b></div>
-                <p>تكلفة الوجبة بعد الخصم: <strong>{offerPerMeal}</strong></p>
+                <div className="bd-calculator-offer-price"><small>بعد خصم العرض</small><strong data-testid="offer-price">{offerPrice}</strong></div>
+                <div className="bd-calculator-offer-savings">توفيرك المتوقع ({PROMO_PERCENT}%) <b data-testid="offer-savings">{savingPrice}</b></div>
+                <p>تكلفة الوجبة التقديرية من الباقة فقط: <strong data-testid="offer-per-meal">{offerPerMeal}</strong></p>
               </div>
             )}
             <div className="bd-calculator-specs"><span>{choice.days * choice.meals} وجبة خلال الباقة</span><span>{choice.fulfillment === "delivery" ? "توصيل" : "استلام"}</span></div>
@@ -192,8 +192,8 @@ export function PlanCalculator({ sectionId = "plans", context = "home" }: {
               {SITE_OFFER_CTA} <span aria-hidden="true">←</span>
             </button>
             <div className="bd-calculator-secondary">
-              <a href={IOS_APP_URL} data-store-location="plans" aria-label="اشترك من تطبيق بيسك دايت على App Store">App Store</a>
-              <a href={ANDROID_APP_URL} data-store-location="plans" aria-label="اشترك من تطبيق بيسك دايت على Google Play">Google Play</a>
+              <a href={IOS_APP_URL} data-store-location="plans" data-store="app_store" aria-label="اشترك من تطبيق بيسك دايت على App Store">App Store</a>
+              <a href={ANDROID_APP_URL} data-store-location="plans" data-store="google_play" aria-label="اشترك من تطبيق بيسك دايت على Google Play">Google Play</a>
               {context === "home" && <>
                 <a href={menuUrl}>شوف اختياراتك في المنيو</a>
                 <a href="/jeddah/healthy-meals">قارن باقات بيسك دايت وخيارات التوصيل في جدة</a>

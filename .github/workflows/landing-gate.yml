@@ -62,6 +62,7 @@ jobs:
             tests/seo-jeddah.spec.ts
             tests/lead-origin.spec.ts
             tests/analytics-origin.spec.ts
+            tests/conversion-phase1.spec.ts
           )
           # Navigation regressions live in stacked Draft #225 until that PR lands.
           # On landing-production the Tier 1 spec is mandatory, never optional.

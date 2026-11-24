@@ -100,8 +100,8 @@ export function AnalyticsTracker() {
       }
       // StoreLinks already dispatches an event. Only track explicit calculator links here.
       if (link?.getAttribute("data-store-location") === "plans") {
-        const store = link.hostname === "apps.apple.com" ? "app_store" : link.hostname === "play.google.com" ? "google_play" : null;
-        if (store) track("lp_store_click", { location: "plans", store });
+        const store = link.getAttribute("data-store");
+        if (store === "app_store" || store === "google_play") track("lp_store_click", { location: "plans", store });
       }
       if (link?.href?.includes("instagram.com")) {
         const reel = link.href.match(/\/reel\/([a-zA-Z0-9_-]+)/)?.[1] || "";
