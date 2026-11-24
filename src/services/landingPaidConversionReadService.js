@@ -2,6 +2,7 @@
 
 // Server-authoritative, read-only conversion projection. Never ingest purchases
 // through the public website analytics endpoint and never mutate payment state.
+const { Types } = require("mongoose");
 const Payment = require("../models/Payment");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const LandingLead = require("../models/LandingLead");
@@ -106,7 +107,7 @@ async function buildLandingPaidConversionReport({ from, to }) {
   const variants = [...new Set(leads.flatMap(l => {
     const phone = normalizePhone(l.phone); return phone ? getPhoneVariants(phone) : [];
   }))];
-  const userIds = [...new Set(rows.map(r => String(r.userId)))].map(id => new Payment.base.Types.ObjectId(id));
+  const userIds = [...new Set(rows.map(r => String(r.userId)))].map(id => new Types.ObjectId(id));
   const [users, prior] = rows.length ? await Promise.all([
     User.find({ $or: [{ _id: { $in: userIds } }, { phone: { $in: variants } }, { phoneE164: { $in: variants } }] })
       .select("_id phone phoneE164").lean(),
