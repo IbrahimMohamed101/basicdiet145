@@ -26,7 +26,8 @@ async function sample(url, label, index) {
     await page.waitForTimeout(5000);
     const initial=await page.evaluate(() => ({
       lcpMs:window.__conversionPerf.lcp,
-      initialJsTransferBytes:performance.getEntriesByType("resource").filter(e=>e.name.startsWith(location.origin) && /\\.js(?:[?#]|$)/.test(e.name)).reduce((n,e)=>n+e.transferSize,0),
+      initialJsTransferBytes:performance.getEntriesByType("resource").filter(e=>{const u=new URL(e.name); return u.origin===location.origin && u.pathname.endsWith(".js");}).reduce((n,e)=>n+e.transferSize,0),
+      initialJsResourceCount:performance.getEntriesByType("resource").filter(e=>{const u=new URL(e.name); return u.origin===location.origin && u.pathname.endsWith(".js");}).length,
       calculatorLoaded:!!document.querySelector("#plans fieldset")
     }));
     await page.locator('.hero-cinema-actions a[href="#plans"]').click();
@@ -56,8 +57,11 @@ try {
   }]));
   await writeFile("artifacts/conversion-performance.json",JSON.stringify(summary,null,2));
   console.log("CONVERSION_PERFORMANCE "+JSON.stringify(summary));
+  if(Object.values(results).flat().some(r=>!(r.initialJsTransferBytes>0) || !(r.initialJsResourceCount>0) || !(r.lcpMs>0))) throw new Error("Invalid performance sample: missing positive JavaScript transfer, resource count, or LCP");
   if(results.candidate.some(r=>r.calculatorLoaded)) throw new Error("Calculator eager-loaded before interaction");
   if(summary.baseline.initialJsTransferBytes===null || summary.candidate.initialJsTransferBytes===null || summary.baseline.lcpMs===null || summary.candidate.lcpMs===null) throw new Error("Missing comparable measurements");
+  // Lab budget, not a claim about field Core Web Vitals.
+  if(summary.candidate.lcpMs>2500 || summary.candidate.lcpMs>summary.baseline.lcpMs+Math.max(250,summary.baseline.lcpMs*.20)) throw new Error("Mobile lab LCP budget exceeded");
   // Record, do not hide performance changes. A 10% or 20KiB tolerance
   // catches material initial-JS regression without treating normal lab noise as proof.
   if(summary.candidate.initialJsTransferBytes>summary.baseline.initialJsTransferBytes+Math.max(20480,summary.baseline.initialJsTransferBytes*.10)) throw new Error("Initial JS transfer regression");
