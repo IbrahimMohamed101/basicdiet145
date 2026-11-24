@@ -5,6 +5,8 @@ const rateLimit = require("express-rate-limit");
 const { recordEvent, buildLandingAnalyticsReport } = require("../services/landingAnalyticsService");
 const { dashboardAuthMiddleware, dashboardRoleMiddleware } = require("../middleware/dashboardAuth");
 
+const { buildLandingPaidConversionReport } = require("../services/landingPaidConversionReadService");
+
 const router = Router();
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20000, standardHeaders: "draft-7", legacyHeaders: false });
 function hasValidIngestSecret(req) {
@@ -26,6 +28,16 @@ router.post("/events", limiter, async (req, res, next) => {
 router.get("/report", dashboardAuthMiddleware, dashboardRoleMiddleware(["admin"]), async (req, res, next) => {
   try {
     const data = await buildLandingAnalyticsReport({ from: req.query.from, to: req.query.to });
+    res.set("Cache-Control", "no-store");
+    return res.json({ status: true, data });
+  } catch (err) {
+    if (err.name === "MarketingAnalyticsError") return res.status(err.status).json({ status: false, error: { code: err.code } });
+    return next(err);
+  }
+});
+router.get("/paid-conversions", dashboardAuthMiddleware, dashboardRoleMiddleware(["admin"]), async (req, res, next) => {
+  try {
+    const data = await buildLandingPaidConversionReport({ from: req.query.from, to: req.query.to });
     res.set("Cache-Control", "no-store");
     return res.json({ status: true, data });
   } catch (err) {
