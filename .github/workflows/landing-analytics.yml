@@ -5,6 +5,9 @@ on:
       - "src/models/LandingAnalyticsEvent.js"
       - "src/services/landingAnalyticsService.js"
       - "src/routes/landingAnalytics.js"
+      - "src/services/landingPaidConversionReadService.js"
+      - "tests/landingPaidConversion.test.js"
+      - "tests/landingPaidConversion.integration.test.js"
       - "tests/landingAnalytics.test.js"
       - "package.json"
       - ".github/workflows/landing-analytics.yml"
@@ -14,6 +17,9 @@ on:
       - "src/models/LandingAnalyticsEvent.js"
       - "src/services/landingAnalyticsService.js"
       - "src/routes/landingAnalytics.js"
+      - "src/services/landingPaidConversionReadService.js"
+      - "tests/landingPaidConversion.test.js"
+      - "tests/landingPaidConversion.integration.test.js"
       - "tests/landingAnalytics.test.js"
       - "package.json"
 jobs:
@@ -27,3 +33,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run test:landing-analytics
+
+      - run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/landingPaidConversion.test.js
+      - run: NODE_ENV=test node -r ./tests/helpers/installMongoTestSafetyGuard.js tests/landingPaidConversion.integration.test.js
