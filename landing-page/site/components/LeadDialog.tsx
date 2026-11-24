@@ -307,6 +307,7 @@ export function LeadDialog() {
                     اترك هذا الحقل فارغًا
                     <input value={website} tabIndex={-1} autoComplete="off" onChange={e => setWebsite(e.target.value)} />
                   </label>
+                  {promoMode && <p className="lead-offer-disclaimer">{SITE_OFFER_TERMS}</p>}
                   <label className="lead-check">
                     <input type="checkbox" checked={contactConsent} onChange={e => setContactConsent(e.target.checked)} required />
                     <span>أوافق على التواصل معي بخصوص المنيو وطلب الاشتراك فقط. <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer">سياسة الخصوصية</a></span>
@@ -315,7 +316,6 @@ export function LeadDialog() {
                     <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}/>
                     <span>أرغب في تلقي عروض مستقبلية (اختياري).</span>
                   </label>}
-                  {promoMode && <p className="lead-offer-disclaimer">{SITE_OFFER_TERMS}</p>}
                   {isMenuPreview && <p className="lead-small-note" role="status">هذه نسخة معاينة فقط؛ إرسال بيانات التواصل غير مفعّل هنا. التسجيل الفعلي متاح عبر الموقع الرسمي.</p>}
                   {error && <p className="lead-error" role="alert">{error}</p>}
                   {!loading && !selected && !needsPlanAssistance && <button className="lead-back" type="button" onClick={() => { setNeedsPlanAssistance(true); setPlanId(""); setError(""); }}>متابعة بدون تحديد باقة</button>}

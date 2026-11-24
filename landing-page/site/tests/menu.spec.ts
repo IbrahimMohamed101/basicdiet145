@@ -398,7 +398,7 @@ test("home leads with food and live calculator before app presentation", async (
   expect(order.food).toBeLessThan(order.plans);
   expect(order.plans).toBeLessThan(order.how);
   expect(order.how).toBeLessThan(order.app);
-  await expect(page.getByRole("link", { name: "احسب باقتك" }).first()).toBeVisible();
+  await expect(page.locator(".hero-cinema-actions a[href=\"#plans\"]")).toBeVisible();
 });
 
 test("mobile menu search and categories are swipeable and option targets exceed 44px", async ({ page }) => {

@@ -21,7 +21,10 @@ function CalculatorPlaceholder() {
       <div className="page-shell" style={{ minHeight: 440, paddingBlock: 72 }}>
         <h2 id="plans-heading">احسب باقتك.</h2>
         <p>اختر مدة الاشتراك وحجم وجباتك وعددها اليومي.</p>
-        <p>جاري تجهيز حاسبة الاشتراكات...</p>
+        <div className="bd-calculator-layout" aria-hidden="true">
+          <div className="bd-calculator-controls" style={{ minHeight: 320 }} />
+          <div className="bd-calculator-summary" style={{ minHeight: 240 }} />
+        </div>
         <p><a href="/jeddah/healthy-meals">قارن باقات بيسك دايت وخيارات التوصيل في جدة</a></p>
         <p><a href="/menu?from=home_plans">شوف الأصناف المتاحة في المنيو</a></p>
         <a href="/jeddah/subscription-prices">شاهد أسعار الاشتراكات الحالية</a>
@@ -39,13 +42,15 @@ export function DeferredPlanCalculator() {
       setActive(true);
       return;
     }
+    const activate = () => { if (window.location.hash === "#plans") setActive(true); };
+    window.addEventListener("hashchange", activate);
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting) return;
       setActive(true);
       observer.disconnect();
     }, { rootMargin: "900px 0px" });
     if (marker.current) observer.observe(marker.current);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); window.removeEventListener("hashchange", activate); };
   }, []);
 
   return (

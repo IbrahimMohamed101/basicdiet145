@@ -62,6 +62,7 @@ jobs:
             tests/seo-jeddah.spec.ts
             tests/lead-origin.spec.ts
             tests/analytics-origin.spec.ts
+            tests/conversion-phase1.spec.ts
           )
           # Navigation regressions live in stacked Draft #225 until that PR lands.
           # On landing-production the Tier 1 spec is mandatory, never optional.
@@ -81,5 +82,50 @@ jobs:
             landing-page/site/artifacts/landing-gate-html/
             landing-page/site/artifacts/landing-gate.json
             landing-page/site/test-results/
+            landing-page/site/artifacts/conversion-*.png
           retention-days: 7
+          if-no-files-found: ignore
+
+  conversion-performance:
+    name: conversion performance comparison
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: baseline
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build baseline and candidate
+        run: |
+          for site in baseline/landing-page/site landing-page/site; do
+            (cd "$site" && npm ci --no-audit --no-fund && npm run build)
+          done
+      - name: Install Chromium
+        working-directory: landing-page/site
+        run: npx playwright install --with-deps chromium
+      - name: Start both builds
+        run: |
+          (cd baseline/landing-page/site && npm start -- --hostname 127.0.0.1 --port 3001 > /tmp/landing-baseline.log 2>&1) &
+          (cd landing-page/site && npm start -- --hostname 127.0.0.1 --port 3002 > /tmp/landing-candidate.log 2>&1) &
+          for port in 3001 3002; do
+            for i in {1..45}; do
+              if curl --fail --silent "http://127.0.0.1:$port/" >/dev/null; then break; fi
+              sleep 1
+            done
+            curl --fail --silent "http://127.0.0.1:$port/" >/dev/null
+          done
+      - name: Compare mobile lab LCP, initial JS and interaction latency
+        working-directory: landing-page/site
+        run: node scripts/compare-conversion-performance.mjs http://127.0.0.1:3001 http://127.0.0.1:3002
+      - name: Upload comparison and mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-conversion-performance
+          path: landing-page/site/artifacts/
           if-no-files-found: ignore
