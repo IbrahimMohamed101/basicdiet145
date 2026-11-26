@@ -17,6 +17,10 @@ const {
   applyPaymentSideEffects,
 } = require("../src/services/paymentApplicationService");
 require("../src/services/installSubscriptionStackingWriteRouter");
+const subscriptionActivationService = require("../src/services/subscription/subscriptionActivationService");
+const {
+  createFinalizeSubscriptionDraftPaymentWrapper,
+} = require("../src/services/subscription/subscriptionStackingFinalizeRouterService");
 const {
   activatePaidDraftIntoExistingContainerTransactional,
 } = require("../src/services/subscription/subscriptionStackingActivationService");
@@ -502,25 +506,46 @@ async function testWebhookReplayAndVerifyRaceApplyExactlyOnce() {
   process.env.SUBSCRIPTION_STACKING_WRITE_ENABLED = "true";
   process.env.SUBSCRIPTION_STACKING_USER_IDS = String(container.userId);
 
-  const results = await Promise.all(
-    Array.from({ length: 20 }, (_, index) =>
-      applyPaidPurchaseThroughSharedDispatcher(
-        purchase,
-        index % 2 === 0 ? "webhook" : "verify"
-      ))
-  );
+  // The fixture's entitlement window is in August 2026. The real router
+  // normally reads today's restaurant business date, which would expire both
+  // batches and legitimately project a zero balance when CI runs later.
+  // Inject the fixture business date only for this dispatcher race, while
+  // exercising the same stacking router and restoring it afterward.
+  const installedFinalizer = subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow;
+  assert.strictEqual(typeof installedFinalizer.__original, "function");
+  subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow =
+    createFinalizeSubscriptionDraftPaymentWrapper(installedFinalizer.__original, {
+      getBusinessDate: () => "2026-08-06",
+    });
+
+  let results;
+  try {
+    results = await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        applyPaidPurchaseThroughSharedDispatcher(
+          purchase,
+          index % 2 === 0 ? "webhook" : "verify"
+        ))
+    );
+  } finally {
+    subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow = installedFinalizer;
+  }
   assert(results.every((result) => result && result.applied === true));
 
-  const [parent, checkoutBatchCount, draft, payment] = await Promise.all([
+  const [parent, batches, draft, payment] = await Promise.all([
     Subscription.findById(container._id).lean(),
-    SubscriptionEntitlementBatch.countDocuments({
+    SubscriptionEntitlementBatch.find({
       containerSubscriptionId: container._id,
-      sourceType: "checkout",
-    }),
+    }).lean(),
     CheckoutDraft.findById(purchase.draft._id).lean(),
     Payment.findById(purchase.payment._id).lean(),
   ]);
-  assert.strictEqual(checkoutBatchCount, 1);
+  const checkoutBatches = batches.filter((batch) => batch.sourceType === "checkout");
+  assert.strictEqual(checkoutBatches.length, 1);
+  assert.strictEqual(batches.length, 2);
+  assert(batches.every((batch) => batch.applicationState === "applied"));
+  assert.strictEqual(checkoutBatches[0].totalMeals, 52);
+  assert.strictEqual(checkoutBatches[0].remainingMeals, 52);
   assert.strictEqual(parent.totalMeals, 130);
   assert.strictEqual(parent.remainingMeals, 72);
   assert.strictEqual(String(draft.subscriptionId), String(container._id));
