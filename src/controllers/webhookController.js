@@ -17,6 +17,7 @@ const { applyOrderWebhookInvoice } = require("../services/orders/orderPaymentSer
 const { releasePromoCodeUsageReservation } = require("../services/promoCodeService");
 const { runMongoTransactionWithRetry } = require("../services/mongoTransactionRetryService");
 const moyasarService = require("../services/moyasarService");
+const { isSubscriptionCheckoutPayment, settlePaidSubscriptionPayment } = require("../services/subscription/subscriptionVerifiedPaymentService");
 const {
   isMoyasarRefundEvent,
   recordMoyasarRefundWebhook,
@@ -330,6 +331,21 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       return errorResponse(res, 404, "NOT_FOUND", "Payment not found" );
     }
 
+    if (isSubscriptionCheckoutPayment(payment) && isPaid && !hasMinimumAppliedLink(payment)) {
+      const settle = runtimeOverrides?.settlePaidSubscriptionPayment || settlePaidSubscriptionPayment;
+      const settled = await settle({
+        paymentId: payment._id, providerPaymentId: paymentId, providerInvoiceId: invoiceId,
+      });
+      if (!settled.verified) return errorResponse(res, 409, "PAYMENT_NOT_PAID", "Provider has not confirmed payment");
+      return res.status(200).json({ status: true, applied: Boolean(settled.payment.applied),
+        recoveryReason: settled.recovery?.reason || null });
+    }
+
+    // A late failure belongs to an attempt, not to the already-paid checkout.
+    if (!isPaid && isSubscriptionCheckoutPayment(payment) && ["paid", "refunded"].includes(payment.status)) {
+      return res.status(200).json({ status: true, ignored: true });
+    }
+
     if (paymentId && payment.providerPaymentId && payment.providerPaymentId !== paymentId) {
       logger.warn("Moyasar webhook rejected: payment id mismatch", {
         ...logContext,
@@ -402,12 +418,19 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       }
 
       if (!isPaid) {
+        if (isSubscriptionCheckoutPayment(paymentInSession) &&
+            ["paid", "refunded"].includes(paymentInSession.status)) return { nonPaid: true, status: paymentInSession.status };
         const nonPaidUpdate = {};
         if (paymentStatus) nonPaidUpdate.status = paymentStatus;
         if (paymentId && !paymentInSession.providerPaymentId) nonPaidUpdate.providerPaymentId = paymentId;
         if (invoiceId && !paymentInSession.providerInvoiceId) nonPaidUpdate.providerInvoiceId = invoiceId;
         if (Object.keys(nonPaidUpdate).length) {
-          await Payment.updateOne({ _id: paymentInSession._id }, { $set: nonPaidUpdate }, { session });
+          const updated = await Payment.updateOne({ _id: paymentInSession._id,
+            ...(isSubscriptionCheckoutPayment(paymentInSession) ? { status: { $nin: ["paid", "refunded"] } } : {}),
+          }, { $set: nonPaidUpdate }, { session });
+          if (isSubscriptionCheckoutPayment(paymentInSession) && !updated.matchedCount) {
+            return { nonPaid: true, status: "paid" };
+          }
         }
 
         const latestPayment = await Payment.findById(paymentInSession._id).session(session);
@@ -714,6 +737,9 @@ async function handleMoyasarWebhook(req, res, runtimeOverrides = null) {
       stack: err.stack,
       ...logContext,
     });
+    if (["PAYMENT_PROVIDER_MISMATCH", "PAYMENT_VERIFICATION_CONFLICT"].includes(err.code)) {
+      return errorResponse(res, 409, err.code, "Unable to verify checkout payment");
+    }
     return errorResponse(res, 500, "INTERNAL", "Webhook processing failed");
   }
 }

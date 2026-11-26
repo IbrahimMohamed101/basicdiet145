@@ -56,5 +56,8 @@ jobs:
       - name: Run concurrent stacking purchases
         run: NODE_ENV=test node tests/subscriptionStackingConcurrentPurchases.integration.test.js
 
+      - name: Verify paid Moyasar retries and recovery with an isolated replica set
+        run: NODE_ENV=test node tests/subscriptionVerifiedPayment.integration.test.js
+
       - name: Preserve legacy activation concurrency compatibility
         run: NODE_ENV=test node tests/subscriptionActivationConcurrency.test.js

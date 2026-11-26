@@ -2,6 +2,10 @@
 
 process.env.NODE_ENV = "test";
 
+// Match the fixture's August 2026 validity window for every invocation path.
+// Load before the router captures getRestaurantBusinessDate at module import.
+require("./helpers/subscriptionStackingConcurrentPurchasesClock");
+
 const assert = require("assert");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
@@ -511,16 +515,20 @@ async function testWebhookReplayAndVerifyRaceApplyExactlyOnce() {
   );
   assert(results.every((result) => result && result.applied === true));
 
-  const [parent, checkoutBatchCount, draft, payment] = await Promise.all([
+  const [parent, batches, draft, payment] = await Promise.all([
     Subscription.findById(container._id).lean(),
-    SubscriptionEntitlementBatch.countDocuments({
+    SubscriptionEntitlementBatch.find({
       containerSubscriptionId: container._id,
-      sourceType: "checkout",
-    }),
+    }).lean(),
     CheckoutDraft.findById(purchase.draft._id).lean(),
     Payment.findById(purchase.payment._id).lean(),
   ]);
-  assert.strictEqual(checkoutBatchCount, 1);
+  const checkoutBatches = batches.filter((batch) => batch.sourceType === "checkout");
+  assert.strictEqual(checkoutBatches.length, 1);
+  assert.strictEqual(batches.length, 2);
+  assert(batches.every((batch) => batch.applicationState === "applied"));
+  assert.strictEqual(checkoutBatches[0].totalMeals, 52);
+  assert.strictEqual(checkoutBatches[0].remainingMeals, 52);
   assert.strictEqual(parent.totalMeals, 130);
   assert.strictEqual(parent.remainingMeals, 72);
   assert.strictEqual(String(draft.subscriptionId), String(container._id));

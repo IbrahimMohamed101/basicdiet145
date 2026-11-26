@@ -39,7 +39,7 @@ async function run() {
   process.env.MOYASAR_SECRET_KEY = "test_secret";
   process.env.MOYASAR_GET_RETRY_ATTEMPTS = "2";
 
-  const { createInvoice, getInvoice } = require("../src/services/moyasarService");
+  const { createInvoice, getInvoice, getInvoiceDetails, getPayment } = require("../src/services/moyasarService");
 
   let calls = installHttpsMock([
     { statusCode: 502, body: { message: "Bad gateway" } },
@@ -76,6 +76,18 @@ async function run() {
   );
   assert.strictEqual(calls.length, 1, "createInvoice POST should not retry automatically");
   assert.strictEqual(calls[0].method, "POST");
+
+  calls = installHttpsMock([
+    { statusCode: 200, body: { id: "inv_detail", status: "paid", payments: [] } },
+    { statusCode: 502, body: { message: "Bad gateway" } },
+    { statusCode: 200, body: { id: "pay_detail", status: "paid", invoice_id: "inv_detail" } },
+  ]);
+  assert.strictEqual((await getInvoiceDetails("inv_detail")).id, "inv_detail");
+  assert.strictEqual((await getPayment("pay_detail")).invoice_id, "inv_detail");
+  assert.deepStrictEqual(calls.map(call => call.path), [
+    "/v1/invoices/inv_detail", "/v1/payments/pay_detail", "/v1/payments/pay_detail",
+  ]);
+  assert.ok(calls.every(call => call.method === "GET"));
 
   console.log("✅ Moyasar GET retry tests passed");
 }

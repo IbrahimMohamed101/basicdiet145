@@ -101,12 +101,15 @@ function hasUniqueIndex(indexes, expectedKeys) {
   });
 
   await test("payment verification checks ownership, amount, currency, and atomic applied claim", async () => {
-    const source = read("src/controllers/subscriptionController.js");
-    assert.ok(source.includes("String(draft.userId) !== String(req.userId)"));
-    assert.ok(source.includes("providerAmount !== Number(paymentInSession.amount)"));
-    assert.ok(source.includes("providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)"));
-    assert.ok(source.includes("{ _id: paymentInSession._id, applied: false }"));
-    assert.ok(source.includes("{ $set: { applied: true, status: \"paid\" } }"));
+    const controller = read("src/controllers/subscriptionController.js");
+    const verification = read("src/services/subscription/subscriptionVerifiedPaymentService.js");
+    assert.ok(controller.includes("settlePaidSubscriptionPayment"), "draft verification must use the shared verified settlement path");
+    assert.ok(verification.includes("invoice.metadata?.userId"), "provider invoice ownership must be checked");
+    assert.ok(verification.includes("invoice.metadata?.draftId"), "provider invoice draft ownership must be checked");
+    assert.ok(verification.includes("assertPrice(invoice, payment)"), "invoice amount and currency must match the saved payment");
+    assert.ok(verification.includes("assertPrice(attempt, payment)"), "successful attempt amount and currency must match the saved payment");
+    assert.ok(verification.includes("status: payment.status"), "paid state must use a conditional update");
+    assert.ok(verification.includes("status: \"paid\""), "only provider-verified payment may be promoted to paid");
   });
 
   await test("checkout idempotency conflict is enforced for payload changes", async () => {

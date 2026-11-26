@@ -1201,272 +1201,32 @@ async function getCheckoutDraftStatus(req, res) {
 }
 
 async function verifyCheckoutDraftPayment(req, res, runtimeOverrides = null) {
-  const getInvoiceFn = runtimeOverrides && runtimeOverrides.getInvoice
-    ? runtimeOverrides.getInvoice
-    : getInvoice;
-  const startSessionFn = runtimeOverrides && runtimeOverrides.startSession
-    ? runtimeOverrides.startSession
-    : () => startSafeSession();
-  const applyPaymentSideEffectsFn = runtimeOverrides && runtimeOverrides.applyPaymentSideEffects
-    ? runtimeOverrides.applyPaymentSideEffects
-    : applyPaymentSideEffects;
-  const finalizeSubscriptionDraftPaymentFn = runtimeOverrides && runtimeOverrides.finalizeSubscriptionDraftPayment
-    ? runtimeOverrides.finalizeSubscriptionDraftPayment
-    : finalizeSubscriptionDraftPayment;
-
   const { draftId } = req.params;
   const lang = getRequestLang(req);
   try {
     validateObjectId(draftId, "draftId");
-  } catch (err) {
-    return errorResponse(res, err.status, err.code, err.message);
-  }
+    // Authorize before persistent reconciliation or provider requests.
+    const ownedDraft = await CheckoutDraft.findById(draftId).lean();
+    if (!ownedDraft) return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
+    if (String(ownedDraft.userId) !== String(req.userId)) return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
 
-  const {
-    draft,
-    payment,
-    invoice: providerInvoice,
-  } = await reconcileCheckoutDraft(draftId, {
-    mode: RECONCILE_MODES.PERSIST,
-    getInvoiceFn,
-  });
-
-  if (!draft) {
-    return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
-  }
-  if (String(draft.userId) !== String(req.userId)) {
-    return errorResponse(res, 403, "FORBIDDEN", "Forbidden");
-  }
-
-  // Idempotency: Handle terminal states immediately
-  if (["completed", "failed", "canceled", "expired"].includes(draft.status)) {
+    const { payment } = await reconcileCheckoutDraft(draftId, {
+      mode: RECONCILE_MODES.PERSIST,
+      getInvoiceFn: runtimeOverrides?.getInvoice || getInvoice,
+    });
+    if (!payment) return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout payment is not initialized yet");
+    const { settlePaidSubscriptionPayment } = require("../services/subscription/subscriptionVerifiedPaymentService");
+    const settled = await settlePaidSubscriptionPayment({ paymentId: payment._id });
+    const latestDraft = await CheckoutDraft.findById(draftId).lean();
     const payload = buildSubscriptionCheckoutStatusPayload({
-      draft,
-      payment,
-      providerInvoice,
+      draft: latestDraft, payment: settled.payment, providerInvoice: settled.invoice,
     });
-    return res.status(200).json({
-      status: true,
-      data: localizeWriteCheckoutStatusPayload({
-        ...payload,
-        checkedProvider: Boolean(providerInvoice),
-        synchronized: true,
-      }, { lang, draft }),
-    });
-  }
-
-  if (!payment) {
-    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout payment is not initialized yet");
-  }
-  if (!["subscription_activation", "subscription_renewal"].includes(payment.type)) {
-    return errorResponse(res, 409, "INVALID", "Payment does not belong to a subscription checkout");
-  }
-
-  if (!providerInvoice) {
-    return errorResponse(res, 409, "CHECKOUT_IN_PROGRESS", "Checkout invoice is not initialized yet");
-  }
-
-  const providerPayment = pickProviderInvoicePayment(providerInvoice, payment);
-  const normalizedStatus = normalizeProviderPaymentStatus(
-    providerPayment && providerPayment.status ? providerPayment.status : providerInvoice.status
-  );
-  if (!normalizedStatus) {
-    return errorResponse(res, 409, "PAYMENT_PROVIDER_ERROR", "Unsupported provider payment status");
-  }
-
-  const session = await startSessionFn();
-  let synchronized = false;
-  try {
-    session.startTransaction();
-
-    const draftInSession = await CheckoutDraft.findOne({ _id: draftId, userId: req.userId }).session(session);
-    if (!draftInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Checkout draft not found");
-    }
-
-    let paymentInSession = await Payment.findOne({ _id: payment._id, userId: req.userId }).session(session);
-    if (!paymentInSession && draftInSession.paymentId) {
-      paymentInSession = await Payment.findOne({ _id: draftInSession.paymentId, userId: req.userId }).session(session);
-    }
-    if (!paymentInSession) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 404, "NOT_FOUND", "Payment not found");
-    }
-
-    const providerInvoiceId = providerInvoice && providerInvoice.id ? String(providerInvoice.id) : "";
-    if (providerInvoiceId && draftInSession.providerInvoiceId && String(draftInSession.providerInvoiceId) !== providerInvoiceId) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
-    }
-    if (providerInvoiceId && paymentInSession.providerInvoiceId && String(paymentInSession.providerInvoiceId) !== providerInvoiceId) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "MISMATCH", "Invoice ID mismatch");
-    }
-
-    if (providerPayment && providerPayment.id && paymentInSession.providerPaymentId && String(paymentInSession.providerPaymentId) !== String(providerPayment.id)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "MISMATCH", "Payment ID mismatch");
-    }
-
-    const providerAmount = Number(providerPayment && providerPayment.amount !== undefined ? providerPayment.amount : providerInvoice.amount);
-    if (Number.isFinite(providerAmount) && providerAmount !== Number(paymentInSession.amount)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "MISMATCH", "Amount mismatch");
-    }
-
-    const providerCurrency = normalizeCurrencyValue(
-      providerPayment && providerPayment.currency ? providerPayment.currency : providerInvoice.currency
-    );
-    if (providerCurrency !== normalizeCurrencyValue(paymentInSession.currency)) {
-      await session.abortTransaction();
-      session.endSession();
-      return errorResponse(res, 409, "MISMATCH", "Currency mismatch");
-    }
-
-    if (providerInvoiceId && !draftInSession.providerInvoiceId) {
-      draftInSession.providerInvoiceId = providerInvoiceId;
-      await draftInSession.save({ session });
-    }
-    if (providerInvoiceId && !paymentInSession.providerInvoiceId) {
-      paymentInSession.providerInvoiceId = providerInvoiceId;
-    }
-    if (providerPayment && providerPayment.id && !paymentInSession.providerPaymentId) {
-      paymentInSession.providerPaymentId = String(providerPayment.id);
-    }
-
-    paymentInSession.status = normalizedStatus;
-    if (normalizedStatus === "paid" && !paymentInSession.paidAt) {
-      paymentInSession.paidAt = new Date();
-    }
-    await paymentInSession.save({ session });
-
-    const terminalFailureStatuses = new Set(["failed", "canceled", "expired"]);
-    if (normalizedStatus !== "paid") {
-      if (
-        terminalFailureStatuses.has(normalizedStatus)
-        && !draftInSession.subscriptionId
-        && ["pending_payment", "failed", "canceled", "expired"].includes(draftInSession.status)
-      ) {
-        draftInSession.status = normalizedStatus === "canceled"
-          ? "canceled"
-          : normalizedStatus === "expired"
-            ? "expired"
-            : "failed";
-        draftInSession.failedAt = new Date();
-        draftInSession.failureReason = `payment_${draftInSession.status}`;
-        await draftInSession.save({ session });
-        synchronized = true;
-      }
-
-      await session.commitTransaction();
-      session.endSession();
-
-      const [latestDraft, latestPayment] = await Promise.all([
-        CheckoutDraft.findById(draftId).lean(),
-        Payment.findById(paymentInSession._id).lean(),
-      ]);
-
-      const payload = {
-        ...buildSubscriptionCheckoutStatusPayload({
-          draft: latestDraft,
-          payment: latestPayment,
-          providerInvoice,
-        }),
-        checkedProvider: true,
-        synchronized,
-      };
-      return res.status(200).json({
-        status: true,
-        data: localizeWriteCheckoutStatusPayload(payload, { lang, draft: latestDraft }),
-      });
-    }
-
-    if (!hasMinimumAppliedLink(paymentInSession)) {
-      if (paymentInSession.applied) {
-        paymentInSession.applied = false;
-        await paymentInSession.save({ session });
-      }
-      // Atomic guard: exactly one process can transition applied from false to true
-      const claimedPayment = await Payment.findOneAndUpdate(
-        { _id: paymentInSession._id, applied: false },
-        { $set: { applied: true, status: "paid" } },
-        { new: true, session }
-      );
-
-      if (claimedPayment) {
-        // We are the winner of the race. Apply side effects.
-        const result = isPhase1SharedPaymentDispatcherEnabled()
-          ? await applyPaymentSideEffectsFn({
-            payment: claimedPayment,
-            session,
-            source: "client_manual_verify",
-          })
-          : await finalizeSubscriptionDraftPaymentFn({
-            draft: draftInSession,
-            payment: claimedPayment,
-            session,
-          });
-        if (!result.applied) {
-          const metadata = Object.assign({}, claimedPayment.metadata || {}, { unappliedReason: result.reason });
-          await Payment.updateOne(
-            { _id: claimedPayment._id },
-            { $set: { applied: false, status: "paid", metadata } },
-            { session }
-          );
-        } else {
-          synchronized = true;
-        }
-      } else {
-        // We lost the race or it was already applied.
-        // We will proceed to commit and re-read the state below to return the final result.
-        logger.debug("Subscription checkout verify: payment already applied or race lost", { draftId, paymentId: String(payment._id) });
-        synchronized = true;
-      }
-    } else {
-      synchronized = true;
-    }
-
-    await session.commitTransaction();
-    session.endSession();
-
-    const [latestDraft, latestPayment] = await Promise.all([
-      CheckoutDraft.findById(draftId).lean(),
-      Payment.findById(paymentInSession._id).lean(),
-    ]);
-
-    const payload = {
-      ...buildSubscriptionCheckoutStatusPayload({
-        draft: latestDraft,
-        payment: latestPayment,
-        providerInvoice,
-      }),
-      checkedProvider: true,
-      synchronized,
-    };
-
-    return res.status(200).json({
-      status: true,
-      data: localizeWriteCheckoutStatusPayload(payload, { lang, draft: latestDraft }),
-    });
+    return res.status(200).json({ status: true, data: localizeWriteCheckoutStatusPayload({
+      ...payload, checkedProvider: true, synchronized: Boolean(settled.verified),
+    }, { lang, draft: latestDraft }) });
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
-    session.endSession();
-    logger.error("Subscription checkout verification failed", {
-      draftId,
-      paymentId: String(payment._id),
-      error: err.message,
-      stack: err.stack,
-    });
-    return errorResponse(res, 500, "INTERNAL", "Checkout verification failed");
+    logger.error("Subscription checkout verification failed", { draftId, code: err.code || null });
+    return errorResponse(res, err.status || 500, err.code || "INTERNAL", "Unable to verify checkout payment");
   }
 }
 

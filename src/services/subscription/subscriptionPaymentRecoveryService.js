@@ -94,7 +94,10 @@ async function findAppliedEntitlement(payment, draft, session) {
       status: { $in: APPLIED_SUBSCRIPTION_STATUSES },
     }).session(session).lean()
     : null;
-  if (!hasStackingEvidence && !standalone) return null;
+  // A checkout-time additive intent is routing authority, not evidence that
+  // its purchase was applied. On replica sets a failed activation rolled the
+  // entire batch back; let the canonical activation run in that case.
+  if (!batch && !standalone && !knownConflict && !resuming) return null;
 
   if (!sameId(draft.userId, payment.userId) || !sameId(draft.paymentId, payment._id) ||
       !compatibleId(payment.checkoutDraftId, draft._id) ||

@@ -240,4 +240,17 @@ async function getInvoice(invoiceId) {
   return invoice;
 }
 
-module.exports = { createInvoice, getInvoice, getMoyasarEnvStatus };
+// The detail endpoint includes attempts; list-invoices responses may omit them.
+async function getInvoiceDetails(invoiceId) {
+  const apiKey = getMoyasarApiKey();
+  if (!apiKey) throw Object.assign(new Error("Missing MOYASAR_SECRET_KEY"), { code: "CONFIG" });
+  return requestJson(`/v1/invoices/${encodeURIComponent(invoiceId)}`, "GET", undefined, apiKey);
+}
+
+async function getPayment(paymentId) {
+  const apiKey = getMoyasarApiKey();
+  if (!apiKey) throw Object.assign(new Error("Missing MOYASAR_SECRET_KEY"), { code: "CONFIG" });
+  return requestJson(`/v1/payments/${encodeURIComponent(paymentId)}`, "GET", undefined, apiKey);
+}
+
+module.exports = { createInvoice, getInvoice, getInvoiceDetails, getPayment, getMoyasarEnvStatus };
