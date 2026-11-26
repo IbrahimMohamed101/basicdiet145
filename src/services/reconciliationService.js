@@ -223,7 +223,9 @@ async function reconcileCheckoutDraft(draftId, { mode = RECONCILE_MODES.READ_ONL
       }
 
       // Optional: Sync payment status if we have the record and it's not terminal
-     if (payment && invoice) {
+     // Subscription financial state is recorded only by the verified-payment
+     // service, outside activation transactions and with draft/attempt checks.
+     if (payment && invoice && !["subscription_activation", "subscription_renewal"].includes(payment.type)) {
   const providerStatus = (invoice.status || "").toLowerCase();
   const isProviderPaid = providerStatus === "paid" || providerStatus === "captured";
 

@@ -192,9 +192,12 @@ function defaultRuntime() {
         { new: true, session }
       );
     },
-    async updateDraftCompleted({ draftId, containerId, now, session }) {
+    async updateDraftCompleted({ draftId, containerId, now, session, paymentId, userId }) {
       return CheckoutDraft.findOneAndUpdate(
-        { _id: draftId, status: { $in: ["pending_payment", "completed"] } },
+        { _id: draftId, $or: [
+          { status: { $in: ["pending_payment", "completed"] } },
+          { status: "failed", failureReason: "payment_failed", paymentId, userId },
+        ] },
         {
           $set: {
             status: "completed",
@@ -476,6 +479,8 @@ async function completePaidDraftStackingActivation({
     : resolveRuntime(runtimeOverrides);
   const updatedDraft = await runtime.updateDraftCompleted({
     draftId: draft._id,
+    paymentId: payment._id,
+    userId: payment.userId,
     containerId,
     now,
     session,

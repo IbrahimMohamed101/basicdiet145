@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const Payment = require("../models/Payment");
 const CheckoutDraft = require("../models/CheckoutDraft");
 const { getInvoice } = require("./moyasarService");
+const { isSubscriptionCheckoutPayment, settlePaidSubscriptionPayment } = require("./subscription/subscriptionVerifiedPaymentService");
 const { applyPaymentSideEffects } = require("./paymentApplicationService");
 const { runMongoTransactionWithRetry } = require("./mongoTransactionRetryService");
 const { logger } = require("../utils/logger");
@@ -113,14 +114,14 @@ function pickProviderInvoicePayment(invoice, payment) {
     : [];
   if (!attempts.length) return null;
 
-  if (payment && payment.providerPaymentId) {
-    const matched = attempts.find((item) => String(item.id || "") === String(payment.providerPaymentId));
-    if (matched) return matched;
-  }
-
   const paidAttempts = attempts.filter((item) => normalizeProviderPaymentStatus(item.status) === "paid");
   if (paidAttempts.length) {
     return paidAttempts[paidAttempts.length - 1];
+  }
+
+  if (payment && payment.providerPaymentId) {
+    const matched = attempts.find((item) => String(item.id || "") === String(payment.providerPaymentId));
+    if (matched) return matched;
   }
 
   return attempts[attempts.length - 1];
@@ -293,6 +294,17 @@ async function synchronizePaymentForRedirect(query, { source = "redirect_verify"
 
   if (hasMinimumAppliedLink(existingPayment)) {
     return buildPaymentResultPayload(existingPayment, null, { applied: true });
+  }
+
+  if (isSubscriptionCheckoutPayment(existingPayment)) {
+    const settled = await settlePaidSubscriptionPayment({ paymentId: existingPayment._id,
+      providerPaymentId: query.id || null });
+    // Non-paid redirects do not downgrade a paid checkout. Failure webhooks
+    // still record attempt failures using a conditional update.
+    return buildPaymentResultPayload(settled.payment, settled.invoice, {
+      applied: Boolean(settled.payment.applied),
+      reason: settled.recovery?.reason || (settled.verified ? null : "payment_not_paid"),
+    });
   }
 
   let providerInvoice = null;
