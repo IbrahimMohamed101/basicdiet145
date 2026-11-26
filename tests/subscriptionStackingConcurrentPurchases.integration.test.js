@@ -2,6 +2,10 @@
 
 process.env.NODE_ENV = "test";
 
+// Match the fixture's August 2026 validity window for every invocation path.
+// Load before the router captures getRestaurantBusinessDate at module import.
+require("./helpers/subscriptionStackingConcurrentPurchasesClock");
+
 const assert = require("assert");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
@@ -17,10 +21,6 @@ const {
   applyPaymentSideEffects,
 } = require("../src/services/paymentApplicationService");
 require("../src/services/installSubscriptionStackingWriteRouter");
-const subscriptionActivationService = require("../src/services/subscription/subscriptionActivationService");
-const {
-  createFinalizeSubscriptionDraftPaymentWrapper,
-} = require("../src/services/subscription/subscriptionStackingFinalizeRouterService");
 const {
   activatePaidDraftIntoExistingContainerTransactional,
 } = require("../src/services/subscription/subscriptionStackingActivationService");
@@ -506,30 +506,13 @@ async function testWebhookReplayAndVerifyRaceApplyExactlyOnce() {
   process.env.SUBSCRIPTION_STACKING_WRITE_ENABLED = "true";
   process.env.SUBSCRIPTION_STACKING_USER_IDS = String(container.userId);
 
-  // The fixture's entitlement window is in August 2026. The real router
-  // normally reads today's restaurant business date, which would expire both
-  // batches and legitimately project a zero balance when CI runs later.
-  // Inject the fixture business date only for this dispatcher race, while
-  // exercising the same stacking router and restoring it afterward.
-  const installedFinalizer = subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow;
-  assert.strictEqual(typeof installedFinalizer.__original, "function");
-  subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow =
-    createFinalizeSubscriptionDraftPaymentWrapper(installedFinalizer.__original, {
-      getBusinessDate: () => "2026-08-06",
-    });
-
-  let results;
-  try {
-    results = await Promise.all(
-      Array.from({ length: 20 }, (_, index) =>
-        applyPaidPurchaseThroughSharedDispatcher(
-          purchase,
-          index % 2 === 0 ? "webhook" : "verify"
-        ))
-    );
-  } finally {
-    subscriptionActivationService.finalizeSubscriptionDraftPaymentFlow = installedFinalizer;
-  }
+  const results = await Promise.all(
+    Array.from({ length: 20 }, (_, index) =>
+      applyPaidPurchaseThroughSharedDispatcher(
+        purchase,
+        index % 2 === 0 ? "webhook" : "verify"
+      ))
+  );
   assert(results.every((result) => result && result.applied === true));
 
   const [parent, batches, draft, payment] = await Promise.all([
