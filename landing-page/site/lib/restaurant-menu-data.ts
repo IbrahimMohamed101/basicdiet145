@@ -311,7 +311,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "name": "رز بخاري",
     "price": 7,
     "calories": 240,
-    "image": "/restaurant-menu/carb_right_3.jpg"
+    "image": "/restaurant-menu/10-carb_right_3.jpg"
   },
   {
     "id": "restaurant-32",
@@ -319,7 +319,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "name": "مكرونة بيستو",
     "price": 7,
     "calories": 380,
-    "image": "/restaurant-menu/carb_right_4.jpg"
+    "image": "/restaurant-menu/11-carb_right_4.jpg"
   },
   {
     "id": "restaurant-33",
@@ -335,7 +335,7 @@ export const restaurantMenuItems: RestaurantMenuItem[] = [
     "name": "بطاطس مهروسة",
     "price": 7,
     "calories": 150,
-    "image": "/restaurant-menu/carb_left_1.jpg"
+    "image": "/restaurant-menu/12-carb_left_1.jpg"
   },
   {
     "id": "restaurant-35",
